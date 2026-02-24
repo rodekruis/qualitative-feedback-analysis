@@ -1,6 +1,6 @@
 import logging
 
-from feedback-analysis-backend.utils import setup_logging
+from feedback_analysis_backend.utils import setup_logging
 
 logger = logging.getLogger(__name__)
 

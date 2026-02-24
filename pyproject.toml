@@ -7,7 +7,7 @@ name = "feedback-analysis-backend"
 version = "0.1.0"
 description = "Marius Helf's new project is a Python project."
 readme = "README.md"
-license = "Not open source"
+license = "LicenseRef-Proprietary"
 requires-python = ">=3.12"
 authors = [
     { name = "Marius Helf", email = "marius@xomnia.com" },
@@ -29,7 +29,7 @@ Homepage = "https://github.com/mariushelf/feedback-analysis-backend"
 Repository = "https://github.com/mariushelf/feedback-analysis-backend"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/feedback-analysis-backend"]
+packages = ["src/feedback_analysis_backend"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

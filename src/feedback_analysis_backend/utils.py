@@ -1,6 +1,6 @@
 import logging
 
-from feedback-analysis-backend.settings import LogSettings
+from feedback_analysis_backend.settings import LogSettings
 
 
 def setup_logging() -> None:
