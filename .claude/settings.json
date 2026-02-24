@@ -1,0 +1,35 @@
+{
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true,
+    "excludedCommands": [
+      "docker",
+      "git"
+    ],
+    "network": {
+      "allowedDomains": [
+        "github.com"
+      ],
+      "allowUnixSockets": [
+        "/var/run/docker.sock"
+      ],
+      "allowLocalBinding": true
+    }
+  },
+  "permissions": {
+    "allow": [
+      "Bash(git commit *)",
+      "Bash(git * main)",
+      "Bash(git * master)",
+      "Bash(* --version)",
+      "Bash(* --help *)",
+      "mcp__context7__*"
+    ],
+    "deny": [
+      "Read(.envrc)",
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(~/.aws/**)"
+    ]
+  }
+}

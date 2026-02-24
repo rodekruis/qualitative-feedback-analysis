@@ -1,0 +1,83 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Force bump level (leave empty for auto)"
+        required: false
+        type: choice
+        options:
+          - ""
+          - patch
+          - minor
+          - major
+      prerelease:
+        description: "Create a pre-release (e.g., 1.0.0-rc.1)"
+        required: false
+        type: boolean
+        default: false
+      prerelease_token:
+        description: "Pre-release identifier (e.g., rc, beta, alpha)"
+        required: false
+        type: string
+        default: "rc"
+
+jobs:
+  ci:
+    uses: ./.github/workflows/cicd.yaml
+
+  release:
+    needs: ci
+    runs-on: ubuntu-latest
+    concurrency: {group: release, cancel-in-progress: false}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Semantic Release (version only)
+        id: semrel
+        uses: python-semantic-release/python-semantic-release@v10
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          force: ${{ github.event.inputs.force }}
+          prerelease: ${{ github.event.inputs.prerelease }}
+          prerelease_token: ${{ github.event.inputs.prerelease_token }}
+          changelog: false
+          vcs_release: false
+
+      - name: Build package
+        if: steps.semrel.outputs.released == 'true'
+        uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - if: steps.semrel.outputs.released == 'true'
+        uses: astral-sh/setup-uv@v5
+      - if: steps.semrel.outputs.released == 'true'
+        run: uv build
+
+      - name: Generate release notes
+        if: steps.semrel.outputs.released == 'true'
+        run: |
+          pipx install python-semantic-release
+          semantic-release changelog
+          awk '/^## v/{if(found) exit; found=1} found' CHANGELOG.md > release_notes.md
+
+      - name: Create draft GitHub Release with artifacts
+        if: steps.semrel.outputs.released == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PRERELEASE_FLAG=""
+          if [ "${{ steps.semrel.outputs.is_prerelease }}" = "true" ]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+          gh release create "${{ steps.semrel.outputs.tag }}" \
+            dist/* \
+            --draft \
+            --notes-file release_notes.md \
+            --title "${{ steps.semrel.outputs.tag }}" \
+            $PRERELEASE_FLAG

@@ -1,0 +1,19 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    environment: production
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Download release artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release download "${{ github.event.release.tag_name }}" --dir dist --repo "${{ github.repository }}"
+      - uses: pypa/gh-action-pypi-publish@release/v1

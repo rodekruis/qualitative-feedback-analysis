@@ -1,0 +1,100 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "feedback-analysis-backend"
+version = "0.1.0"
+description = "Marius Helf's new project is a Python project."
+readme = "README.md"
+license = "Not open source"
+requires-python = ">=3.12"
+authors = [
+    { name = "Marius Helf", email = "marius@xomnia.com" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+
+dependencies = [
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/mariushelf/feedback-analysis-backend"
+Repository = "https://github.com/mariushelf/feedback-analysis-backend"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/feedback-analysis-backend"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+lint.select = [
+    "ANN", # flake8-annotations
+    "E", # flake8
+    "F", # flake8
+    "I", # isort
+    "D", # pydocstyle
+    "S", # flake8-bandit
+    "NPY", # numpy-specific rules
+    "RUF", # ruff specific rules
+]
+lint.ignore = [
+    "E501",
+    "E712",
+    "E731", # Do not assign a `lambda` expression, use a `def`
+    "RUF013", # PEP 484 prohibits implicit `Optional`
+    "ANN202", # Missing return type annotation for private function
+    "ANN204", # Missing return type annotation for special function
+    "ANN401", # Dynamically typed expressions (typing.Any) are disallowed
+
+    # pydocstyle
+    "D100", # Missing docstring in public module
+    "D104", # Missing docstring in public package
+    "D106", # Missing docstring in public nested class
+    "D401", # First line of docstring should be in imperative mood
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/**" = ["S", "ANN", "D101", "D102", "D103"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+ignore-decorators = ["typing.override"]
+
+[tool.ty.src]
+include = ["src"]
+
+[[tool.ty.overrides]]
+include = ["tests/**"]
+
+[tool.ty.overrides.rules]
+invalid-method-override = "ignore"
+
+[tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
+commit_parser = "conventional"
+allow_zero_version = true
+
+[tool.semantic_release.branches.main]
+match = "(master|main)"
+
+[tool.semantic_release.branches.release]
+match = "release/.*"
+
+[tool.semantic_release.remote]
+type = "github"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.15",
+    "ty>=0.0.17",
+]
