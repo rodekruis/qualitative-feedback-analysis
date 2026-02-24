@@ -152,3 +152,24 @@ data/**
 .~*
 poetry.lock
 .isort.cfg
+
+# Claude Code artifacts
+.claude/agents
+.claude/commands
+**/.claude/settings.local.json
+
+# Sandbox / environment artifacts
+.bash_profile
+.bashrc
+.profile
+.zprofile
+.zshrc
+.gitconfig
+.gitmodules
+.mcp.json
+.ripgreprc
+HEAD
+config
+/hooks
+/objects
+/refs
