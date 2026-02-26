@@ -42,12 +42,99 @@ synchronous API call.
 * Azure cloud
 
 
-# Installation
+# Getting Started
+
+## Prerequisites
+
+- Python 3.12+
+- [uv](https://docs.astral.sh/uv/) package manager
+
+## Installation
 
 ```bash
-pip install feedback-analysis-backend
+uv sync
 ```
 
+## Configuration
+
+### Environment Variables
+
+Create a `.env` file in the project root (or export the variables in your shell). Only two variables are required; all others have sensible defaults.
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `LLM_API_KEY` | **yes** | — | API key for OpenAI or Azure OpenAI |
+| `AUTH_API_KEYS_CONFIG_PATH` | **yes** | — | Path to the API keys JSON config file (see below) |
+| `LLM_PROVIDER` | no | `openai` | LLM backend: `openai` or `azure_openai` |
+| `LLM_MODEL` | no | `gpt-4o` | Model name |
+| `LLM_AZURE_ENDPOINT` | no | `""` | Azure OpenAI endpoint URL (required when provider is `azure_openai`) |
+| `LLM_API_VERSION` | no | `""` | Azure OpenAI API version (required when provider is `azure_openai`) |
+| `LLM_TIMEOUT_SECONDS` | no | `115.0` | Timeout for LLM calls in seconds |
+| `LLM_MAX_RETRIES` | no | `3` | Max retry attempts for LLM calls |
+| `LLM_MAX_TOTAL_TOKENS` | no | `100000` | Token budget for entire request |
+| `ORCHESTRATOR_METADATA_FIELDS_TO_INCLUDE` | no | `[]` | Metadata fields forwarded to the LLM |
+| `ORCHESTRATOR_RETRY_BASE_SECONDS` | no | `1.0` | Initial backoff delay |
+| `ORCHESTRATOR_RETRY_MULTIPLIER` | no | `2.0` | Exponential backoff multiplier |
+| `ORCHESTRATOR_RETRY_JITTER_FACTOR` | no | `0.5` | Jitter factor for backoff |
+| `ORCHESTRATOR_RETRY_CAP_SECONDS` | no | `10.0` | Maximum backoff delay |
+| `ORCHESTRATOR_CHARS_PER_TOKEN` | no | `4` | Chars-per-token estimate ratio |
+
+Minimal `.env` example:
+
+```dotenv
+LLM_API_KEY=sk-your-openai-key
+AUTH_API_KEYS_CONFIG_PATH=api_keys.json
+```
+
+### API Keys Config File
+
+API authentication is managed through an external JSON file whose path is set via `AUTH_API_KEYS_CONFIG_PATH`. Each entry represents a tenant with its own API key.
+
+**Format** — a JSON array of objects, each with three fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Human-readable label for the key (e.g. `"crm-production"`) |
+| `key` | string | The secret API key value |
+| `tenant_id` | string | Tenant identifier associated with this key |
+
+**Example** (`api_keys.json`):
+
+```json
+[
+    {
+        "name": "crm-production",
+        "key": "sk-prod-abc123def456",
+        "tenant_id": "tenant-redcross-nl"
+    },
+    {
+        "name": "staging",
+        "key": "sk-staging-xyz789",
+        "tenant_id": "tenant-staging"
+    }
+]
+```
+
+See [`api_keys.json.example`](api_keys.json.example) for a ready-to-copy template.
+
+**How it works:**
+
+1. At startup the application reads the file and validates every entry.
+2. Clients authenticate by sending an `Authorization: Bearer <key>` header.
+3. The key is matched using constant-time comparison (`secrets.compare_digest`) to prevent timing attacks.
+4. On success, the request is tagged with the matching `tenant_id`.
+
+## Running the Application
+
+```bash
+uv run python -m feedback_analysis_backend.main
+```
+
+The server starts on `http://0.0.0.0:8000`. For development with auto-reload:
+
+```bash
+uv run uvicorn feedback_analysis_backend.main:app --reload --host 0.0.0.0 --port 8000
+```
 
 # Development
 
@@ -58,7 +145,7 @@ uv sync
 uv run pre-commit install
 ```
 
-## Running tests
+## Running Tests
 
 ```bash
 make test
@@ -68,6 +155,12 @@ make test
 
 ```bash
 make lint
+```
+
+## Formatting
+
+```bash
+make format
 ```
 
 # Contact

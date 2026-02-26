@@ -22,19 +22,13 @@ TENANT_ID = "tenant-42"
 
 @pytest.fixture
 def mock_response():
-    """Build a mock OpenAI chat completion response."""
+    """Build a mock OpenAI Responses API response."""
     usage = MagicMock()
-    usage.prompt_tokens = 100
-    usage.completion_tokens = 50
-
-    message = MagicMock()
-    message.content = "This is the summary."
-
-    choice = MagicMock()
-    choice.message = message
+    usage.input_tokens = 100
+    usage.output_tokens = 50
 
     response = MagicMock()
-    response.choices = [choice]
+    response.output_text = "This is the summary."
     response.model = MODEL
     response.usage = usage
     return response
@@ -42,9 +36,9 @@ def mock_response():
 
 @pytest.fixture
 def mock_client(mock_response):
-    """Build a mock AsyncOpenAI client whose create() returns mock_response."""
+    """Build a mock AsyncOpenAI client whose responses.create() returns mock_response."""
     client = AsyncMock()
-    client.chat.completions.create = AsyncMock(return_value=mock_response)
+    client.responses.create = AsyncMock(return_value=mock_response)
     return client
 
 
@@ -73,46 +67,43 @@ class TestOpenAiLLMClientCallParameters:
     async def test_store_false_enforced(self, llm_client, mock_client):
         await llm_client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
 
-        call_kwargs = mock_client.chat.completions.create.call_args.kwargs
+        call_kwargs = mock_client.responses.create.call_args.kwargs
         assert call_kwargs["store"] is False
 
     @pytest.mark.asyncio
     async def test_user_equals_tenant_id(self, llm_client, mock_client):
         await llm_client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
 
-        call_kwargs = mock_client.chat.completions.create.call_args.kwargs
+        call_kwargs = mock_client.responses.create.call_args.kwargs
         assert call_kwargs["user"] == TENANT_ID
 
     @pytest.mark.asyncio
     async def test_model_passed_correctly(self, llm_client, mock_client):
         await llm_client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
 
-        call_kwargs = mock_client.chat.completions.create.call_args.kwargs
+        call_kwargs = mock_client.responses.create.call_args.kwargs
         assert call_kwargs["model"] == MODEL
 
     @pytest.mark.asyncio
     async def test_timeout_passed_correctly(self, llm_client, mock_client):
         await llm_client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
 
-        call_kwargs = mock_client.chat.completions.create.call_args.kwargs
+        call_kwargs = mock_client.responses.create.call_args.kwargs
         assert call_kwargs["timeout"] == TIMEOUT
 
     @pytest.mark.asyncio
-    async def test_system_and_user_messages(self, llm_client, mock_client):
+    async def test_instructions_and_input(self, llm_client, mock_client):
         await llm_client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
 
-        call_kwargs = mock_client.chat.completions.create.call_args.kwargs
-        messages = call_kwargs["messages"]
-        assert messages == [
-            {"role": "system", "content": SYSTEM_MSG},
-            {"role": "user", "content": USER_MSG},
-        ]
+        call_kwargs = mock_client.responses.create.call_args.kwargs
+        assert call_kwargs["instructions"] == SYSTEM_MSG
+        assert call_kwargs["input"] == USER_MSG
 
 
 class TestOpenAiLLMClientExceptionMapping:
     @pytest.mark.asyncio
     async def test_timeout_error_mapped(self, llm_client, mock_client):
-        mock_client.chat.completions.create.side_effect = openai.APITimeoutError(
+        mock_client.responses.create.side_effect = openai.APITimeoutError(
             request=MagicMock()
         )
 
@@ -124,7 +115,7 @@ class TestOpenAiLLMClientExceptionMapping:
         mock_response = MagicMock()
         mock_response.status_code = 429
         mock_response.headers = {}
-        mock_client.chat.completions.create.side_effect = openai.RateLimitError(
+        mock_client.responses.create.side_effect = openai.RateLimitError(
             message="rate limited",
             response=mock_response,
             body=None,
@@ -138,7 +129,7 @@ class TestOpenAiLLMClientExceptionMapping:
         mock_response = MagicMock()
         mock_response.status_code = 500
         mock_response.headers = {}
-        mock_client.chat.completions.create.side_effect = openai.APIError(
+        mock_client.responses.create.side_effect = openai.APIError(
             message="server error",
             request=MagicMock(),
             body=None,
