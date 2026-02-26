@@ -16,16 +16,16 @@ class OpenAiLLMClient(LLMPort):
     """LLM adapter satisfying LLMPort.
 
     Wraps ``AsyncOpenAI`` or ``AsyncAzureOpenAI`` to translate OpenAI SDK
-    calls into the domain ``LLMResponse`` model. Exception mapping converts
-    SDK-specific errors into domain errors so that upper layers remain
-    provider-agnostic.
+    Responses API calls into the domain ``LLMResponse`` model. Exception
+    mapping converts SDK-specific errors into domain errors so that upper
+    layers remain provider-agnostic.
 
     Parameters
     ----------
     client : AsyncOpenAI | AsyncAzureOpenAI
         A pre-configured async OpenAI client instance.
     model : str
-        The model identifier to use for completions (e.g. ``"gpt-4"``).
+        The model identifier to use for responses (e.g. ``"gpt-4"``).
     """
 
     def __init__(self, client: AsyncOpenAI | AsyncAzureOpenAI, model: str) -> None:
@@ -39,7 +39,7 @@ class OpenAiLLMClient(LLMPort):
         timeout: float,
         tenant_id: str,
     ) -> LLMResponse:
-        """Send a completion request to the OpenAI API.
+        """Send a completion request to the OpenAI Responses API.
 
         Parameters
         ----------
@@ -67,12 +67,10 @@ class OpenAiLLMClient(LLMPort):
             For any other OpenAI API error.
         """
         try:
-            response = await self._client.chat.completions.create(
+            response = await self._client.responses.create(
                 model=self._model,
-                messages=[
-                    {"role": "system", "content": system_message},
-                    {"role": "user", "content": user_message},
-                ],
+                instructions=system_message,
+                input=user_message,
                 store=False,
                 user=tenant_id,
                 timeout=timeout,
@@ -84,8 +82,8 @@ class OpenAiLLMClient(LLMPort):
         except openai.APIError as exc:
             raise LLMError(str(exc)) from exc
 
-        content = response.choices[0].message.content
-        if content is None:
+        content = response.output_text
+        if not content:
             raise LLMError("LLM returned empty content")
 
         usage = response.usage
@@ -95,6 +93,6 @@ class OpenAiLLMClient(LLMPort):
         return LLMResponse(
             text=content,
             model=response.model,
-            prompt_tokens=usage.prompt_tokens,
-            completion_tokens=usage.completion_tokens,
+            prompt_tokens=usage.input_tokens,
+            completion_tokens=usage.output_tokens,
         )

@@ -36,6 +36,28 @@ class AnalyzeRequest(BaseModel):
         The analysis prompt. Must be between 1 and 4,000 characters.
     """
 
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "documents": [
+                        {
+                            "id": "doc-001",
+                            "text": "The water distribution was well organized but we had to wait for three hours.",
+                            "metadata": {"region": "Eastern Province", "year": 2024},
+                        },
+                        {
+                            "id": "doc-002",
+                            "text": "Medical staff were very professional. Medicine supply was insufficient.",
+                            "metadata": {"region": "Northern Province", "year": 2024},
+                        },
+                    ],
+                    "prompt": "Summarize the main themes and sentiment of the feedback.",
+                },
+            ],
+        },
+    }
+
     documents: list[DocumentInput] = Field(min_length=1)
     prompt: str = Field(min_length=1, max_length=4_000)
 
