@@ -1,14 +1,15 @@
-import logging
+"""Entry point for the feedback analysis backend."""
 
-from feedback_analysis_backend.utils import setup_logging
+import uvicorn
 
-logger = logging.getLogger(__name__)
+from feedback_analysis_backend.api.app import create_app
+
+app = create_app()
 
 
 def main() -> None:
-    """Run the project pipeline."""
-    setup_logging()
-    logger.info("Running the project")
+    """Run the application with uvicorn."""
+    uvicorn.run(app, host="0.0.0.0", port=8000)  # noqa: S104
 
 
 if __name__ == "__main__":
