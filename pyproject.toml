@@ -29,11 +29,11 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/mariushelf/feedback-analysis-backend"
-Repository = "https://github.com/mariushelf/feedback-analysis-backend"
+Homepage = "https://github.com/rodekruis/qualitative-feedback-analysis"
+Repository = "https://github.com/rodekruis/qualitative-feedback-analysis"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/feedback_analysis_backend"]
+packages = ["src/qfa"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
