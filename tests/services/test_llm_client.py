@@ -5,13 +5,13 @@ from unittest.mock import AsyncMock, MagicMock
 import openai
 import pytest
 
-from feedback_analysis_backend.domain.errors import (
+from qfa.domain.errors import (
     LLMError,
     LLMRateLimitError,
     LLMTimeoutError,
 )
-from feedback_analysis_backend.domain.models import LLMResponse
-from feedback_analysis_backend.services.llm_client import OpenAiLLMClient
+from qfa.domain.models import LLMResponse
+from qfa.services.llm_client import OpenAiLLMClient
 
 MODEL = "gpt-4"
 SYSTEM_MSG = "You are a helpful assistant."

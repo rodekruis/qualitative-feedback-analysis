@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from feedback_analysis_backend.settings import (
+from qfa.settings import (
     AppSettings,
     AuthSettings,
     LLMProvider,
@@ -40,7 +40,7 @@ class TestLLMSettings:
     def test_default_model(self, monkeypatch):
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
         settings = LLMSettings()
-        assert settings.model == "gpt-4o"
+        assert settings.model == "gpt-4.1-mini"
 
     def test_default_provider(self, monkeypatch):
         monkeypatch.setenv("LLM_API_KEY", "sk-test")

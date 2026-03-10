@@ -6,8 +6,8 @@ import secrets
 
 from pydantic import ValidationError
 
-from feedback_analysis_backend.domain.errors import AuthenticationError
-from feedback_analysis_backend.domain.models import TenantApiKey
+from qfa.domain.errors import AuthenticationError
+from qfa.domain.models import TenantApiKey
 
 
 def load_api_keys(config_path: pathlib.Path) -> list[TenantApiKey]:

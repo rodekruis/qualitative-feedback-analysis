@@ -6,7 +6,7 @@ Both ports use ``typing.Protocol`` for structural subtyping per ADR-002.
 from datetime import datetime
 from typing import Protocol
 
-from feedback_analysis_backend.domain.models import (
+from qfa.domain.models import (
     AnalysisRequest,
     AnalysisResult,
     LLMResponse,

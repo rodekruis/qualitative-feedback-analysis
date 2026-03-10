@@ -5,9 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
-from feedback_analysis_backend.auth import load_api_keys, validate_api_key
-from feedback_analysis_backend.domain.errors import AuthenticationError
-from feedback_analysis_backend.domain.models import TenantApiKey
+from qfa.auth import load_api_keys, validate_api_key
+from qfa.domain.errors import AuthenticationError
+from qfa.domain.models import TenantApiKey
 
 # --- load_api_keys ---
 
@@ -103,7 +103,7 @@ class TestValidateApiKey:
 
     def test_uses_secrets_compare_digest(self, api_keys):
         with patch(
-            "feedback_analysis_backend.auth.secrets.compare_digest",
+            "qfa.auth.secrets.compare_digest",
             wraps=__import__("secrets").compare_digest,
         ) as mock_compare:
             validate_api_key("sk-prod-abc", api_keys)
@@ -112,7 +112,7 @@ class TestValidateApiKey:
     def test_compares_all_keys_even_on_match(self, api_keys):
         """Verify constant-time behaviour: all keys are compared, no short-circuit."""
         with patch(
-            "feedback_analysis_backend.auth.secrets.compare_digest",
+            "qfa.auth.secrets.compare_digest",
             wraps=__import__("secrets").compare_digest,
         ) as mock_compare:
             # Match is the first key, but all keys must still be compared.

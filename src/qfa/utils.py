@@ -2,7 +2,7 @@
 
 import logging
 
-from feedback_analysis_backend.settings import LogSettings
+from qfa.settings import LogSettings
 
 
 def setup_logging(log_settings: LogSettings | None = None) -> None:

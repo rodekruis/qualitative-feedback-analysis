@@ -1,6 +1,6 @@
 """Tests for domain error hierarchy."""
 
-from feedback_analysis_backend.domain.errors import (
+from qfa.domain.errors import (
     AnalysisError,
     AnalysisTimeoutError,
     AuthenticationError,

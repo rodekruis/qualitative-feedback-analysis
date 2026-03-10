@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from feedback_analysis_backend.domain.errors import (
+from qfa.domain.errors import (
     AnalysisError,
     AnalysisTimeoutError,
     DocumentsTooLargeError,
@@ -13,14 +13,14 @@ from feedback_analysis_backend.domain.errors import (
     LLMRateLimitError,
     LLMTimeoutError,
 )
-from feedback_analysis_backend.domain.models import (
+from qfa.domain.models import (
     AnalysisRequest,
     AnalysisResult,
     FeedbackDocument,
     LLMResponse,
 )
-from feedback_analysis_backend.services.orchestrator import StandardOrchestrator
-from feedback_analysis_backend.settings import OrchestratorSettings
+from qfa.services.orchestrator import StandardOrchestrator
+from qfa.settings import OrchestratorSettings
 
 TENANT_ID = "tenant-42"
 LLM_TIMEOUT = 30.0
@@ -176,7 +176,7 @@ class TestRetryRateLimit:
         )
 
         with patch(
-            "feedback_analysis_backend.services.orchestrator.asyncio.sleep",
+            "qfa.services.orchestrator.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             result = await orch.analyze(_make_request(), _future_deadline())
@@ -200,7 +200,7 @@ class TestRetryTimeout:
         )
 
         with patch(
-            "feedback_analysis_backend.services.orchestrator.asyncio.sleep",
+            "qfa.services.orchestrator.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             result = await orch.analyze(_make_request(), _future_deadline())
@@ -234,12 +234,10 @@ class TestMaxRetriesExhausted:
 
         with (
             patch(
-                "feedback_analysis_backend.services.orchestrator.asyncio.sleep",
+                "qfa.services.orchestrator.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
-            patch(
-                "feedback_analysis_backend.services.orchestrator.datetime"
-            ) as mock_dt,
+            patch("qfa.services.orchestrator.datetime") as mock_dt,
         ):
             mock_dt.now = _advancing_now
             mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
@@ -544,7 +542,7 @@ class TestBackoffUsesAsyncioSleep:
         )
 
         with patch(
-            "feedback_analysis_backend.services.orchestrator.asyncio.sleep",
+            "qfa.services.orchestrator.asyncio.sleep",
             new_callable=AsyncMock,
         ) as mock_sleep:
             await orch.analyze(_make_request(), _future_deadline())

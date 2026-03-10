@@ -1,6 +1,6 @@
 """Domain layer — models, errors, and port interfaces."""
 
-from feedback_analysis_backend.domain.errors import (
+from qfa.domain.errors import (
     AnalysisError,
     AnalysisTimeoutError,
     AuthenticationError,
@@ -10,14 +10,14 @@ from feedback_analysis_backend.domain.errors import (
     LLMRateLimitError,
     LLMTimeoutError,
 )
-from feedback_analysis_backend.domain.models import (
+from qfa.domain.models import (
     AnalysisRequest,
     AnalysisResult,
     FeedbackDocument,
     LLMResponse,
     TenantApiKey,
 )
-from feedback_analysis_backend.domain.ports import LLMPort, OrchestratorPort
+from qfa.domain.ports import LLMPort, OrchestratorPort
 
 __all__ = [
     "AnalysisError",

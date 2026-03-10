@@ -13,23 +13,23 @@ from fastapi.responses import JSONResponse
 from openai import AsyncAzureOpenAI, AsyncOpenAI
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from feedback_analysis_backend.api.routes import router
-from feedback_analysis_backend.api.schemas import (
+from qfa.api.routes import router
+from qfa.api.schemas import (
     ErrorDetail,
     ErrorFieldDetail,
     ErrorResponse,
 )
-from feedback_analysis_backend.auth import load_api_keys
-from feedback_analysis_backend.domain.errors import (
+from qfa.auth import load_api_keys
+from qfa.domain.errors import (
     AnalysisError,
     AnalysisTimeoutError,
     AuthenticationError,
     DocumentsTooLargeError,
 )
-from feedback_analysis_backend.services.llm_client import OpenAiLLMClient
-from feedback_analysis_backend.services.orchestrator import StandardOrchestrator
-from feedback_analysis_backend.settings import AppSettings, LLMProvider, LLMSettings
-from feedback_analysis_backend.utils import setup_logging
+from qfa.services.llm_client import OpenAiLLMClient
+from qfa.services.orchestrator import StandardOrchestrator
+from qfa.settings import AppSettings, LLMProvider, LLMSettings
+from qfa.utils import setup_logging
 
 logger = logging.getLogger(__name__)
 

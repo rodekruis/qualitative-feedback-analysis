@@ -3,13 +3,13 @@
 import openai
 from openai import AsyncAzureOpenAI, AsyncOpenAI
 
-from feedback_analysis_backend.domain.errors import (
+from qfa.domain.errors import (
     LLMError,
     LLMRateLimitError,
     LLMTimeoutError,
 )
-from feedback_analysis_backend.domain.models import LLMResponse
-from feedback_analysis_backend.domain.ports import LLMPort
+from qfa.domain.models import LLMResponse
+from qfa.domain.ports import LLMPort
 
 
 class OpenAiLLMClient(LLMPort):

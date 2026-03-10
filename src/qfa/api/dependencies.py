@@ -3,10 +3,10 @@
 from fastapi import Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from feedback_analysis_backend.auth import validate_api_key
-from feedback_analysis_backend.domain.errors import AuthenticationError
-from feedback_analysis_backend.domain.models import TenantApiKey
-from feedback_analysis_backend.domain.ports import OrchestratorPort
+from qfa.auth import validate_api_key
+from qfa.domain.errors import AuthenticationError
+from qfa.domain.models import TenantApiKey
+from qfa.domain.ports import OrchestratorPort
 
 
 def get_orchestrator(request: Request) -> OrchestratorPort:

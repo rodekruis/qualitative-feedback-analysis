@@ -3,9 +3,9 @@
 import uvicorn
 from dotenv import find_dotenv, load_dotenv
 
-from feedback_analysis_backend.api.app import create_app
-from feedback_analysis_backend.settings import AppSettings
-from feedback_analysis_backend.utils import setup_logging
+from qfa.api.app import create_app
+from qfa.settings import AppSettings
+from qfa.utils import setup_logging
 
 app = create_app()
 

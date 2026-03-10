@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from feedback_analysis_backend.domain.models import (
+from qfa.domain.models import (
     AnalysisRequest,
     AnalysisResult,
     FeedbackDocument,

@@ -3,7 +3,7 @@
 import httpx
 import pytest
 
-from feedback_analysis_backend.domain.errors import (
+from qfa.domain.errors import (
     AnalysisError,
     AnalysisTimeoutError,
     DocumentsTooLargeError,

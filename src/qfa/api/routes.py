@@ -4,22 +4,22 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Request
 
-import feedback_analysis_backend
-from feedback_analysis_backend.api.dependencies import (
+import qfa
+from qfa.api.dependencies import (
     authenticate_request,
     get_orchestrator,
 )
-from feedback_analysis_backend.api.schemas import (
+from qfa.api.schemas import (
     AnalyzeRequest,
     AnalyzeResponse,
     HealthResponse,
 )
-from feedback_analysis_backend.domain.models import (
+from qfa.domain.models import (
     AnalysisRequest,
     FeedbackDocument,
     TenantApiKey,
 )
-from feedback_analysis_backend.domain.ports import OrchestratorPort
+from qfa.domain.ports import OrchestratorPort
 
 router = APIRouter()
 
@@ -82,5 +82,5 @@ async def health() -> HealthResponse:
     """
     return HealthResponse(
         status="ok",
-        version=feedback_analysis_backend.__version__,
+        version=qfa.__version__,
     )

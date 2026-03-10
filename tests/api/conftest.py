@@ -7,17 +7,17 @@ import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 
-from feedback_analysis_backend.api.app import (
+from qfa.api.app import (
     RequestIdMiddleware,
     register_exception_handlers,
 )
-from feedback_analysis_backend.api.routes import router
-from feedback_analysis_backend.domain.models import (
+from qfa.api.routes import router
+from qfa.domain.models import (
     AnalysisRequest,
     AnalysisResult,
     TenantApiKey,
 )
-from feedback_analysis_backend.domain.ports import OrchestratorPort
+from qfa.domain.ports import OrchestratorPort
 
 FAKE_API_KEY = "test-key-abc123"
 FAKE_TENANT_ID = "tenant-test"

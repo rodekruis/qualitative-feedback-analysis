@@ -10,7 +10,7 @@ import random
 import re
 from datetime import UTC, datetime
 
-from feedback_analysis_backend.domain.errors import (
+from qfa.domain.errors import (
     AnalysisError,
     AnalysisTimeoutError,
     DocumentsTooLargeError,
@@ -18,13 +18,13 @@ from feedback_analysis_backend.domain.errors import (
     LLMRateLimitError,
     LLMTimeoutError,
 )
-from feedback_analysis_backend.domain.models import (
+from qfa.domain.models import (
     AnalysisRequest,
     AnalysisResult,
     FeedbackDocument,
 )
-from feedback_analysis_backend.domain.ports import LLMPort, OrchestratorPort
-from feedback_analysis_backend.settings import OrchestratorSettings
+from qfa.domain.ports import LLMPort, OrchestratorPort
+from qfa.settings import OrchestratorSettings
 
 logger = logging.getLogger(__name__)
 
