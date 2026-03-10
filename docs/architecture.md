@@ -198,7 +198,7 @@ Both OpenAI and Azure OpenAI are supported via the same class.
 
 `Authorization: Bearer <key>` header. See [ADR-005](adr/005-bearer-auth.md).
 
-- Keys loaded from JSON config file at startup (path via `AUTH_API_KEYS_CONFIG_PATH` env var).
+- Keys parsed from JSON in the `AUTH_API_KEYS` environment variable at startup.
 - Validated with `secrets.compare_digest` (constant-time comparison).
 - Missing/invalid key returns 401.
 - Key rotation requires container restart (v1).
@@ -315,7 +315,7 @@ class OrchestratorSettings(BaseSettings): # env_prefix="ORCHESTRATOR_"
     chars_per_token: int                  # default 4
 
 class AuthSettings(BaseSettings):         # env_prefix="AUTH_"
-    api_keys_config_path: pathlib.Path    # required
+    api_keys: list[TenantApiKey]          # required
 
 class AppSettings(BaseSettings):
     llm: LLMSettings
@@ -342,7 +342,7 @@ class AppSettings(BaseSettings):
 | `ORCHESTRATOR_RETRY_JITTER_FACTOR` | no | `0.5` |
 | `ORCHESTRATOR_RETRY_CAP_SECONDS` | no | `10.0` |
 | `ORCHESTRATOR_CHARS_PER_TOKEN` | no | `4` |
-| `AUTH_API_KEYS_CONFIG_PATH` | yes | — |
+| `AUTH_API_KEYS` | yes | — |
 
 ## Orchestrator Logic
 

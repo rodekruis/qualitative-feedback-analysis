@@ -63,7 +63,7 @@ Create a `.env` file in the project root (or export the variables in your shell)
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `LLM_API_KEY` | **yes** | — | API key for OpenAI or Azure OpenAI |
-| `AUTH_API_KEYS_CONFIG_PATH` | **yes** | — | Path to the API keys JSON config file (see below) |
+| `AUTH_API_KEYS` | **yes** | — | JSON array of API key objects (see below) |
 | `LLM_PROVIDER` | no | `openai` | LLM backend: `openai` or `azure_openai` |
 | `LLM_MODEL` | no | `gpt-4o` | Model name |
 | `LLM_AZURE_ENDPOINT` | no | `""` | Azure OpenAI endpoint URL (required when provider is `azure_openai`) |
@@ -82,12 +82,12 @@ Minimal `.env` example:
 
 ```dotenv
 LLM_API_KEY=sk-your-openai-key
-AUTH_API_KEYS_CONFIG_PATH=api_keys.json
+AUTH_API_KEYS='[{"name":"crm-production","key":"sk-prod-abc123def456","tenant_id":"tenant-redcross-nl"}]'
 ```
 
-### API Keys Config File
+### API Keys
 
-API authentication is managed through an external JSON file whose path is set via `AUTH_API_KEYS_CONFIG_PATH`. Each entry represents a tenant with its own API key.
+API authentication is configured via the `AUTH_API_KEYS` environment variable. The value is a JSON array of objects, each representing a tenant with its own API key.
 
 **Format** — a JSON array of objects, each with three fields:
 
@@ -97,28 +97,18 @@ API authentication is managed through an external JSON file whose path is set vi
 | `key` | string | The secret API key value |
 | `tenant_id` | string | Tenant identifier associated with this key |
 
-**Example** (`api_keys.json`):
+**Example:**
 
-```json
-[
-    {
-        "name": "crm-production",
-        "key": "sk-prod-abc123def456",
-        "tenant_id": "tenant-redcross-nl"
-    },
-    {
-        "name": "staging",
-        "key": "sk-staging-xyz789",
-        "tenant_id": "tenant-staging"
-    }
-]
+```bash
+export AUTH_API_KEYS='[
+    {"name": "crm-production", "key": "sk-prod-abc123def456", "tenant_id": "tenant-redcross-nl"},
+    {"name": "staging", "key": "sk-staging-xyz789", "tenant_id": "tenant-staging"}
+]'
 ```
-
-See [`api_keys.json.example`](api_keys.json.example) for a ready-to-copy template.
 
 **How it works:**
 
-1. At startup the application reads the file and validates every entry.
+1. At startup the application parses the JSON and validates every entry.
 2. Clients authenticate by sending an `Authorization: Bearer <key>` header.
 3. The key is matched using constant-time comparison (`secrets.compare_digest`) to prevent timing attacks.
 4. On success, the request is tagged with the matching `tenant_id`.

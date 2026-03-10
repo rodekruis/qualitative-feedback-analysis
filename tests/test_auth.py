@@ -1,76 +1,12 @@
 """Tests for the auth module."""
 
-import json
 from unittest.mock import patch
 
 import pytest
 
-from qfa.auth import load_api_keys, validate_api_key
+from qfa.auth import validate_api_key
 from qfa.domain.errors import AuthenticationError
 from qfa.domain.models import TenantApiKey
-
-# --- load_api_keys ---
-
-
-class TestLoadApiKeys:
-    def _write_config(self, tmp_path, data):
-        config = tmp_path / "api_keys.json"
-        config.write_text(json.dumps(data), encoding="utf-8")
-        return config
-
-    def test_valid_single_key(self, tmp_path):
-        config = self._write_config(
-            tmp_path,
-            [{"name": "prod", "key": "sk-abc123", "tenant_id": "tenant-1"}],
-        )
-        keys = load_api_keys(config)
-        assert len(keys) == 1
-        assert isinstance(keys[0], TenantApiKey)
-        assert keys[0].name == "prod"
-        assert keys[0].key == "sk-abc123"
-        assert keys[0].tenant_id == "tenant-1"
-
-    def test_valid_multiple_keys(self, tmp_path):
-        config = self._write_config(
-            tmp_path,
-            [
-                {"name": "prod", "key": "sk-abc", "tenant_id": "tenant-1"},
-                {"name": "staging", "key": "sk-def", "tenant_id": "tenant-2"},
-                {"name": "dev", "key": "sk-ghi", "tenant_id": "tenant-3"},
-            ],
-        )
-        keys = load_api_keys(config)
-        assert len(keys) == 3
-
-    def test_file_not_found(self, tmp_path):
-        missing = tmp_path / "nonexistent.json"
-        with pytest.raises(FileNotFoundError):
-            load_api_keys(missing)
-
-    def test_invalid_json(self, tmp_path):
-        config = tmp_path / "api_keys.json"
-        config.write_text("{not valid json", encoding="utf-8")
-        with pytest.raises(ValueError, match="Invalid JSON"):
-            load_api_keys(config)
-
-    def test_json_not_array(self, tmp_path):
-        config = self._write_config(tmp_path, {"name": "prod", "key": "sk-abc"})
-        with pytest.raises(ValueError, match="must be a JSON array"):
-            load_api_keys(config)
-
-    def test_missing_required_fields(self, tmp_path):
-        config = self._write_config(
-            tmp_path,
-            [{"name": "prod"}],
-        )
-        with pytest.raises(ValueError, match="Invalid API key entry"):
-            load_api_keys(config)
-
-    def test_empty_array(self, tmp_path):
-        config = self._write_config(tmp_path, [])
-        keys = load_api_keys(config)
-        assert keys == []
-
 
 # --- validate_api_key ---
 
