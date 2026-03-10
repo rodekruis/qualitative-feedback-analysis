@@ -13,6 +13,7 @@ jobs:
         python-version:
           - "3.12"
           - "3.13"
+          - "3.14"
         platform: [ubuntu-latest]
     runs-on: ${{ matrix.platform }}
     steps:
@@ -24,11 +25,11 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
       - name: Install dependencies
-        run: uv sync --no-sources
+        run: uv sync
       - name: ruff format
-        run: uv run --no-sources ruff format --check src tests
+        run: uv run  ruff format --check src tests
       - name: ruff check
-        run: uv run --no-sources ruff check src tests
+        run: uv run ruff check src tests
       - name: ty
         run: make ty
   test:
@@ -39,6 +40,7 @@ jobs:
         python-version:
           - "3.12"
           - "3.13"
+          - "3.14"
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python ${{ matrix.python-version }}
@@ -48,6 +50,6 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
       - name: Install dependencies
-        run: uv sync --no-sources
+        run: uv sync
       - name: Run pytest
-        run: uv run --no-sources pytest
+        run: uv run pytest
