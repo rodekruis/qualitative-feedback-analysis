@@ -32,7 +32,7 @@ Homepage = "https://github.com/mariushelf/feedback-analysis-backend"
 Repository = "https://github.com/mariushelf/feedback-analysis-backend"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/feedback_analysis_backend"]
+packages = ["src/qfa"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
