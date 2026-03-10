@@ -24,6 +24,7 @@ dependencies = [
     "openai>=1.50",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
+    "tenacity>=9.1.4",
     "uvicorn[standard]>=0.41.0",
 ]
 

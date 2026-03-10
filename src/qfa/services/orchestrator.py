@@ -4,15 +4,15 @@ Assembles prompts, enforces token limits, filters prompt injection,
 manages retries with exponential backoff, and enforces deadlines.
 """
 
-import asyncio
 import logging
 import random
 import re
-from datetime import UTC, datetime
+from datetime import datetime
+
+from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_exponential
 
 from qfa.domain.errors import (
     AnalysisError,
-    AnalysisTimeoutError,
     DocumentsTooLargeError,
     LLMError,
     LLMRateLimitError,
@@ -239,6 +239,11 @@ class StandardOrchestrator(OrchestratorPort):
         )
         return random.uniform(0, delay * s.retry_jitter_factor)  # noqa: S311
 
+    @retry(
+        wait=wait_exponential(multiplier=1, max=10),
+        stop=stop_after_delay(60),
+        retry=retry_if_exception_type((LLMTimeoutError, LLMRateLimitError)),
+    )
     async def _call_with_retries(
         self,
         system_message: str,
@@ -271,53 +276,27 @@ class StandardOrchestrator(OrchestratorPort):
         AnalysisError
             For non-recoverable LLM errors or persistent empty responses.
         """
-        attempt = 0
-        empty_retry_done = False
-
-        while True:
-            remaining = (deadline - datetime.now(tz=UTC)).total_seconds()
-            if remaining <= 0:
-                raise AnalysisTimeoutError("Deadline exceeded")
-
-            backoff = self._compute_backoff(attempt) if attempt > 0 else 0.0
-            if remaining < backoff + _MINIMUM_ATTEMPT_WINDOW:
-                raise AnalysisTimeoutError(
-                    "Insufficient time remaining for another attempt"
-                )
-
-            per_attempt_timeout = min(remaining, self._llm_timeout_seconds)
-
-            try:
-                response = await self._llm.complete(
-                    system_message=system_message,
-                    user_message=user_message,
-                    timeout=per_attempt_timeout,
-                    tenant_id=tenant_id,
-                )
-            except (LLMTimeoutError, LLMRateLimitError):
-                attempt += 1
-                backoff = self._compute_backoff(attempt)
-                remaining = (deadline - datetime.now(tz=UTC)).total_seconds()
-                if remaining < backoff + _MINIMUM_ATTEMPT_WINDOW:
-                    raise AnalysisTimeoutError(
-                        "Insufficient time remaining for another attempt"
-                    )
-                await asyncio.sleep(backoff)
-                continue
-            except LLMError as exc:
-                raise AnalysisError(str(exc)) from exc
-
-            # Handle empty response
-            if not response.text.strip():
-                if not empty_retry_done:
-                    empty_retry_done = True
-                    attempt += 1
-                    continue
-                raise AnalysisError("LLM returned empty response after retry")
-
-            return AnalysisResult(
-                result=response.text,
-                model=response.model,
-                prompt_tokens=response.prompt_tokens,
-                completion_tokens=response.completion_tokens,
+        try:
+            response = await self._llm.complete(
+                system_message=system_message,
+                user_message=user_message,
+                timeout=120,
+                tenant_id=tenant_id,
             )
+        except (LLMTimeoutError, LLMRateLimitError):
+            # raise timeout and rate limit errors (tenacity will retry)
+            raise
+        except LLMError as exc:
+            # convert LLMError to AnalysisError and raise
+            raise AnalysisError(str(exc)) from exc
+
+        # Handle empty response
+        if not response.text.strip():
+            raise AnalysisError("LLM returned empty response after retry")
+
+        return AnalysisResult(
+            result=response.text,
+            model=response.model,
+            prompt_tokens=response.prompt_tokens,
+            completion_tokens=response.completion_tokens,
+        )

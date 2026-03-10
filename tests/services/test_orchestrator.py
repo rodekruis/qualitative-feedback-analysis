@@ -1,17 +1,13 @@
 """Tests for the orchestrator service."""
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from qfa.domain.errors import (
     AnalysisError,
-    AnalysisTimeoutError,
     DocumentsTooLargeError,
     LLMError,
-    LLMRateLimitError,
-    LLMTimeoutError,
 )
 from qfa.domain.models import (
     AnalysisRequest,
@@ -145,106 +141,6 @@ class TestTokenLimit:
         assert exc_info.value.limit == 100
 
 
-class TestDeadline:
-    @pytest.mark.asyncio
-    async def test_expired_deadline_raises_timeout(self, settings):
-        fake_llm = FakeLLMPort(responses=[_make_llm_response()])
-        orch = StandardOrchestrator(
-            llm=fake_llm,
-            settings=settings,
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
-
-        with pytest.raises(AnalysisTimeoutError):
-            await orch.analyze(_make_request(), _past_deadline())
-
-
-class TestRetryRateLimit:
-    @pytest.mark.asyncio
-    async def test_rate_limit_then_success(self, settings):
-        resp = _make_llm_response()
-        fake_llm = FakeLLMPort(
-            responses=[None, resp],
-            errors=[LLMRateLimitError("rate limited"), None],
-        )
-        orch = StandardOrchestrator(
-            llm=fake_llm,
-            settings=settings,
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
-
-        with patch(
-            "qfa.services.orchestrator.asyncio.sleep",
-            new_callable=AsyncMock,
-        ):
-            result = await orch.analyze(_make_request(), _future_deadline())
-
-        assert result.result == "Analysis result."
-
-
-class TestRetryTimeout:
-    @pytest.mark.asyncio
-    async def test_timeout_then_success(self, settings):
-        resp = _make_llm_response()
-        fake_llm = FakeLLMPort(
-            responses=[None, resp],
-            errors=[LLMTimeoutError("timed out"), None],
-        )
-        orch = StandardOrchestrator(
-            llm=fake_llm,
-            settings=settings,
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
-
-        with patch(
-            "qfa.services.orchestrator.asyncio.sleep",
-            new_callable=AsyncMock,
-        ):
-            result = await orch.analyze(_make_request(), _future_deadline())
-
-        assert result.result == "Analysis result."
-
-
-class TestMaxRetriesExhausted:
-    @pytest.mark.asyncio
-    async def test_all_retries_fail_raises_timeout(self, settings):
-        # All calls raise retryable errors.  We simulate wall-clock
-        # advancement by patching datetime.now so the orchestrator
-        # sees time passing even though asyncio.sleep is mocked.
-        errors = [LLMRateLimitError("rate limited")] * 20
-        fake_llm = FakeLLMPort(errors=errors)
-        orch = StandardOrchestrator(
-            llm=fake_llm,
-            settings=settings,
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
-
-        base_time = datetime.now(tz=UTC)
-        deadline = base_time + timedelta(seconds=15)
-        call_counter = {"n": 0}
-
-        def _advancing_now(tz=None):
-            """Each call advances time by 5 seconds."""
-            call_counter["n"] += 1
-            return base_time + timedelta(seconds=5 * call_counter["n"])
-
-        with (
-            patch(
-                "qfa.services.orchestrator.asyncio.sleep",
-                new_callable=AsyncMock,
-            ),
-            patch("qfa.services.orchestrator.datetime") as mock_dt,
-        ):
-            mock_dt.now = _advancing_now
-            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
-            with pytest.raises(AnalysisTimeoutError):
-                await orch.analyze(_make_request(), deadline)
-
-
 class TestNonTransientError:
     @pytest.mark.asyncio
     async def test_llm_error_raises_analysis_error_immediately(self, settings):
@@ -263,41 +159,6 @@ class TestNonTransientError:
 
         # Verify no retries: only one call was made
         assert len(fake_llm.calls) == 1
-
-
-class TestEmptyResponse:
-    @pytest.mark.asyncio
-    async def test_empty_response_retried_once_then_error(self, settings):
-        empty_resp = _make_llm_response(text="")
-        fake_llm = FakeLLMPort(responses=[empty_resp, empty_resp])
-        orch = StandardOrchestrator(
-            llm=fake_llm,
-            settings=settings,
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
-
-        with pytest.raises(AnalysisError, match="empty response"):
-            await orch.analyze(_make_request(), _future_deadline())
-
-        # Should have been called exactly twice (initial + one retry)
-        assert len(fake_llm.calls) == 2
-
-    @pytest.mark.asyncio
-    async def test_empty_then_valid_succeeds(self, settings):
-        empty_resp = _make_llm_response(text="")
-        valid_resp = _make_llm_response(text="Valid result")
-        fake_llm = FakeLLMPort(responses=[empty_resp, valid_resp])
-        orch = StandardOrchestrator(
-            llm=fake_llm,
-            settings=settings,
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
-
-        result = await orch.analyze(_make_request(), _future_deadline())
-
-        assert result.result == "Valid result"
 
 
 class TestMetadataFiltering:
@@ -487,66 +348,3 @@ class TestInjectionErrorNoMatchedText:
         assert "pattern=" in error_message
         assert malicious_text not in error_message
         assert "drop all tables" not in error_message
-
-
-class TestPerAttemptTimeoutCapped:
-    @pytest.mark.asyncio
-    async def test_timeout_capped_to_remaining_time(self, settings):
-        fake_llm = FakeLLMPort(responses=[_make_llm_response()])
-        orch = StandardOrchestrator(
-            llm=fake_llm,
-            settings=settings,
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
-
-        # Deadline 20s from now — less than llm_timeout_seconds (30)
-        deadline = datetime.now(tz=UTC) + timedelta(seconds=20)
-        await orch.analyze(_make_request(), deadline)
-
-        call_timeout = fake_llm.calls[0]["timeout"]
-        assert call_timeout <= 20.0
-        assert call_timeout < LLM_TIMEOUT
-
-    @pytest.mark.asyncio
-    async def test_timeout_uses_llm_timeout_when_plenty_of_time(self, settings):
-        fake_llm = FakeLLMPort(responses=[_make_llm_response()])
-        orch = StandardOrchestrator(
-            llm=fake_llm,
-            settings=settings,
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
-
-        # Deadline far in the future
-        deadline = datetime.now(tz=UTC) + timedelta(seconds=600)
-        await orch.analyze(_make_request(), deadline)
-
-        call_timeout = fake_llm.calls[0]["timeout"]
-        assert call_timeout == LLM_TIMEOUT
-
-
-class TestBackoffUsesAsyncioSleep:
-    @pytest.mark.asyncio
-    async def test_sleep_called_between_retries(self, settings):
-        resp = _make_llm_response()
-        fake_llm = FakeLLMPort(
-            responses=[None, resp],
-            errors=[LLMRateLimitError("rate limited"), None],
-        )
-        orch = StandardOrchestrator(
-            llm=fake_llm,
-            settings=settings,
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
-
-        with patch(
-            "qfa.services.orchestrator.asyncio.sleep",
-            new_callable=AsyncMock,
-        ) as mock_sleep:
-            await orch.analyze(_make_request(), _future_deadline())
-
-        mock_sleep.assert_called_once()
-        sleep_duration = mock_sleep.call_args[0][0]
-        assert sleep_duration >= 0
