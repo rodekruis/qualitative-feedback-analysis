@@ -89,6 +89,14 @@ class AuthSettings(BaseSettings):
     api_keys_config_path: pathlib.Path  # required, no default
 
 
+class NetworkSettings(BaseSettings):
+    """Configuration for network settings."""
+
+    model_config = SettingsConfigDict(env_prefix="NETWORK_")
+    host: str = "0.0.0.0"  # noqa: S104 (hardcoded-bind-all-interfaces)
+    port: int = 8000
+
+
 class AppSettings(BaseSettings):
     """Root configuration composing all sub-settings groups."""
 
@@ -96,3 +104,4 @@ class AppSettings(BaseSettings):
     orchestrator: OrchestratorSettings = Field(default_factory=OrchestratorSettings)
     auth: AuthSettings = Field(default_factory=AuthSettings)
     log: LogSettings = Field(default_factory=LogSettings)
+    network: NetworkSettings = Field(default_factory=NetworkSettings)

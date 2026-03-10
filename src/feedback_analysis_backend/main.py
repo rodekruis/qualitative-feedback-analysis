@@ -4,6 +4,7 @@ import uvicorn
 from dotenv import find_dotenv, load_dotenv
 
 from feedback_analysis_backend.api.app import create_app
+from feedback_analysis_backend.settings import AppSettings
 from feedback_analysis_backend.utils import setup_logging
 
 app = create_app()
@@ -14,7 +15,8 @@ def main() -> None:
     load_dotenv(find_dotenv())
     setup_logging()
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)  # noqa: S104
+    network_settings = AppSettings().network
+    uvicorn.run(app, host=network_settings.host, port=network_settings.port)
 
 
 if __name__ == "__main__":
