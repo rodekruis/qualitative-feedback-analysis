@@ -1,8 +1,4 @@
-# Marius Helf's new project
-
-[![Tests](https://github.com/mariushelf/feedback-analysis-backend/actions/workflows/cicd.yaml/badge.svg)](https://github.com/mariushelf/feedback-analysis-backend/actions/workflows/cicd.yaml)
-[![PyPI version](https://badge.fury.io/py/feedback-analysis-backend.svg)](https://pypi.org/project/feedback-analysis-backend/)
-
+# Qualitative Feedback Analysis
 
 # About
 
@@ -162,7 +158,3 @@ make lint
 ```bash
 make format
 ```
-
-# Contact
-
-Marius Helf ([marius@xomnia.com](mailto:marius@xomnia.com))
