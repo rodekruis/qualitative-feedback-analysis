@@ -16,7 +16,7 @@ class LogSettings(BaseSettings):
     our_packages: list[str] = [
         # list of "our" packages
         "__main__",
-        "feedback-analysis-backend",
+        "qfa",
     ]
     basicConfig: dict[str, Any] = {
         # "basicConfig" of the logging module.
