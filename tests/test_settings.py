@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from qfa.settings import (
     AppSettings,
     AuthSettings,
+    DatabaseSettings,
     LLMProvider,
     LLMSettings,
     OrchestratorSettings,
@@ -132,6 +133,20 @@ class TestOrchestratorSettings:
     def test_default_chars_per_token(self):
         settings = OrchestratorSettings()
         assert settings.chars_per_token == 4
+
+
+class TestDatabaseSettings:
+    def test_defaults(self):
+        settings = DatabaseSettings()
+        assert settings.url == ""
+        assert settings.track_usage is False
+
+    def test_reads_from_db_prefixed_env_vars(self, monkeypatch):
+        monkeypatch.setenv("DB_URL", "postgresql+asyncpg://user:pass@host/db")
+        monkeypatch.setenv("DB_TRACK_USAGE", "true")
+        settings = DatabaseSettings()
+        assert settings.url == "postgresql+asyncpg://user:pass@host/db"
+        assert settings.track_usage is True
 
 
 class TestAuthSettings:

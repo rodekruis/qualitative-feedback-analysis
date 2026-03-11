@@ -95,6 +95,81 @@ class HealthResponse(BaseModel):
     version: str
 
 
+class DistributionStatsResponse(BaseModel):
+    """Distribution statistics for a metric.
+
+    Attributes
+    ----------
+    avg : float
+        Mean value.
+    min : float
+        Minimum value.
+    max : float
+        Maximum value.
+    p5 : float
+        5th percentile.
+    p95 : float
+        95th percentile.
+    """
+
+    avg: float
+    min: float
+    max: float
+    p5: float
+    p95: float
+
+
+class TokenStatsResponse(DistributionStatsResponse):
+    """Token distribution statistics with a total count.
+
+    Attributes
+    ----------
+    total : int
+        Total number of tokens.
+    """
+
+    total: int
+
+
+class UsageStatsResponse(BaseModel):
+    """Aggregated usage statistics for a single tenant or grand total.
+
+    Attributes
+    ----------
+    tenant_id : str | None
+        Tenant identifier, or None for grand total.
+    total_calls : int
+        Total number of LLM calls.
+    call_duration : DistributionStatsResponse
+        Call duration distribution in milliseconds.
+    input_tokens : TokenStatsResponse
+        Input token distribution.
+    output_tokens : TokenStatsResponse
+        Output token distribution.
+    """
+
+    tenant_id: str | None = None
+    total_calls: int
+    call_duration: DistributionStatsResponse
+    input_tokens: TokenStatsResponse
+    output_tokens: TokenStatsResponse
+
+
+class AllUsageStatsResponse(BaseModel):
+    """Response containing per-tenant and grand total usage statistics.
+
+    Attributes
+    ----------
+    tenants : list[UsageStatsResponse]
+        Per-tenant usage statistics.
+    total : UsageStatsResponse
+        Grand total across all tenants.
+    """
+
+    tenants: list[UsageStatsResponse]
+    total: UsageStatsResponse
+
+
 class ErrorFieldDetail(BaseModel):
     """Per-field validation error detail.
 
