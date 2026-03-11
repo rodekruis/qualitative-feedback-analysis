@@ -7,19 +7,21 @@ Use `uv` for all dependency management (not `pip`). Examples:
 - `uv pip install -e .` to install the project
 - `uv run <command>` to run commands in the project environment
 
-## Git Conventions
+## Git
 
-Use semantic commit messages:
+- Github repo: `rodekruis/qualitative-feedback-analysis`
+- use conventional commits (https://www.conventionalcommits.org/en/v1.0.0/)
+- Commit messages must contain ONLY a conventional commit subject line and optional body. No trailers of any kind.
+- DO NOT add "Co-Authored-By" or any AI attribution trailers to commit messages or pull requests.
 
-- `feat:` new feature
-- `fix:` bug fix (something was actually broken)
-- `docs:` documentation changes
-- `style:` formatting, missing semicolons, etc. (no code change)
-- `refactor:` code restructuring without changing behavior
-- `test:` adding or updating tests
-- `chore:` maintenance tasks, dependency updates, CI config, cleanup of things that work but are unnecessary
+### Workflow
 
-DO NOT add "Co-Authored-By" or any AI attribution trailers to commit messages and pull requests.
+- if working from a github issue or requested to "follow the feature workflow":
+    1. create a new branch from `main`
+    2. commit small, focused changes to the branch
+    3. open a PR to merge the branch into `main`
+    4. close the issue when the PR is merged ("closes #123")
+- else: work directly on `main`
 
 ## Architecture
 
