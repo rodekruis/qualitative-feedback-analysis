@@ -1,3 +1,12 @@
+# Step 1 of the deploy pipeline. Run this manually from the Actions tab.
+#
+# What it does:
+#   1. Runs the CI checks (lint + tests).
+#   2. Bumps the version based on conventional commits.
+#   3. Creates a **draft** GitHub Release.
+#
+# After it runs, review the draft release on the Releases page and click
+# "Publish" when ready — that triggers the deploy (see publish.yaml).
 name: Release
 
 on:
@@ -23,14 +32,16 @@ on:
         type: string
         default: "rc"
 
+permissions: {}
+
 jobs:
   ci:
-    uses: ./.github/workflows/cicd.yaml
+    uses: ./.github/workflows/ci.yaml
 
   release:
     needs: ci
     runs-on: ubuntu-latest
-    concurrency: {group: release, cancel-in-progress: false}
+    concurrency: { group: release, cancel-in-progress: false }
     permissions:
       contents: write
     steps:
@@ -50,23 +61,15 @@ jobs:
           changelog: false
           vcs_release: false
 
-      - name: Build package
-        if: steps.semrel.outputs.released == 'true'
-        uses: actions/setup-python@v5
-        with: {python-version: "3.12"}
-      - if: steps.semrel.outputs.released == 'true'
-        uses: astral-sh/setup-uv@v5
-      - if: steps.semrel.outputs.released == 'true'
-        run: uv build
-
       - name: Generate release notes
         if: steps.semrel.outputs.released == 'true'
         run: |
           pipx install python-semantic-release
           semantic-release changelog
+          # Extract only the latest version's section from CHANGELOG.md
           awk '/^## v/{if(found) exit; found=1} found' CHANGELOG.md > release_notes.md
 
-      - name: Create draft GitHub Release with artifacts
+      - name: Create draft GitHub Release
         if: steps.semrel.outputs.released == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -76,7 +79,6 @@ jobs:
             PRERELEASE_FLAG="--prerelease"
           fi
           gh release create "${{ steps.semrel.outputs.tag }}" \
-            dist/* \
             --draft \
             --notes-file release_notes.md \
             --title "${{ steps.semrel.outputs.tag }}" \

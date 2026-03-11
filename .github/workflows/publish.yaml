@@ -1,0 +1,49 @@
+# Step 2 of the deploy pipeline. Runs automatically when you publish a
+# GitHub Release (i.e. when a draft created by release.yaml is published).
+#
+# What it does:
+#   1. Pushes app settings (from GitHub Secrets) to Azure.
+#   2. Deploys the code to Azure App Service.
+#
+# Do NOT trigger this manually — publish a release instead.
+name: Deploy to Azure
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    environment: production
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Configure app settings
+        run: |
+          az webapp config appsettings set \
+            --name "${{ vars.AZURE_APP_NAME }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --settings \
+              LLM_PROVIDER="${{ vars.LLM_PROVIDER }}" \
+              LLM_MODEL="${{ vars.LLM_MODEL }}" \
+              LLM_API_KEY="${{ secrets.LLM_API_KEY }}" \
+              LLM_AZURE_ENDPOINT="${{ secrets.LLM_AZURE_ENDPOINT }}" \
+              LLM_API_VERSION="${{ vars.LLM_API_VERSION }}" \
+              AUTH_API_KEYS="${{ secrets.AUTH_API_KEYS }}"
+
+      - name: Deploy to Azure App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_APP_NAME }}
+          startup-command: "uvicorn qfa.main:app --host 0.0.0.0 --port 8000"

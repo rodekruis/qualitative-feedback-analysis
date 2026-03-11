@@ -38,7 +38,38 @@ synchronous API call.
 * hardened security.
 
 # Deployment
-* Azure cloud
+
+Deployed to Azure App Service. The CI/CD pipeline is a two-step process:
+
+1. **Release** (`release.yaml`) — trigger manually from the Actions tab. Runs CI, bumps the version via conventional commits, and creates a **draft** GitHub Release.
+2. **Deploy** (`publish.yaml`) — runs automatically when you publish the draft release. Pushes app settings and deploys the code to Azure.
+
+## GitHub Configuration
+
+The following variables and secrets must be configured in the repository settings (Settings > Secrets and variables > Actions).
+
+### Repository Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `AZURE_APP_NAME` | Azure App Service name | `qfa-backend` |
+| `AZURE_RESOURCE_GROUP` | Azure resource group | `rg-feedback-analysis` |
+| `LLM_PROVIDER` | LLM backend | `azure_openai` |
+| `LLM_MODEL` | Model name | `gpt-4.1-mini` |
+| `LLM_API_VERSION` | Azure OpenAI API version | `2024-02-01` |
+
+### Repository Secrets
+
+| Secret | Description |
+|--------|-------------|
+| `AZURE_CREDENTIALS` | Service principal JSON (`az ad sp create-for-rbac --sdk-auth`) |
+| `LLM_API_KEY` | Azure OpenAI API key |
+| `LLM_AZURE_ENDPOINT` | Azure OpenAI endpoint URL (e.g. `https://xxx.openai.azure.com/`) |
+| `AUTH_API_KEYS` | JSON array of tenant API keys (see [API Keys](#api-keys)) |
+
+### GitHub Environment (optional)
+
+Create a `production` environment (Settings > Environments) and add required reviewers to gate deployments.
 
 
 # Getting Started
