@@ -83,8 +83,24 @@ class TestLLMSettings:
     def test_override_provider_to_azure(self, monkeypatch):
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
         monkeypatch.setenv("LLM_PROVIDER", "azure_openai")
+        monkeypatch.setenv("LLM_AZURE_ENDPOINT", "https://example.openai.azure.com")
+        monkeypatch.setenv("LLM_API_VERSION", "2025-01-01-preview")
         settings = LLMSettings()
         assert settings.provider == LLMProvider.AZURE_OPENAI
+
+    def test_azure_requires_endpoint(self, monkeypatch):
+        monkeypatch.setenv("LLM_API_KEY", "sk-test")
+        monkeypatch.setenv("LLM_PROVIDER", "azure_openai")
+        monkeypatch.setenv("LLM_API_VERSION", "2025-01-01-preview")
+        with pytest.raises(ValidationError, match="LLM_AZURE_ENDPOINT"):
+            LLMSettings()
+
+    def test_azure_requires_api_version(self, monkeypatch):
+        monkeypatch.setenv("LLM_API_KEY", "sk-test")
+        monkeypatch.setenv("LLM_PROVIDER", "azure_openai")
+        monkeypatch.setenv("LLM_AZURE_ENDPOINT", "https://example.openai.azure.com")
+        with pytest.raises(ValidationError, match="LLM_API_VERSION"):
+            LLMSettings()
 
 
 class TestOrchestratorSettings:

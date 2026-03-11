@@ -2,7 +2,7 @@ import logging
 from enum import Enum
 from typing import Any
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from qfa.domain.models import TenantApiKey
@@ -67,6 +67,19 @@ class LLMSettings(BaseSettings):
     timeout_seconds: float = 115.0
     max_retries: int = 3
     max_total_tokens: int = 100_000
+
+    @model_validator(mode="after")
+    def _azure_fields_required(self) -> "LLMSettings":
+        if self.provider == LLMProvider.AZURE_OPENAI:
+            if not self.azure_endpoint:
+                raise ValueError(
+                    "LLM_AZURE_ENDPOINT is required when LLM_PROVIDER is 'azure_openai'"
+                )
+            if not self.api_version:
+                raise ValueError(
+                    "LLM_API_VERSION is required when LLM_PROVIDER is 'azure_openai'"
+                )
+        return self
 
 
 class OrchestratorSettings(BaseSettings):
