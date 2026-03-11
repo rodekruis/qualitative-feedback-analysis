@@ -157,6 +157,7 @@ poetry.lock
 .claude/agents
 .claude/commands
 **/.claude/settings.local.json
+.claude/worktrees
 
 # Sandbox / environment artifacts
 .bash_profile
