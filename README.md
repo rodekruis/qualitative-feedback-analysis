@@ -53,19 +53,42 @@ The following variables and secrets must be configured in the repository setting
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `AZURE_APP_NAME` | Azure App Service name | `qfa-backend` |
-| `AZURE_RESOURCE_GROUP` | Azure resource group | `rg-feedback-analysis` |
-| `LLM_PROVIDER` | LLM backend | `azure_openai` |
-| `LLM_MODEL` | Model name | `gpt-4.1-mini` |
-| `LLM_API_VERSION` | Azure OpenAI API version | `2024-02-01` |
 
 ### Repository Secrets
 
 | Secret | Description |
 |--------|-------------|
-| `AZURE_CREDENTIALS` | Service principal JSON (`az ad sp create-for-rbac --sdk-auth`) |
-| `LLM_API_KEY` | Azure OpenAI API key |
-| `LLM_AZURE_ENDPOINT` | Azure OpenAI endpoint URL (e.g. `https://xxx.openai.azure.com/`) |
-| `AUTH_API_KEYS` | JSON array of tenant API keys (see [API Keys](#api-keys)) |
+| `AZURE_PUBLISH_PROFILE` | App Service publish profile XML (see below) |
+
+### App Settings
+
+App settings (environment variables like `LLM_API_KEY`, `AUTH_API_KEYS`, etc.) are **not** managed by the CI/CD pipeline. Configure them via the Azure Portal (App Service > Configuration) or with the Azure CLI:
+
+```bash
+az webapp config appsettings set \
+  --name <APP_NAME> \
+  --resource-group <RESOURCE_GROUP> \
+  --settings \
+    LLM_PROVIDER="azure_openai" \
+    LLM_MODEL="gpt-4.1-mini" \
+    LLM_API_KEY="sk-..." \
+    LLM_AZURE_ENDPOINT="https://xxx.openai.azure.com/" \
+    LLM_API_VERSION="2024-02-01" \
+    AUTH_API_KEYS='[{"name":"crm","key":"...","tenant_id":"..."}]'
+```
+
+### Obtaining the Publish Profile
+
+Download it from the Azure Portal (App Service > Overview > Download publish profile), or via the CLI:
+
+```bash
+az webapp deployment list-publishing-profiles \
+  --name <APP_NAME> \
+  --resource-group <RESOURCE_GROUP> \
+  --xml
+```
+
+Copy the entire XML output into the `AZURE_PUBLISH_PROFILE` repository secret.
 
 ### GitHub Environment (optional)
 
