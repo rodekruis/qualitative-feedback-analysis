@@ -20,10 +20,13 @@ classifiers = [
 ]
 
 dependencies = [
+    "alembic>=1.15",
+    "asyncpg>=0.31.0",
     "fastapi>=0.133.0",
     "openai>=1.50",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
+    "sqlalchemy[asyncio]>=2.0",
     "tenacity>=9.1.4",
     "uvicorn[standard]>=0.41.0",
 ]

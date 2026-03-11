@@ -20,6 +20,7 @@ from qfa.domain.models import (
 from qfa.domain.ports import OrchestratorPort
 
 FAKE_API_KEY = "test-key-abc123"
+FAKE_SUPERUSER_KEY = "superuser-key-xyz789"
 FAKE_TENANT_ID = "tenant-test"
 FAKE_API_KEY_NAME = "test-key"
 
@@ -79,6 +80,7 @@ def test_app(fake_orchestrator, fake_api_keys):
 
     app.state.orchestrator = fake_orchestrator
     app.state.api_keys = fake_api_keys
+    app.state.usage_repo = None
 
     return app
 

@@ -3,6 +3,8 @@
 All models are immutable (frozen) Pydantic models per ADR-001.
 """
 
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -114,3 +116,97 @@ class TenantApiKey(BaseModel):
     name: str
     key: str
     tenant_id: str
+    is_superuser: bool = False
+
+
+class LLMCallRecord(BaseModel):
+    """A single recorded LLM call for usage tracking.
+
+    Attributes
+    ----------
+    tenant_id : str
+        Tenant that made the call.
+    timestamp : datetime
+        When the call was made.
+    call_duration_ms : int
+        Wall-clock duration of the call in milliseconds.
+    model : str
+        The LLM model used.
+    input_tokens : int
+        Number of input (prompt) tokens.
+    output_tokens : int
+        Number of output (completion) tokens.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    tenant_id: str
+    timestamp: datetime
+    call_duration_ms: int
+    model: str
+    input_tokens: int
+    output_tokens: int
+
+
+class DistributionStats(BaseModel):
+    """Statistical distribution summary.
+
+    Attributes
+    ----------
+    avg : float
+        Mean value.
+    min : float
+        Minimum value.
+    max : float
+        Maximum value.
+    p5 : float
+        5th percentile.
+    p95 : float
+        95th percentile.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    avg: float
+    min: float
+    max: float
+    p5: float
+    p95: float
+
+
+class TokenStats(DistributionStats):
+    """Token distribution summary with a total count.
+
+    Attributes
+    ----------
+    total : int
+        Total number of tokens.
+    """
+
+    total: int
+
+
+class UsageStats(BaseModel):
+    """Aggregated usage statistics for a tenant or grand total.
+
+    Attributes
+    ----------
+    tenant_id : str | None
+        Tenant identifier, or None for grand total.
+    total_calls : int
+        Total number of LLM calls.
+    call_duration : DistributionStats
+        Call duration distribution in milliseconds.
+    input_tokens : TokenStats
+        Input token distribution.
+    output_tokens : TokenStats
+        Output token distribution.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    tenant_id: str | None = None
+    total_calls: int
+    call_duration: DistributionStats
+    input_tokens: TokenStats
+    output_tokens: TokenStats

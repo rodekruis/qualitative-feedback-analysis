@@ -1,12 +1,13 @@
 """FastAPI dependency functions for authentication and service injection."""
 
-from fastapi import Request, Security
+from fastapi import Depends, Request, Security
+from fastapi.exceptions import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from qfa.auth import validate_api_key
-from qfa.domain.errors import AuthenticationError
+from qfa.domain.errors import AuthenticationError, AuthorizationError
 from qfa.domain.models import TenantApiKey
-from qfa.domain.ports import OrchestratorPort
+from qfa.domain.ports import OrchestratorPort, UsageRepositoryPort
 
 
 def get_orchestrator(request: Request) -> OrchestratorPort:
@@ -23,6 +24,33 @@ def get_orchestrator(request: Request) -> OrchestratorPort:
         The orchestrator service instance.
     """
     return request.app.state.orchestrator
+
+
+def get_usage_repo(request: Request) -> UsageRepositoryPort:
+    """Return the usage repository from app state, or raise 503 if disabled.
+
+    Parameters
+    ----------
+    request : Request
+        The incoming HTTP request.
+
+    Returns
+    -------
+    UsageRepositoryPort
+        The usage repository instance.
+
+    Raises
+    ------
+    HTTPException
+        503 if usage tracking is not enabled.
+    """
+    repo = getattr(request.app.state, "usage_repo", None)
+    if repo is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Usage tracking is not enabled",
+        )
+    return repo
 
 
 async def authenticate_request(
@@ -58,3 +86,28 @@ async def authenticate_request(
         return validate_api_key(credentials.credentials, request.app.state.api_keys)
     except AuthenticationError:
         raise AuthenticationError(error_message)
+
+
+def require_superuser(
+    tenant: TenantApiKey = Depends(authenticate_request),
+) -> TenantApiKey:
+    """FastAPI dependency that authenticates and checks superuser status.
+
+    Parameters
+    ----------
+    tenant : TenantApiKey
+        The authenticated tenant (injected by ``authenticate_request``).
+
+    Returns
+    -------
+    TenantApiKey
+        The authenticated superuser tenant.
+
+    Raises
+    ------
+    AuthorizationError
+        If the tenant is not a superuser.
+    """
+    if not tenant.is_superuser:
+        raise AuthorizationError("Superuser access required")
+    return tenant

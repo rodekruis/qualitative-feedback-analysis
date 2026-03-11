@@ -103,6 +103,23 @@ class AuthSettings(BaseSettings):
     api_keys: list[TenantApiKey]  # required, no default
 
 
+class DatabaseSettings(BaseSettings):
+    """Configuration for the PostgreSQL database connection.
+
+    Attributes
+    ----------
+    url : str
+        Database connection URL (asyncpg dialect).
+    track_usage : bool
+        Feature flag to enable/disable usage tracking.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="DB_")
+
+    url: str = ""
+    track_usage: bool = False
+
+
 class NetworkSettings(BaseSettings):
     """Configuration for network settings."""
 
@@ -118,6 +135,7 @@ class AppSettings(BaseSettings):
     orchestrator: OrchestratorSettings = Field(default_factory=OrchestratorSettings)
     auth: AuthSettings = Field(default_factory=AuthSettings)
     log: LogSettings = Field(default_factory=LogSettings)
+    db: DatabaseSettings = Field(default_factory=DatabaseSettings)
     network: NetworkSettings = Field(default_factory=NetworkSettings)
     debug: bool = False
     """Whether to enable debug mode.

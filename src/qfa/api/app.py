@@ -23,8 +23,10 @@ from qfa.domain.errors import (
     AnalysisError,
     AnalysisTimeoutError,
     AuthenticationError,
+    AuthorizationError,
     DocumentsTooLargeError,
 )
+from qfa.domain.ports import OrchestratorPort
 from qfa.services.llm_client import OpenAiLLMClient
 from qfa.services.orchestrator import StandardOrchestrator
 from qfa.settings import AppSettings, LLMProvider, LLMSettings
@@ -228,6 +230,33 @@ async def _handle_authentication_error(
     return JSONResponse(status_code=401, content=body.model_dump())
 
 
+async def _handle_authorization_error(
+    request: Request, exc: AuthorizationError
+) -> JSONResponse:
+    """Handle AuthorizationError exceptions.
+
+    Parameters
+    ----------
+    request : Request
+        The incoming HTTP request.
+    exc : AuthorizationError
+        The authorization error.
+
+    Returns
+    -------
+    JSONResponse
+        A 403 JSON response.
+    """
+    body = ErrorResponse(
+        error=ErrorDetail(
+            code="forbidden",
+            message=str(exc),
+            request_id=_get_request_id(request),
+        )
+    )
+    return JSONResponse(status_code=403, content=body.model_dump())
+
+
 async def _handle_validation_error(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
@@ -421,7 +450,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     setup_logging(settings.log)
 
     llm_client = build_llm_client(settings.llm)
-    orchestrator = StandardOrchestrator(
+    orchestrator: OrchestratorPort = StandardOrchestrator(
         llm=llm_client,
         settings=settings.orchestrator,
         llm_timeout_seconds=settings.llm.timeout_seconds,
@@ -429,11 +458,32 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     )
     api_keys = settings.auth.api_keys
 
+    engine = None
+    usage_repo = None
+
+    if settings.db.track_usage:
+        from qfa.adapters.db import (
+            SqlAlchemyUsageRepository,
+            create_async_engine_from_url,
+            create_session_factory,
+        )
+        from qfa.services.tracking_orchestrator import TrackingOrchestrator
+
+        engine = create_async_engine_from_url(settings.db.url)
+        session_factory = create_session_factory(engine)
+        usage_repo = SqlAlchemyUsageRepository(session_factory)
+        orchestrator = TrackingOrchestrator(inner=orchestrator, usage_repo=usage_repo)
+        logger.info("Usage tracking enabled")
+
     app.state.orchestrator = orchestrator
     app.state.api_keys = api_keys
     app.state.settings = settings
+    app.state.usage_repo = usage_repo
 
     yield
+
+    if engine is not None:
+        await engine.dispose()
 
 
 def register_exception_handlers(app: FastAPI) -> None:
@@ -444,6 +494,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app : FastAPI
         The FastAPI application instance.
     """
+    app.add_exception_handler(AuthorizationError, _handle_authorization_error)  # type: ignore[arg-type]
     app.add_exception_handler(AuthenticationError, _handle_authentication_error)  # type: ignore[arg-type]
     app.add_exception_handler(RequestValidationError, _handle_validation_error)  # type: ignore[arg-type]
     app.add_exception_handler(DocumentsTooLargeError, _handle_documents_too_large)  # type: ignore[arg-type]
