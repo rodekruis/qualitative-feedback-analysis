@@ -170,15 +170,15 @@ async def usage(
 
 @router.get("/v1/usage/all", response_model=AllUsageStatsResponse, status_code=200)
 async def usage_all(
-    tenant: TenantApiKey = Depends(authenticate_request),
+    _tenant: TenantApiKey = Depends(require_superuser),
     usage_repo: UsageRepositoryPort = Depends(get_usage_repo),
 ) -> AllUsageStatsResponse:
     """Get usage statistics for all tenants. Requires superuser access.
 
     Parameters
     ----------
-    tenant : TenantApiKey
-        The authenticated tenant (must be superuser).
+    _tenant : TenantApiKey
+        The authenticated superuser tenant.
     usage_repo : UsageRepositoryPort
         The usage repository.
 
@@ -187,7 +187,6 @@ async def usage_all(
     AllUsageStatsResponse
         Per-tenant and grand total usage statistics.
     """
-    require_superuser(tenant)
     all_stats = await usage_repo.get_all_usage_stats()
 
     tenants = [_to_usage_response(s) for s in all_stats if s.tenant_id is not None]

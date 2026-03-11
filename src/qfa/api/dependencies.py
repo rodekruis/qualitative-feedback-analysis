@@ -1,6 +1,6 @@
 """FastAPI dependency functions for authentication and service injection."""
 
-from fastapi import Request, Security
+from fastapi import Depends, Request, Security
 from fastapi.exceptions import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -89,19 +89,19 @@ async def authenticate_request(
 
 
 def require_superuser(
-    tenant: TenantApiKey,
+    tenant: TenantApiKey = Depends(authenticate_request),
 ) -> TenantApiKey:
-    """Raise AuthorizationError if the tenant is not a superuser.
+    """FastAPI dependency that authenticates and checks superuser status.
 
     Parameters
     ----------
     tenant : TenantApiKey
-        The authenticated tenant.
+        The authenticated tenant (injected by ``authenticate_request``).
 
     Returns
     -------
     TenantApiKey
-        The authenticated tenant (unchanged).
+        The authenticated superuser tenant.
 
     Raises
     ------

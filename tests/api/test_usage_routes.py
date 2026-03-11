@@ -52,10 +52,20 @@ class TestUsageEndpointDisabled:
         )
         assert resp.status_code == 503
 
-    async def test_all_returns_503_when_tracking_disabled(self, client):
+    async def test_all_returns_503_when_tracking_disabled(self, test_app, client):
+        from qfa.domain.models import TenantApiKey
+
+        test_app.state.api_keys.append(
+            TenantApiKey(
+                name="superuser",
+                key=FAKE_SUPERUSER_KEY,
+                tenant_id="admin",
+                is_superuser=True,
+            )
+        )
         resp = await client.get(
             "/v1/usage/all",
-            headers={"Authorization": f"Bearer {FAKE_API_KEY}"},
+            headers={"Authorization": f"Bearer {FAKE_SUPERUSER_KEY}"},
         )
         assert resp.status_code == 503
 
