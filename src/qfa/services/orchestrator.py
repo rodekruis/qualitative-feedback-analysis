@@ -283,6 +283,13 @@ class StandardOrchestrator(OrchestratorPort):
                 timeout=120,
                 tenant_id=tenant_id,
             )
+            logger.info(
+                "LLM response received for tenant %s: %s. Tokens: %d prompt; %d completion",
+                tenant_id,
+                response.model,
+                response.prompt_tokens,
+                response.completion_tokens,
+            )
         except (LLMTimeoutError, LLMRateLimitError):
             # raise timeout and rate limit errors (tenacity will retry)
             raise
