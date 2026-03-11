@@ -53,3 +53,7 @@ class LLMRateLimitError(LLMError):
 
 class AuthenticationError(DomainError):
     """Raised when an API request cannot be authenticated."""
+
+
+class AuthorizationError(DomainError):
+    """Raised when a user lacks permission for the requested operation."""

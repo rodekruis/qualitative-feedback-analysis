@@ -9,7 +9,9 @@ from typing import Protocol
 from qfa.domain.models import (
     AnalysisRequest,
     AnalysisResult,
+    LLMCallRecord,
     LLMResponse,
+    UsageStats,
     SummaryRequest,
     SummaryResult,
 )
@@ -46,6 +48,45 @@ class LLMPort(Protocol):
         -------
         LLMResponse
             The model's response including token usage.
+        """
+        ...
+
+
+class UsageRepositoryPort(Protocol):
+    """Port for recording and querying LLM usage data."""
+
+    async def record_call(self, record: LLMCallRecord) -> None:
+        """Record a single LLM call.
+
+        Parameters
+        ----------
+        record : LLMCallRecord
+            The call record to persist.
+        """
+        ...
+
+    async def get_usage_stats(self, tenant_id: str) -> UsageStats | None:
+        """Get aggregated usage stats for a single tenant.
+
+        Parameters
+        ----------
+        tenant_id : str
+            The tenant to query.
+
+        Returns
+        -------
+        UsageStats | None
+            Stats for the tenant, or None if no calls recorded.
+        """
+        ...
+
+    async def get_all_usage_stats(self) -> list[UsageStats]:
+        """Get per-tenant stats plus a grand total entry (tenant_id=None).
+
+        Returns
+        -------
+        list[UsageStats]
+            Per-tenant stats followed by a grand total entry.
         """
         ...
 

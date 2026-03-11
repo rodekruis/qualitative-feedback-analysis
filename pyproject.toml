@@ -20,6 +20,9 @@ classifiers = [
 ]
 
 dependencies = [
+    "alembic>=1.15",
+    "asyncpg>=0.31.0",
+    "sqlalchemy[asyncio]>=2.0",
     "fastapi~=0.135.0",
     "gunicorn~=25.3",
     "openai~=2.30.0",
