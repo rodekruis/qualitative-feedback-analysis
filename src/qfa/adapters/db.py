@@ -66,50 +66,47 @@ def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSessi
 
 
 def _build_stats_columns(
-    col: sa.Column,  # type: ignore[type-arg]
-) -> list[sa.Function]:  # type: ignore[type-arg]
-    """Build aggregation columns for a numeric column.
+    col: sa.ColumnElement,  # type: ignore[type-arg]
+    prefix: str,
+) -> list[sa.Label]:  # type: ignore[type-arg]
+    """Build labeled aggregation columns for a numeric column.
 
-    Returns [avg, min, max, sum, count, p5, p95].
+    Each column is labeled ``{prefix}_{stat}`` so results can be accessed
+    by name instead of fragile positional indices.
     """
     return [
-        sa.func.avg(col),
-        sa.func.min(col),
-        sa.func.max(col),
-        sa.func.sum(col),
-        sa.func.count(),
-        sa.func.percentile_cont(0.05).within_group(col),
-        sa.func.percentile_cont(0.95).within_group(col),
+        sa.func.avg(col).label(f"{prefix}_avg"),
+        sa.func.min(col).label(f"{prefix}_min"),
+        sa.func.max(col).label(f"{prefix}_max"),
+        sa.func.sum(col).label(f"{prefix}_sum"),
+        sa.func.count().label(f"{prefix}_count"),
+        sa.func.percentile_cont(0.05).within_group(col).label(f"{prefix}_p5"),
+        sa.func.percentile_cont(0.95).within_group(col).label(f"{prefix}_p95"),
     ]
 
 
-def _parse_distribution(row: sa.Row, offset: int) -> DistributionStats:  # type: ignore[type-arg]
-    """Parse DistributionStats from a row starting at offset.
-
-    Expects columns: avg, min, max, sum, count, p5, p95.
-    Returns DistributionStats using avg, min, max, p5, p95.
-    """
+def _parse_distribution(row: sa.Row, prefix: str) -> DistributionStats:  # type: ignore[type-arg]
+    """Parse DistributionStats from a named row using the given prefix."""
+    m = row._mapping
     return DistributionStats(
-        avg=float(row[offset]),
-        min=float(row[offset + 1]),
-        max=float(row[offset + 2]),
-        p5=float(row[offset + 5]),
-        p95=float(row[offset + 6]),
+        avg=float(m[f"{prefix}_avg"]),
+        min=float(m[f"{prefix}_min"]),
+        max=float(m[f"{prefix}_max"]),
+        p5=float(m[f"{prefix}_p5"]),
+        p95=float(m[f"{prefix}_p95"]),
     )
 
 
-def _parse_token_stats(row: sa.Row, offset: int) -> TokenStats:  # type: ignore[type-arg]
-    """Parse TokenStats from a row starting at offset.
-
-    Expects columns: avg, min, max, sum, count, p5, p95.
-    """
+def _parse_token_stats(row: sa.Row, prefix: str) -> TokenStats:  # type: ignore[type-arg]
+    """Parse TokenStats from a named row using the given prefix."""
+    m = row._mapping
     return TokenStats(
-        avg=float(row[offset]),
-        min=float(row[offset + 1]),
-        max=float(row[offset + 2]),
-        total=int(row[offset + 3]),
-        p5=float(row[offset + 5]),
-        p95=float(row[offset + 6]),
+        avg=float(m[f"{prefix}_avg"]),
+        min=float(m[f"{prefix}_min"]),
+        max=float(m[f"{prefix}_max"]),
+        total=int(m[f"{prefix}_sum"]),
+        p5=float(m[f"{prefix}_p5"]),
+        p95=float(m[f"{prefix}_p95"]),
     )
 
 
@@ -160,26 +157,25 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
             Stats for the tenant, or None if no calls recorded.
         """
         cols = (
-            _build_stats_columns(llm_calls.c.call_duration_ms)
-            + _build_stats_columns(llm_calls.c.input_tokens)
-            + _build_stats_columns(llm_calls.c.output_tokens)
+            _build_stats_columns(llm_calls.c.call_duration_ms, "dur")
+            + _build_stats_columns(llm_calls.c.input_tokens, "inp")
+            + _build_stats_columns(llm_calls.c.output_tokens, "out")
         )
         stmt = sa.select(*cols).where(llm_calls.c.tenant_id == tenant_id)
 
         async with self._session_factory() as session:
             row = (await session.execute(stmt)).one()
 
-        # count is at index 4
-        total_calls = int(row[4])
+        total_calls = int(row._mapping["dur_count"])
         if total_calls == 0:
             return None
 
         return UsageStats(
             tenant_id=tenant_id,
             total_calls=total_calls,
-            call_duration=_parse_distribution(row, 0),
-            input_tokens=_parse_token_stats(row, 7),
-            output_tokens=_parse_token_stats(row, 14),
+            call_duration=_parse_distribution(row, "dur"),
+            input_tokens=_parse_token_stats(row, "inp"),
+            output_tokens=_parse_token_stats(row, "out"),
         )
 
     async def get_all_usage_stats(self) -> list[UsageStats]:
@@ -190,19 +186,15 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         list[UsageStats]
             Per-tenant stats followed by a grand total entry (tenant_id=None).
         """
-        cols = [llm_calls.c.tenant_id] + (
-            _build_stats_columns(llm_calls.c.call_duration_ms)
-            + _build_stats_columns(llm_calls.c.input_tokens)
-            + _build_stats_columns(llm_calls.c.output_tokens)
+        stats_cols = (
+            _build_stats_columns(llm_calls.c.call_duration_ms, "dur")
+            + _build_stats_columns(llm_calls.c.input_tokens, "inp")
+            + _build_stats_columns(llm_calls.c.output_tokens, "out")
         )
-        per_tenant_stmt = sa.select(*cols).group_by(llm_calls.c.tenant_id)
-
-        total_cols = (
-            _build_stats_columns(llm_calls.c.call_duration_ms)
-            + _build_stats_columns(llm_calls.c.input_tokens)
-            + _build_stats_columns(llm_calls.c.output_tokens)
+        per_tenant_stmt = sa.select(llm_calls.c.tenant_id, *stats_cols).group_by(
+            llm_calls.c.tenant_id
         )
-        total_stmt = sa.select(*total_cols)
+        total_stmt = sa.select(*stats_cols)
 
         async with self._session_factory() as session:
             tenant_rows = (await session.execute(per_tenant_stmt)).all()
@@ -210,29 +202,30 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
 
         results: list[UsageStats] = []
         for row in tenant_rows:
-            total_calls = int(row[5])  # count is at offset 5 (tenant_id + 4 cols)
+            m = row._mapping
+            total_calls = int(m["dur_count"])
             if total_calls == 0:
                 continue
             results.append(
                 UsageStats(
-                    tenant_id=row[0],
+                    tenant_id=m["tenant_id"],
                     total_calls=total_calls,
-                    call_duration=_parse_distribution(row, 1),
-                    input_tokens=_parse_token_stats(row, 8),
-                    output_tokens=_parse_token_stats(row, 15),
+                    call_duration=_parse_distribution(row, "dur"),
+                    input_tokens=_parse_token_stats(row, "inp"),
+                    output_tokens=_parse_token_stats(row, "out"),
                 )
             )
 
         # Grand total
-        grand_total_calls = int(total_row[4])
+        grand_total_calls = int(total_row._mapping["dur_count"])
         if grand_total_calls > 0:
             results.append(
                 UsageStats(
                     tenant_id=None,
                     total_calls=grand_total_calls,
-                    call_duration=_parse_distribution(total_row, 0),
-                    input_tokens=_parse_token_stats(total_row, 7),
-                    output_tokens=_parse_token_stats(total_row, 14),
+                    call_duration=_parse_distribution(total_row, "dur"),
+                    input_tokens=_parse_token_stats(total_row, "inp"),
+                    output_tokens=_parse_token_stats(total_row, "out"),
                 )
             )
 
