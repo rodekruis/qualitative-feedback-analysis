@@ -91,10 +91,6 @@ class LLMResponse(BaseModel):
     prompt_tokens: int
     completion_tokens: int
 
-    def __repr__(self) -> str:
-        """Representation of the LLMResponse object."""
-        return f"LLMResponse(model={self.model}, prompt_tokens={self.prompt_tokens}, completion_tokens={self.completion_tokens}, text='<redacted>')"
-
 
 class TenantApiKey(BaseModel):
     """An API key associated with a tenant.
