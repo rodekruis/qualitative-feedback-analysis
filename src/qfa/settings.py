@@ -1,10 +1,11 @@
 import logging
-import pathlib
 from enum import Enum
 from typing import Any
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from qfa.domain.models import TenantApiKey
 
 
 class LogSettings(BaseSettings):
@@ -86,7 +87,7 @@ class AuthSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="AUTH_")
 
-    api_keys_config_path: pathlib.Path  # required, no default
+    api_keys: list[TenantApiKey]  # required, no default
 
 
 class NetworkSettings(BaseSettings):

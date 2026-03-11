@@ -1,5 +1,7 @@
 """Tests for settings composition."""
 
+import json
+
 import pytest
 from pydantic import ValidationError
 
@@ -118,12 +120,18 @@ class TestOrchestratorSettings:
 
 class TestAuthSettings:
     def test_reads_from_auth_prefixed_env_vars(self, monkeypatch):
-        monkeypatch.setenv("AUTH_API_KEYS_CONFIG_PATH", "/etc/keys.json")
+        keys_json = json.dumps(
+            [{"name": "prod", "key": "sk-abc123", "tenant_id": "tenant-1"}]
+        )
+        monkeypatch.setenv("AUTH_API_KEYS", keys_json)
         settings = AuthSettings()
-        assert str(settings.api_keys_config_path) == "/etc/keys.json"
+        assert len(settings.api_keys) == 1
+        assert settings.api_keys[0].name == "prod"
+        assert settings.api_keys[0].key == "sk-abc123"
+        assert settings.api_keys[0].tenant_id == "tenant-1"
 
-    def test_requires_api_keys_config_path(self, monkeypatch):
-        monkeypatch.delenv("AUTH_API_KEYS_CONFIG_PATH", raising=False)
+    def test_requires_api_keys(self, monkeypatch):
+        monkeypatch.delenv("AUTH_API_KEYS", raising=False)
         with pytest.raises(ValidationError):
             AuthSettings()
 
@@ -131,17 +139,24 @@ class TestAuthSettings:
 class TestAppSettings:
     def test_composes_all_sub_settings(self, monkeypatch):
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
-        monkeypatch.setenv("AUTH_API_KEYS_CONFIG_PATH", "/tmp/keys.json")
+        monkeypatch.setenv(
+            "AUTH_API_KEYS",
+            json.dumps([{"name": "prod", "key": "sk-abc", "tenant_id": "tenant-1"}]),
+        )
         settings = AppSettings()
         assert settings.llm.api_key.get_secret_value() == "sk-test"
-        assert str(settings.auth.api_keys_config_path) == "/tmp/keys.json"
+        assert len(settings.auth.api_keys) == 1
+        assert settings.auth.api_keys[0].tenant_id == "tenant-1"
         assert settings.orchestrator.chars_per_token == 4
         assert settings.log.loglevel == 10  # DEBUG
 
     def test_sub_settings_pick_up_env_overrides(self, monkeypatch):
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
         monkeypatch.setenv("LLM_MODEL", "gpt-3.5-turbo")
-        monkeypatch.setenv("AUTH_API_KEYS_CONFIG_PATH", "/tmp/keys.json")
+        monkeypatch.setenv(
+            "AUTH_API_KEYS",
+            json.dumps([{"name": "prod", "key": "sk-abc", "tenant_id": "tenant-1"}]),
+        )
         monkeypatch.setenv("ORCHESTRATOR_CHARS_PER_TOKEN", "8")
         settings = AppSettings()
         assert settings.llm.model == "gpt-3.5-turbo"

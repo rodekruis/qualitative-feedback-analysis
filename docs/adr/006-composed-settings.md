@@ -50,7 +50,7 @@ own `env_prefix`.
 - `AppSettings` uses `Field(default_factory=...)` for each sub-settings
   group, so each reads its own env prefix independently.
 - Environment variables follow the pattern `{PREFIX}_{FIELD_NAME}`, e.g.,
-  `LLM_API_KEY`, `AUTH_API_KEYS_CONFIG_PATH`.
+  `LLM_API_KEY`, `AUTH_API_KEYS`.
 - Adding a new settings group is self-contained: define a new sub-settings
   class and add it to `AppSettings`.
 

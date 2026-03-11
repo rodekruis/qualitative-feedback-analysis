@@ -19,7 +19,6 @@ from qfa.api.schemas import (
     ErrorFieldDetail,
     ErrorResponse,
 )
-from qfa.auth import load_api_keys
 from qfa.domain.errors import (
     AnalysisError,
     AnalysisTimeoutError,
@@ -344,7 +343,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         llm_timeout_seconds=settings.llm.timeout_seconds,
         max_total_tokens=settings.llm.max_total_tokens,
     )
-    api_keys = load_api_keys(settings.auth.api_keys_config_path)
+    api_keys = settings.auth.api_keys
 
     app.state.orchestrator = orchestrator
     app.state.api_keys = api_keys
