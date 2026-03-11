@@ -101,6 +101,90 @@ class RequestIdMiddleware:
             await response(scope, receive, send)
 
 
+class RequestLoggingMiddleware:
+    """Pure ASGI middleware that logs every HTTP request.
+
+    Logs method, path, status code, duration, request ID, and tenant name
+    (when available). Never logs API keys or request bodies.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Log method, path, status, duration, request ID, and tenant."""
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        state = scope.get("state", {})
+        request_id = state.get("request_id", "unknown")
+        start = state.get("start_utc") or datetime.now(UTC)
+
+        method = scope.get("method", "?")
+        path = scope.get("path", "?")
+
+        status_code: int | None = None
+
+        async def capture_status(message: Message) -> None:
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = message.get("status", 0)
+            await send(message)
+
+        try:
+            await self.app(scope, receive, capture_status)
+        finally:
+            duration_ms = (datetime.now(UTC) - start).total_seconds() * 1000
+
+            tenant_name = self._resolve_tenant(scope)
+
+            logger.info(
+                "%s %s status=%s duration=%.0fms request_id=%s tenant=%s",
+                method,
+                path,
+                status_code,
+                duration_ms,
+                request_id,
+                tenant_name,
+            )
+
+    @staticmethod
+    def _resolve_tenant(scope: Scope) -> str:
+        """Extract tenant name from the Authorization header if possible.
+
+        Never logs the API key itself. Returns ``"anonymous"`` when the
+        tenant cannot be determined.
+        """
+        from qfa.auth import validate_api_key
+
+        headers: list[tuple[bytes, bytes]] = scope.get("headers", [])
+        token: str | None = None
+        for name, value in headers:
+            if name.lower() == b"authorization":
+                decoded = value.decode("latin-1", errors="replace")
+                if decoded.lower().startswith("bearer "):
+                    token = decoded[7:]
+                break
+
+        if token is None:
+            return "anonymous"
+
+        app = scope.get("app")
+        if app is None:
+            return "anonymous"
+
+        api_keys = getattr(getattr(app, "state", None), "api_keys", None)
+        if not api_keys:
+            return "anonymous"
+
+        try:
+            tenant = validate_api_key(token, api_keys)
+            return tenant.name
+        except Exception:
+            return "invalid"
+
+
 def _get_request_id(request: Request) -> str:
     """Extract request_id from request state, with a fallback.
 
@@ -377,6 +461,7 @@ def create_app() -> FastAPI:
         The fully configured application instance.
     """
     app = FastAPI(title="Feedback Analysis Backend", lifespan=lifespan)
+    app.add_middleware(RequestLoggingMiddleware)  # type: ignore[arg-type]
     app.add_middleware(RequestIdMiddleware)  # type: ignore[arg-type]
     app.include_router(router)
     register_exception_handlers(app)
