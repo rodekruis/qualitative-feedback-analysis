@@ -15,8 +15,15 @@ def main() -> None:
     load_dotenv(find_dotenv())
     setup_logging()
 
-    network_settings = AppSettings().network
-    uvicorn.run(app, host=network_settings.host, port=network_settings.port)
+    app_settings = AppSettings()
+
+    network_settings = app_settings.network
+    uvicorn.run(
+        "qfa.main:app",
+        host=network_settings.host,
+        port=network_settings.port,
+        reload=app_settings.debug,
+    )
 
 
 if __name__ == "__main__":

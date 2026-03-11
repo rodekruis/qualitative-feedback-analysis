@@ -106,3 +106,8 @@ class AppSettings(BaseSettings):
     auth: AuthSettings = Field(default_factory=AuthSettings)
     log: LogSettings = Field(default_factory=LogSettings)
     network: NetworkSettings = Field(default_factory=NetworkSettings)
+    debug: bool = False
+    """Whether to enable debug mode.
+    
+    This will, e.g., enable code reloading for the uvicorn server.
+    """
