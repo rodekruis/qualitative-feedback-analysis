@@ -111,7 +111,7 @@ class TestAuthentication:
         resp = await client.post(
             "/v1/analyze",
             json=_valid_body(),
-            headers={"Authorization": "Basic dXNlcjpwYXNz"},
+            headers={"Authorization": "Basic xyzverysecrettoken123"},
         )
         assert resp.status_code == 401
         assert resp.json()["error"]["code"] == "authentication_required"
