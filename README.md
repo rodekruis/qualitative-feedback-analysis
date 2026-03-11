@@ -38,7 +38,61 @@ synchronous API call.
 * hardened security.
 
 # Deployment
-* Azure cloud
+
+Deployed to Azure App Service. The CI/CD pipeline is a two-step process:
+
+1. **Release** (`release.yaml`) — trigger manually from the Actions tab. Runs CI, bumps the version via conventional commits, and creates a **draft** GitHub Release.
+2. **Deploy** (`publish.yaml`) — runs automatically when you publish the draft release. Pushes app settings and deploys the code to Azure.
+
+## GitHub Configuration
+
+The following variables and secrets must be configured in the repository settings (Settings > Secrets and variables > Actions).
+
+### Repository Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `AZURE_APP_NAME` | Azure App Service name | `qfa-backend` |
+
+### Repository Secrets
+
+| Secret | Description |
+|--------|-------------|
+| `AZURE_PUBLISH_PROFILE` | App Service publish profile XML (see below) |
+
+### App Settings
+
+App settings (environment variables like `LLM_API_KEY`, `AUTH_API_KEYS`, etc.) are **not** managed by the CI/CD pipeline. Configure them via the Azure Portal (App Service > Configuration) or with the Azure CLI:
+
+```bash
+az webapp config appsettings set \
+  --name <APP_NAME> \
+  --resource-group <RESOURCE_GROUP> \
+  --settings \
+    LLM_PROVIDER="azure_openai" \
+    LLM_MODEL="gpt-4.1-mini" \
+    LLM_API_KEY="sk-..." \
+    LLM_AZURE_ENDPOINT="https://xxx.openai.azure.com/" \
+    LLM_API_VERSION="2024-02-01" \
+    AUTH_API_KEYS='[{"name":"crm","key":"...","tenant_id":"..."}]'
+```
+
+### Obtaining the Publish Profile
+
+Download it from the Azure Portal (App Service > Overview > Download publish profile), or via the CLI:
+
+```bash
+az webapp deployment list-publishing-profiles \
+  --name <APP_NAME> \
+  --resource-group <RESOURCE_GROUP> \
+  --xml
+```
+
+Copy the entire XML output into the `AZURE_PUBLISH_PROFILE` repository secret.
+
+### GitHub Environment (optional)
+
+Create a `production` environment (Settings > Environments) and add required reviewers to gate deployments.
 
 
 # Getting Started

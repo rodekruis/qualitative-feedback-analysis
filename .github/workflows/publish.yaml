@@ -1,0 +1,34 @@
+# Step 2 of the deploy pipeline. Runs automatically when you publish a
+# GitHub Release (i.e. when a draft created by release.yaml is published).
+#
+# What it does:
+#   Deploys the code to Azure App Service using a publish profile.
+#
+# App settings (environment variables) are managed separately — either via
+# the Azure Portal or the Azure CLI from a local machine.
+#
+# Do NOT trigger this manually — publish a release instead.
+name: Deploy to Azure
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    environment: production
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Deploy to Azure App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_APP_NAME }}
+          publish-profile: ${{ secrets.AZURE_PUBLISH_PROFILE }}
+          startup-command: "uvicorn qfa.main:app --host 0.0.0.0 --port 8000"
