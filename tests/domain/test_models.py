@@ -151,12 +151,17 @@ class TestLLMResponse:
 
 class TestTenantApiKey:
     def test_construct_with_valid_data(self):
-        key = TenantApiKey(name="prod-key", key="sk-abc123", tenant_id="tenant-1")
+        key = TenantApiKey(
+            key_id="tenant-1-0", name="prod-key", key="sk-abc123", tenant_id="tenant-1"
+        )
+        assert key.key_id == "tenant-1-0"
         assert key.name == "prod-key"
         assert key.key.get_secret_value() == "sk-abc123"
         assert key.tenant_id == "tenant-1"
 
     def test_frozen_raises_on_assignment(self):
-        key = TenantApiKey(name="prod-key", key="sk-abc123", tenant_id="tenant-1")
+        key = TenantApiKey(
+            key_id="tenant-1-0", name="prod-key", key="sk-abc123", tenant_id="tenant-1"
+        )
         with pytest.raises(ValidationError):
             key.name = "changed"

@@ -58,6 +58,7 @@ class FakeOrchestrator(OrchestratorPort):
 def fake_api_keys():
     return [
         TenantApiKey(
+            key_id=f"{FAKE_TENANT_ID}-0",
             name=FAKE_API_KEY_NAME,
             key=FAKE_API_KEY,
             tenant_id=FAKE_TENANT_ID,

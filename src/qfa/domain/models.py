@@ -97,9 +97,11 @@ class TenantApiKey(BaseModel):
 
     Attributes
     ----------
+    key_id : str
+        Unique identifier for the key (e.g. ``"tenant-0"``).
     name : str
         Human-readable name for the API key.
-    key : str
+    key : SecretStr
         The API key value.
     tenant_id : str
         The tenant this key belongs to.
@@ -107,6 +109,7 @@ class TenantApiKey(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
+    key_id: str
     name: str
     key: SecretStr
     tenant_id: str

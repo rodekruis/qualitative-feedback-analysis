@@ -137,7 +137,14 @@ class TestOrchestratorSettings:
 class TestAuthSettings:
     def test_reads_from_auth_prefixed_env_vars(self, monkeypatch):
         keys_json = json.dumps(
-            [{"name": "prod", "key": "sk-abc123", "tenant_id": "tenant-1"}]
+            [
+                {
+                    "key_id": "tenant-1-0",
+                    "name": "prod",
+                    "key": "sk-abc123",
+                    "tenant_id": "tenant-1",
+                }
+            ]
         )
         monkeypatch.setenv("AUTH_API_KEYS", keys_json)
         settings = AuthSettings()
@@ -157,7 +164,16 @@ class TestAppSettings:
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
         monkeypatch.setenv(
             "AUTH_API_KEYS",
-            json.dumps([{"name": "prod", "key": "sk-abc", "tenant_id": "tenant-1"}]),
+            json.dumps(
+                [
+                    {
+                        "key_id": "tenant-1-0",
+                        "name": "prod",
+                        "key": "sk-abc",
+                        "tenant_id": "tenant-1",
+                    }
+                ]
+            ),
         )
         settings = AppSettings()
         assert settings.llm.api_key.get_secret_value() == "sk-test"
@@ -171,7 +187,16 @@ class TestAppSettings:
         monkeypatch.setenv("LLM_MODEL", "gpt-3.5-turbo")
         monkeypatch.setenv(
             "AUTH_API_KEYS",
-            json.dumps([{"name": "prod", "key": "sk-abc", "tenant_id": "tenant-1"}]),
+            json.dumps(
+                [
+                    {
+                        "key_id": "tenant-1-0",
+                        "name": "prod",
+                        "key": "sk-abc",
+                        "tenant_id": "tenant-1",
+                    }
+                ]
+            ),
         )
         monkeypatch.setenv("ORCHESTRATOR_CHARS_PER_TOKEN", "8")
         settings = AppSettings()

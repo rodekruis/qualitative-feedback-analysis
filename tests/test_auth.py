@@ -15,8 +15,18 @@ class TestValidateApiKey:
     @pytest.fixture()
     def api_keys(self):
         return [
-            TenantApiKey(name="prod", key="sk-prod-abc", tenant_id="tenant-1"),
-            TenantApiKey(name="staging", key="sk-staging-def", tenant_id="tenant-2"),
+            TenantApiKey(
+                key_id="tenant-1-0",
+                name="prod",
+                key="sk-prod-abc",
+                tenant_id="tenant-1",
+            ),
+            TenantApiKey(
+                key_id="tenant-2-0",
+                name="staging",
+                key="sk-staging-def",
+                tenant_id="tenant-2",
+            ),
         ]
 
     def test_valid_key_matches(self, api_keys):
