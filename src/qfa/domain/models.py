@@ -3,7 +3,7 @@
 All models are immutable (frozen) Pydantic models per ADR-001.
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 
 class FeedbackDocument(BaseModel):
@@ -108,5 +108,5 @@ class TenantApiKey(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     name: str
-    key: str
+    key: SecretStr
     tenant_id: str

@@ -153,7 +153,7 @@ class TestTenantApiKey:
     def test_construct_with_valid_data(self):
         key = TenantApiKey(name="prod-key", key="sk-abc123", tenant_id="tenant-1")
         assert key.name == "prod-key"
-        assert key.key == "sk-abc123"
+        assert key.key.get_secret_value() == "sk-abc123"
         assert key.tenant_id == "tenant-1"
 
     def test_frozen_raises_on_assignment(self):

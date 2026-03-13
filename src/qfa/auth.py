@@ -35,7 +35,7 @@ def validate_api_key(
     match: TenantApiKey | None = None
 
     for api_key in api_keys:
-        if secrets.compare_digest(provided_key, api_key.key):
+        if secrets.compare_digest(provided_key, api_key.key.get_secret_value()):
             match = api_key
 
     if match is None:
