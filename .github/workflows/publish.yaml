@@ -55,4 +55,4 @@ jobs:
         with:
           app-name: ${{ vars.AZ_APP_NAME }}
           package: .
-          startup-command: "uvicorn qfa.main:app --host 0.0.0.0 --port 8080"
+          startup-command: "python -m uvicorn qfa.main:app --host 0.0.0.0 --port 8080"
