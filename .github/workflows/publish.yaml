@@ -48,18 +48,11 @@ jobs:
               LLM_API_VERSION="${{ vars.LLM_API_VERSION }}" \
               LLM_AZURE_ENDPOINT="@Microsoft.KeyVault(SecretUri=https://${{ vars.AZ_KEYVAULT}}.vault.azure.net/secrets/llm-azure-endpoint)" \
               LLM_API_KEY="@Microsoft.KeyVault(SecretUri=https://${{ vars.AZ_KEYVAULT}}.vault.azure.net/secrets/llm-api-key)" \
-              AUTH_API_KEYS="@Microsoft.KeyVault(SecretUri=https://${{ vars.AZ_KEYVAULT}}.vault.azure.net/secrets/auth-api-keys)"
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-      - name: Install dependencies
-        run: uv sync
+              AUTH_API_KEYS="@Microsoft.KeyVault(SecretUri=https://${{ vars.AZ_KEYVAULT}}.vault.azure.net/secrets/auth-api-keys)" \
+              SCM_DO_BUILD_DURING_DEPLOYMENT="true"
       - name: Deploy to Azure App Service
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ vars.AZ_APP_NAME }}
           package: .
-          startup-command: "uvicorn qfa.main:app --host 0.0.0.0 --port 8000"
+          startup-command: "uvicorn qfa.main:app --host 0.0.0.0 --port 8080"
