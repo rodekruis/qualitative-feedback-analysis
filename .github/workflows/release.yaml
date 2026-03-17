@@ -32,7 +32,8 @@ on:
         type: string
         default: "rc"
 
-permissions: {}
+permissions:
+  contents: write
 
 jobs:
   ci:
