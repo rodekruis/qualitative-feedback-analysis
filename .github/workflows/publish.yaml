@@ -27,23 +27,33 @@ jobs:
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          client-id: ${{ vars.AZ_CLIENT_ID }}
+          tenant-id: ${{ vars.AZ_TENANT_ID }}
+          subscription-id: ${{ vars.AZ_SUBSCRIPTION_ID }}
 
       - name: Configure app settings
         run: |
           az webapp config appsettings set \
-            --name "${{ vars.AZURE_APP_NAME }}" \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "${{ vars.AZ_APP_NAME }}" \
+            --resource-group "${{ vars.AZ_RESOURCE_GROUP }}" \
             --settings \
               LLM_PROVIDER="${{ vars.LLM_PROVIDER }}" \
               LLM_MODEL="${{ vars.LLM_MODEL }}" \
-              LLM_API_KEY="${{ secrets.LLM_API_KEY }}" \
-              LLM_AZURE_ENDPOINT="${{ secrets.LLM_AZURE_ENDPOINT }}" \
               LLM_API_VERSION="${{ vars.LLM_API_VERSION }}" \
-              AUTH_API_KEYS="${{ secrets.AUTH_API_KEYS }}"
-
+              LLM_AZURE_ENDPOINT="@Microsoft.KeyVault(SecretUri=https://${{ vars.AZ_KEYVAULT}}.vault.azure.net/secrets/llm-azure-endpoint)" \
+              LLM_API_KEY="@Microsoft.KeyVault(SecretUri=https://${{ vars.AZ_KEYVAULT}}.vault.azure.net/secrets/llm-api-key)" \
+              AUTH_API_KEYS="@Microsoft.KeyVault(SecretUri=https://${{ vars.AZ_KEYVAULT}}.vault.azure.net/secrets/auth-api-keys)"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Install dependencies
+        run: uv sync
       - name: Deploy to Azure App Service
         uses: azure/webapps-deploy@v3
         with:
-          app-name: ${{ vars.AZURE_APP_NAME }}
+          app-name: ${{ vars.AZ_APP_NAME }}
+          package: .
           startup-command: "uvicorn qfa.main:app --host 0.0.0.0 --port 8000"
