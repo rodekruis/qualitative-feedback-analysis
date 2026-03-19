@@ -33,7 +33,7 @@ dependencies = [
 Homepage = "https://github.com/rodekruis/qualitative-feedback-analysis"
 Repository = "https://github.com/rodekruis/qualitative-feedback-analysis"
 
-[tool.hatch.build.targets.wheel]
+[tool.hatch.build]
 packages = ["src/qfa"]
 
 [tool.pytest.ini_options]
