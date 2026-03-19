@@ -50,7 +50,7 @@ jobs:
               LLM_API_KEY="@Microsoft.KeyVault(SecretUri=https://${{ vars.AZ_KEYVAULT}}.vault.azure.net/secrets/llm-api-key)" \
               AUTH_API_KEYS="@Microsoft.KeyVault(SecretUri=https://${{ vars.AZ_KEYVAULT}}.vault.azure.net/secrets/auth-api-keys)" \
               SCM_DO_BUILD_DURING_DEPLOYMENT="true" \
-              POST_BUILD_COMMAND="uv pip install --no-deps --no-editable ."
+              POST_BUILD_COMMAND="uv pip install --no-deps ."
       - name: Deploy to Azure App Service
         uses: azure/webapps-deploy@v3
         with:
