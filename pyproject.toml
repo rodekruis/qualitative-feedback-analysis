@@ -21,6 +21,7 @@ classifiers = [
 
 dependencies = [
     "fastapi>=0.133.0",
+    "gunicorn>=25.1.0",
     "openai>=1.50",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",

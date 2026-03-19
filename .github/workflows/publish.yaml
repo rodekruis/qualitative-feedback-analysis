@@ -55,4 +55,4 @@ jobs:
         with:
           app-name: ${{ vars.AZ_APP_NAME }}
           package: .
-          startup-command: "python -m uvicorn qfa.main:app --host 0.0.0.0 --port 8080"
+          startup-command: "python3 -m gunicorn qfa.main:app --worker-class asgi --bind 0.0.0.0:8000"
