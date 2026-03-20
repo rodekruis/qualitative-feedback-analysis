@@ -7,5 +7,8 @@ tests
 scripts
 docs
 *.md
-.env*
+**/.env*
+**/*.env
+**/env.*
+**/.env
 .ruff_cache
