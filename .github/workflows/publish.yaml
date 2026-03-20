@@ -2,7 +2,7 @@
 # GitHub Release (i.e. when a draft created by release.yaml is published).
 #
 # What it does:
-#   1. Builds a Docker image and pushes it to GHCR.
+#   1. Builds a Docker image and pushes it to ACR.
 #   2. Pushes app settings (from GitHub Secrets) to Azure.
 #   3. Deploys the container to Azure App Service.
 #
@@ -20,11 +20,10 @@ on:
 
 permissions:
   contents: read
-  packages: write
   id-token: write
 
 env:
-  IMAGE: ghcr.io/${{ github.repository }}
+  IMAGE: ${{ vars.AZ_ACR_NAME }}.azurecr.io/qfa-backend
 
 jobs:
   deploy:
@@ -35,12 +34,15 @@ jobs:
         with:
           ref: ${{ github.event.release.tag_name || inputs.ref || '' }}
 
-      - name: Login to GHCR
-        uses: docker/login-action@v3
+      - name: Login to Azure
+        uses: azure/login@v2
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          client-id: ${{ vars.AZ_CLIENT_ID }}
+          tenant-id: ${{ vars.AZ_TENANT_ID }}
+          subscription-id: ${{ vars.AZ_SUBSCRIPTION_ID }}
+
+      - name: Login to ACR
+        run: az acr login --name "${{ vars.AZ_ACR_NAME }}"
 
       - name: Build and push image
         run: |
@@ -49,13 +51,6 @@ jobs:
           docker push $IMAGE:$TAG
           docker push $IMAGE:latest
           echo "TAG=$TAG" >> $GITHUB_ENV
-
-      - name: Login to Azure
-        uses: azure/login@v2
-        with:
-          client-id: ${{ vars.AZ_CLIENT_ID }}
-          tenant-id: ${{ vars.AZ_TENANT_ID }}
-          subscription-id: ${{ vars.AZ_SUBSCRIPTION_ID }}
 
       - name: Configure app settings
         run: |
@@ -76,4 +71,4 @@ jobs:
             --name "${{ vars.AZ_APP_NAME }}" \
             --resource-group "${{ vars.AZ_RESOURCE_GROUP }}" \
             --container-image-name "$IMAGE:$TAG" \
-            --container-registry-url "https://ghcr.io"
+            --container-registry-url "https://${{ vars.AZ_ACR_NAME }}.azurecr.io"
