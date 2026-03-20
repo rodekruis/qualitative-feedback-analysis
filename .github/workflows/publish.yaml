@@ -2,8 +2,9 @@
 # GitHub Release (i.e. when a draft created by release.yaml is published).
 #
 # What it does:
-#   1. Pushes app settings (from GitHub Secrets) to Azure.
-#   2. Deploys the code to Azure App Service.
+#   1. Builds a Docker image and pushes it to ACR.
+#   2. Pushes app settings (from GitHub Secrets) to Azure.
+#   3. Deploys the container to Azure App Service.
 #
 # Can also be triggered manually via the Actions tab (workflow_dispatch).
 name: Deploy to Azure
@@ -21,6 +22,9 @@ permissions:
   contents: read
   id-token: write
 
+env:
+  IMAGE: ${{ vars.AZ_ACR_NAME }}.azurecr.io/qfa-backend
+
 jobs:
   deploy:
     environment: production
@@ -37,6 +41,17 @@ jobs:
           tenant-id: ${{ vars.AZ_TENANT_ID }}
           subscription-id: ${{ vars.AZ_SUBSCRIPTION_ID }}
 
+      - name: Login to ACR
+        run: az acr login --name "${{ vars.AZ_ACR_NAME }}"
+
+      - name: Build and push image
+        run: |
+          TAG=${{ github.event.release.tag_name || github.sha }}
+          docker build -t $IMAGE:$TAG -t $IMAGE:latest .
+          docker push $IMAGE:$TAG
+          docker push $IMAGE:latest
+          echo "TAG=$TAG" >> $GITHUB_ENV
+
       - name: Configure app settings
         run: |
           az webapp config appsettings set \
@@ -48,12 +63,12 @@ jobs:
               LLM_API_VERSION="${{ vars.LLM_API_VERSION }}" \
               LLM_AZURE_ENDPOINT="@Microsoft.KeyVault(SecretUri=https://${{ vars.AZ_KEYVAULT}}.vault.azure.net/secrets/llm-azure-endpoint)" \
               LLM_API_KEY="@Microsoft.KeyVault(SecretUri=https://${{ vars.AZ_KEYVAULT}}.vault.azure.net/secrets/llm-api-key)" \
-              AUTH_API_KEYS="@Microsoft.KeyVault(SecretUri=https://${{ vars.AZ_KEYVAULT}}.vault.azure.net/secrets/auth-api-keys)" \
-              POST_BUILD_COMMAND="uv pip install --no-deps ." \
-              SCM_DO_BUILD_DURING_DEPLOYMENT="true"
-      - name: Deploy to Azure App Service
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: ${{ vars.AZ_APP_NAME }}
-          package: .
-          startup-command: "python3 -m gunicorn qfa.main:app --worker-class asgi --bind 0.0.0.0:8000"
+              AUTH_API_KEYS="@Microsoft.KeyVault(SecretUri=https://${{ vars.AZ_KEYVAULT}}.vault.azure.net/secrets/auth-api-keys)"
+
+      - name: Deploy container
+        run: |
+          az webapp config container set \
+            --name "${{ vars.AZ_APP_NAME }}" \
+            --resource-group "${{ vars.AZ_RESOURCE_GROUP }}" \
+            --container-image-name "$IMAGE:$TAG" \
+            --container-registry-url "https://${{ vars.AZ_ACR_NAME }}.azurecr.io"
