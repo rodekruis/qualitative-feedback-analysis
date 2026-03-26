@@ -66,5 +66,4 @@ jobs:
             --name "${{ vars.AZ_APP_NAME }}" \
             --resource-group "${{ vars.AZ_RESOURCE_GROUP }}" \
             --container-image-name "$IMAGE:$TAG" \
-            --container-registry-url "https://${{ vars.AZ_ACR_NAME }}.azurecr.io" \
-            --container-registry-identity system
+            --container-registry-url "https://${{ vars.AZ_ACR_NAME }}.azurecr.io"
