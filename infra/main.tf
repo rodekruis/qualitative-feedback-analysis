@@ -21,12 +21,9 @@ data "azurerm_resource_group" "main" {
 # Container Registry
 # =============================================================================
 
-resource "azurerm_container_registry" "acr" {
+data "azurerm_container_registry" "acr" {
   name                = local.acr_name
   resource_group_name = data.azurerm_resource_group.main.name
-  location            = data.azurerm_resource_group.main.location
-  sku                 = "Basic"
-  admin_enabled       = false
 }
 
 # =============================================================================
@@ -126,14 +123,14 @@ resource "azurerm_linux_web_app" "backend" {
 
 # Grant the App Service pull access to ACR
 resource "azurerm_role_assignment" "app_acr_repository_reader" {
-  scope                = azurerm_container_registry.acr.id
+  scope                = data.azurerm_container_registry.acr.id
   role_definition_name = "Container Registry Repository Reader"
   principal_id         = azurerm_linux_web_app.backend.identity[0].principal_id
 }
 
 # Grant GitHub Actions write access to ACR (for CI/CD image builds)
 resource "azurerm_role_assignment" "github_acr_repository_writer" {
-  scope                = azurerm_container_registry.acr.id
+  scope                = data.azurerm_container_registry.acr.id
   role_definition_name = "Container Registry Repository Writer"
   principal_id         = azurerm_user_assigned_identity.github.principal_id
 }
