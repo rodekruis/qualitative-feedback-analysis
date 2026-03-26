@@ -104,6 +104,7 @@ resource "azurerm_linux_web_app" "backend" {
     AUTH_API_KEYS      = "@Microsoft.KeyVault(SecretUri=https://${local.keyvault_name}.vault.azure.net/secrets/auth-api-keys)"
 
     WEBSITES_ENABLE_APP_SERVICE_STORAGE = "false"
+    WEBSITES_PORT                       = "8000"
   }
 
   logs {
