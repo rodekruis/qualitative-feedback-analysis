@@ -1,3 +1,14 @@
+locals {
+  env                   = terraform.workspace
+  app_name              = "qfa-${local.env}-backend"
+  plan_name             = "qfa-${local.env}-plan" # Azure Web Service plan name
+  acr_name              = "qfacontainerreg"       # does not support dashes
+  keyvault_name         = "qfa-${local.env}-keyvault"
+  managed_identity_name = "qfa-${local.env}-github"
+  github_environment    = local.env # == "prd" ? "prd" : "dev"
+}
+
+
 # =============================================================================
 # Resource Group (read-only — managed outside Terraform)
 # =============================================================================
@@ -11,7 +22,7 @@ data "azurerm_resource_group" "main" {
 # =============================================================================
 
 resource "azurerm_container_registry" "acr" {
-  name                = var.acr_name
+  name                = local.acr_name
   resource_group_name = data.azurerm_resource_group.main.name
   location            = data.azurerm_resource_group.main.location
   sku                 = "Basic"
@@ -23,7 +34,7 @@ resource "azurerm_container_registry" "acr" {
 # =============================================================================
 
 resource "azurerm_key_vault" "main" {
-  name                       = var.keyvault_name
+  name                       = local.keyvault_name
   resource_group_name        = data.azurerm_resource_group.main.name
   location                   = data.azurerm_resource_group.main.location
   tenant_id                  = var.tenant_id
@@ -49,7 +60,7 @@ resource "azurerm_role_assignment" "app_keyvault_secrets" {
 # =============================================================================
 
 resource "azurerm_service_plan" "main" {
-  name                = var.plan_name
+  name                = local.plan_name
   resource_group_name = data.azurerm_resource_group.main.name
   location            = data.azurerm_resource_group.main.location
   os_type             = "Linux"
@@ -61,11 +72,11 @@ resource "azurerm_service_plan" "main" {
 # =============================================================================
 
 resource "azurerm_linux_web_app" "backend" {
-  name                = var.app_name
-  resource_group_name = data.azurerm_resource_group.main.name
-  location            = data.azurerm_resource_group.main.location
-  service_plan_id     = azurerm_service_plan.main.id
-  https_only                            = false
+  name                                           = local.app_name
+  resource_group_name                            = data.azurerm_resource_group.main.name
+  location                                       = data.azurerm_resource_group.main.location
+  service_plan_id                                = azurerm_service_plan.main.id
+  https_only                                     = true
   ftp_publish_basic_authentication_enabled       = false
   webdeploy_publish_basic_authentication_enabled = false
 
@@ -74,13 +85,13 @@ resource "azurerm_linux_web_app" "backend" {
   }
 
   site_config {
-    always_on              = true
+    always_on                         = true
     health_check_path                 = "/v1/health"
     health_check_eviction_time_in_min = 10
-    http2_enabled          = true
-    ftps_state             = "FtpsOnly"
-    minimum_tls_version    = "1.2"
-    scm_minimum_tls_version = "1.2"
+    http2_enabled                     = true
+    ftps_state                        = "Disabled"
+    minimum_tls_version               = "1.2"
+    scm_minimum_tls_version           = "1.2"
 
     container_registry_use_managed_identity = true
   }
@@ -91,9 +102,9 @@ resource "azurerm_linux_web_app" "backend" {
     LLM_API_VERSION = var.llm_api_version
 
     # Key Vault references — the App Service resolves these at runtime
-    LLM_AZURE_ENDPOINT = "@Microsoft.KeyVault(SecretUri=https://${var.keyvault_name}.vault.azure.net/secrets/llm-azure-endpoint)"
-    LLM_API_KEY        = "@Microsoft.KeyVault(SecretUri=https://${var.keyvault_name}.vault.azure.net/secrets/llm-api-key)"
-    AUTH_API_KEYS      = "@Microsoft.KeyVault(SecretUri=https://${var.keyvault_name}.vault.azure.net/secrets/auth-api-keys)"
+    LLM_AZURE_ENDPOINT = "@Microsoft.KeyVault(SecretUri=https://${local.keyvault_name}.vault.azure.net/secrets/llm-azure-endpoint)"
+    LLM_API_KEY        = "@Microsoft.KeyVault(SecretUri=https://${local.keyvault_name}.vault.azure.net/secrets/llm-api-key)"
+    AUTH_API_KEYS      = "@Microsoft.KeyVault(SecretUri=https://${local.keyvault_name}.vault.azure.net/secrets/auth-api-keys)"
 
     WEBSITES_ENABLE_APP_SERVICE_STORAGE = "false"
   }
@@ -132,17 +143,17 @@ resource "azurerm_role_assignment" "github_acr_repository_writer" {
 # =============================================================================
 
 resource "azurerm_user_assigned_identity" "github" {
-  name                = var.managed_identity_name
+  name                = local.managed_identity_name
   resource_group_name = data.azurerm_resource_group.main.name
   location            = data.azurerm_resource_group.main.location
 }
 
-resource "azurerm_federated_identity_credential" "github_production" {
-  name      = "gh-qualitative-feedback-analysis-production"
+resource "azurerm_federated_identity_credential" "github_environment" {
+  name                      = "gh-qualitative-feedback-analysis-${local.env}"
   user_assigned_identity_id = azurerm_user_assigned_identity.github.id
-  audience            = ["api://AzureADTokenExchange"]
-  issuer              = "https://token.actions.githubusercontent.com"
-  subject             = "repo:${var.github_repo}:environment:${var.github_environment}"
+  audience                  = ["api://AzureADTokenExchange"]
+  issuer                    = "https://token.actions.githubusercontent.com"
+  subject                   = "repo:${var.github_repo}:environment:${local.github_environment}"
 }
 
 # GitHub Actions identity gets Contributor on the resource group
@@ -156,77 +167,77 @@ resource "azurerm_role_assignment" "github_contributor" {
 # GitHub: environment + variables
 # =============================================================================
 
-resource "github_repository_environment" "production" {
-  environment = var.github_environment
+resource "github_repository_environment" "ghenv" {
+  environment = local.github_environment
   repository  = split("/", var.github_repo)[1]
 }
 
 resource "github_actions_environment_variable" "az_client_id" {
   repository    = split("/", var.github_repo)[1]
-  environment   = github_repository_environment.production.environment
+  environment   = github_repository_environment.ghenv.environment
   variable_name = "AZ_CLIENT_ID"
   value         = azurerm_user_assigned_identity.github.client_id
 }
 
 resource "github_actions_environment_variable" "az_tenant_id" {
   repository    = split("/", var.github_repo)[1]
-  environment   = github_repository_environment.production.environment
+  environment   = github_repository_environment.ghenv.environment
   variable_name = "AZ_TENANT_ID"
   value         = var.tenant_id
 }
 
 resource "github_actions_environment_variable" "az_subscription_id" {
   repository    = split("/", var.github_repo)[1]
-  environment   = github_repository_environment.production.environment
+  environment   = github_repository_environment.ghenv.environment
   variable_name = "AZ_SUBSCRIPTION_ID"
   value         = var.subscription_id
 }
 
 resource "github_actions_environment_variable" "az_resource_group" {
   repository    = split("/", var.github_repo)[1]
-  environment   = github_repository_environment.production.environment
+  environment   = github_repository_environment.ghenv.environment
   variable_name = "AZ_RESOURCE_GROUP"
   value         = var.resource_group_name
 }
 
 resource "github_actions_environment_variable" "az_app_name" {
   repository    = split("/", var.github_repo)[1]
-  environment   = github_repository_environment.production.environment
+  environment   = github_repository_environment.ghenv.environment
   variable_name = "AZ_APP_NAME"
-  value         = var.app_name
+  value         = local.app_name
 }
 
 resource "github_actions_environment_variable" "az_acr_name" {
   repository    = split("/", var.github_repo)[1]
-  environment   = github_repository_environment.production.environment
+  environment   = github_repository_environment.ghenv.environment
   variable_name = "AZ_ACR_NAME"
-  value         = var.acr_name
+  value         = local.acr_name
 }
 
 resource "github_actions_environment_variable" "az_keyvault" {
   repository    = split("/", var.github_repo)[1]
-  environment   = github_repository_environment.production.environment
+  environment   = github_repository_environment.ghenv.environment
   variable_name = "AZ_KEYVAULT"
-  value         = var.keyvault_name
+  value         = local.keyvault_name
 }
 
 resource "github_actions_environment_variable" "llm_provider" {
   repository    = split("/", var.github_repo)[1]
-  environment   = github_repository_environment.production.environment
+  environment   = github_repository_environment.ghenv.environment
   variable_name = "LLM_PROVIDER"
   value         = var.llm_provider
 }
 
 resource "github_actions_environment_variable" "llm_model" {
   repository    = split("/", var.github_repo)[1]
-  environment   = github_repository_environment.production.environment
+  environment   = github_repository_environment.ghenv.environment
   variable_name = "LLM_MODEL"
   value         = var.llm_model
 }
 
 resource "github_actions_environment_variable" "llm_api_version" {
   repository    = split("/", var.github_repo)[1]
-  environment   = github_repository_environment.production.environment
+  environment   = github_repository_environment.ghenv.environment
   variable_name = "LLM_API_VERSION"
   value         = var.llm_api_version
 }
