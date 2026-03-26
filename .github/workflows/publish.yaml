@@ -14,6 +14,13 @@ on:
     types: [published]
   workflow_dispatch:
     inputs:
+      environment:
+        description: "Target environment"
+        type: choice
+        options:
+          - dev
+          - production
+        default: dev
       ref:
         description: "Git ref to deploy (tag, branch, or SHA). Defaults to the default branch."
         required: false
@@ -27,7 +34,7 @@ env:
 
 jobs:
   deploy:
-    environment: production
+    environment: ${{ inputs.environment }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
