@@ -147,13 +147,13 @@ export AUTH_API_KEYS='[
 ## Running the Application
 
 ```bash
-uv run python -m feedback_analysis_backend.main
+uv run python -m qfa.main
 ```
 
 The server starts on `http://0.0.0.0:8000`. For development with auto-reload:
 
 ```bash
-uv run uvicorn feedback_analysis_backend.main:app --reload --host 0.0.0.0 --port 8000
+uv run uvicorn qfa.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 # Development
