@@ -214,30 +214,3 @@ resource "github_actions_environment_variable" "az_acr_name" {
   value         = local.acr_name
 }
 
-resource "github_actions_environment_variable" "az_keyvault" {
-  repository    = split("/", var.github_repo)[1]
-  environment   = github_repository_environment.ghenv.environment
-  variable_name = "AZ_KEYVAULT"
-  value         = local.keyvault_name
-}
-
-resource "github_actions_environment_variable" "llm_provider" {
-  repository    = split("/", var.github_repo)[1]
-  environment   = github_repository_environment.ghenv.environment
-  variable_name = "LLM_PROVIDER"
-  value         = var.llm_provider
-}
-
-resource "github_actions_environment_variable" "llm_model" {
-  repository    = split("/", var.github_repo)[1]
-  environment   = github_repository_environment.ghenv.environment
-  variable_name = "LLM_MODEL"
-  value         = var.llm_model
-}
-
-resource "github_actions_environment_variable" "llm_api_version" {
-  repository    = split("/", var.github_repo)[1]
-  environment   = github_repository_environment.ghenv.environment
-  variable_name = "LLM_API_VERSION"
-  value         = var.llm_api_version
-}
