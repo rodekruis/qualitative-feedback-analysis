@@ -93,6 +93,29 @@ class SummarizeRequest(BaseModel):
         Optional extra instruction appended to the default summarize prompt.
     """
 
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "documents": [
+                        {
+                            "id": "doc-001",
+                            "text": "The water distribution was well organized but we had to wait for three hours.",
+                            "metadata": {"region": "Eastern Province", "year": 2024},
+                        },
+                        {
+                            "id": "doc-002",
+                            "text": "Medical staff were very professional. Medicine supply was insufficient.",
+                            "metadata": {"region": "Northern Province", "year": 2024},
+                        },
+                    ],
+                    "output_language": "English",
+                    "prompt": "Focus on operational issues and beneficiary experience.",
+                },
+            ],
+        },
+    }
+
     documents: list[DocumentInput] = Field(min_length=1)
     output_language: str | None = None
     prompt: str | None = Field(default=None, max_length=4_000)
