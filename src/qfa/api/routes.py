@@ -12,12 +12,18 @@ from qfa.api.dependencies import (
 from qfa.api.schemas import (
     AnalyzeRequest,
     AnalyzeResponse,
+    DocumentSummary,
     HealthResponse,
+    SummarizeRequest,
+    SummarizeResponse,
 )
 from qfa.domain.models import (
     AnalysisRequest,
     FeedbackDocument,
     TenantApiKey,
+)
+from qfa.domain.models import (
+    SummaryRequest as DomainSummaryRequest,
 )
 from qfa.domain.ports import OrchestratorPort
 
@@ -67,6 +73,55 @@ async def analyze(
     return AnalyzeResponse(
         analysis=result.result,
         document_count=len(body.documents),
+        request_id=request.state.request_id,
+    )
+
+
+@router.post("/v1/summarize", response_model=SummarizeResponse, status_code=200)
+async def summarize(
+    body: SummarizeRequest,
+    request: Request,
+    tenant: TenantApiKey = Depends(authenticate_request),
+    orchestrator: OrchestratorPort = Depends(get_orchestrator),
+) -> SummarizeResponse:
+    """Summarize each submitted document individually.
+
+    Parameters
+    ----------
+    body : SummarizeRequest
+        The request body containing documents and summarization options.
+    request : Request
+        The incoming HTTP request.
+    tenant : TenantApiKey
+        The authenticated tenant, injected via dependency.
+    orchestrator : OrchestratorPort
+        The orchestrator service, injected via dependency.
+
+    Returns
+    -------
+    SummarizeResponse
+        The per-document summaries with request ID.
+    """
+    deadline = datetime.now(UTC) + timedelta(seconds=120)
+
+    domain_documents = tuple(
+        FeedbackDocument(id=doc.id, text=doc.text, metadata=doc.metadata)
+        for doc in body.documents
+    )
+    domain_request = DomainSummaryRequest(
+        documents=domain_documents,
+        output_language=body.output_language,
+        prompt=body.prompt,
+        tenant_id=tenant.tenant_id,
+    )
+
+    result = await orchestrator.summarize(domain_request, deadline)
+
+    return SummarizeResponse(
+        summaries=[
+            DocumentSummary(id=item.id, title=item.title, summary=item.summary)
+            for item in result.summaries
+        ],
         request_id=request.state.request_id,
     )
 

@@ -80,6 +80,57 @@ class AnalyzeResponse(BaseModel):
     request_id: str
 
 
+class SummarizeRequest(BaseModel):
+    """Request body for the ``POST /v1/summarize`` endpoint.
+
+    Attributes
+    ----------
+    documents : list[DocumentInput]
+        Non-empty list of documents to summarize individually.
+    output_language : str | None
+        Optional target language for the summaries.
+    prompt : str | None
+        Optional extra instruction appended to the default summarize prompt.
+    """
+
+    documents: list[DocumentInput] = Field(min_length=1)
+    output_language: str | None = None
+    prompt: str | None = Field(default=None, max_length=4_000)
+
+
+class DocumentSummary(BaseModel):
+    """Summary response item for a single document.
+
+    Attributes
+    ----------
+    id : str
+        Identifier of the source document.
+    title : str
+        Generated short title for the document.
+    summary : str
+        Generated bullet-point summary for the document.
+    """
+
+    id: str
+    title: str
+    summary: str
+
+
+class SummarizeResponse(BaseModel):
+    """Response body for the ``POST /v1/summarize`` endpoint.
+
+    Attributes
+    ----------
+    summaries : list[DocumentSummary]
+        Per-document summaries returned by the service.
+    request_id : str
+        Unique identifier for this request.
+    """
+
+    summaries: list[DocumentSummary]
+    request_id: str
+
+
 class HealthResponse(BaseModel):
     """Response body for the ``GET /v1/health`` endpoint.
 
