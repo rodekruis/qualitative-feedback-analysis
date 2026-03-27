@@ -69,6 +69,63 @@ class AnalysisResult(BaseModel):
     completion_tokens: int
 
 
+class SummaryRequest(BaseModel):
+    """A request to summarize one or more documents individually.
+
+    Attributes
+    ----------
+    documents : tuple[FeedbackDocument, ...]
+        Non-empty tuple of documents to summarize.
+    output_language : str | None
+        Optional target language for all summaries.
+    prompt : str | None
+        Optional extra instruction appended to the default summarize prompt.
+    tenant_id : str
+        Tenant identifier, injected by the auth layer.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    documents: tuple[FeedbackDocument, ...] = Field(min_length=1)
+    output_language: str | None = None
+    prompt: str | None = Field(default=None, max_length=4000)
+    tenant_id: str
+
+
+class DocumentSummary(BaseModel):
+    """Summary output for a single document.
+
+    Attributes
+    ----------
+    id : str
+        Identifier of the source document.
+    title : str
+        Generated short title for the document.
+    summary : str
+        Generated bullet-point summary for the document.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    title: str
+    summary: str
+
+
+class SummaryResult(BaseModel):
+    """The result of summarizing multiple documents individually.
+
+    Attributes
+    ----------
+    summaries : tuple[DocumentSummary, ...]
+        Per-document summaries returned by the summarize flow.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    summaries: tuple[DocumentSummary, ...]
+
+
 class LLMResponse(BaseModel):
     """Raw response from an LLM provider.
 
