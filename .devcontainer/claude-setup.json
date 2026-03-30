@@ -1,0 +1,20 @@
+{
+  "marketplaces": [
+    "anthropics/claude-plugins-official",
+    "mariushelf/claude-swe-tools"
+  ],
+  "plugins": [
+    "superpowers",
+    "pyright-lsp",
+    "commit-commands",
+    "frontend-design",
+    "swe-tools"
+  ],
+  "mcp_servers": [
+    {
+      "name": "context7",
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp@latest"]
+    }
+  ]
+}

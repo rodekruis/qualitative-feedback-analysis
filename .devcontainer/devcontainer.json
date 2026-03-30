@@ -1,0 +1,32 @@
+{
+  "name": "Python Dev",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "dev",
+  "remoteUser": "dev",
+  "workspaceFolder": "/workspace",
+
+  "mounts": [
+    "source=${localWorkspaceFolderBasename}-claude-config,target=/home/dev/.claude,type=volume",
+    "source=${localWorkspaceFolderBasename}-shell-history,target=/commandhistory,type=volume"
+  ],
+
+  "containerEnv": {
+    "CLAUDE_CONFIG_DIR": "/home/dev/.claude",
+    "DEVCONTAINER": "true",
+    "HISTFILE": "/commandhistory/.zsh_history",
+    "SHELL": "/bin/zsh",
+    "TZ": "Europe/Amsterdam"
+  },
+
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "zsh"
+      }
+    }
+  },
+
+  "postStartCommand": "sudo /usr/local/bin/init-firewall.sh",
+  "postCreateCommand": "bash .devcontainer/scripts/post-create.sh",
+  "waitFor": "postStartCommand"
+}
