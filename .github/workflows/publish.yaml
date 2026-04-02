@@ -20,7 +20,7 @@ on:
         type: choice
         options:
           - dev
-          - production
+          - prd
         default: dev
       ref:
         description: "Git ref to deploy (tag, branch, or SHA). Defaults to the default branch."
