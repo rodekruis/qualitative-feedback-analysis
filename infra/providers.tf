@@ -6,10 +6,6 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 4.0"
     }
-    github = {
-      source  = "integrations/github"
-      version = "~> 6.0"
-    }
   }
 
   backend "azurerm" {
@@ -26,7 +22,3 @@ provider "azurerm" {
   features {}
 }
 
-# Authenticate via GITHUB_TOKEN env var (personal access token)
-provider "github" {
-  owner = split("/", var.github_repo)[0]
-}

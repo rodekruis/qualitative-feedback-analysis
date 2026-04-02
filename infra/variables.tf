@@ -1,19 +1,16 @@
 variable "subscription_id" {
   description = "Azure subscription ID"
   type        = string
-  default     = "3cea98f3-66ab-4689-b2fc-424a0873f148"
 }
 
 variable "tenant_id" {
   description = "Azure AD tenant ID"
   type        = string
-  default     = "d3ab9790-6ae2-4bd8-aa5e-02864483e7c7"
 }
 
 variable "resource_group_name" {
   description = "Name of the resource group"
   type        = string
-  default     = "qualitative-feedback-analysis-xomnia"
 }
 
 

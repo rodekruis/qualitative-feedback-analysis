@@ -13,7 +13,7 @@ output "keyvault_uri" {
   value       = azurerm_key_vault.main.vault_uri
 }
 
-output "github_identity_client_id" {
-  description = "Client ID of the managed identity used by GitHub Actions"
+output "az_client_id" {
+  description = "AZ_CLIENT_ID — client ID of the managed identity used by GitHub Actions (OIDC)"
   value       = azurerm_user_assigned_identity.github.client_id
 }
