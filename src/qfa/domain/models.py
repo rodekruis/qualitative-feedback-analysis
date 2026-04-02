@@ -70,12 +70,12 @@ class AnalysisResult(BaseModel):
 
 
 class SummaryRequest(BaseModel):
-    """A request to summarize one or more documents individually.
+    """A request to summarize one or more feedback data items individually.
 
     Attributes
     ----------
-    documents : tuple[FeedbackDocument, ...]
-        Non-empty tuple of documents to summarize.
+    feedback_data : tuple[FeedbackDocument, ...]
+        Non-empty tuple of feedback data items to summarize.
     output_language : str | None
         Optional target language for all summaries.
     prompt : str | None
@@ -86,23 +86,23 @@ class SummaryRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    documents: tuple[FeedbackDocument, ...] = Field(min_length=1)
+    feedback_data: tuple[FeedbackDocument, ...] = Field(min_length=1)
     output_language: str | None = None
     prompt: str | None = Field(default=None, max_length=4000)
     tenant_id: str
 
 
-class DocumentSummary(BaseModel):
-    """Summary output for a single document.
+class FeedbackDataSummary(BaseModel):
+    """Summary output for a single feedback data item.
 
     Attributes
     ----------
     id : str
-        Identifier of the source document.
+        Identifier of the source feedback data item.
     title : str
-        Generated short title for the document.
+        Generated short title for the feedback data item.
     summary : str
-        Generated bullet-point summary for the document.
+        Generated bullet-point summary for the feedback data item.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -113,17 +113,17 @@ class DocumentSummary(BaseModel):
 
 
 class SummaryResult(BaseModel):
-    """The result of summarizing multiple documents individually.
+    """The result of summarizing multiple feedback data items individually.
 
     Attributes
     ----------
-    summaries : tuple[DocumentSummary, ...]
-        Per-document summaries returned by the summarize flow.
+    feedback_data_summaries : tuple[FeedbackDataSummary, ...]
+        Per-feedback-data summaries returned by the summarize flow.
     """
 
     model_config = ConfigDict(frozen=True)
 
-    summaries: tuple[DocumentSummary, ...]
+    feedback_data_summaries: tuple[FeedbackDataSummary, ...]
 
 
 class LLMResponse(BaseModel):

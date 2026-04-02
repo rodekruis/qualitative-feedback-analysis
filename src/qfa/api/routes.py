@@ -12,7 +12,7 @@ from qfa.api.dependencies import (
 from qfa.api.schemas import (
     AnalyzeRequest,
     AnalyzeResponse,
-    DocumentSummary,
+    FeedbackDataSummary,
     HealthResponse,
     SummarizeRequest,
     SummarizeResponse,
@@ -84,12 +84,12 @@ async def summarize(
     tenant: TenantApiKey = Depends(authenticate_request),
     orchestrator: OrchestratorPort = Depends(get_orchestrator),
 ) -> SummarizeResponse:
-    """Summarize each submitted document individually.
+    """Summarize each submitted feedback data item individually.
 
     Parameters
     ----------
     body : SummarizeRequest
-        The request body containing documents and summarization options.
+        The request body containing feedback data and summarization options.
     request : Request
         The incoming HTTP request.
     tenant : TenantApiKey
@@ -100,16 +100,20 @@ async def summarize(
     Returns
     -------
     SummarizeResponse
-        The per-document summaries with request ID.
+        The per-feedback-data summaries with request ID.
     """
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
-    domain_documents = tuple(
-        FeedbackDocument(id=doc.id, text=doc.text, metadata=doc.metadata)
-        for doc in body.documents
+    feedback_data = tuple(
+        FeedbackDocument(
+            id=feedback_item.id,
+            text=feedback_item.text,
+            metadata=feedback_item.metadata,
+        )
+        for feedback_item in body.feedback_data
     )
     domain_request = DomainSummaryRequest(
-        documents=domain_documents,
+        feedback_data=feedback_data,
         output_language=body.output_language,
         prompt=body.prompt,
         tenant_id=tenant.tenant_id,
@@ -118,9 +122,9 @@ async def summarize(
     result = await orchestrator.summarize(domain_request, deadline)
 
     return SummarizeResponse(
-        summaries=[
-            DocumentSummary(id=item.id, title=item.title, summary=item.summary)
-            for item in result.summaries
+        feedback_data_summaries=[
+            FeedbackDataSummary(id=item.id, title=item.title, summary=item.summary)
+            for item in result.feedback_data_summaries
         ],
         request_id=request.state.request_id,
     )

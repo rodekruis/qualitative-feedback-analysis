@@ -22,7 +22,7 @@ from qfa.domain.errors import (
 from qfa.domain.models import (
     AnalysisRequest,
     AnalysisResult,
-    DocumentSummary,
+    FeedbackDataSummary,
     FeedbackDocument,
     SummaryRequest,
     SummaryResult,
@@ -44,11 +44,11 @@ _SYSTEM_MESSAGE_TEMPLATE = (
 )
 
 _DEFAULT_SUMMARIZATION_PROMPT = (
-    "Summarize the document as concise bullet points.\n"
+    "Summarize the feedback data as concise bullet points.\n"
     "Also create a short descriptive title.\n"
     'Return valid JSON with exactly these fields: {"title": "...", "summary": "- point 1\\n- point 2"}.\n'
     "Do not include markdown code fences.\n"
-    "Use the same language as the input document unless a target language is specified."
+    "Use the same language as the input feedback data unless a target language is specified."
 )
 
 #: Minimum time (seconds) required for an LLM attempt to be viable.
@@ -140,19 +140,19 @@ class StandardOrchestrator(OrchestratorPort):
         request: SummaryRequest,
         deadline: datetime,
     ) -> SummaryResult:
-        """Summarize each submitted document individually.
+        """Summarize each submitted feedback data item individually.
 
         Parameters
         ----------
         request : SummaryRequest
-            The summarization request containing documents and options.
+            The summarization request containing feedback data and options.
         deadline : datetime
             Absolute UTC deadline by which summarization must complete.
 
         Returns
         -------
         SummaryResult
-            The per-document summaries and titles.
+            The per-feedback-data summaries and titles.
 
         Raises
         ------
@@ -160,9 +160,9 @@ class StandardOrchestrator(OrchestratorPort):
             When the LLM returns invalid output or another non-recoverable
             error occurs.
         """
-        summaries: list[DocumentSummary] = []
+        feedback_data_summaries: list[FeedbackDataSummary] = []
 
-        for document in request.documents:
+        for index, feedback_item in enumerate(request.feedback_data, start=1):
             system_message = _DEFAULT_SUMMARIZATION_PROMPT
             if request.output_language:
                 system_message += (
@@ -171,7 +171,7 @@ class StandardOrchestrator(OrchestratorPort):
             if request.prompt:
                 system_message += f"\nAdditional instructions: {request.prompt}"
 
-            user_message = document.text
+            user_message = feedback_item.text
 
             response = await self._call_with_retries(
                 system_message=system_message,
@@ -187,15 +187,14 @@ class StandardOrchestrator(OrchestratorPort):
                     "LLM returned invalid JSON for summary output"
                 ) from exc
 
-            summaries.append(
-                DocumentSummary(
-                    id=document.id,
+            feedback_data_summaries.append(
+                FeedbackDataSummary(
+                    id=feedback_item.id,
                     title=payload["title"],
                     summary=payload["summary"],
                 )
             )
-
-        return SummaryResult(summaries=tuple(summaries))
+        return SummaryResult(feedback_data_summaries=tuple(feedback_data_summaries))
 
     # ------------------------------------------------------------------
     # Prompt injection filtering

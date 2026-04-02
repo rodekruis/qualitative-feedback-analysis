@@ -99,18 +99,18 @@ class OrchestratorPort(Protocol):
         request: SummaryRequest,
         deadline: datetime,
     ) -> SummaryResult:
-        """Summarize each submitted document individually.
+        """Summarize each submitted feedback data item individually.
 
         Parameters
         ----------
         request : SummaryRequest
-            The summarization request containing documents and options.
+            The summarization request containing feedback data and options.
         deadline : datetime
             Absolute deadline by which summarization must complete.
 
         Returns
         -------
         SummaryResult
-            Per-document summaries and titles.
+            Per-feedback-data summaries and titles.
         """
         ...

@@ -85,8 +85,8 @@ class SummarizeRequest(BaseModel):
 
     Attributes
     ----------
-    documents : list[DocumentInput]
-        Non-empty list of documents to summarize individually.
+    feedback_data : list[DocumentInput]
+        Non-empty list of feedback data items to summarize individually.
     output_language : str | None
         Optional target language for the summaries.
     prompt : str | None
@@ -97,7 +97,7 @@ class SummarizeRequest(BaseModel):
         "json_schema_extra": {
             "examples": [
                 {
-                    "documents": [
+                    "feedback_data": [
                         {
                             "id": "doc-001",
                             "text": "The water distribution was well organized but we had to wait for three hours.",
@@ -116,22 +116,22 @@ class SummarizeRequest(BaseModel):
         },
     }
 
-    documents: list[DocumentInput] = Field(min_length=1)
+    feedback_data: list[DocumentInput] = Field(min_length=1)
     output_language: str | None = None
     prompt: str | None = Field(default=None, max_length=4_000)
 
 
-class DocumentSummary(BaseModel):
-    """Summary response item for a single document.
+class FeedbackDataSummary(BaseModel):
+    """Summary response item for a single feedback data item.
 
     Attributes
     ----------
     id : str
-        Identifier of the source document.
+        Identifier of the source feedback data item.
     title : str
-        Generated short title for the document.
+        Generated short title for the feedback data item.
     summary : str
-        Generated bullet-point summary for the document.
+        Generated bullet-point summary for the feedback data item.
     """
 
     id: str
@@ -144,13 +144,13 @@ class SummarizeResponse(BaseModel):
 
     Attributes
     ----------
-    summaries : list[DocumentSummary]
-        Per-document summaries returned by the service.
+    feedback_data_summaries : list[FeedbackDataSummary]
+        Per-feedback-data summaries returned by the service.
     request_id : str
         Unique identifier for this request.
     """
 
-    summaries: list[DocumentSummary]
+    feedback_data_summaries: list[FeedbackDataSummary]
     request_id: str
 
 
