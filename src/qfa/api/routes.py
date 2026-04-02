@@ -12,14 +12,14 @@ from qfa.api.dependencies import (
 from qfa.api.schemas import (
     AnalyzeRequest,
     AnalyzeResponse,
-    FeedbackDataSummary,
+    FeedbackItemSummary,
     HealthResponse,
     SummarizeRequest,
     SummarizeResponse,
 )
 from qfa.domain.models import (
     AnalysisRequest,
-    FeedbackDocument,
+    FeedbackItem,
     TenantApiKey,
 )
 from qfa.domain.models import (
@@ -58,7 +58,7 @@ async def analyze(
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
     domain_documents = tuple(
-        FeedbackDocument(id=doc.id, text=doc.text, metadata=doc.metadata)
+        FeedbackItem(id=doc.id, text=doc.text, metadata=doc.metadata)
         for doc in body.documents
     )
 
@@ -84,12 +84,12 @@ async def summarize(
     tenant: TenantApiKey = Depends(authenticate_request),
     orchestrator: OrchestratorPort = Depends(get_orchestrator),
 ) -> SummarizeResponse:
-    """Summarize each submitted feedback data item individually.
+    """Summarize each submitted feedback item individually.
 
     Parameters
     ----------
     body : SummarizeRequest
-        The request body containing feedback data and summarization options.
+        The request body containing feedback items and summarization options.
     request : Request
         The incoming HTTP request.
     tenant : TenantApiKey
@@ -100,20 +100,20 @@ async def summarize(
     Returns
     -------
     SummarizeResponse
-        The per-feedback-data summaries with request ID.
+        The per-feedback-item summaries with request ID.
     """
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
-    feedback_data = tuple(
-        FeedbackDocument(
-            id=feedback_item.id,
-            text=feedback_item.text,
-            metadata=feedback_item.metadata,
+    feedback_items = tuple(
+        FeedbackItem(
+            id=item.id,
+            text=item.text,
+            metadata=item.metadata,
         )
-        for feedback_item in body.feedback_data
+        for item in body.feedback_items
     )
     domain_request = DomainSummaryRequest(
-        feedback_data=feedback_data,
+        feedback_items=feedback_items,
         output_language=body.output_language,
         prompt=body.prompt,
         tenant_id=tenant.tenant_id,
@@ -122,9 +122,9 @@ async def summarize(
     result = await orchestrator.summarize(domain_request, deadline)
 
     return SummarizeResponse(
-        feedback_data_summaries=[
-            FeedbackDataSummary(id=item.id, title=item.title, summary=item.summary)
-            for item in result.feedback_data_summaries
+        feedback_item_summaries=[
+            FeedbackItemSummary(id=item.id, title=item.title, summary=item.summary)
+            for item in result.feedback_item_summaries
         ],
         request_id=request.state.request_id,
     )

@@ -6,44 +6,44 @@ from pydantic import ValidationError
 from qfa.domain.models import (
     AnalysisRequest,
     AnalysisResult,
-    FeedbackDocument,
+    FeedbackItem,
     LLMResponse,
     TenantApiKey,
 )
 
-# --- FeedbackDocument ---
+# --- FeedbackItem ---
 
 
-class TestFeedbackDocument:
+class TestFeedbackItem:
     def test_construct_with_valid_data(self):
-        doc = FeedbackDocument(id="doc-1", text="Some feedback")
+        doc = FeedbackItem(id="doc-1", text="Some feedback")
         assert doc.id == "doc-1"
         assert doc.text == "Some feedback"
 
     def test_metadata_defaults_to_empty_dict(self):
-        doc = FeedbackDocument(id="doc-1", text="Some feedback")
+        doc = FeedbackItem(id="doc-1", text="Some feedback")
         assert doc.metadata == {}
 
     def test_metadata_with_values(self):
         meta = {"source": "email", "score": 5, "weight": 0.8, "urgent": True}
-        doc = FeedbackDocument(id="doc-1", text="feedback", metadata=meta)
+        doc = FeedbackItem(id="doc-1", text="feedback", metadata=meta)
         assert doc.metadata == meta
 
     def test_frozen_raises_on_assignment(self):
-        doc = FeedbackDocument(id="doc-1", text="feedback")
+        doc = FeedbackItem(id="doc-1", text="feedback")
         with pytest.raises(ValidationError):
             doc.text = "changed"
 
     def test_empty_text_raises(self):
         with pytest.raises(ValidationError):
-            FeedbackDocument(id="doc-1", text="")
+            FeedbackItem(id="doc-1", text="")
 
     def test_text_exceeding_max_length_raises(self):
         with pytest.raises(ValidationError):
-            FeedbackDocument(id="doc-1", text="x" * 100_001)
+            FeedbackItem(id="doc-1", text="x" * 100_001)
 
     def test_text_at_max_length_is_valid(self):
-        doc = FeedbackDocument(id="doc-1", text="x" * 100_000)
+        doc = FeedbackItem(id="doc-1", text="x" * 100_000)
         assert len(doc.text) == 100_000
 
 
@@ -51,8 +51,8 @@ class TestFeedbackDocument:
 
 
 class TestAnalysisRequest:
-    def _make_doc(self, doc_id: str = "doc-1") -> FeedbackDocument:
-        return FeedbackDocument(id=doc_id, text="feedback text")
+    def _make_doc(self, doc_id: str = "doc-1") -> FeedbackItem:
+        return FeedbackItem(id=doc_id, text="feedback text")
 
     def test_construct_with_valid_data(self):
         doc = self._make_doc()

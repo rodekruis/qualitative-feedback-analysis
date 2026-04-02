@@ -7,17 +7,17 @@ HTTP contract can evolve independently of the core domain.
 from pydantic import BaseModel, Field
 
 
-class DocumentInput(BaseModel):
-    """A single document in an analysis request.
+class FeedbackItemInput(BaseModel):
+    """A single feedback item in an analysis request.
 
     Attributes
     ----------
     id : str
-        Unique identifier for the document.
+        Unique identifier for the feedback item.
     text : str
         The feedback text content. Must be between 1 and 100,000 characters.
     metadata : dict[str, str | int | float | bool]
-        Optional metadata key-value pairs associated with the document.
+        Optional metadata key-value pairs associated with the feedback item.
     """
 
     id: str
@@ -30,8 +30,8 @@ class AnalyzeRequest(BaseModel):
 
     Attributes
     ----------
-    documents : list[DocumentInput]
-        Non-empty list of feedback documents to analyze.
+    documents : list[FeedbackItemInput]
+        Non-empty list of feedback items to analyze.
     prompt : str
         The analysis prompt. Must be between 1 and 4,000 characters.
     """
@@ -58,7 +58,7 @@ class AnalyzeRequest(BaseModel):
         },
     }
 
-    documents: list[DocumentInput] = Field(min_length=1)
+    documents: list[FeedbackItemInput] = Field(min_length=1)
     prompt: str = Field(min_length=1, max_length=4_000)
 
 
@@ -85,8 +85,8 @@ class SummarizeRequest(BaseModel):
 
     Attributes
     ----------
-    feedback_data : list[DocumentInput]
-        Non-empty list of feedback data items to summarize individually.
+    feedback_items : list[FeedbackItemInput]
+        Non-empty list of feedback items to summarize individually.
     output_language : str | None
         Optional target language for the summaries.
     prompt : str | None
@@ -97,7 +97,7 @@ class SummarizeRequest(BaseModel):
         "json_schema_extra": {
             "examples": [
                 {
-                    "feedback_data": [
+                    "feedback_items": [
                         {
                             "id": "doc-001",
                             "text": "The water distribution was well organized but we had to wait for three hours.",
@@ -116,22 +116,22 @@ class SummarizeRequest(BaseModel):
         },
     }
 
-    feedback_data: list[DocumentInput] = Field(min_length=1)
+    feedback_items: list[FeedbackItemInput] = Field(min_length=1)
     output_language: str | None = None
     prompt: str | None = Field(default=None, max_length=4_000)
 
 
-class FeedbackDataSummary(BaseModel):
-    """Summary response item for a single feedback data item.
+class FeedbackItemSummary(BaseModel):
+    """Summary response item for a single feedback item.
 
     Attributes
     ----------
     id : str
-        Identifier of the source feedback data item.
+        Identifier of the source feedback item.
     title : str
-        Generated short title for the feedback data item.
+        Generated short title for the feedback item.
     summary : str
-        Generated bullet-point summary for the feedback data item.
+        Generated bullet-point summary for the feedback item.
     """
 
     id: str
@@ -144,13 +144,13 @@ class SummarizeResponse(BaseModel):
 
     Attributes
     ----------
-    feedback_data_summaries : list[FeedbackDataSummary]
-        Per-feedback-data summaries returned by the service.
+    feedback_item_summaries : list[FeedbackItemSummary]
+        Per-feedback-item summaries returned by the service.
     request_id : str
         Unique identifier for this request.
     """
 
-    feedback_data_summaries: list[FeedbackDataSummary]
+    feedback_item_summaries: list[FeedbackItemSummary]
     request_id: str
 
 

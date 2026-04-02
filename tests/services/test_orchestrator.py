@@ -12,7 +12,7 @@ from qfa.domain.errors import (
 from qfa.domain.models import (
     AnalysisRequest,
     AnalysisResult,
-    FeedbackDocument,
+    FeedbackItem,
     LLMResponse,
 )
 from qfa.services.orchestrator import StandardOrchestrator
@@ -24,7 +24,7 @@ MAX_TOKENS = 10_000
 
 
 def _make_document(doc_id="doc-1", text="Some feedback text.", metadata=None):
-    return FeedbackDocument(id=doc_id, text=text, metadata=metadata or {})
+    return FeedbackItem(id=doc_id, text=text, metadata=metadata or {})
 
 
 def _make_request(documents=None, prompt="Summarize feedback.", tenant_id=TENANT_ID):
