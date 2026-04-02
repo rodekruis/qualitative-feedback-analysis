@@ -7,6 +7,7 @@ set -euo pipefail
 RG="qualitative-feedback-analysis-xomnia"
 SA="qfatfstate"
 CONTAINER="tfstate"
+ACR="qfacontainerreg"
 LOCATION="westeurope"
 
 echo "Creating storage account for Terraform state..."
@@ -23,5 +24,13 @@ az storage container create \
   --name "$CONTAINER" \
   --account-name "$SA" \
   --auth-mode login
+
+echo "Creating container registry..."
+az acr create \
+  --name "$ACR" \
+  --resource-group "$RG" \
+  --location "$LOCATION" \
+  --sku Basic \
+  --admin-enabled false
 
 echo "Done. Now run: cd infra && terraform init"

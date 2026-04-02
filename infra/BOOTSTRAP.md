@@ -14,18 +14,25 @@ This creates a chicken-and-egg problem: CI needs those variables to run Terrafor
 - [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.5
 - [GitHub CLI](https://cli.github.com/) — authenticated (`gh auth login`) with a token that has `repo` scope (needed to create GitHub environments and variables)
 
+The following Azure resource must already exist before running Terraform (it is referenced as a read-only data source, not created by Terraform):
+
+- **Resource group** `qualitative-feedback-analysis-xomnia`
+
 ## Steps
 
 ### 1. Create the Terraform state backend
 
-The state backend (Azure Blob Storage) must exist before `terraform init` can run. This is itself a chicken-and-egg resource — it lives outside Terraform's management.
+Two resources must exist before `terraform init` can run — they are chicken-and-egg resources that live outside Terraform's management:
+
+- **Azure Blob Storage** (`qfatfstate`) — the Terraform remote state backend
+- **Container Registry** (`qfacontainerreg`) — shared ACR used as a `data` source by Terraform
 
 ```bash
 cd infra
 bash bootstrap.sh
 ```
 
-This only needs to be run once ever. If the storage account already exists, skip this step.
+This only needs to be run once ever. If these resources already exist, skip this step.
 
 ### 2. Initialize Terraform
 
@@ -47,19 +54,15 @@ terraform workspace new prd
 Run `terraform apply` once per workspace. This creates all Azure resources (Key Vault, App Service, managed identity) *and* the GitHub environment variables that CI will use going forward.
 
 ```bash
+# The `GITHUB_TOKEN` environment variable must be set for the GitHub provider:
+export GITHUB_TOKEN=$(gh auth token)
+
 # Dev environment
 terraform workspace select dev
 terraform apply
 
 # Production environment
 terraform workspace select prd
-terraform apply
-```
-
-The `GITHUB_TOKEN` environment variable must be set for the GitHub provider:
-
-```bash
-export GITHUB_TOKEN=$(gh auth token)
 terraform apply
 ```
 
