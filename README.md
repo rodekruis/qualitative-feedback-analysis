@@ -64,8 +64,6 @@ with changes to any file in the `infra` folder are pushed to the main branch.
 
 GitHub environments (`dev`, `prd`) and their required Actions variables are managed by Terraform. See [infra/BOOTSTRAP.md](infra/BOOTSTRAP.md).
 
-If 
-
 
 # Getting Started
 
@@ -91,7 +89,7 @@ Create a `.env` file in the project root (or export the variables in your shell)
 | `LLM_API_KEY` | **yes** | — | API key for OpenAI or Azure OpenAI |
 | `AUTH_API_KEYS` | **yes** | — | JSON array of API key objects (see below) |
 | `LLM_PROVIDER` | no | `openai` | LLM backend: `openai` or `azure_openai` |
-| `LLM_MODEL` | no | `gpt-4o` | Model name |
+| `LLM_MODEL` | no | `gpt-4.1-mini` | Model name |
 | `LLM_AZURE_ENDPOINT` | no | `""` | Azure OpenAI endpoint URL (required when provider is `azure_openai`) |
 | `LLM_API_VERSION` | no | `""` | Azure OpenAI API version (required when provider is `azure_openai`) |
 | `LLM_TIMEOUT_SECONDS` | no | `115.0` | Timeout for LLM calls in seconds |
