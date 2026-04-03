@@ -8,6 +8,7 @@ from qfa.domain.errors import (
     AnalysisTimeoutError,
     DocumentsTooLargeError,
 )
+from qfa.domain.models import FeedbackItemSummary, SummaryResult
 
 from .conftest import FAKE_API_KEY, FakeOrchestrator
 
@@ -30,6 +31,20 @@ def _make_client(app):
         transport=httpx.ASGITransport(app=app),
         base_url="http://test",
     )
+
+
+def _valid_summary_body(
+    feedback_items=None,
+    output_language="English",
+    prompt="Focus on operational issues.",
+):
+    if feedback_items is None:
+        feedback_items = [{"id": "doc-1", "text": "Great service!", "metadata": {}}]
+    return {
+        "feedback_items": feedback_items,
+        "output_language": output_language,
+        "prompt": prompt,
+    }
 
 
 # ------------------------------------------------------------------ #
@@ -84,6 +99,36 @@ class TestAnalyzeSuccess:
         assert resp.headers["x-request-id"] == resp.json()["request_id"]
 
 
+class TestSummarizeSuccess:
+    @pytest.mark.asyncio
+    async def test_200_on_valid_request(self, client):
+        resp = await client.post(
+            "/v1/summarize", json=_valid_summary_body(), headers=_auth_header()
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "feedback_item_summaries" in data
+        assert "request_id" in data
+
+    @pytest.mark.asyncio
+    async def test_response_contains_summary_items(self, client):
+        resp = await client.post(
+            "/v1/summarize", json=_valid_summary_body(), headers=_auth_header()
+        )
+        assert resp.status_code == 200
+        summary_item = resp.json()["feedback_item_summaries"][0]
+        assert summary_item["id"] == "doc-1"
+        assert "title" in summary_item
+        assert "summary" in summary_item
+
+    @pytest.mark.asyncio
+    async def test_x_request_id_matches_body(self, client):
+        resp = await client.post(
+            "/v1/summarize", json=_valid_summary_body(), headers=_auth_header()
+        )
+        assert resp.headers["x-request-id"] == resp.json()["request_id"]
+
+
 # ------------------------------------------------------------------ #
 # Authentication
 # ------------------------------------------------------------------ #
@@ -113,6 +158,12 @@ class TestAuthentication:
             json=_valid_body(),
             headers={"Authorization": "Basic xyzverysecrettoken123"},
         )
+        assert resp.status_code == 401
+        assert resp.json()["error"]["code"] == "authentication_required"
+
+    @pytest.mark.asyncio
+    async def test_summary_401_missing_authorization_header(self, client):
+        resp = await client.post("/v1/summarize", json=_valid_summary_body())
         assert resp.status_code == 401
         assert resp.json()["error"]["code"] == "authentication_required"
 
@@ -159,6 +210,38 @@ class TestValidation:
         resp = await client.post(
             "/v1/analyze",
             json=_valid_body(documents=[{"id": "1", "text": ""}]),
+            headers=_auth_header(),
+        )
+        assert resp.status_code == 422
+        assert resp.json()["error"]["code"] == "validation_error"
+        assert resp.json()["error"]["fields"] is not None
+
+    @pytest.mark.asyncio
+    async def test_summary_422_empty_feedback_items(self, client):
+        resp = await client.post(
+            "/v1/summarize",
+            json=_valid_summary_body(feedback_items=[]),
+            headers=_auth_header(),
+        )
+        assert resp.status_code == 422
+        assert resp.json()["error"]["code"] == "validation_error"
+        assert resp.json()["error"]["fields"] is not None
+
+    @pytest.mark.asyncio
+    async def test_summary_422_prompt_too_long(self, client):
+        resp = await client.post(
+            "/v1/summarize",
+            json=_valid_summary_body(prompt="x" * 4001),
+            headers=_auth_header(),
+        )
+        assert resp.status_code == 422
+        assert resp.json()["error"]["code"] == "validation_error"
+
+    @pytest.mark.asyncio
+    async def test_summary_422_empty_feedback_text(self, client):
+        resp = await client.post(
+            "/v1/summarize",
+            json=_valid_summary_body(feedback_items=[{"id": "1", "text": ""}]),
             headers=_auth_header(),
         )
         assert resp.status_code == 422
@@ -236,6 +319,94 @@ class TestErrorMapping:
                 "/v1/analyze", json=_valid_body(), headers=_auth_header()
             )
         assert resp.json()["error"]["request_id"].startswith("req_")
+
+    @pytest.mark.asyncio
+    async def test_summary_413_documents_too_large(self, test_app):
+        test_app.state.orchestrator = FakeOrchestrator(
+            error=DocumentsTooLargeError(
+                "Too large", estimated_tokens=200_000, limit=100_000
+            )
+        )
+        async with _make_client(test_app) as c:
+            resp = await c.post(
+                "/v1/summarize",
+                json=_valid_summary_body(),
+                headers=_auth_header(),
+            )
+        assert resp.status_code == 413
+        assert resp.json()["error"]["code"] == "payload_too_large"
+
+    @pytest.mark.asyncio
+    async def test_summary_504_analysis_timeout(self, test_app):
+        test_app.state.orchestrator = FakeOrchestrator(
+            error=AnalysisTimeoutError("Deadline exceeded")
+        )
+        async with _make_client(test_app) as c:
+            resp = await c.post(
+                "/v1/summarize",
+                json=_valid_summary_body(),
+                headers=_auth_header(),
+            )
+        assert resp.status_code == 504
+        assert resp.json()["error"]["code"] == "analysis_timeout"
+
+    @pytest.mark.asyncio
+    async def test_summary_502_analysis_error(self, test_app):
+        test_app.state.orchestrator = FakeOrchestrator(
+            error=AnalysisError("LLM failure")
+        )
+        async with _make_client(test_app) as c:
+            resp = await c.post(
+                "/v1/summarize",
+                json=_valid_summary_body(),
+                headers=_auth_header(),
+            )
+        assert resp.status_code == 502
+        assert resp.json()["error"]["code"] == "analysis_unavailable"
+
+    @pytest.mark.asyncio
+    async def test_summary_500_unexpected_exception(self, test_app):
+        test_app.state.orchestrator = FakeOrchestrator(
+            error=RuntimeError("something broke")
+        )
+        async with _make_client(test_app) as c:
+            resp = await c.post(
+                "/v1/summarize",
+                json=_valid_summary_body(),
+                headers=_auth_header(),
+            )
+        assert resp.status_code == 500
+        assert resp.json()["error"]["code"] == "internal_error"
+
+    @pytest.mark.asyncio
+    async def test_summary_returns_configured_result(self, test_app):
+        test_app.state.orchestrator = FakeOrchestrator(
+            summarize_result=SummaryResult(
+                feedback_item_summaries=(
+                    FeedbackItemSummary(
+                        id="custom-1",
+                        title="Custom title",
+                        summary="- Custom point",
+                    ),
+                )
+            )
+        )
+        async with _make_client(test_app) as c:
+            resp = await c.post(
+                "/v1/summarize",
+                json=_valid_summary_body(
+                    feedback_items=[{"id": "custom-1", "text": "Input text"}]
+                ),
+                headers=_auth_header(),
+            )
+        assert resp.status_code == 200
+        assert resp.json()["feedback_item_summaries"] == [
+            {
+                "id": "custom-1",
+                "title": "Custom title",
+                "summary": "- Custom point",
+            }
+        ]
 
 
 # ------------------------------------------------------------------ #
