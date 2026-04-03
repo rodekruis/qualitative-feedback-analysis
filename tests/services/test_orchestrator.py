@@ -199,6 +199,36 @@ class TestNonTransientError:
         # Verify no retries: only one call was made
         assert len(fake_llm.calls) == 1
 
+    @pytest.mark.asyncio
+    async def test_summary_invalid_json_raises_analysis_error(self, settings):
+        fake_llm = FakeLLMPort(responses=[_make_llm_response(text="not json")])
+        orch = StandardOrchestrator(
+            llm=fake_llm,
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        with pytest.raises(AnalysisError, match="invalid JSON"):
+            await orch.summarize(_make_summary_request(), _future_deadline())
+
+    @pytest.mark.asyncio
+    async def test_summary_missing_required_fields_raises_analysis_error(
+        self, settings
+    ):
+        fake_llm = FakeLLMPort(
+            responses=[_make_llm_response(text='{"title":"Only title"}')]
+        )
+        orch = StandardOrchestrator(
+            llm=fake_llm,
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        with pytest.raises(AnalysisError, match="missing title or summary"):
+            await orch.summarize(_make_summary_request(), _future_deadline())
+
 
 class TestMetadataFiltering:
     @pytest.mark.asyncio

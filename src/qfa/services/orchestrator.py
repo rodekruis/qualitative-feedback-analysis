@@ -190,6 +190,14 @@ class StandardOrchestrator(OrchestratorPort):
                 raise AnalysisError(
                     "LLM returned invalid JSON for summary output"
                 ) from exc
+            if not isinstance(payload, dict):
+                raise AnalysisError("LLM returned invalid summary payload")
+            if not isinstance(payload.get("title"), str) or not isinstance(
+                payload.get("summary"), str
+            ):
+                raise AnalysisError(
+                    "LLM returned summary output missing title or summary"
+                )
 
             feedback_item_summaries.append(
                 FeedbackItemSummary(
