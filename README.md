@@ -156,6 +156,57 @@ The server starts on `http://0.0.0.0:8000`. For development with auto-reload:
 uv run uvicorn qfa.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+## API
+
+All API endpoints except `GET /v1/health` require a valid API key:
+
+```text
+Authorization: Bearer <key>
+```
+
+### `POST /v1/analyze`
+
+Analyzes a batch of feedback items and returns one aggregate analysis result.
+
+### `POST /v1/summarize`
+
+Summarizes each feedback item individually and returns a `title` and bullet-point
+`summary` for every submitted item.
+
+Example request:
+
+```bash
+curl -X POST http://localhost:8000/v1/summarize \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <key>" \
+  -d '{
+    "feedback_items": [
+      {
+        "id": "doc-001",
+        "text": "The water distribution was well organized but we had to wait for three hours.",
+        "metadata": {"region": "Eastern Province", "year": 2024}
+      }
+    ],
+    "output_language": "English",
+    "prompt": "Focus on operational issues and beneficiary experience."
+  }'
+```
+
+Example response:
+
+```json
+{
+  "feedback_item_summaries": [
+    {
+      "id": "doc-001",
+      "title": "Long Wait at Water Distribution",
+      "summary": "- Water distribution was organized\n- Waiting time was around three hours"
+    }
+  ],
+  "request_id": "req_example"
+}
+```
+
 # Development
 
 ## Setup
