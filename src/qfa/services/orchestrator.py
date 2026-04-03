@@ -160,9 +160,11 @@ class StandardOrchestrator(OrchestratorPort):
             When the LLM returns invalid output or another non-recoverable
             error occurs.
         """
+        self._check_injection(request.feedback_items)
+
         feedback_item_summaries: list[FeedbackItemSummary] = []
 
-        for index, feedback_item in enumerate(request.feedback_items, start=1):
+        for feedback_item in request.feedback_items:
             system_message = _DEFAULT_SUMMARIZATION_PROMPT
             if request.output_language:
                 system_message += (
@@ -172,6 +174,8 @@ class StandardOrchestrator(OrchestratorPort):
                 system_message += f"\nAdditional instructions: {request.prompt}"
 
             user_message = feedback_item.text
+
+            self._check_token_limit(system_message, user_message)
 
             response = await self._call_with_retries(
                 system_message=system_message,
