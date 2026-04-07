@@ -167,8 +167,8 @@ class TestTokenLimit:
         fake_llm = FakeLLMPort(
             responses=[
                 _make_llm_response(
-                    text='{"title":"Title","summary":"- Point","quality_score":0.8}'
-                )
+                    text='{"title":"Title","summary":"- Point"}',
+                ),
             ]
         )
         orch = StandardOrchestrator(
@@ -232,6 +232,70 @@ class TestNonTransientError:
 
         with pytest.raises(AnalysisError, match="missing title or summary"):
             await orch.summarize(_make_summary_request(), _future_deadline())
+
+    @pytest.mark.asyncio
+    async def test_summary_judge_happy_path(self, settings):
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(
+                    text='{"title":"Title","summary":"- Point one"}',
+                ),
+                _make_llm_response(text="0.82\n"),
+            ]
+        )
+        orch = StandardOrchestrator(
+            llm=fake_llm,
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        result = await orch.summarize(_make_summary_request(), _future_deadline())
+
+        assert len(fake_llm.calls) == 2
+        assert result.feedback_item_summaries[0].quality_score == 0.82
+        assert "Summary:" in fake_llm.calls[1]["system_message"]
+        assert "- Point one" in fake_llm.calls[1]["system_message"]
+
+    @pytest.mark.asyncio
+    async def test_judge_non_numeric_raises_analysis_error(self, settings):
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(text='{"title":"T","summary":"- S"}'),
+                _make_llm_response(text="not a float"),
+            ]
+        )
+        orch = StandardOrchestrator(
+            llm=fake_llm,
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        with pytest.raises(AnalysisError, match="invalid quality score"):
+            await orch.summarize(_make_summary_request(), _future_deadline())
+
+        assert len(fake_llm.calls) == 2
+
+    @pytest.mark.asyncio
+    async def test_judge_score_above_one_raises_analysis_error(self, settings):
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(text='{"title":"T","summary":"- S"}'),
+                _make_llm_response(text="1.5"),
+            ]
+        )
+        orch = StandardOrchestrator(
+            llm=fake_llm,
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        with pytest.raises(AnalysisError, match=r"outside 0\.0-1\.0"):
+            await orch.summarize(_make_summary_request(), _future_deadline())
+
+        assert len(fake_llm.calls) == 2
 
 
 class TestMetadataFiltering:
@@ -367,9 +431,7 @@ class TestInjectionSystemPrefix:
 
         fake_llm = FakeLLMPort(
             responses=[
-                _make_llm_response(
-                    text='{"title":"Title","summary":"- Point","quality_score":0.8}'
-                )
+                _make_llm_response(text='{"title":"Title","summary":"- Point"}'),
             ]
         )
         orch = StandardOrchestrator(
