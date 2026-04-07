@@ -175,3 +175,6 @@ config
 /objects
 /refs
 /api_keys.json
+/infra/.terraform/
+**/.memsearch/
+**/.terraform.lock.hcl

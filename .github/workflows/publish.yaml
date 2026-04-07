@@ -3,8 +3,9 @@
 #
 # What it does:
 #   1. Builds a Docker image and pushes it to ACR.
-#   2. Pushes app settings (from GitHub Secrets) to Azure.
-#   3. Deploys the container to Azure App Service.
+#   2. Deploys the container to Azure App Service.
+#
+# App settings are managed by Terraform, not this workflow.
 #
 # Can also be triggered manually via the Actions tab (workflow_dispatch).
 name: Deploy to Azure
@@ -14,6 +15,13 @@ on:
     types: [published]
   workflow_dispatch:
     inputs:
+      environment:
+        description: "Target environment"
+        type: choice
+        options:
+          - dev
+          - prd
+        default: dev
       ref:
         description: "Git ref to deploy (tag, branch, or SHA). Defaults to the default branch."
         required: false
@@ -27,7 +35,7 @@ env:
 
 jobs:
   deploy:
-    environment: production
+    environment: ${{ inputs.environment }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -51,19 +59,6 @@ jobs:
           docker push $IMAGE:$TAG
           docker push $IMAGE:latest
           echo "TAG=$TAG" >> $GITHUB_ENV
-
-      - name: Configure app settings
-        run: |
-          az webapp config appsettings set \
-            --name "${{ vars.AZ_APP_NAME }}" \
-            --resource-group "${{ vars.AZ_RESOURCE_GROUP }}" \
-            --settings \
-              LLM_PROVIDER="${{ vars.LLM_PROVIDER }}" \
-              LLM_MODEL="${{ vars.LLM_MODEL }}" \
-              LLM_API_VERSION="${{ vars.LLM_API_VERSION }}" \
-              LLM_AZURE_ENDPOINT="@Microsoft.KeyVault(SecretUri=https://${{ vars.AZ_KEYVAULT}}.vault.azure.net/secrets/llm-azure-endpoint)" \
-              LLM_API_KEY="@Microsoft.KeyVault(SecretUri=https://${{ vars.AZ_KEYVAULT}}.vault.azure.net/secrets/llm-api-key)" \
-              AUTH_API_KEYS="@Microsoft.KeyVault(SecretUri=https://${{ vars.AZ_KEYVAULT}}.vault.azure.net/secrets/auth-api-keys)"
 
       - name: Deploy container
         run: |
