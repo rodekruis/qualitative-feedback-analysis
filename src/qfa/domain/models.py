@@ -104,7 +104,8 @@ class FeedbackItemSummary(BaseModel):
     summary : str
         Generated bullet-point summary for the feedback item.
     quality_score : float
-        Model-estimated quality of the summary in the range 0.0-1.0.
+        Judge model score for summary quality (faithfulness, coverage, clarity)
+        in the range 0.0-1.0.
     """
 
     model_config = ConfigDict(frozen=True)

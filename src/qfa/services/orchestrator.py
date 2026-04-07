@@ -55,6 +55,48 @@ _DEFAULT_SUMMARIZATION_PROMPT = (
     "Use the same language as the input feedback item unless a target language is specified."
 )
 
+_JUDGE_PROMPT = """
+You are evaluating the quality of a summary.
+
+Source text:
+---
+{source_text}
+---
+
+Summary:
+---
+{summary}
+---
+
+Score the summary using three criteria. Each must be a float between 0 and 1.
+
+Faithfulness:
+1.0 = fully supported by source, no hallucinations
+0.5 = mostly correct, minor issues
+0.0 = major inaccuracies
+
+Coverage:
+1.0 = includes all key points
+0.5 = partially covers key points
+0.0 = misses most important points
+
+Clarity:
+1.0 = very clear and concise
+0.5 = somewhat clear
+0.0 = confusing or poorly written
+
+Compute the final score as:
+quality_score = 0.6 * faithfulness + 0.3 * coverage + 0.1 * clarity
+
+Output rules:
+- Return ONLY the final quality_score
+- Return a single float between 0 and 1
+- No JSON
+- No explanation
+- No extra text
+- Example output: 0.82
+"""
+
 #: Minimum time (seconds) required for an LLM attempt to be viable.
 _MINIMUM_ATTEMPT_WINDOW = 10.0
 
@@ -64,6 +106,27 @@ _INJECTION_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("null_byte", re.compile(r"\x00")),
     ("repeated_chars", re.compile(r"(.)\1{199,}")),
 ]
+
+_JUDGE_USER_MESSAGE = "."
+
+
+def _parse_judge_quality_score(raw: str) -> float:
+    """Parse a single float on the first line of the judge model output."""
+    line = raw.strip().split("\n", maxsplit=1)[0].strip()
+    try:
+        score = float(line)
+    except ValueError as exc:
+        raise AnalysisError("LLM judge returned invalid quality score") from exc
+    if not 0.0 <= score <= 1.0:
+        raise AnalysisError("LLM judge returned quality score outside 0.0-1.0")
+    return score
+
+
+def _build_judge_system_message(source_text: str, summary: str) -> str:
+    """Fill the judge prompt without str.format (source may contain ``{``)."""
+    return _JUDGE_PROMPT.replace("{source_text}", source_text).replace(
+        "{summary}", summary
+    )
 
 
 class StandardOrchestrator(OrchestratorPort):
@@ -180,7 +243,7 @@ class StandardOrchestrator(OrchestratorPort):
             user_message = feedback_item.text
 
             self._check_token_limit(system_message, user_message)
-
+            logger.info(f"{system_message}")
             response = await self._call_with_retries(
                 system_message=system_message,
                 user_message=user_message,
@@ -202,20 +265,24 @@ class StandardOrchestrator(OrchestratorPort):
                 raise AnalysisError(
                     "LLM returned summary output missing title or summary"
                 )
-            raw_qs = payload.get("quality_score")
-            if isinstance(raw_qs, bool) or not isinstance(raw_qs, (int, float)):
-                raise AnalysisError(
-                    "LLM returned summary output missing or invalid quality_score"
-                )
-            quality_score = float(raw_qs)
-            if not 0.0 <= quality_score <= 1.0:
-                raise AnalysisError("LLM returned quality_score outside 0.0-1.0")
+
+            summary_text = payload["summary"]
+            judge_system = _build_judge_system_message(feedback_item.text, summary_text)
+            self._check_token_limit(judge_system, _JUDGE_USER_MESSAGE)
+
+            judge_response = await self._call_with_retries(
+                system_message=judge_system,
+                user_message=_JUDGE_USER_MESSAGE,
+                tenant_id=request.tenant_id,
+                deadline=deadline,
+            )
+            quality_score = _parse_judge_quality_score(judge_response.result)
 
             feedback_item_summaries.append(
                 FeedbackItemSummary(
                     id=feedback_item.id,
                     title=payload["title"],
-                    summary=payload["summary"],
+                    summary=summary_text,
                     quality_score=quality_score,
                 )
             )
