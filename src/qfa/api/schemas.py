@@ -120,7 +120,20 @@ class SummarizeRequest(BaseModel):
                     "feedback_items": [
                         {
                             "id": "doc-001",
-                            "content": "The water distribution was well organized but we had to wait for three hours.",
+                            "content": (
+                                "After the storm damaged the main supply line, a water distribution "
+                                "point was set up near the schoolyard with ropes and signs so people "
+                                "knew where to queue. Volunteers explained the ration clearly - two "
+                                "jerrycans per family per day - and the process felt orderly compared "
+                                "to the chaos in the first days. The main problem was the waiting time: "
+                                "many of us stood in line for more than three hours in the sun, "
+                                "including elderly people and parents with small children, and some "
+                                "had to leave before reaching the front because of work or caring "
+                                "for relatives at home. A few argued that those who arrived earliest "
+                                "should not lose out when the team stopped for breaks. People "
+                                "appreciated that distribution was organized, but the long wait made "
+                                "it hard for everyone to benefit fairly."
+                            ),
                             "metadata": {
                                 "created": "2024-06-01T12:00:00Z",
                                 "feedback_item_id": "fi-001",
@@ -131,7 +144,21 @@ class SummarizeRequest(BaseModel):
                         },
                         {
                             "id": "doc-002",
-                            "content": "Medical staff were very professional. Medicine supply was insufficient.",
+                            "content": (
+                                "During the mobile clinic in the settlement after the floods, the "
+                                "medical staff treated people with respect and explained things "
+                                "clearly; several of us felt reassured even though we had waited most "
+                                "of the morning in the heat. The nurses worked steadily and the "
+                                "doctor listened properly before prescribing. What frustrated many "
+                                "families was that essential medicines ran out before midday - "
+                                "especially antibiotics and chronic medication for older people - so "
+                                "some had to leave with prescriptions but no drugs, and others were "
+                                "told to come back the next day without any guarantee that stock "
+                                "would arrive. A few parents said their children's fever had still "
+                                "not been checked by the time the team packed up. Overall the care "
+                                "was professional, but unless supplies match the number of people, "
+                                "the visit feels incomplete and people lose trust in follow-up."
+                            ),
                             "metadata": {
                                 "created": "2024-06-02T09:30:00Z",
                                 "feedback_item_id": "fi-002",
@@ -165,7 +192,7 @@ class FeedbackItemSummary(BaseModel):
     summary : str
         Generated bullet-point summary for the feedback item.
     quality_score : float
-        Estimated quality of the summary in the range 0.0-1.0.
+        Judge score for the summary text only, in the range 0.0-1.0.
     """
 
     id: str
