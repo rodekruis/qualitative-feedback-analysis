@@ -1,0 +1,87 @@
+# Terraform plan/apply workflow.
+#
+# Triggers:
+#   - Automatically runs `plan` on any PR that touches infra/
+#   - Can also be triggered manually via the Actions tab
+#
+# Usage (manual):
+#   1. Select environment (dev or prd)
+#   2. Select command (plan or apply)
+#   3. Run from the Actions tab
+name: Terraform
+
+on:
+  push:
+    paths:
+      - "infra/**"
+  pull_request:
+    paths:
+      - "infra/**"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment (Terraform workspace)"
+        type: choice
+        options:
+          - dev
+          - prd
+        default: dev
+      command:
+        description: "Terraform command to run"
+        type: choice
+        options:
+          - plan
+          - apply
+        default: plan
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  terraform:
+    environment: ${{ inputs.environment || 'dev' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZ_CLIENT_ID }}
+          tenant-id: ${{ vars.AZ_TENANT_ID }}
+          subscription-id: ${{ vars.AZ_SUBSCRIPTION_ID }}
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform init
+        run: terraform init
+        env:
+          ARM_USE_OIDC: true
+
+      - name: Select workspace
+        run: terraform workspace select ${{ inputs.environment || 'dev' }}
+        env:
+          ARM_USE_OIDC: true
+
+      - name: Terraform plan
+        if: ${{ inputs.command != 'apply' }}
+        run: terraform plan
+        env:
+          ARM_USE_OIDC: true
+          TF_VAR_subscription_id: ${{ vars.AZ_SUBSCRIPTION_ID }}
+          TF_VAR_tenant_id: ${{ vars.AZ_TENANT_ID }}
+          TF_VAR_resource_group_name: ${{ vars.AZ_RESOURCE_GROUP }}
+
+      - name: Terraform apply
+        if: inputs.command == 'apply'
+        run: terraform apply -auto-approve
+        env:
+          ARM_USE_OIDC: true
+          TF_VAR_subscription_id: ${{ vars.AZ_SUBSCRIPTION_ID }}
+          TF_VAR_tenant_id: ${{ vars.AZ_TENANT_ID }}
+          TF_VAR_resource_group_name: ${{ vars.AZ_RESOURCE_GROUP }}
