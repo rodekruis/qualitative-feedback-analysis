@@ -45,11 +45,12 @@ _SYSTEM_MESSAGE_TEMPLATE = (
 
 _DEFAULT_SUMMARIZATION_PROMPT = (
     "Summarize the feedback item as concise bullet points.\n"
-    "Also create a short descriptive title.\n"
-    "Assign quality_score: a float from 0.0 to 1.0 for how well the summary "
-    "captures the feedback (1.0 = fully faithful and complete).\n"
+    "Strict Constraint: The summary must be extremely concise, using no more than 3-5 brief bullet points.\n"
+    "Constraint: Each bullet point should be a single sentence fragment focusing only on the core sentiment or issue.\n"
+    "Also create a short, 3-5 word descriptive title.\n"
+    "Do not output a quality score; evaluation is done separately.\n"
     "Return valid JSON with exactly these fields: "
-    '{"title": "...", "summary": "- point 1\\n- point 2", "quality_score": 0.0}.\n'
+    '{"title": "...", "summary": "- point 1\\n- point 2"}.\n'
     "Do not include markdown code fences.\n"
     "Use the same language as the input feedback item unless a target language is specified."
 )
