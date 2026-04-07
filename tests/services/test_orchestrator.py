@@ -165,7 +165,11 @@ class TestTokenLimit:
         )
 
         fake_llm = FakeLLMPort(
-            responses=[_make_llm_response(text='{"title":"Title","summary":"- Point"}')]
+            responses=[
+                _make_llm_response(
+                    text='{"title":"Title","summary":"- Point","quality_score":0.8}'
+                )
+            ]
         )
         orch = StandardOrchestrator(
             llm=fake_llm,
@@ -362,7 +366,11 @@ class TestInjectionSystemPrefix:
         )
 
         fake_llm = FakeLLMPort(
-            responses=[_make_llm_response(text='{"title":"Title","summary":"- Point"}')]
+            responses=[
+                _make_llm_response(
+                    text='{"title":"Title","summary":"- Point","quality_score":0.8}'
+                )
+            ]
         )
         orch = StandardOrchestrator(
             llm=fake_llm,

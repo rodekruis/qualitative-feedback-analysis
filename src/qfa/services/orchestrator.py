@@ -46,7 +46,10 @@ _SYSTEM_MESSAGE_TEMPLATE = (
 _DEFAULT_SUMMARIZATION_PROMPT = (
     "Summarize the feedback item as concise bullet points.\n"
     "Also create a short descriptive title.\n"
-    'Return valid JSON with exactly these fields: {"title": "...", "summary": "- point 1\\n- point 2"}.\n'
+    "Assign quality_score: a float from 0.0 to 1.0 for how well the summary "
+    "captures the feedback (1.0 = fully faithful and complete).\n"
+    "Return valid JSON with exactly these fields: "
+    '{"title": "...", "summary": "- point 1\\n- point 2", "quality_score": 0.0}.\n'
     "Do not include markdown code fences.\n"
     "Use the same language as the input feedback item unless a target language is specified."
 )
@@ -198,12 +201,21 @@ class StandardOrchestrator(OrchestratorPort):
                 raise AnalysisError(
                     "LLM returned summary output missing title or summary"
                 )
+            raw_qs = payload.get("quality_score")
+            if isinstance(raw_qs, bool) or not isinstance(raw_qs, (int, float)):
+                raise AnalysisError(
+                    "LLM returned summary output missing or invalid quality_score"
+                )
+            quality_score = float(raw_qs)
+            if not 0.0 <= quality_score <= 1.0:
+                raise AnalysisError("LLM returned quality_score outside 0.0-1.0")
 
             feedback_item_summaries.append(
                 FeedbackItemSummary(
                     id=feedback_item.id,
                     title=payload["title"],
                     summary=payload["summary"],
+                    quality_score=quality_score,
                 )
             )
         return SummaryResult(feedback_item_summaries=tuple(feedback_item_summaries))

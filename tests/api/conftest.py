@@ -52,6 +52,7 @@ class FakeOrchestrator(OrchestratorPort):
                     id="doc-1",
                     title="Fake summary title",
                     summary="- Fake summary point",
+                    quality_score=0.9,
                 ),
             )
         )
