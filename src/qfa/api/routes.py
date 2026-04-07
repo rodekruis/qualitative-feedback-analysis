@@ -14,6 +14,7 @@ from qfa.api.schemas import (
     AnalyzeResponse,
     FeedbackItemSummary,
     HealthResponse,
+    SummarizeFeedbackMetadata,
     SummarizeRequest,
     SummarizeResponse,
 )
@@ -28,6 +29,14 @@ from qfa.domain.models import (
 from qfa.domain.ports import OrchestratorPort
 
 router = APIRouter()
+
+
+def _summarize_metadata_to_domain(
+    meta: SummarizeFeedbackMetadata,
+) -> dict[str, str | int | float | bool]:
+    """Flatten summarize metadata into the domain feedback metadata dict."""
+    raw = meta.model_dump(mode="json")
+    return {k: v for k, v in raw.items() if isinstance(v, (str, int, float, bool))}
 
 
 @router.post("/v1/analyze", response_model=AnalyzeResponse, status_code=200)
@@ -100,15 +109,15 @@ async def summarize(
     Returns
     -------
     SummarizeResponse
-        The per-feedback-item summaries with request ID.
+        The per-feedback-item titles and summaries.
     """
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
     feedback_items = tuple(
         FeedbackItem(
             id=item.id,
-            text=item.text,
-            metadata=item.metadata,
+            text=item.content,
+            metadata=_summarize_metadata_to_domain(item.metadata),
         )
         for item in body.feedback_items
     )
@@ -122,11 +131,10 @@ async def summarize(
     result = await orchestrator.summarize(domain_request, deadline)
 
     return SummarizeResponse(
-        feedback_item_summaries=[
+        summaries=[
             FeedbackItemSummary(id=item.id, title=item.title, summary=item.summary)
             for item in result.feedback_item_summaries
         ],
-        request_id=request.state.request_id,
     )
 
 

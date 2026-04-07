@@ -33,18 +33,30 @@ def _make_client(app):
     )
 
 
-def _valid_summary_body(
-    feedback_items=None,
-    output_language="English",
-    prompt="Focus on operational issues.",
-):
-    if feedback_items is None:
-        feedback_items = [{"id": "doc-1", "text": "Great service!", "metadata": {}}]
-    return {
-        "feedback_items": feedback_items,
-        "output_language": output_language,
-        "prompt": prompt,
+def _summary_metadata(**overrides):
+    base = {
+        "created": "2024-01-15T10:00:00+00:00",
+        "feedback_item_id": "fi-doc-1",
+        "coding_level_1": "l1",
+        "coding_level_2": "l2",
+        "coding_level_3": "l3",
     }
+    base.update(overrides)
+    return base
+
+
+def _valid_summary_body(**overrides):
+    body = {
+        "feedback_items": [
+            {
+                "id": "doc-1",
+                "content": "Great service!",
+                "metadata": _summary_metadata(),
+            },
+        ],
+    }
+    body.update(overrides)
+    return body
 
 
 # ------------------------------------------------------------------ #
@@ -107,8 +119,7 @@ class TestSummarizeSuccess:
         )
         assert resp.status_code == 200
         data = resp.json()
-        assert "feedback_item_summaries" in data
-        assert "request_id" in data
+        assert "summaries" in data
 
     @pytest.mark.asyncio
     async def test_response_contains_summary_items(self, client):
@@ -116,17 +127,18 @@ class TestSummarizeSuccess:
             "/v1/summarize", json=_valid_summary_body(), headers=_auth_header()
         )
         assert resp.status_code == 200
-        summary_item = resp.json()["feedback_item_summaries"][0]
+        summary_item = resp.json()["summaries"][0]
         assert summary_item["id"] == "doc-1"
         assert "title" in summary_item
         assert "summary" in summary_item
 
     @pytest.mark.asyncio
-    async def test_x_request_id_matches_body(self, client):
+    async def test_x_request_id_header_on_summarize(self, client):
         resp = await client.post(
             "/v1/summarize", json=_valid_summary_body(), headers=_auth_header()
         )
-        assert resp.headers["x-request-id"] == resp.json()["request_id"]
+        assert "x-request-id" in resp.headers
+        assert resp.headers["x-request-id"].startswith("req_")
 
 
 # ------------------------------------------------------------------ #
@@ -238,10 +250,14 @@ class TestValidation:
         assert resp.json()["error"]["code"] == "validation_error"
 
     @pytest.mark.asyncio
-    async def test_summary_422_empty_feedback_text(self, client):
+    async def test_summary_422_empty_feedback_content(self, client):
         resp = await client.post(
             "/v1/summarize",
-            json=_valid_summary_body(feedback_items=[{"id": "1", "text": ""}]),
+            json=_valid_summary_body(
+                feedback_items=[
+                    {"id": "1", "content": "", "metadata": _summary_metadata()},
+                ],
+            ),
             headers=_auth_header(),
         )
         assert resp.status_code == 422
@@ -395,12 +411,20 @@ class TestErrorMapping:
             resp = await c.post(
                 "/v1/summarize",
                 json=_valid_summary_body(
-                    feedback_items=[{"id": "custom-1", "text": "Input text"}]
+                    feedback_items=[
+                        {
+                            "id": "custom-1",
+                            "content": "Input text",
+                            "metadata": _summary_metadata(
+                                feedback_item_id="fi-custom-1"
+                            ),
+                        },
+                    ],
                 ),
                 headers=_auth_header(),
             )
         assert resp.status_code == 200
-        assert resp.json()["feedback_item_summaries"] == [
+        assert resp.json()["summaries"] == [
             {
                 "id": "custom-1",
                 "title": "Custom title",

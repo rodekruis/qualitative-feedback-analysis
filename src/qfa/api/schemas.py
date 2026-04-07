@@ -4,6 +4,8 @@ These Pydantic models are separate from the domain models so that the
 HTTP contract can evolve independently of the core domain.
 """
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -80,15 +82,33 @@ class AnalyzeResponse(BaseModel):
     request_id: str
 
 
+class SummarizeFeedbackMetadata(BaseModel):
+    """Metadata for a feedback item in a summarize request."""
+
+    created: datetime
+    feedback_item_id: str
+    coding_level_1: str
+    coding_level_2: str
+    coding_level_3: str
+
+
+class SummarizeFeedbackItem(BaseModel):
+    """A single feedback item for ``POST /v1/summarize``."""
+
+    id: str
+    content: str = Field(min_length=1, max_length=100_000)
+    metadata: SummarizeFeedbackMetadata
+
+
 class SummarizeRequest(BaseModel):
     """Request body for the ``POST /v1/summarize`` endpoint.
 
     Attributes
     ----------
-    feedback_items : list[FeedbackItemInput]
+    feedback_items : list[SummarizeFeedbackItem]
         Non-empty list of feedback items to summarize individually.
     output_language : str | None
-        Optional target language for the summaries.
+        Optional target language for summaries and titles for every item.
     prompt : str | None
         Optional extra instruction appended to the default summarize prompt.
     """
@@ -100,13 +120,25 @@ class SummarizeRequest(BaseModel):
                     "feedback_items": [
                         {
                             "id": "doc-001",
-                            "text": "The water distribution was well organized but we had to wait for three hours.",
-                            "metadata": {"region": "Eastern Province", "year": 2024},
+                            "content": "The water distribution was well organized but we had to wait for three hours.",
+                            "metadata": {
+                                "created": "2024-06-01T12:00:00Z",
+                                "feedback_item_id": "fi-001",
+                                "coding_level_1": "Water",
+                                "coding_level_2": "Distribution",
+                                "coding_level_3": "Waiting times",
+                            },
                         },
                         {
                             "id": "doc-002",
-                            "text": "Medical staff were very professional. Medicine supply was insufficient.",
-                            "metadata": {"region": "Northern Province", "year": 2024},
+                            "content": "Medical staff were very professional. Medicine supply was insufficient.",
+                            "metadata": {
+                                "created": "2024-06-02T09:30:00Z",
+                                "feedback_item_id": "fi-002",
+                                "coding_level_1": "Health",
+                                "coding_level_2": "Staff",
+                                "coding_level_3": "Supplies",
+                            },
                         },
                     ],
                     "output_language": "English",
@@ -116,7 +148,7 @@ class SummarizeRequest(BaseModel):
         },
     }
 
-    feedback_items: list[FeedbackItemInput] = Field(min_length=1)
+    feedback_items: list[SummarizeFeedbackItem] = Field(min_length=1)
     output_language: str | None = None
     prompt: str | None = Field(default=None, max_length=4_000)
 
@@ -144,14 +176,11 @@ class SummarizeResponse(BaseModel):
 
     Attributes
     ----------
-    feedback_item_summaries : list[FeedbackItemSummary]
-        Per-feedback-item summaries returned by the service.
-    request_id : str
-        Unique identifier for this request.
+    summaries : list[FeedbackItemSummary]
+        Title and summary for each submitted feedback item.
     """
 
-    feedback_item_summaries: list[FeedbackItemSummary]
-    request_id: str
+    summaries: list[FeedbackItemSummary]
 
 
 class HealthResponse(BaseModel):
