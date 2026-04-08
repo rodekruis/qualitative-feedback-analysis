@@ -243,7 +243,6 @@ class StandardOrchestrator(OrchestratorPort):
             user_message = feedback_item.text
 
             self._check_token_limit(system_message, user_message)
-            logger.info(f"{system_message}")
             response = await self._call_with_retries(
                 system_message=system_message,
                 user_message=user_message,
