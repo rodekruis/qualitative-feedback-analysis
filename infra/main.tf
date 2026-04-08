@@ -3,6 +3,7 @@ locals {
   app_name              = "qfa-${local.env}-backend"
   plan_name             = "qfa-${local.env}-plan" # Azure Web Service plan name
   acr_name              = "qfacontainerreg"       # does not support dashes
+  vnet_name             = "qfa-${local.env}-vnet"       # does not support dashes
   keyvault_name         = "qfa-${local.env}-keyvault"
   managed_identity_name = "qfa-${local.env}-github"
   github_environment    = local.env # == "prd" ? "prd" : "dev"
@@ -26,6 +27,18 @@ data "azurerm_container_registry" "acr" {
   resource_group_name = data.azurerm_resource_group.main.name
 }
 
+
+# =============================================================================
+# Shared Networking
+# =============================================================================
+
+resource "azurerm_virtual_network" "qfa_vnet" {
+  name = local.vnet_name
+  location = data.azurerm_resource_group.main.location
+  resource_group_name = data.azurerm_resource_group.main.name
+  address_space = ["10.0.0.0/16"]
+}
+
 # =============================================================================
 # Key Vault
 # =============================================================================
@@ -41,19 +54,12 @@ resource "azurerm_key_vault" "main" {
   purge_protection_enabled   = false
 }
 
-# App Service identity: read secrets from Key Vault
-resource "azurerm_role_assignment" "app_keyvault_secrets" {
-  scope                = azurerm_key_vault.main.id
-  role_definition_name = "Key Vault Secrets User"
-  principal_id         = azurerm_linux_web_app.backend.identity[0].principal_id
-}
-
 # Key Vault secret names are declared here, but VALUES are managed out-of-band
 # (via az keyvault secret set / the update_auth_api_keys.py script).
 # This avoids storing secrets in Terraform state.
 
 # =============================================================================
-# App Service Plan
+# App Service
 # =============================================================================
 
 resource "azurerm_service_plan" "main" {
@@ -64,9 +70,19 @@ resource "azurerm_service_plan" "main" {
   sku_name            = "B1"
 }
 
-# =============================================================================
-# App Service (Linux container)
-# =============================================================================
+resource "azurerm_subnet" "qfa_backend_snet" {
+  resource_group_name = data.azurerm_resource_group.main.name
+  virtual_network_name = azurerm_virtual_network.qfa_vnet.name
+  name = "qfa-${local.env}-backend-snet"
+  address_prefixes = ["10.0.1.0/24"]
+  delegation {
+    name = "app-service-delegation"
+    service_delegation {
+      name = "Microsoft.Web/serverFarms"
+      actions = ["Microsoft.Network/virtualNetworks/subnets/action"]
+    }
+  }
+}
 
 resource "azurerm_linux_web_app" "backend" {
   name                                           = local.app_name
@@ -76,6 +92,7 @@ resource "azurerm_linux_web_app" "backend" {
   https_only                                     = true
   ftp_publish_basic_authentication_enabled       = false
   webdeploy_publish_basic_authentication_enabled = false
+  virtual_network_subnet_id = azurerm_subnet.qfa_backend_snet.id
 
   identity {
     type = "SystemAssigned"
@@ -122,6 +139,14 @@ resource "azurerm_linux_web_app" "backend" {
   }
 }
 
+# App Service identity: read secrets from Key Vault
+resource "azurerm_role_assignment" "app_keyvault_secrets" {
+  scope                = azurerm_key_vault.main.id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_linux_web_app.backend.identity[0].principal_id
+}
+
+
 # Grant the App Service pull access to ACR
 resource "azurerm_role_assignment" "app_acr_repository_reader" {
   scope                = data.azurerm_container_registry.acr.id
@@ -129,16 +154,18 @@ resource "azurerm_role_assignment" "app_acr_repository_reader" {
   principal_id         = azurerm_linux_web_app.backend.identity[0].principal_id
 }
 
+
+
+# =============================================================================
+# GitHub CI/CD
+# =============================================================================
+
 # Grant GitHub Actions write access to ACR (for CI/CD image builds)
 resource "azurerm_role_assignment" "github_acr_repository_writer" {
   scope                = data.azurerm_container_registry.acr.id
   role_definition_name = "Container Registry Repository Writer"
   principal_id         = azurerm_user_assigned_identity.github.principal_id
 }
-
-# =============================================================================
-# Managed Identity for GitHub Actions (OIDC)
-# =============================================================================
 
 resource "azurerm_user_assigned_identity" "github" {
   name                = local.managed_identity_name
@@ -161,3 +188,54 @@ resource "azurerm_role_assignment" "github_contributor" {
   principal_id         = azurerm_user_assigned_identity.github.principal_id
 }
 
+# =============================================================================
+# Database
+# =============================================================================
+# resource "azurerm_subnet" "qfa_db_snet" {
+#   resource_group_name = data.azurerm_resource_group.main.name
+#   virtual_network_name = azurerm_virtual_network.qfa_vnet.name
+#   name = "qfa-${local.env}-db-snet"
+#   address_prefixes = ["10.0.2.0/24"]
+#   delegation {
+#     name = "qfa-${local.env}-db-delegation"
+#     service_delegation {
+#       name = "Microsoft.DBforPostgreSQL/flexibleServers"
+#       actions = ["Microsoft.Network/virtualNetworks/subnets/join/action"]
+#     }
+#   }
+# }
+#
+# resource "azurerm_private_dns_zone" "private_dns" {
+#   resource_group_name = data.azurerm_resource_group.main.name
+#   name = "qfa-${local.env}.postgres.database.azure.com"
+# }
+#
+# resource "azurerm_private_dns_zone_virtual_uetwork_link" "postgres_vnet_link" {
+#   name = "qfa-${local.env}-vnet-link"
+#   private_dns_zone_name = azurerm_private_dns_zone.private_dns.name
+#   virtual_network_id = azurerm_virtual_network.qfa_vnet.id
+#   resource_group_name = data.azurerm_resource_group.main.name
+# }
+
+# resource "azurerm_postgresql_flexible_server" "db" {
+#   location            = data.azurerm_resource_group.main.location
+#   name                = "qfa-${local.env}-db"
+#   resource_group_name = data.azurerm_resource_group.main.name
+#   version = "16"
+#   delegated_subnet_id = azurerm_subnet.qfa_db_snet.id
+#   private_dns_zone_id = azurerm_private_dns_zone.private_dns.id
+#   public_network_access_enabled = false
+#   zone = "1"
+#
+#   storage_mb = 32768
+#   storage_tier = "P4"
+#
+#   sku_name = "B_Standard_B1ms"
+#   depends_on = [azurerm_private_dns_zone_virtual_network_link.postgres_vnet_link]
+#
+#   backup_retention_days = 30
+#
+#   lifecycle {
+#     prevent_destroy = true
+#   }
+# }
