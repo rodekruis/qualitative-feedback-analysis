@@ -13,7 +13,7 @@ from qfa.domain.errors import (
 from qfa.domain.models import (
     AnalysisRequest,
     AnalysisResult,
-    FeedbackDocument,
+    FeedbackItem,
     LLMResponse,
     TenantApiKey,
 )
@@ -27,7 +27,7 @@ __all__ = [
     "AuthenticationError",
     "DocumentsTooLargeError",
     "DomainError",
-    "FeedbackDocument",
+    "FeedbackItem",
     "LLMError",
     "LLMPort",
     "LLMRateLimitError",

@@ -12,16 +12,36 @@ from qfa.api.dependencies import (
 from qfa.api.schemas import (
     AnalyzeRequest,
     AnalyzeResponse,
+    FeedbackItemSummary,
     HealthResponse,
+    SummarizeFeedbackMetadata,
+    SummarizeRequest,
+    SummarizeResponse,
 )
 from qfa.domain.models import (
     AnalysisRequest,
-    FeedbackDocument,
+    FeedbackItem,
     TenantApiKey,
+)
+from qfa.domain.models import (
+    SummaryRequest as DomainSummaryRequest,
 )
 from qfa.domain.ports import OrchestratorPort
 
 router = APIRouter()
+
+
+def _summarize_metadata_to_domain(
+    meta: SummarizeFeedbackMetadata,
+) -> dict[str, str | int | float | bool]:
+    """Flatten summarize metadata into the domain feedback metadata dict."""
+    return {
+        "created": meta.model_dump(mode="json")["created"],
+        "feedback_item_id": meta.feedback_item_id,
+        "coding_level_1": meta.coding_level_1,
+        "coding_level_2": meta.coding_level_2,
+        "coding_level_3": meta.coding_level_3,
+    }
 
 
 @router.post("/v1/analyze", response_model=AnalyzeResponse, status_code=200)
@@ -52,7 +72,7 @@ async def analyze(
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
     domain_documents = tuple(
-        FeedbackDocument(id=doc.id, text=doc.text, metadata=doc.metadata)
+        FeedbackItem(id=doc.id, text=doc.text, metadata=doc.metadata)
         for doc in body.documents
     )
 
@@ -68,6 +88,58 @@ async def analyze(
         analysis=result.result,
         document_count=len(body.documents),
         request_id=request.state.request_id,
+    )
+
+
+@router.post("/v1/summarize", response_model=SummarizeResponse, status_code=200)
+async def summarize(
+    body: SummarizeRequest,
+    request: Request,
+    tenant: TenantApiKey = Depends(authenticate_request),
+    orchestrator: OrchestratorPort = Depends(get_orchestrator),
+) -> SummarizeResponse:
+    """Summarize each submitted feedback item individually.
+
+    Parameters
+    ----------
+    body : SummarizeRequest
+        The request body containing feedback items and summarization options.
+    request : Request
+        The incoming HTTP request.
+    tenant : TenantApiKey
+        The authenticated tenant, injected via dependency.
+    orchestrator : OrchestratorPort
+        The orchestrator service, injected via dependency.
+
+    Returns
+    -------
+    SummarizeResponse
+        The per-feedback-item titles and summaries.
+    """
+    deadline = datetime.now(UTC) + timedelta(seconds=120)
+
+    feedback_items = tuple(
+        FeedbackItem(
+            id=item.id,
+            text=item.content,
+            metadata=_summarize_metadata_to_domain(item.metadata),
+        )
+        for item in body.feedback_items
+    )
+    domain_request = DomainSummaryRequest(
+        feedback_items=feedback_items,
+        output_language=body.output_language,
+        prompt=body.prompt,
+        tenant_id=tenant.tenant_id,
+    )
+
+    result = await orchestrator.summarize(domain_request, deadline)
+
+    return SummarizeResponse(
+        summaries=[
+            FeedbackItemSummary(id=item.id, title=item.title, summary=item.summary)
+            for item in result.feedback_item_summaries
+        ],
     )
 
 

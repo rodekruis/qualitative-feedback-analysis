@@ -10,6 +10,8 @@ from qfa.domain.models import (
     AnalysisRequest,
     AnalysisResult,
     LLMResponse,
+    SummaryRequest,
+    SummaryResult,
 )
 
 
@@ -89,5 +91,26 @@ class OrchestratorPort(Protocol):
             When estimated tokens for documents exceed the configured limit.
         AnalysisError
             For non-recoverable LLM failures.
+        """
+        ...
+
+    async def summarize(
+        self,
+        request: SummaryRequest,
+        deadline: datetime,
+    ) -> SummaryResult:
+        """Summarize each submitted feedback item individually.
+
+        Parameters
+        ----------
+        request : SummaryRequest
+            The summarization request containing feedback items and options.
+        deadline : datetime
+            Absolute deadline by which summarization must complete.
+
+        Returns
+        -------
+        SummaryResult
+            Per-feedback-item summaries and titles.
         """
         ...

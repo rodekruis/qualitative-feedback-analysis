@@ -149,6 +149,23 @@ The server starts on `http://0.0.0.0:8000`. For development with auto-reload:
 uv run uvicorn qfa.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+## API
+
+All API endpoints except `GET /v1/health` require a valid API key:
+
+```text
+Authorization: Bearer <key>
+```
+
+### `POST /v1/analyze`
+
+Analyzes a batch of feedback items and returns one aggregate analysis result.
+
+### `POST /v1/summarize`
+
+Summarizes each feedback item individually and returns a `title` and bullet-point
+`summary` for every submitted item.
+
 # Development
 
 ## Setup

@@ -6,17 +6,17 @@ All models are immutable (frozen) Pydantic models per ADR-001.
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 
-class FeedbackDocument(BaseModel):
-    """A single feedback document submitted for analysis.
+class FeedbackItem(BaseModel):
+    """A single feedback item submitted for analysis.
 
     Attributes
     ----------
     id : str
-        Unique identifier for the document.
+        Unique identifier for the feedback item.
     text : str
         The feedback text content. Must be between 1 and 100,000 characters.
     metadata : dict[str, str | int | float | bool]
-        Optional metadata key-value pairs associated with the document.
+        Optional metadata key-value pairs associated with the feedback item.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -27,12 +27,12 @@ class FeedbackDocument(BaseModel):
 
 
 class AnalysisRequest(BaseModel):
-    """A request to analyze one or more feedback documents.
+    """A request to analyze one or more feedback items.
 
     Attributes
     ----------
-    documents : tuple[FeedbackDocument, ...]
-        Non-empty tuple of feedback documents to analyze.
+    documents : tuple[FeedbackItem, ...]
+        Non-empty tuple of feedback items to analyze.
     prompt : str
         The analysis prompt. Must be between 1 and 4000 characters.
     tenant_id : str
@@ -41,7 +41,7 @@ class AnalysisRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    documents: tuple[FeedbackDocument, ...] = Field(min_length=1)
+    documents: tuple[FeedbackItem, ...] = Field(min_length=1)
     prompt: str = Field(min_length=1, max_length=4000)
     tenant_id: str
 
@@ -67,6 +67,63 @@ class AnalysisResult(BaseModel):
     model: str
     prompt_tokens: int
     completion_tokens: int
+
+
+class SummaryRequest(BaseModel):
+    """A request to summarize one or more feedback items individually.
+
+    Attributes
+    ----------
+    feedback_items : tuple[FeedbackItem, ...]
+        Non-empty tuple of feedback items to summarize.
+    output_language : str | None
+        Optional target language for all summaries.
+    prompt : str | None
+        Optional extra instruction appended to the default summarize prompt.
+    tenant_id : str
+        Tenant identifier, injected by the auth layer.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    feedback_items: tuple[FeedbackItem, ...] = Field(min_length=1)
+    output_language: str | None = None
+    prompt: str | None = Field(default=None, max_length=4000)
+    tenant_id: str
+
+
+class FeedbackItemSummary(BaseModel):
+    """Summary output for a single feedback item.
+
+    Attributes
+    ----------
+    id : str
+        Identifier of the source feedback item.
+    title : str
+        Generated short title for the feedback item.
+    summary : str
+        Generated bullet-point summary for the feedback item.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    title: str
+    summary: str
+
+
+class SummaryResult(BaseModel):
+    """The result of summarizing multiple feedback items individually.
+
+    Attributes
+    ----------
+    feedback_item_summaries : tuple[FeedbackItemSummary, ...]
+        Per-feedback-item summaries returned by the summarize flow.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    feedback_item_summaries: tuple[FeedbackItemSummary, ...]
 
 
 class LLMResponse(BaseModel):

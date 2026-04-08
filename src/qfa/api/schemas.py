@@ -4,20 +4,22 @@ These Pydantic models are separate from the domain models so that the
 HTTP contract can evolve independently of the core domain.
 """
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
-class DocumentInput(BaseModel):
-    """A single document in an analysis request.
+class FeedbackItemInput(BaseModel):
+    """A single feedback item in an analysis request.
 
     Attributes
     ----------
     id : str
-        Unique identifier for the document.
+        Unique identifier for the feedback item.
     text : str
         The feedback text content. Must be between 1 and 100,000 characters.
     metadata : dict[str, str | int | float | bool]
-        Optional metadata key-value pairs associated with the document.
+        Optional metadata key-value pairs associated with the feedback item.
     """
 
     id: str
@@ -30,8 +32,8 @@ class AnalyzeRequest(BaseModel):
 
     Attributes
     ----------
-    documents : list[DocumentInput]
-        Non-empty list of feedback documents to analyze.
+    documents : list[FeedbackItemInput]
+        Non-empty list of feedback items to analyze.
     prompt : str
         The analysis prompt. Must be between 1 and 4,000 characters.
     """
@@ -58,7 +60,7 @@ class AnalyzeRequest(BaseModel):
         },
     }
 
-    documents: list[DocumentInput] = Field(min_length=1)
+    documents: list[FeedbackItemInput] = Field(min_length=1)
     prompt: str = Field(min_length=1, max_length=4_000)
 
 
@@ -78,6 +80,107 @@ class AnalyzeResponse(BaseModel):
     analysis: str
     document_count: int
     request_id: str
+
+
+class SummarizeFeedbackMetadata(BaseModel):
+    """Metadata for a feedback item in a summarize request."""
+
+    created: datetime
+    feedback_item_id: str
+    coding_level_1: str
+    coding_level_2: str
+    coding_level_3: str
+
+
+class SummarizeFeedbackItem(BaseModel):
+    """A single feedback item for ``POST /v1/summarize``."""
+
+    id: str
+    content: str = Field(min_length=1, max_length=100_000)
+    metadata: SummarizeFeedbackMetadata
+
+
+class SummarizeRequest(BaseModel):
+    """Request body for the ``POST /v1/summarize`` endpoint.
+
+    Attributes
+    ----------
+    feedback_items : list[SummarizeFeedbackItem]
+        Non-empty list of feedback items to summarize individually.
+    output_language : str | None
+        Optional target language for summaries and titles for every item.
+    prompt : str | None
+        Optional extra instruction appended to the default summarize prompt.
+    """
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "feedback_items": [
+                        {
+                            "id": "doc-001",
+                            "content": "The water distribution was well organized but we had to wait for three hours.",
+                            "metadata": {
+                                "created": "2024-06-01T12:00:00Z",
+                                "feedback_item_id": "fi-001",
+                                "coding_level_1": "Water",
+                                "coding_level_2": "Distribution",
+                                "coding_level_3": "Waiting times",
+                            },
+                        },
+                        {
+                            "id": "doc-002",
+                            "content": "Medical staff were very professional. Medicine supply was insufficient.",
+                            "metadata": {
+                                "created": "2024-06-02T09:30:00Z",
+                                "feedback_item_id": "fi-002",
+                                "coding_level_1": "Health",
+                                "coding_level_2": "Staff",
+                                "coding_level_3": "Supplies",
+                            },
+                        },
+                    ],
+                    "output_language": "English",
+                    "prompt": "Focus on operational issues and beneficiary experience.",
+                },
+            ],
+        },
+    }
+
+    feedback_items: list[SummarizeFeedbackItem] = Field(min_length=1)
+    output_language: str | None = None
+    prompt: str | None = Field(default=None, max_length=4_000)
+
+
+class FeedbackItemSummary(BaseModel):
+    """Summary response item for a single feedback item.
+
+    Attributes
+    ----------
+    id : str
+        Identifier of the source feedback item.
+    title : str
+        Generated short title for the feedback item.
+    summary : str
+        Generated bullet-point summary for the feedback item.
+    """
+
+    id: str
+    title: str
+    summary: str
+
+
+class SummarizeResponse(BaseModel):
+    """Response body for the ``POST /v1/summarize`` endpoint.
+
+    Attributes
+    ----------
+    summaries : list[FeedbackItemSummary]
+        Title and summary for each submitted feedback item.
+    """
+
+    summaries: list[FeedbackItemSummary]
 
 
 class HealthResponse(BaseModel):

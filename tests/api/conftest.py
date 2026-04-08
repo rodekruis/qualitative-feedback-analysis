@@ -15,6 +15,9 @@ from qfa.api.routes import router
 from qfa.domain.models import (
     AnalysisRequest,
     AnalysisResult,
+    FeedbackItemSummary,
+    SummaryRequest,
+    SummaryResult,
     TenantApiKey,
 )
 from qfa.domain.ports import OrchestratorPort
@@ -27,20 +30,30 @@ FAKE_API_KEY_NAME = "test-key"
 class FakeOrchestrator(OrchestratorPort):
     """Fake orchestrator for testing.
 
-    Returns a configurable ``AnalysisResult`` or raises a configurable
-    exception.
+    Returns configurable analyze and summarize results or raises a
+    configurable exception.
     """
 
     def __init__(
         self,
-        result=None,
+        analyze_result=None,
+        summarize_result=None,
         error=None,
     ):
-        self._result = result or AnalysisResult(
+        self._analyze_result = analyze_result or AnalysisResult(
             result="Fake analysis result",
             model="gpt-4-test",
             prompt_tokens=10,
             completion_tokens=20,
+        )
+        self._summarize_result = summarize_result or SummaryResult(
+            feedback_item_summaries=(
+                FeedbackItemSummary(
+                    id="doc-1",
+                    title="Fake summary title",
+                    summary="- Fake summary point",
+                ),
+            )
         )
         self._error = error
 
@@ -51,7 +64,16 @@ class FakeOrchestrator(OrchestratorPort):
     ) -> AnalysisResult:
         if self._error is not None:
             raise self._error
-        return self._result
+        return self._analyze_result
+
+    async def summarize(
+        self,
+        request: SummaryRequest,
+        deadline: datetime,
+    ) -> SummaryResult:
+        if self._error is not None:
+            raise self._error
+        return self._summarize_result
 
 
 @pytest.fixture
