@@ -66,9 +66,9 @@ def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSessi
 
 
 def _build_stats_columns(
-    col: sa.ColumnElement,  # type: ignore[type-arg]
+    col: sa.ColumnElement,
     prefix: str,
-) -> list[sa.Label]:  # type: ignore[type-arg]
+) -> list[sa.Label]:
     """Build labeled aggregation columns for a numeric column.
 
     Each column is labeled ``{prefix}_{stat}`` so results can be accessed
@@ -85,7 +85,7 @@ def _build_stats_columns(
     ]
 
 
-def _parse_distribution(row: sa.Row, prefix: str) -> DistributionStats:  # type: ignore[type-arg]
+def _parse_distribution(row: sa.Row, prefix: str) -> DistributionStats:
     """Parse DistributionStats from a named row using the given prefix."""
     m = row._mapping
     return DistributionStats(
@@ -97,7 +97,7 @@ def _parse_distribution(row: sa.Row, prefix: str) -> DistributionStats:  # type:
     )
 
 
-def _parse_token_stats(row: sa.Row, prefix: str) -> TokenStats:  # type: ignore[type-arg]
+def _parse_token_stats(row: sa.Row, prefix: str) -> TokenStats:
     """Parse TokenStats from a named row using the given prefix."""
     m = row._mapping
     return TokenStats(

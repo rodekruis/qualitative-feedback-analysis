@@ -11,9 +11,9 @@ from qfa.domain.models import (
     AnalysisResult,
     LLMCallRecord,
     LLMResponse,
-    UsageStats,
     SummaryRequest,
     SummaryResult,
+    UsageStats,
 )
 
 

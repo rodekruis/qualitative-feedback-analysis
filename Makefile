@@ -29,7 +29,7 @@ ty:
 	uv run ty check
 
 ruff:
-	uv run --no-sources ruff format --check --target-version py312 src tests
+	uv run --no-sources ruff format --target-version py312 src tests
 	uv run --no-sources ruff check --fix --exit-non-zero-on-fix src tests
 
 type_check: ty

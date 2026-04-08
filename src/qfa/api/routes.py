@@ -18,26 +18,24 @@ from qfa.api.schemas import (
     DistributionStatsResponse,
     FeedbackItemSummary,
     HealthResponse,
-    TokenStatsResponse,
-    UsageStatsResponse,
     SummarizeFeedbackMetadata,
     SummarizeRequest,
     SummarizeResponse,
+    TokenStatsResponse,
+    UsageStatsResponse,
 )
 from qfa.domain.models import (
     AnalysisRequest,
     DistributionStats,
-    FeedbackDocument,
     FeedbackItem,
     TenantApiKey,
     TokenStats,
     UsageStats,
 )
-from qfa.domain.ports import OrchestratorPort, UsageRepositoryPort
 from qfa.domain.models import (
     SummaryRequest as DomainSummaryRequest,
 )
-from qfa.domain.ports import OrchestratorPort
+from qfa.domain.ports import OrchestratorPort, UsageRepositoryPort
 
 router = APIRouter()
 
