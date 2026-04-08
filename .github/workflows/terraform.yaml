@@ -24,6 +24,7 @@ on:
         type: choice
         options:
           - dev
+          - staging
           - prd
         default: dev
       command:
