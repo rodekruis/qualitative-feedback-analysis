@@ -35,8 +35,13 @@ def _summarize_metadata_to_domain(
     meta: SummarizeFeedbackMetadata,
 ) -> dict[str, str | int | float | bool]:
     """Flatten summarize metadata into the domain feedback metadata dict."""
-    raw = meta.model_dump(mode="json")
-    return {k: v for k, v in raw.items() if isinstance(v, (str, int, float, bool))}
+    return {
+        "created": meta.model_dump(mode="json")["created"],
+        "feedback_item_id": meta.feedback_item_id,
+        "coding_level_1": meta.coding_level_1,
+        "coding_level_2": meta.coding_level_2,
+        "coding_level_3": meta.coding_level_3,
+    }
 
 
 @router.post("/v1/analyze", response_model=AnalyzeResponse, status_code=200)
