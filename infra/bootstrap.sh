@@ -38,6 +38,20 @@ az storage container create \
   --account-name "$SA" \
   --auth-mode login
 
+# CannotDelete lock on the storage account: protects Terraform state from
+# accidental `az storage account delete`. The lock blocks deletion only;
+# Terraform can still read/write state blobs through the data plane.
+# Removing the lock later requires Owner or User Access Administrator on
+# the resource — Contributor is not sufficient.
+echo "Locking storage account against accidental deletion..."
+az lock create \
+  --name no-delete-tfstate \
+  --lock-type CanNotDelete \
+  --resource-group "$TF_STATE_RG" \
+  --resource "$SA" \
+  --resource-type Microsoft.Storage/storageAccounts \
+  --notes "Protects Terraform state. Remove only with explicit coordination."
+
 echo "Creating container registry in $ACR_RG..."
 az acr create \
   --name "$ACR" \

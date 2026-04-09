@@ -64,7 +64,7 @@ export LOCATION=westeurope
 
 These two resources have to exist before `terraform init` can run, because Terraform itself depends on them:
 
-- **Azure Storage Account** (`$TF_VAR_tf_state_storage_account`) — the Terraform remote state backend. Globally unique. Created in `$TF_VAR_tf_state_resource_group_name`.
+- **Azure Storage Account** (`$TF_VAR_tf_state_storage_account`) — the Terraform remote state backend. Globally unique. Created in `$TF_VAR_tf_state_resource_group_name`. `bootstrap.sh` also adds a `CannotDelete` lock on the storage account so an accidental `az storage account delete` cannot wipe Terraform state. Removing the lock later requires `Owner` or `User Access Administrator` on the resource.
 - **Container Registry** (`$TF_VAR_acr_name`) — referenced by Terraform as a `data` source. Globally unique. Created in `$TF_VAR_acr_resource_group_name`. Used by all environments to store and pull container images.
 
 ```bash
@@ -91,10 +91,11 @@ Then re-run the `terraform init` command above.
 
 ### 5. Create workspaces
 
-Terraform uses workspaces to manage `dev` and `prd` environments with separate state files.
+Terraform uses workspaces to manage `dev`, `staging`, and `prd` environments with separate state files.
 
 ```bash
 terraform workspace new dev
+terraform workspace new staging
 terraform workspace new prd
 ```
 
@@ -103,6 +104,10 @@ terraform workspace new prd
 ```bash
 # Dev environment
 terraform workspace select dev
+terraform apply
+
+# Staging environment
+terraform workspace select staging
 terraform apply
 
 # Production environment
@@ -127,6 +132,17 @@ gh variable set AZ_SUBSCRIPTION_ID --env dev --repo $REPO --body "$TF_VAR_subscr
 gh variable set AZ_RESOURCE_GROUP  --env dev --repo $REPO --body "$TF_VAR_resource_group_name"
 gh variable set AZ_APP_NAME        --env dev --repo $REPO --body "qfa-dev-backend"
 gh variable set AZ_ACR_NAME        --env dev --repo $REPO --body "$TF_VAR_acr_name"
+
+# --- staging ---
+gh api repos/$REPO/environments/staging -X PUT
+
+terraform workspace select staging
+gh variable set AZ_CLIENT_ID       --env staging --repo $REPO --body "$(terraform output -raw az_client_id)"
+gh variable set AZ_TENANT_ID       --env staging --repo $REPO --body "$TF_VAR_tenant_id"
+gh variable set AZ_SUBSCRIPTION_ID --env staging --repo $REPO --body "$TF_VAR_subscription_id"
+gh variable set AZ_RESOURCE_GROUP  --env staging --repo $REPO --body "$TF_VAR_resource_group_name"
+gh variable set AZ_APP_NAME        --env staging --repo $REPO --body "qfa-staging-backend"
+gh variable set AZ_ACR_NAME        --env staging --repo $REPO --body "$TF_VAR_acr_name"
 
 # --- prd ---
 gh api repos/$REPO/environments/prd -X PUT
