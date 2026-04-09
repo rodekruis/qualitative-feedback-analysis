@@ -1,0 +1,32 @@
+# Manually redeploy a released image to dev.
+#
+# Normal path: publishing a release auto-deploys it to dev via
+# build-release-image.yaml. Use this workflow when you want to point dev at a
+# *specific* (possibly older) release — e.g. to reproduce a bug against an
+# earlier version, to rehearse a rollback, or to reset dev after running an
+# ephemeral build-from-commit.yaml image.
+#
+# Pre-releases are allowed (dev is where they're validated).
+name: Promote to dev
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to deploy (e.g. v0.4.0 or v0.5.0-rc.1)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/_deploy-release.yaml
+    with:
+      release_tag: ${{ inputs.release_tag }}
+      environment: dev
+    permissions:
+      contents: write
+      id-token: write

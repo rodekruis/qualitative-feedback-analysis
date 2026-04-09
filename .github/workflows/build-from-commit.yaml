@@ -1,0 +1,98 @@
+# Escape hatch: build an image from an arbitrary ref (branch, tag, or SHA)
+# and push it to ACR with an ephemeral tag. Optionally deploy it to dev.
+#
+# Use this when you want to try an in-flight feature branch in the dev App
+# Service without cutting a pre-release. Images produced here are
+# *intentionally* not releases: they cannot enter the promote-to-staging or
+# promote-to-prd paths, because those workflows read digests from release
+# bodies and this workflow never writes to one.
+#
+# This is the only sanctioned way to get a non-release image into dev, and
+# there is no sanctioned way to get one into staging or prd. That asymmetry
+# is the safety property: "if it's in prd, it came from a release."
+name: Build from commit
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to build (branch, tag, or full SHA)"
+        required: true
+        type: string
+      deploy_to_dev:
+        description: "Also deploy the image to dev after pushing"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    environment: dev
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+      tag: ${{ steps.push.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZ_CLIENT_ID }}
+          tenant-id: ${{ vars.AZ_TENANT_ID }}
+          subscription-id: ${{ vars.AZ_SUBSCRIPTION_ID }}
+
+      - name: Login to ACR
+        run: az acr login --name "${{ vars.AZ_ACR_NAME }}"
+
+      - name: Build and push
+        id: push
+        env:
+          IMAGE: ${{ vars.AZ_ACR_NAME }}.azurecr.io/qfa-backend
+        run: |
+          set -euo pipefail
+          SHA=$(git rev-parse --short HEAD)
+          # Sanitize the ref so it's a valid Docker tag (alnum, dot, dash, underscore).
+          SAFE_REF=$(printf '%s' "${{ inputs.ref }}" | tr -c 'A-Za-z0-9._-' '-' | cut -c1-40)
+          TAG="ephemeral-${SAFE_REF}-${SHA}"
+          docker build -t "$IMAGE:$TAG" .
+          docker push "$IMAGE:$TAG"
+          DIGEST=$(az acr repository show \
+            --name "${{ vars.AZ_ACR_NAME }}" \
+            --image "qfa-backend:$TAG" \
+            --query 'digest' -o tsv)
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "Pushed $IMAGE:$TAG -> $DIGEST"
+          echo "::notice::Ephemeral image: $IMAGE:$TAG ($DIGEST)"
+
+  deploy-to-dev:
+    needs: build-and-push
+    if: inputs.deploy_to_dev
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZ_CLIENT_ID }}
+          tenant-id: ${{ vars.AZ_TENANT_ID }}
+          subscription-id: ${{ vars.AZ_SUBSCRIPTION_ID }}
+
+      - name: Deploy ephemeral image to dev
+        env:
+          IMAGE: ${{ vars.AZ_ACR_NAME }}.azurecr.io/qfa-backend
+          DIGEST: ${{ needs.build-and-push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          az webapp config container set \
+            --name "${{ vars.AZ_APP_NAME }}" \
+            --resource-group "${{ vars.AZ_RESOURCE_GROUP }}" \
+            --container-image-name "${IMAGE}@${DIGEST}" \
+            --container-registry-url "https://${{ vars.AZ_ACR_NAME }}.azurecr.io"

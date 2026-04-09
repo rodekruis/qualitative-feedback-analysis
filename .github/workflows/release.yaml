@@ -1,12 +1,23 @@
-# Step 1 of the deploy pipeline. Run this manually from the Actions tab.
+# Step 1 of the release pipeline. Run this manually from the Actions tab.
 #
-# What it does:
-#   1. Runs the CI checks (lint + tests).
+# What it does, in order:
+#   1. Runs CI (lint + tests).
 #   2. Bumps the version based on conventional commits.
-#   3. Creates a **draft** GitHub Release.
+#   3. Builds a Docker image for the new version, pushes it to ACR,
+#      and reads back the registry-assigned digest.
+#   4. Creates a *draft* GitHub Release with the digest embedded in the body.
+#   5. Auto-deploys the digest to dev via the reusable _deploy-release.yaml.
 #
-# After it runs, review the draft release on the Releases page and click
-# "Publish" when ready — that triggers the deploy (see publish.yaml).
+# After it runs: the release exists as a draft, dev is running the new
+# image, and you can validate. Once you're happy:
+#   - Click "Publish" on the draft release (Releases page). That flips
+#     draft → published and makes the release eligible for promotion.
+#   - Run Promote to staging / Promote to prd from the Actions tab to
+#     deploy the exact same digest to those environments.
+#
+# The draft → published transition is the human sign-off gate. A release
+# cannot reach staging or prd until a human has validated it in dev and
+# published it. promote-to-staging and promote-to-prd refuse drafts.
 name: Release
 
 on:
@@ -34,6 +45,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   ci:
@@ -42,9 +54,18 @@ jobs:
   release:
     needs: ci
     runs-on: ubuntu-latest
+    # Use the dev environment to pick up Azure OIDC credentials and the ACR
+    # name. This job does not *deploy* to dev — it only builds, pushes, and
+    # creates the draft. Deployment is delegated to the deploy-to-dev job.
+    environment: dev
     concurrency: { group: release, cancel-in-progress: false }
     permissions:
       contents: write
+      id-token: write
+    outputs:
+      released: ${{ steps.semrel.outputs.released }}
+      tag: ${{ steps.semrel.outputs.tag }}
+      is_prerelease: ${{ steps.semrel.outputs.is_prerelease }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -62,6 +83,11 @@ jobs:
           changelog: false
           vcs_release: false
 
+      - name: No release needed
+        if: steps.semrel.outputs.released != 'true'
+        run: |
+          echo "::notice::No release — no conventional commits since last tag, or the forced bump level produced no change."
+
       - name: Generate release notes
         if: steps.semrel.outputs.released == 'true'
         run: |
@@ -69,6 +95,58 @@ jobs:
           semantic-release changelog
           # Extract only the latest version's section from CHANGELOG.md
           awk '/^## v/{if(found) exit; found=1} found' CHANGELOG.md > release_notes.md
+
+      - name: Login to Azure
+        if: steps.semrel.outputs.released == 'true'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZ_CLIENT_ID }}
+          tenant-id: ${{ vars.AZ_TENANT_ID }}
+          subscription-id: ${{ vars.AZ_SUBSCRIPTION_ID }}
+
+      - name: Login to ACR
+        if: steps.semrel.outputs.released == 'true'
+        run: az acr login --name "${{ vars.AZ_ACR_NAME }}"
+
+      - name: Build and push image
+        id: push
+        if: steps.semrel.outputs.released == 'true'
+        env:
+          IMAGE: ${{ vars.AZ_ACR_NAME }}.azurecr.io/qfa-backend
+          TAG: ${{ steps.semrel.outputs.tag }}
+        run: |
+          set -euo pipefail
+          docker build -t "$IMAGE:$TAG" .
+          docker push "$IMAGE:$TAG"
+          # Read the digest back from ACR — it is the authoritative value.
+          DIGEST=$(az acr repository show \
+            --name "${{ vars.AZ_ACR_NAME }}" \
+            --image "qfa-backend:$TAG" \
+            --query 'digest' -o tsv)
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "Pushed $IMAGE:$TAG -> $DIGEST"
+
+      - name: Append deployment section to release notes
+        if: steps.semrel.outputs.released == 'true'
+        env:
+          IMAGE: ${{ steps.push.outputs.image }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+          TAG: ${{ steps.semrel.outputs.tag }}
+        run: |
+          cat >> release_notes.md <<EOF
+
+          ---
+
+          ## Deployment
+
+          - **Image**: \`${IMAGE}:${TAG}\`
+          - **Digest**: \`${DIGEST}\`
+
+          This draft release has been auto-deployed to dev. Review in dev,
+          then publish the release (Releases page → Publish) to enable
+          promotion to staging / prd.
+          EOF
 
       - name: Create draft GitHub Release
         if: steps.semrel.outputs.released == 'true'
@@ -84,3 +162,14 @@ jobs:
             --notes-file release_notes.md \
             --title "${{ steps.semrel.outputs.tag }}" \
             $PRERELEASE_FLAG
+
+  deploy-to-dev:
+    needs: release
+    if: needs.release.outputs.released == 'true'
+    uses: ./.github/workflows/_deploy-release.yaml
+    with:
+      release_tag: ${{ needs.release.outputs.tag }}
+      environment: dev
+    permissions:
+      contents: write
+      id-token: write
