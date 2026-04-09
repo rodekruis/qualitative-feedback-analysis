@@ -26,7 +26,7 @@ cd infra
 
 ### 2. Export environment variables
 
-These are required by Terraform locally and re-used in step 6 to populate the GitHub variables.
+These are required by Terraform locally and re-used in step 7 to populate the GitHub variables.
 
 ```bash
 export TF_VAR_tenant_id=<your-azure-tenant-id>
@@ -52,6 +52,14 @@ bash bootstrap.sh
 ```bash
 terraform init
 ```
+
+If `terraform init` fails with an Azure CLI authorizer or tenant ID error, make sure you are successfully logged in to Azure:
+
+```bash
+az login
+```
+
+Then run `terraform init` again.
 
 ### 5. Create workspaces
 
