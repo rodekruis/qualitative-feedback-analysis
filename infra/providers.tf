@@ -9,7 +9,7 @@ terraform {
   }
 
   backend "azurerm" {
-    resource_group_name  = "qualitative-feedback-analysis-xomnia"
+    resource_group_name  = var.resource_group_name
     storage_account_name = "qfatfstate"
     container_name       = "tfstate"
     key                  = "terraform.tfstate"
@@ -21,4 +21,3 @@ provider "azurerm" {
   resource_provider_registrations = "none"
   features {}
 }
-
