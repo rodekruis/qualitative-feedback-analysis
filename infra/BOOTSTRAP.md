@@ -13,7 +13,7 @@ Two of the resources Terraform depends on cannot be managed by Terraform itself:
 - [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli) — authenticated (`az login`)
 - [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.5
 - [GitHub CLI](https://cli.github.com/) — authenticated (`gh auth login`) with a token that has `repo` scope
-- An **Azure resource group** that already exists. Terraform reads it as a data source rather than managing it; create it via the Azure portal or `az group create -n <name> -l westeurope`. Its name will be passed to Terraform via `TF_VAR_resource_group_name` in step 2.
+- One or more **Azure resource groups** that already exist. The deployment uses three RG roles (see step 2): one for Terraform state, one for the ACR, and one for the workspace's environment resources. For a single-RG deployment they may all be the same RG; for a multi-RG deployment they are distinct. Create each RG via the Azure portal or `az group create -n <name> -l westeurope`.
 
 ## Steps
 
@@ -28,10 +28,24 @@ cd infra
 These are used by `bootstrap.sh`, by Terraform locally, and re-used in step 7 to populate the GitHub Actions variables.
 
 ```bash
-# Required — Azure tenant + target resource group
+# Required — Azure tenant
 export TF_VAR_tenant_id=<your-azure-tenant-id>
 export TF_VAR_subscription_id=<your-azure-subscription-id>
-export TF_VAR_resource_group_name=<your-resource-group-name>
+
+# Required — three resource group roles. For a single-RG deployment, set all
+# three to the same value. For a multi-RG deployment, point each at its
+# dedicated RG:
+#   * tf_state_resource_group_name — where the Terraform state SA lives
+#   * acr_resource_group_name      — where the ACR lives
+#   * resource_group_name          — where this workspace's env resources live
+#
+# tf_state_resource_group_name is used only by bootstrap.sh and by the
+# `terraform init` command in step 4 (it cannot be a Terraform variable
+# because backend blocks forbid variable interpolation). The other two are
+# read by Terraform and must match the variables declared in variables.tf.
+export TF_VAR_resource_group_name=<your-environment-rg>
+export TF_VAR_tf_state_resource_group_name="$TF_VAR_resource_group_name"
+export TF_VAR_acr_resource_group_name="$TF_VAR_resource_group_name"
 
 # Required — globally unique Azure resource names. They must not collide
 # with any other Storage Account / Container Registry in any Azure tenant.
@@ -50,10 +64,8 @@ export LOCATION=westeurope
 
 These two resources have to exist before `terraform init` can run, because Terraform itself depends on them:
 
-- **Azure Storage Account** (`$TF_VAR_tf_state_storage_account`) — the Terraform remote state backend. Globally unique.
-- **Container Registry** (`$TF_VAR_acr_name`) — referenced by Terraform as a `data` source. Globally unique. Used by all environments to store and pull container images.
-
-Both are created in `$TF_VAR_resource_group_name`.
+- **Azure Storage Account** (`$TF_VAR_tf_state_storage_account`) — the Terraform remote state backend. Globally unique. Created in `$TF_VAR_tf_state_resource_group_name`.
+- **Container Registry** (`$TF_VAR_acr_name`) — referenced by Terraform as a `data` source. Globally unique. Created in `$TF_VAR_acr_resource_group_name`. Used by all environments to store and pull container images.
 
 ```bash
 bash bootstrap.sh
@@ -65,7 +77,7 @@ Terraform's `backend` block does not allow variable interpolation, so the resour
 
 ```bash
 terraform init \
-  -backend-config="resource_group_name=$TF_VAR_resource_group_name" \
+  -backend-config="resource_group_name=$TF_VAR_tf_state_resource_group_name" \
   -backend-config="storage_account_name=$TF_VAR_tf_state_storage_account"
 ```
 
