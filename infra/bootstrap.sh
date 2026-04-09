@@ -4,7 +4,7 @@
 # lives outside of Terraform's management (chicken-and-egg problem).
 set -euo pipefail
 
-RG="qualitative-feedback-analysis-xomnia"
+RG=$TF_VAR_resource_group_name
 SA="qfatfstate"
 CONTAINER="tfstate"
 ACR="qfacontainerreg"
