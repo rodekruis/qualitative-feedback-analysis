@@ -9,10 +9,14 @@ terraform {
   }
 
   backend "azurerm" {
-    resource_group_name  = var.resource_group_name
-    storage_account_name = "qfatfstate"
-    container_name       = "tfstate"
-    key                  = "terraform.tfstate"
+    # Partial configuration: resource_group_name and storage_account_name
+    # are supplied at `terraform init` time via -backend-config flags.
+    # Terraform forbids variable interpolation inside the backend block
+    # ("Variables may not be used here"), so they cannot be read from
+    # var.resource_group_name / var.tf_state_storage_account directly.
+    # See infra/BOOTSTRAP.md step 4 for the init invocation.
+    container_name = "tfstate"
+    key            = "terraform.tfstate"
   }
 }
 

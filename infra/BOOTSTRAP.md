@@ -6,15 +6,14 @@ This is a **one-time local setup** required before the CI/CD pipeline can manage
 
 The Terraform configuration in `infra/` manages Azure resources (Key Vault, App Service, managed identity, etc.). CI needs GitHub Actions environment variables to authenticate with Azure, but those variables depend on resources that Terraform creates — so the first apply must be run locally with personal credentials.
 
+Two of the resources Terraform depends on cannot be managed by Terraform itself: the storage account holding Terraform's own state, and the container registry that Terraform reads as a data source. These are the chicken-and-egg dependencies that `bootstrap.sh` creates before `terraform init` can run.
+
 ## Prerequisites
 
 - [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli) — authenticated (`az login`)
 - [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.5
 - [GitHub CLI](https://cli.github.com/) — authenticated (`gh auth login`) with a token that has `repo` scope
-
-The following Azure resource must already exist before running Terraform (it is referenced as a read-only data source, not created by Terraform):
-
-- **Resource group** `qualitative-feedback-analysis-xomnia`
+- An **Azure resource group** that already exists. Terraform reads it as a data source rather than managing it; create it via the Azure portal or `az group create -n <name> -l westeurope`. Its name will be passed to Terraform via `TF_VAR_resource_group_name` in step 2.
 
 ## Steps
 
@@ -26,22 +25,35 @@ cd infra
 
 ### 2. Export environment variables
 
-These are required by Terraform locally and re-used in step 7 to populate the GitHub variables.
+These are used by `bootstrap.sh`, by Terraform locally, and re-used in step 7 to populate the GitHub Actions variables.
 
 ```bash
+# Required — Azure tenant + target resource group
 export TF_VAR_tenant_id=<your-azure-tenant-id>
 export TF_VAR_subscription_id=<your-azure-subscription-id>
 export TF_VAR_resource_group_name=<your-resource-group-name>
+
+# Required — globally unique Azure resource names. They must not collide
+# with any other Storage Account / Container Registry in any Azure tenant.
+# Pick names tied to your deployment, e.g. <orgshort>tfstate / <orgshort>acr.
+# ACR names allow alphanumeric only (no dashes).
+export TF_VAR_tf_state_storage_account=<globally-unique-storage-account-name>
+export TF_VAR_acr_name=<globally-unique-acr-name>
+
+# Optional — Azure region for the bootstrapped resources. Defaults to westeurope.
+export LOCATION=westeurope
 ```
 
-### 3. Create the Terraform state backend
+### 3. Create the chicken-and-egg resources
 
-**NOTE:** Run this step only once. If these resources already exist, skip it.
+**NOTE:** Run this step only once per deployment. If the storage account and container registry already exist, skip it.
 
-Two resources must exist before `terraform init` can run — they are chicken-and-egg resources that live outside Terraform's management:
+These two resources have to exist before `terraform init` can run, because Terraform itself depends on them:
 
-- **Azure Blob Storage** (`qfatfstate`) — the Terraform remote state backend
-- **Container Registry** (`qfacontainerreg`) — shared ACR used as a `data` source by Terraform
+- **Azure Storage Account** (`$TF_VAR_tf_state_storage_account`) — the Terraform remote state backend. Globally unique.
+- **Container Registry** (`$TF_VAR_acr_name`) — referenced by Terraform as a `data` source. Globally unique. Used by all environments to store and pull container images.
+
+Both are created in `$TF_VAR_resource_group_name`.
 
 ```bash
 bash bootstrap.sh
@@ -49,8 +61,12 @@ bash bootstrap.sh
 
 ### 4. Initialize Terraform
 
+Terraform's `backend` block does not allow variable interpolation, so the resource group and storage account names must be supplied at `terraform init` time via `-backend-config` flags:
+
 ```bash
-terraform init
+terraform init \
+  -backend-config="resource_group_name=$TF_VAR_resource_group_name" \
+  -backend-config="storage_account_name=$TF_VAR_tf_state_storage_account"
 ```
 
 If `terraform init` fails with an Azure CLI authorizer or tenant ID error, make sure you are successfully logged in to Azure:
@@ -59,7 +75,7 @@ If `terraform init` fails with an Azure CLI authorizer or tenant ID error, make 
 az login
 ```
 
-Then run `terraform init` again.
+Then re-run the `terraform init` command above.
 
 ### 5. Create workspaces
 
@@ -98,7 +114,7 @@ gh variable set AZ_TENANT_ID       --env dev --repo $REPO --body "$TF_VAR_tenant
 gh variable set AZ_SUBSCRIPTION_ID --env dev --repo $REPO --body "$TF_VAR_subscription_id"
 gh variable set AZ_RESOURCE_GROUP  --env dev --repo $REPO --body "$TF_VAR_resource_group_name"
 gh variable set AZ_APP_NAME        --env dev --repo $REPO --body "qfa-dev-backend"
-gh variable set AZ_ACR_NAME        --env dev --repo $REPO --body "qfacontainerreg"
+gh variable set AZ_ACR_NAME        --env dev --repo $REPO --body "$TF_VAR_acr_name"
 
 # --- prd ---
 gh api repos/$REPO/environments/prd -X PUT
@@ -109,7 +125,7 @@ gh variable set AZ_TENANT_ID       --env prd --repo $REPO --body "$TF_VAR_tenant
 gh variable set AZ_SUBSCRIPTION_ID --env prd --repo $REPO --body "$TF_VAR_subscription_id"
 gh variable set AZ_RESOURCE_GROUP  --env prd --repo $REPO --body "$TF_VAR_resource_group_name"
 gh variable set AZ_APP_NAME        --env prd --repo $REPO --body "qfa-prd-backend"
-gh variable set AZ_ACR_NAME        --env prd --repo $REPO --body "qfacontainerreg"
+gh variable set AZ_ACR_NAME        --env prd --repo $REPO --body "$TF_VAR_acr_name"
 ```
 
 The `terraform.yaml` workflow can now run autonomously in CI.

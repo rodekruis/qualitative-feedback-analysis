@@ -13,6 +13,16 @@ variable "resource_group_name" {
   type        = string
 }
 
+variable "tf_state_storage_account" {
+  description = "Globally unique name of the Azure Storage Account holding the Terraform remote state. Must be set explicitly per deployment to avoid name collisions across Azure tenants."
+  type        = string
+}
+
+variable "acr_name" {
+  description = "Globally unique name of the shared Azure Container Registry. Must be set explicitly per deployment to avoid name collisions across Azure tenants. ACR names are alphanumeric only (no dashes)."
+  type        = string
+}
+
 
 variable "github_repo" {
   description = "GitHub repository in owner/name format"
