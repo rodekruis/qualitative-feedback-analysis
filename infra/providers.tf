@@ -14,7 +14,7 @@ terraform {
     # Terraform forbids variable interpolation inside the backend block
     # ("Variables may not be used here"), so they cannot be read from
     # var.resource_group_name / var.tf_state_storage_account directly.
-    # See infra/BOOTSTRAP.md step 4 for the init invocation.
+    # See infra/BOOTSTRAP.md for the init invocation.
     container_name = "tfstate"
     key            = "terraform.tfstate"
   }
