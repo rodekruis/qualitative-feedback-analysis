@@ -1,0 +1,65 @@
+# Promote a released image to production.
+#
+# Two gates, both enforced before the deploy job runs:
+#   1. The release must be *published* (not a draft). Draft means "still
+#      being validated in dev"; publishing is the human sign-off that the
+#      release is ready for downstream promotion.
+#   2. The release must be a *final* release, not a pre-release. Prd only
+#      runs final releases. Validate release candidates in staging instead.
+#
+# On top of these, the `prd` GitHub environment should have required
+# reviewers configured — that's a third gate enforced by GitHub itself,
+# which prompts a human to approve the deploy job before it runs.
+#
+# Rollback: same workflow, previous release tag as input. The previous
+# digest is still in ACR; deploying it is just a pointer change.
+name: Promote to prd
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to deploy (e.g. v0.4.0) — must be a published final release"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject drafts and pre-releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          RELEASE_JSON=$(gh release view "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json isDraft,isPrerelease)
+          IS_DRAFT=$(printf '%s' "$RELEASE_JSON" | jq -r .isDraft)
+          IS_PRERELEASE=$(printf '%s' "$RELEASE_JSON" | jq -r .isPrerelease)
+          if [ "$IS_DRAFT" = "true" ]; then
+            echo "::error::Release $TAG is still a draft."
+            echo "::error::Publish it first (Releases page → Publish) before promoting to prd."
+            exit 1
+          fi
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            echo "::error::Release $TAG is a pre-release and cannot be promoted to prd."
+            echo "::error::Cut a final release first, or use promote-to-staging.yaml to validate the rc."
+            exit 1
+          fi
+          echo "$TAG is a published final release — OK to promote to prd."
+
+  deploy:
+    needs: verify
+    uses: ./.github/workflows/_deploy-release.yaml
+    with:
+      release_tag: ${{ inputs.release_tag }}
+      environment: prd
+    permissions:
+      contents: write
+      id-token: write

@@ -9,7 +9,22 @@ variable "tenant_id" {
 }
 
 variable "resource_group_name" {
-  description = "Name of the resource group"
+  description = "Where this workspace's environment resources live (App Service, Key Vault, managed identity, etc.). Per-environment in a multi-RG deployment; shared with the other RG roles in a single-RG deployment."
+  type        = string
+}
+
+variable "acr_resource_group_name" {
+  description = "Where the ACR lives. The dedicated platform/shared RG hosting the ACR independently of any environment in a multi-RG deployment; same as resource_group_name in a single-RG deployment."
+  type        = string
+}
+
+variable "tf_state_storage_account" {
+  description = "Globally unique name of the Azure Storage Account holding the Terraform remote state. Must be set explicitly per deployment to avoid name collisions across Azure tenants."
+  type        = string
+}
+
+variable "acr_name" {
+  description = "Globally unique name of the shared Azure Container Registry. Must be set explicitly per deployment to avoid name collisions across Azure tenants. ACR names are alphanumeric only (no dashes)."
   type        = string
 }
 

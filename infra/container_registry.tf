@@ -3,6 +3,6 @@
 # =============================================================================
 
 data "azurerm_container_registry" "acr" {
-  name                = local.acr_name
-  resource_group_name = data.azurerm_resource_group.main.name
+  name                = var.acr_name
+  resource_group_name = var.acr_resource_group_name
 }
