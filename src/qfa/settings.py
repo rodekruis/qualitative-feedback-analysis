@@ -1,8 +1,7 @@
 import logging
-from enum import Enum
 from typing import Any
 
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from qfa.domain.models import TenantApiKey
@@ -47,39 +46,23 @@ class LogSettings(BaseSettings):
                 raise ValueError(f"invalid loglevel {v}")
 
 
-class LLMProvider(str, Enum):
-    """Supported LLM provider backends."""
-
-    OPENAI = "openai"
-    AZURE_OPENAI = "azure_openai"
-
-
 class LLMSettings(BaseSettings):
-    """Configuration for the LLM provider connection."""
+    """Configuration for the LLM provider connection.
+
+    The provider is inferred from the model string prefix by LiteLLM
+    (e.g. ``"azure/gpt-4"`` for Azure OpenAI, ``"azure_ai/mistral-large"``
+    for Azure AI serverless endpoints).
+    """
 
     model_config = SettingsConfigDict(env_prefix="LLM_")
 
-    provider: LLMProvider = LLMProvider.OPENAI
     model: str = "gpt-4.1-mini"
     api_key: SecretStr  # required, no default
-    azure_endpoint: str = ""
+    api_base: str = ""
     api_version: str = ""
     timeout_seconds: float = 115.0
     max_retries: int = 3
     max_total_tokens: int = 100_000
-
-    @model_validator(mode="after")
-    def _azure_fields_required(self) -> "LLMSettings":
-        if self.provider == LLMProvider.AZURE_OPENAI:
-            if not self.azure_endpoint:
-                raise ValueError(
-                    "LLM_AZURE_ENDPOINT is required when LLM_PROVIDER is 'azure_openai'"
-                )
-            if not self.api_version:
-                raise ValueError(
-                    "LLM_API_VERSION is required when LLM_PROVIDER is 'azure_openai'"
-                )
-        return self
 
 
 class OrchestratorSettings(BaseSettings):

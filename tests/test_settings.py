@@ -8,22 +8,9 @@ from pydantic import ValidationError
 from qfa.settings import (
     AppSettings,
     AuthSettings,
-    LLMProvider,
     LLMSettings,
     OrchestratorSettings,
 )
-
-
-class TestLLMProvider:
-    def test_openai_value(self):
-        assert LLMProvider.OPENAI == "openai"
-
-    def test_azure_openai_value(self):
-        assert LLMProvider.AZURE_OPENAI == "azure_openai"
-
-    def test_invalid_provider_raises(self):
-        with pytest.raises(ValueError):
-            LLMProvider("invalid_provider")
 
 
 class TestLLMSettings:
@@ -44,11 +31,6 @@ class TestLLMSettings:
         settings = LLMSettings()
         assert settings.model == "gpt-4.1-mini"
 
-    def test_default_provider(self, monkeypatch):
-        monkeypatch.setenv("LLM_API_KEY", "sk-test")
-        settings = LLMSettings()
-        assert settings.provider == LLMProvider.OPENAI
-
     def test_default_timeout_seconds(self, monkeypatch):
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
         settings = LLMSettings()
@@ -64,13 +46,14 @@ class TestLLMSettings:
         settings = LLMSettings()
         assert settings.max_total_tokens == 100_000
 
-    def test_default_azure_endpoint(self, monkeypatch):
+    def test_default_api_base(self, monkeypatch):
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
         settings = LLMSettings()
-        assert settings.azure_endpoint == ""
+        assert settings.api_base == ""
 
     def test_default_api_version(self, monkeypatch):
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
+        monkeypatch.delenv("LLM_API_VERSION", raising=False)
         settings = LLMSettings()
         assert settings.api_version == ""
 
@@ -80,27 +63,28 @@ class TestLLMSettings:
         assert "sk-super-secret" not in repr(settings)
         assert "sk-super-secret" not in str(settings)
 
-    def test_override_provider_to_azure(self, monkeypatch):
+    def test_azure_ai_model_with_api_base(self, monkeypatch):
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
-        monkeypatch.setenv("LLM_PROVIDER", "azure_openai")
-        monkeypatch.setenv("LLM_AZURE_ENDPOINT", "https://example.openai.azure.com")
+        monkeypatch.setenv("LLM_MODEL", "azure_ai/mistral-large-2411")
+        monkeypatch.setenv(
+            "LLM_API_BASE",
+            "https://mistral-large.eastus2.inference.ai.azure.com/",
+        )
+        settings = LLMSettings()
+        assert settings.model == "azure_ai/mistral-large-2411"
+        assert (
+            settings.api_base == "https://mistral-large.eastus2.inference.ai.azure.com/"
+        )
+
+    def test_azure_openai_model_with_api_base_and_version(self, monkeypatch):
+        monkeypatch.setenv("LLM_API_KEY", "sk-test")
+        monkeypatch.setenv("LLM_MODEL", "azure/my-gpt4-deployment")
+        monkeypatch.setenv("LLM_API_BASE", "https://example.openai.azure.com")
         monkeypatch.setenv("LLM_API_VERSION", "2025-01-01-preview")
         settings = LLMSettings()
-        assert settings.provider == LLMProvider.AZURE_OPENAI
-
-    def test_azure_requires_endpoint(self, monkeypatch):
-        monkeypatch.setenv("LLM_API_KEY", "sk-test")
-        monkeypatch.setenv("LLM_PROVIDER", "azure_openai")
-        monkeypatch.setenv("LLM_API_VERSION", "2025-01-01-preview")
-        with pytest.raises(ValidationError, match="LLM_AZURE_ENDPOINT"):
-            LLMSettings()
-
-    def test_azure_requires_api_version(self, monkeypatch):
-        monkeypatch.setenv("LLM_API_KEY", "sk-test")
-        monkeypatch.setenv("LLM_PROVIDER", "azure_openai")
-        monkeypatch.setenv("LLM_AZURE_ENDPOINT", "https://example.openai.azure.com")
-        with pytest.raises(ValidationError, match="LLM_API_VERSION"):
-            LLMSettings()
+        assert settings.model == "azure/my-gpt4-deployment"
+        assert settings.api_base == "https://example.openai.azure.com"
+        assert settings.api_version == "2025-01-01-preview"
 
 
 class TestOrchestratorSettings:
