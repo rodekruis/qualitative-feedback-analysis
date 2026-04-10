@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-  pull_request:
+#  pull_request:  # redundant with push
   workflow_call:
 
 permissions:
@@ -35,6 +35,15 @@ jobs:
         run: uv run ruff check src tests
       - name: ty
         run: make ty
+  docker-build:
+    # build a docker image to test that it builds correctly.
+    # Intentionally NOT pushing the image. That's a separate job ("release")..
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker image (no push)
+        run: docker build .
+
   test:
     runs-on: ubuntu-latest
     strategy:
