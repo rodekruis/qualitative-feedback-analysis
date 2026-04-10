@@ -1,139 +1,205 @@
-"""Tests for the OpenAI LLM client adapter."""
+"""Tests for the LiteLLM client adapter."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import openai
 import pytest
 
-from qfa.domain.errors import (
-    LLMError,
-    LLMRateLimitError,
-    LLMTimeoutError,
-)
+from qfa.domain.errors import LLMError, LLMRateLimitError, LLMTimeoutError
 from qfa.domain.models import LLMResponse
-from qfa.services.llm_client import OpenAiLLMClient
+from qfa.services.llm_client import LiteLLMClient
 
-MODEL = "gpt-4"
+MODEL = "azure_ai/mistral-large-2411"
 SYSTEM_MSG = "You are a helpful assistant."
 USER_MSG = "Summarize the feedback."
 TIMEOUT = 30.0
 TENANT_ID = "tenant-42"
 
 
-@pytest.fixture
-def mock_response():
-    """Build a mock OpenAI Responses API response."""
+def _make_mock_response():
+    """Create a mock LiteLLM completion response."""
+    choice = MagicMock()
+    choice.message.content = "This is the summary."
     usage = MagicMock()
-    usage.input_tokens = 100
-    usage.output_tokens = 50
-
+    usage.prompt_tokens = 100
+    usage.completion_tokens = 50
     response = MagicMock()
-    response.output_text = "This is the summary."
+    response.choices = [choice]
     response.model = MODEL
     response.usage = usage
     return response
 
 
-@pytest.fixture
-def mock_client(mock_response):
-    """Build a mock AsyncOpenAI client whose responses.create() returns mock_response."""
-    client = AsyncMock()
-    client.responses.create = AsyncMock(return_value=mock_response)
-    return client
+def _make_client(**overrides):
+    """Create a LiteLLMClient with sensible defaults."""
+    defaults = {
+        "model": MODEL,
+        "api_key": "sk-test",
+        "api_base": "",
+        "api_version": "",
+    }
+    defaults.update(overrides)
+    return LiteLLMClient(**defaults)
 
 
-@pytest.fixture
-def llm_client(mock_client):
-    """Build the OpenAiLLMClient under test."""
-    return OpenAiLLMClient(client=mock_client, model=MODEL)
-
-
-class TestOpenAiLLMClientHappyPath:
+class TestLiteLLMClientHappyPath:
     @pytest.mark.asyncio
-    async def test_returns_llm_response_with_correct_fields(
-        self, llm_client, mock_response
-    ):
-        result = await llm_client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
+    async def test_returns_llm_response_with_correct_fields(self):
+        mock_response = _make_mock_response()
+        client = _make_client()
+        with (
+            patch(
+                "qfa.services.llm_client.acompletion",
+                new_callable=AsyncMock,
+                return_value=mock_response,
+            ),
+            patch(
+                "qfa.services.llm_client.completion_cost",
+                return_value=0.001,
+            ),
+        ):
+            result = await client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
 
         assert isinstance(result, LLMResponse)
         assert result.text == "This is the summary."
         assert result.model == MODEL
         assert result.prompt_tokens == 100
         assert result.completion_tokens == 50
+        assert result.cost == 0.001
 
 
-class TestOpenAiLLMClientCallParameters:
+class TestLiteLLMClientCallParameters:
     @pytest.mark.asyncio
-    async def test_store_false_enforced(self, llm_client, mock_client):
-        await llm_client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
+    async def test_passes_correct_params(self):
+        mock_response = _make_mock_response()
+        client = _make_client(
+            api_base="https://example.com",
+            api_version="2024-01-01",
+        )
+        with (
+            patch(
+                "qfa.services.llm_client.acompletion",
+                new_callable=AsyncMock,
+                return_value=mock_response,
+            ) as mock_ac,
+            patch("qfa.services.llm_client.completion_cost", return_value=0.0),
+        ):
+            await client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
 
-        call_kwargs = mock_client.responses.create.call_args.kwargs
-        assert call_kwargs["store"] is False
-
-    @pytest.mark.asyncio
-    async def test_user_equals_tenant_id(self, llm_client, mock_client):
-        await llm_client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
-
-        call_kwargs = mock_client.responses.create.call_args.kwargs
-        assert call_kwargs["user"] == TENANT_ID
-
-    @pytest.mark.asyncio
-    async def test_model_passed_correctly(self, llm_client, mock_client):
-        await llm_client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
-
-        call_kwargs = mock_client.responses.create.call_args.kwargs
+        call_kwargs = mock_ac.call_args.kwargs
         assert call_kwargs["model"] == MODEL
-
-    @pytest.mark.asyncio
-    async def test_timeout_passed_correctly(self, llm_client, mock_client):
-        await llm_client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
-
-        call_kwargs = mock_client.responses.create.call_args.kwargs
+        assert call_kwargs["api_key"] == "sk-test"
+        assert call_kwargs["api_base"] == "https://example.com"
+        assert call_kwargs["api_version"] == "2024-01-01"
+        assert call_kwargs["user"] == TENANT_ID
         assert call_kwargs["timeout"] == TIMEOUT
+        messages = call_kwargs["messages"]
+        assert messages[0] == {"role": "system", "content": SYSTEM_MSG}
+        assert messages[1] == {"role": "user", "content": USER_MSG}
 
     @pytest.mark.asyncio
-    async def test_instructions_and_input(self, llm_client, mock_client):
-        await llm_client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
+    async def test_empty_api_base_passed_as_none(self):
+        mock_response = _make_mock_response()
+        client = _make_client(api_base="", api_version="")
+        with (
+            patch(
+                "qfa.services.llm_client.acompletion",
+                new_callable=AsyncMock,
+                return_value=mock_response,
+            ) as mock_ac,
+            patch("qfa.services.llm_client.completion_cost", return_value=0.0),
+        ):
+            await client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
 
-        call_kwargs = mock_client.responses.create.call_args.kwargs
-        assert call_kwargs["instructions"] == SYSTEM_MSG
-        assert call_kwargs["input"] == USER_MSG
+        call_kwargs = mock_ac.call_args.kwargs
+        assert call_kwargs["api_base"] is None
+        assert call_kwargs["api_version"] is None
 
 
-class TestOpenAiLLMClientExceptionMapping:
+class TestLiteLLMClientCostFallback:
     @pytest.mark.asyncio
-    async def test_timeout_error_mapped(self, llm_client, mock_client):
-        mock_client.responses.create.side_effect = openai.APITimeoutError(
-            request=MagicMock()
-        )
+    async def test_cost_none_when_pricing_unavailable(self):
+        mock_response = _make_mock_response()
+        client = _make_client()
+        with (
+            patch(
+                "qfa.services.llm_client.acompletion",
+                new_callable=AsyncMock,
+                return_value=mock_response,
+            ),
+            patch(
+                "qfa.services.llm_client.completion_cost",
+                side_effect=Exception("not found"),
+            ),
+        ):
+            result = await client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
 
-        with pytest.raises(LLMTimeoutError):
-            await llm_client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
+        assert result.cost is None
+
+
+class TestLiteLLMClientExceptionMapping:
+    @pytest.mark.asyncio
+    async def test_timeout_error_mapped(self):
+        client = _make_client()
+        with patch(
+            "qfa.services.llm_client.acompletion",
+            new_callable=AsyncMock,
+            side_effect=openai.APITimeoutError(request=MagicMock()),
+        ):
+            with pytest.raises(LLMTimeoutError):
+                await client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
 
     @pytest.mark.asyncio
-    async def test_rate_limit_error_mapped(self, llm_client, mock_client):
-        mock_response = MagicMock()
-        mock_response.status_code = 429
-        mock_response.headers = {}
-        mock_client.responses.create.side_effect = openai.RateLimitError(
-            message="rate limited",
-            response=mock_response,
-            body=None,
-        )
-
-        with pytest.raises(LLMRateLimitError):
-            await llm_client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
+    async def test_rate_limit_error_mapped(self):
+        client = _make_client()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 429
+        mock_resp.headers = {}
+        with patch(
+            "qfa.services.llm_client.acompletion",
+            new_callable=AsyncMock,
+            side_effect=openai.RateLimitError(
+                message="rate limited", response=mock_resp, body=None
+            ),
+        ):
+            with pytest.raises(LLMRateLimitError):
+                await client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
 
     @pytest.mark.asyncio
-    async def test_generic_api_error_mapped(self, llm_client, mock_client):
-        mock_response = MagicMock()
-        mock_response.status_code = 500
-        mock_response.headers = {}
-        mock_client.responses.create.side_effect = openai.APIError(
-            message="server error",
-            request=MagicMock(),
-            body=None,
-        )
+    async def test_generic_api_error_mapped(self):
+        client = _make_client()
+        with patch(
+            "qfa.services.llm_client.acompletion",
+            new_callable=AsyncMock,
+            side_effect=openai.APIError(
+                message="server error", request=MagicMock(), body=None
+            ),
+        ):
+            with pytest.raises(LLMError):
+                await client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
 
-        with pytest.raises(LLMError):
-            await llm_client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
+    @pytest.mark.asyncio
+    async def test_empty_content_raises(self):
+        mock_response = _make_mock_response()
+        mock_response.choices[0].message.content = ""
+        client = _make_client()
+        with patch(
+            "qfa.services.llm_client.acompletion",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ):
+            with pytest.raises(LLMError, match="empty content"):
+                await client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
+
+    @pytest.mark.asyncio
+    async def test_missing_usage_raises(self):
+        mock_response = _make_mock_response()
+        mock_response.usage = None
+        client = _make_client()
+        with patch(
+            "qfa.services.llm_client.acompletion",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ):
+            with pytest.raises(LLMError, match="missing usage"):
+                await client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
