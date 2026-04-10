@@ -43,6 +43,8 @@ az storage container create \
 # Terraform can still read/write state blobs through the data plane.
 # Removing the lock later requires Owner or User Access Administrator on
 # the resource — Contributor is not sufficient.
+# Note: if this fails, you can still continue with bootstrapping. But your state files
+# are note protected from accidental deletion.
 echo "Locking storage account against accidental deletion..."
 az lock create \
   --name no-delete-tfstate \

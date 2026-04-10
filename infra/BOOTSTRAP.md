@@ -92,10 +92,12 @@ az login
 ```
 
 Then re-run the `terraform init` command above.
+If it still fails, make sure your roles are activated in the Azure portal.
 
 ### 5. Create workspaces
 
-Terraform uses workspaces to manage `dev`, `staging`, and `prd` environments with separate state files.
+Terraform uses [workspaces](https://developer.hashicorp.com/terraform/language/state/workspaces)
+to manage `dev`, `staging`, and `prd` environments with separate state files.
 
 ```bash
 terraform workspace new dev
