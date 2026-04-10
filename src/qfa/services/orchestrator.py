@@ -228,6 +228,7 @@ class StandardOrchestrator(OrchestratorPort):
         self._check_injection(request.feedback_items)
 
         feedback_item_summaries: list[FeedbackItemSummary] = []
+        total_cost: float | None = 0.0
 
         for feedback_item in request.feedback_items:
             system_message = _DEFAULT_SUMMARIZATION_PROMPT
@@ -247,6 +248,10 @@ class StandardOrchestrator(OrchestratorPort):
                 tenant_id=request.tenant_id,
                 deadline=deadline,
             )
+            if response.cost is None or total_cost is None:
+                total_cost = None
+            else:
+                total_cost += response.cost
 
             try:
                 payload = json.loads(response.result)
@@ -273,6 +278,10 @@ class StandardOrchestrator(OrchestratorPort):
                 tenant_id=request.tenant_id,
                 deadline=deadline,
             )
+            if judge_response.cost is None or total_cost is None:
+                total_cost = None
+            else:
+                total_cost += judge_response.cost
             quality_score = _parse_judge_quality_score(judge_response.result)
 
             feedback_item_summaries.append(
@@ -283,7 +292,10 @@ class StandardOrchestrator(OrchestratorPort):
                     quality_score=quality_score,
                 )
             )
-        return SummaryResult(feedback_item_summaries=tuple(feedback_item_summaries))
+        return SummaryResult(
+            feedback_item_summaries=tuple(feedback_item_summaries),
+            cost=total_cost,
+        )
 
     # ------------------------------------------------------------------
     # Prompt injection filtering
@@ -445,12 +457,15 @@ class StandardOrchestrator(OrchestratorPort):
                 timeout=120,
                 tenant_id=tenant_id,
             )
+            cost_str = f"${response.cost:.6f}" if response.cost is not None else "N/A"
             logger.info(
-                "LLM response received for tenant %s: %s. Tokens: %d prompt; %d completion",
+                "LLM response received for tenant %s: %s. "
+                "Tokens: %d prompt; %d completion. Cost: %s",
                 tenant_id,
                 response.model,
                 response.prompt_tokens,
                 response.completion_tokens,
+                cost_str,
             )
         except (LLMTimeoutError, LLMRateLimitError):
             # raise timeout and rate limit errors (tenacity will retry)
@@ -468,4 +483,5 @@ class StandardOrchestrator(OrchestratorPort):
             model=response.model,
             prompt_tokens=response.prompt_tokens,
             completion_tokens=response.completion_tokens,
+            cost=response.cost,
         )
