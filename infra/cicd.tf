@@ -26,7 +26,22 @@ resource "azurerm_role_assignment" "github_acr_repository_writer" {
   principal_id         = azurerm_user_assigned_identity.github.principal_id
 }
 
-# GitHub Actions identity gets Contributor on the resource group
+# GitHub Actions identity gets Contributor on the resource group.
+#
+# Why Contributor and not a narrower role:
+#   terraform.yaml runs `terraform apply` which creates, updates, and deletes
+#   arbitrary resources in this RG (App Service, Key Vault, VNet, subnets,
+#   managed identities). That requires Contributor-level breadth. A scoped
+#   role like Website Contributor would only cover the App Service, breaking
+#   all other Terraform-managed resources.
+#
+# When to revisit:
+#   If the team grows and you want least-privilege separation, split into two
+#   identities: one for Terraform (Contributor on the RG, used only by
+#   terraform.yaml) and one for deployment (Website Contributor on the App
+#   Service, used by the release/promote workflows). That requires a second
+#   managed identity, a second federated credential, and a second set of
+#   GitHub environment variables.
 resource "azurerm_role_assignment" "github_contributor" {
   scope                = data.azurerm_resource_group.main.id
   role_definition_name = "Contributor"

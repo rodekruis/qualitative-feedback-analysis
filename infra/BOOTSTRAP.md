@@ -159,6 +159,38 @@ gh variable set AZ_ACR_NAME        --env prd --repo $REPO --body "$TF_VAR_acr_na
 
 The `terraform.yaml` workflow can now run autonomously in CI.
 
+### 7. Seed Key Vault secrets
+
+The App Service reads three secrets from Key Vault at runtime via [Key Vault references](https://learn.microsoft.com/en-us/azure/app-service/app-service-key-vault-references) (configured in `app_service.tf`). Terraform creates the vault and grants the App Service read access (`Key Vault Secrets User`), but does **not** manage secret values — those are set out-of-band to keep them out of Terraform state.
+
+The Key Vault uses RBAC authorization, so Azure Contributor/Owner on the resource group alone does **not** grant data-plane access to secrets. You must first assign yourself `Key Vault Secrets Officer` on each vault.
+
+Repeat the block below for each environment (`ENV=dev`, `ENV=staging`, `ENV=prd`):
+
+```bash
+ENV=dev  # then staging, then prd
+
+# Grant yourself write access to secrets
+VAULT_ID=$(az keyvault show --name "qfa-${ENV}-keyvault" --query id -o tsv)
+az role assignment create \
+  --role "Key Vault Secrets Officer" \
+  --assignee "$(az ad signed-in-user show --query id -o tsv)" \
+  --scope "$VAULT_ID"
+
+# Set the three required secrets
+az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "llm-azure-endpoint" --value "<your-azure-openai-endpoint-url>"
+az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "llm-api-key"        --value "<your-llm-api-key>"
+az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "auth-api-keys"      --value "<comma-separated-api-keys>"
+```
+
+| Secret | Description |
+|--------|-------------|
+| `llm-azure-endpoint` | Base URL of your Azure OpenAI deployment (e.g. `https://<resource>.openai.azure.com/`) |
+| `llm-api-key` | API key for the Azure OpenAI deployment |
+| `auth-api-keys` | Comma-separated list of API keys that authenticate callers to this backend |
+
+Without these secrets the App Service will start and pass health checks, but API calls will fail with a Key Vault reference resolution error.
+
 ## Subsequent infrastructure changes
 
 After the bootstrap, infrastructure changes follow the normal workflow:
