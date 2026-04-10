@@ -5,6 +5,7 @@ HTTP contract can evolve independently of the core domain.
 """
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -211,6 +212,43 @@ class SummarizeResponse(BaseModel):
     """
 
     summaries: list[FeedbackItemSummary]
+
+
+class FeedbackItem(BaseModel):
+    """Feedback item: ``id`` plus body text (reusable across endpoints)."""
+
+    id: str
+    content: str = Field(min_length=1, max_length=100_000)
+
+
+class AssignCodesRequest(BaseModel):
+    """Request body for ``POST /v1/assign_codes``."""
+
+    coding_framework: dict[str, Any]
+    feedback_items: list[FeedbackItem] = Field(min_length=1)
+    max_codes: int = Field(default=1, ge=1, le=50)
+    confidence_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
+class CodeItem(BaseModel):
+    """A single code item."""
+
+    code_id: str
+    code_label: str
+    explanation: str
+
+
+class CodeItems(BaseModel):
+    """List of code items assigned to one feedback item."""
+
+    feedback_item_id: str
+    code_items: list[CodeItem]
+
+
+class AssignCodesResponse(BaseModel):
+    """Response body for ``POST /v1/assign_codes``."""
+
+    coded_feedback_items: list[CodeItems]
 
 
 class HealthResponse(BaseModel):

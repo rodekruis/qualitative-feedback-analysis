@@ -12,6 +12,9 @@ from qfa.api.dependencies import (
 from qfa.api.schemas import (
     AnalyzeRequest,
     AnalyzeResponse,
+    AssignCodesRequest,
+    AssignCodesResponse,
+    CodeItems,
     FeedbackItemSummary,
     HealthResponse,
     SummarizeFeedbackMetadata,
@@ -144,6 +147,20 @@ async def summarize(
                 quality_score=item.quality_score,
             )
             for item in result.feedback_item_summaries
+        ],
+    )
+
+
+@router.post("/v1/assign_codes", response_model=AssignCodesResponse, status_code=200)
+async def assign_codes(
+    body: AssignCodesRequest,
+    _tenant: TenantApiKey = Depends(authenticate_request),
+) -> AssignCodesResponse:
+    """Assign codes to feedback items (stub: empty ``code_items`` until LLM wiring)."""
+    return AssignCodesResponse(
+        coded_feedback_items=[
+            CodeItems(feedback_item_id=item.id, code_items=[])
+            for item in body.feedback_items
         ],
     )
 
