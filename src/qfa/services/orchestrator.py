@@ -8,12 +8,13 @@ import json
 import logging
 import random
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 
 from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_exponential
 
 from qfa.domain.errors import (
     AnalysisError,
+    AnalysisTimeoutError,
     DocumentsTooLargeError,
     LLMError,
     LLMRateLimitError,
@@ -22,12 +23,17 @@ from qfa.domain.errors import (
 from qfa.domain.models import (
     AnalysisRequest,
     AnalysisResult,
+    AssignedCode,
+    CodedFeedbackItem,
+    CodingAssignmentRequest,
+    CodingAssignmentResult,
     FeedbackItem,
     FeedbackItemSummary,
     SummaryRequest,
     SummaryResult,
 )
 from qfa.domain.ports import LLMPort, OrchestratorPort
+from qfa.services.coding_classifier import classify_feedback
 from qfa.settings import OrchestratorSettings
 
 logger = logging.getLogger(__name__)
@@ -284,6 +290,70 @@ class StandardOrchestrator(OrchestratorPort):
                 )
             )
         return SummaryResult(feedback_item_summaries=tuple(feedback_item_summaries))
+
+    async def assign_codes(
+        self,
+        request: CodingAssignmentRequest,
+        deadline: datetime,
+    ) -> CodingAssignmentResult:
+        """Assign hierarchical codes to each feedback item.
+
+        Parameters
+        ----------
+        request : CodingAssignmentRequest
+            Feedback items, coding framework, ``max_codes``, and tenant id.
+        deadline : datetime
+            Absolute UTC deadline by which all items must be coded.
+
+        Returns
+        -------
+        CodingAssignmentResult
+            Per-item leaf codes from ``classify_feedback``.
+
+        Raises
+        ------
+        AnalysisTimeoutError
+            When ``deadline`` is reached before every item is processed.
+        LLMTimeoutError
+            When a single LLM completion exceeds the configured timeout.
+        LLMRateLimitError
+            When the LLM provider returns rate limiting.
+        LLMError
+            For other LLM provider failures.
+        """
+        self._check_injection(request.feedback_items)
+
+        coded: list[CodedFeedbackItem] = []
+
+        for feedback_item in request.feedback_items:
+            if datetime.now(UTC) >= deadline:
+                raise AnalysisTimeoutError(
+                    "Coding deadline exceeded before all items were processed"
+                )
+
+            rows = await classify_feedback(
+                self._llm,
+                feedback_text=feedback_item.text,
+                framework=request.coding_framework,
+                tenant_id=request.tenant_id,
+                timeout=self._llm_timeout_seconds,
+                max_codes=request.max_codes,
+            )
+            coded.append(
+                CodedFeedbackItem(
+                    feedback_item_id=feedback_item.id,
+                    assigned_codes=tuple(
+                        AssignedCode(
+                            code_id=code_id,
+                            code_label=code_label,
+                            explanation=explanation,
+                        )
+                        for code_id, code_label, explanation in rows
+                    ),
+                )
+            )
+
+        return CodingAssignmentResult(coded_feedback_items=tuple(coded))
 
     # ------------------------------------------------------------------
     # Prompt injection filtering
