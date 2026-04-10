@@ -10,7 +10,6 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from openai import AsyncAzureOpenAI, AsyncOpenAI
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from qfa.api.routes import router
@@ -25,9 +24,9 @@ from qfa.domain.errors import (
     AuthenticationError,
     DocumentsTooLargeError,
 )
-from qfa.services.llm_client import OpenAiLLMClient
+from qfa.services.llm_client import LiteLLMClient
 from qfa.services.orchestrator import StandardOrchestrator
-from qfa.settings import AppSettings, LLMProvider, LLMSettings
+from qfa.settings import AppSettings, LLMSettings
 from qfa.utils import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -382,7 +381,7 @@ async def _handle_unhandled_exception(request: Request, exc: Exception) -> JSONR
     return JSONResponse(status_code=500, content=body.model_dump())
 
 
-def build_llm_client(settings: LLMSettings) -> OpenAiLLMClient:
+def build_llm_client(settings: LLMSettings) -> LiteLLMClient:
     """Build an LLM client from the provided settings.
 
     Parameters
@@ -392,18 +391,39 @@ def build_llm_client(settings: LLMSettings) -> OpenAiLLMClient:
 
     Returns
     -------
-    OpenAiLLMClient
+    LiteLLMClient
         A configured LLM client instance.
     """
-    if settings.provider == LLMProvider.AZURE_OPENAI:
-        client = AsyncAzureOpenAI(
-            api_key=settings.api_key.get_secret_value(),
-            azure_endpoint=settings.azure_endpoint,
-            api_version=settings.api_version,
+    return LiteLLMClient(
+        model=settings.model,
+        api_key=settings.api_key.get_secret_value(),
+        api_base=settings.api_base,
+        api_version=settings.api_version,
+    )
+
+
+def _register_custom_model_prices() -> None:
+    """Load custom model pricing from the bundled YAML resource.
+
+    Registers models with LiteLLM so that ``completion_cost()`` works
+    for models not in the built-in cost map.
+    """
+    import importlib.resources
+
+    import litellm
+    import yaml
+
+    prices_path = importlib.resources.files("qfa.resources").joinpath(
+        "model_prices.yaml"
+    )
+    with importlib.resources.as_file(prices_path) as f:
+        custom_prices = yaml.safe_load(f.read_text())
+    if custom_prices and custom_prices.get("models"):
+        litellm.register_model(custom_prices["models"])
+        logger.info(
+            "Registered %d custom model price(s)",
+            len(custom_prices["models"]),
         )
-    else:
-        client = AsyncOpenAI(api_key=settings.api_key.get_secret_value())
-    return OpenAiLLMClient(client=client, model=settings.model)
 
 
 @asynccontextmanager
@@ -421,6 +441,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     settings = AppSettings()
     setup_logging(settings.log)
+
+    _register_custom_model_prices()
 
     llm_client = build_llm_client(settings.llm)
     orchestrator = StandardOrchestrator(
