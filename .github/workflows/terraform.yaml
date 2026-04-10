@@ -60,7 +60,10 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
 
       - name: Terraform init
-        run: terraform init
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ vars.AZ_TF_STATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ vars.AZ_TF_STATE_STORAGE_ACCOUNT }}"
         env:
           ARM_USE_OIDC: true
 
@@ -77,6 +80,9 @@ jobs:
           TF_VAR_subscription_id: ${{ vars.AZ_SUBSCRIPTION_ID }}
           TF_VAR_tenant_id: ${{ vars.AZ_TENANT_ID }}
           TF_VAR_resource_group_name: ${{ vars.AZ_RESOURCE_GROUP }}
+          TF_VAR_acr_name: ${{ vars.AZ_ACR_NAME }}
+          TF_VAR_acr_resource_group_name: ${{ vars.AZ_ACR_RESOURCE_GROUP }}
+          TF_VAR_tf_state_storage_account: ${{ vars.AZ_TF_STATE_STORAGE_ACCOUNT }}
 
       - name: Terraform apply
         if: inputs.command == 'apply'
@@ -86,3 +92,6 @@ jobs:
           TF_VAR_subscription_id: ${{ vars.AZ_SUBSCRIPTION_ID }}
           TF_VAR_tenant_id: ${{ vars.AZ_TENANT_ID }}
           TF_VAR_resource_group_name: ${{ vars.AZ_RESOURCE_GROUP }}
+          TF_VAR_acr_name: ${{ vars.AZ_ACR_NAME }}
+          TF_VAR_acr_resource_group_name: ${{ vars.AZ_ACR_RESOURCE_GROUP }}
+          TF_VAR_tf_state_storage_account: ${{ vars.AZ_TF_STATE_STORAGE_ACCOUNT }}

@@ -112,6 +112,11 @@ This is the per-environment loop. Each environment lives in its own resource gro
 ```bash
 REPO="rodekruis/qualitative-feedback-analysis"
 
+# --- repo-scoped variables (shared across all environments) ---
+gh variable set AZ_TF_STATE_RESOURCE_GROUP  --repo $REPO --body "$TF_VAR_tf_state_resource_group_name"
+gh variable set AZ_TF_STATE_STORAGE_ACCOUNT --repo $REPO --body "$TF_VAR_tf_state_storage_account"
+gh variable set AZ_ACR_RESOURCE_GROUP       --repo $REPO --body "$TF_VAR_acr_resource_group_name"
+
 # === Dev ===
 export TF_VAR_resource_group_name=<your-dev-rg-name>
 terraform workspace select dev
