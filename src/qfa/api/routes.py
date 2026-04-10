@@ -137,7 +137,12 @@ async def summarize(
 
     return SummarizeResponse(
         summaries=[
-            FeedbackItemSummary(id=item.id, title=item.title, summary=item.summary)
+            FeedbackItemSummary(
+                id=item.id,
+                title=item.title,
+                summary=item.summary,
+                quality_score=item.quality_score,
+            )
             for item in result.feedback_item_summaries
         ],
     )
