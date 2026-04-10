@@ -5,7 +5,7 @@
 
 # About
 
-The feedback analysis tool receives feedback documents and analyses trends, topics and their evolution over time.
+The feedback analysis tool receives feedback items and analyses trends, topics and their evolution over time.
 
 The feedback is collected in a CRM system and sent to this backend for analysis.
 
