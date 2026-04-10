@@ -123,10 +123,8 @@ def _parse_judge_quality_score(raw: str) -> float:
 
 
 def _build_judge_system_message(source_text: str, summary: str) -> str:
-    """Fill the judge prompt without str.format (source may contain ``{``)."""
-    return _JUDGE_PROMPT.replace("{source_text}", source_text).replace(
-        "{summary}", summary
-    )
+    """Fill the judge prompt with the provided source text and summary."""
+    return _JUDGE_PROMPT.format(source_text=source_text, summary=summary)
 
 
 class StandardOrchestrator(OrchestratorPort):
