@@ -128,8 +128,4 @@ registry, not redesigning the promotion model.
 
 ## Participants
 
-- Architect (proposed shared ACR — promote-by-digest requires it)
-- Domain expert (validated that compliance does not currently require
-  environment isolation at the registry level)
-- Devil's advocate (challenged cross-environment blast radius — accepted
-  that the risk is theoretical at current scale and manageable via RBAC)
+Marius

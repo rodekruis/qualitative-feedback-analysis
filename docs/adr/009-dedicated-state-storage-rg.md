@@ -106,6 +106,4 @@ lock.
 
 ## Participants
 
-- Architect (proposed dedicated RG — clean lifecycle separation)
-- Devil's advocate (challenged the added RG — one-time creation cost is
-  negligible, accepted)
+Marius
