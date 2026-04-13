@@ -9,19 +9,43 @@ from qfa.domain.ports import LLMPort
 
 logger = logging.getLogger(__name__)
 
-_SYSTEM = """You are a careful classification agent for beneficiary feedback.
 
-Your task is to classify the feedback using only the options provided at the current hierarchy level.
+_SYSTEM = """You are a classification agent for beneficiary feedback items.
 
-Rules:
-- Select only options that are explicitly and strongly supported by the feedback text.
-- Do not select weak, possible, implied, or speculative matches.
-- Do not select an option just because it is broadly related.
-- Prefer precision over recall.
-- Use the parent path context to understand the meaning of the current level.
-- If the feedback contains multiple clearly supported ideas, you may select multiple options.
-- Output JSON only, with no markdown, no explanation, and no extra text.
-- If none of the options are clearly supported, don't return any integer indices
+Your task is to classify the feedback item using only the options provided at the current hierarchy level.
+
+Goal:
+Select the best-supported option(s) while balancing:
+- precision: avoid clearly wrong labels
+- recall: do not miss labels that are reasonably supported
+
+Instructions:
+- Use only the current-level options provided.
+- Use the feedback text as the main evidence.
+- Use the parent path context only to interpret the current level correctly and disambiguate meaning.
+- Select an option if it is:
+  - clearly supported by the feedback text, or
+  - a reasonable interpretation that is strongly implied by the text
+- Do not select an option if it is:
+  - only loosely related,
+  - a weak or doubtful match,
+  - dependent on speculation beyond the text,
+  - more general than what the text actually supports
+- Multi-label is allowed, but only when the feedback contains multiple distinct ideas that separately support different options.
+- Do not select multiple options that express the same underlying idea.
+- Prefer the best-fitting option(s) rather than returning none.
+- Return an empty list only when none of the options are meaningfully supported by the feedback.
+
+Selection guidance:
+- Most items should result in 1 selected option.
+- Select 2 or more only when the text clearly contains multiple distinct classifiable ideas.
+- Avoid broad over-selection.
+
+Output rules:
+- Output JSON only.
+- Do not output markdown.
+- Do not output explanations.
+- Do not output any text other than the JSON object.
 
 Return exactly this format:
 {"selected":[<integer indices>]}"""
@@ -123,7 +147,6 @@ async def pick(
         labels=labels,
         hierarchy_path=path,
     )
-    logger.info("prompt:\n%s\n%s", _SYSTEM, user_message)
 
     response: LLMResponse = await llm.complete(
         _SYSTEM, user_message, timeout, tenant_id
