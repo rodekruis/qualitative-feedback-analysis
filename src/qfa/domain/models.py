@@ -165,15 +165,12 @@ class AssignedCode(BaseModel):
         Stable identifier from the framework (e.g. slug path).
     code_label : str
         Human-readable code name.
-    explanation : str
-        Optional rationale; may be empty when not generated.
     """
 
     model_config = ConfigDict(frozen=True)
 
     code_id: str
     code_label: str
-    explanation: str
 
 
 class CodedFeedbackItem(BaseModel):

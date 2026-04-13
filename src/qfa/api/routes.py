@@ -183,7 +183,6 @@ async def assign_codes(
                     CodeItem(
                         code_id=assigned.code_id,
                         code_label=assigned.code_label,
-                        explanation=assigned.explanation,
                     )
                     for assigned in coded.assigned_codes
                 ],

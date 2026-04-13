@@ -163,7 +163,7 @@ async def classify_feedback(
     tenant_id: str,
     timeout: float,
     max_codes: int,
-) -> list[tuple[str, str, str]]:
+) -> list[tuple[str, str]]:
     """Assign leaf codes by walking the framework tree with repeated ``pick`` calls.
 
     Traverses ``coding_frames`` → ``types`` → ``categories`` → ``codes``. At each
@@ -191,12 +191,10 @@ async def classify_feedback(
 
     Returns
     -------
-    list[tuple[str, str, str]]
-        Each tuple is ``(code_id, code_label, explanation)``. ``code_id`` and
-        ``code_label`` come from the leaf ``codes`` entry; ``explanation`` is
-        currently always an empty string.
+    list[tuple[str, str]]
+        Each tuple is ``(code_id, code_label)`` from the leaf ``codes`` entry.
     """
-    assigned_codes: list[tuple[str, str, str]] = []
+    assigned_codes: list[tuple[str, str]] = []
     coding_frames = framework.get("coding_frames") or []
 
     # Level 1: Coding frames (e.g. COVID-19 vs drought vs poverty) TODO: Currently implemented, will be removed in future because known.
@@ -272,7 +270,6 @@ async def classify_feedback(
                         (
                             str(code.get("code_id", "")),
                             str(code.get("name", "")),
-                            "",
                         )
                     )
                     if len(assigned_codes) >= max_codes:

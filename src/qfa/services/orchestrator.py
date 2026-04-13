@@ -346,9 +346,8 @@ class StandardOrchestrator(OrchestratorPort):
                         AssignedCode(
                             code_id=code_id,
                             code_label=code_label,
-                            explanation=explanation,
                         )
-                        for code_id, code_label, explanation in rows
+                        for code_id, code_label in rows
                     ),
                 )
             )

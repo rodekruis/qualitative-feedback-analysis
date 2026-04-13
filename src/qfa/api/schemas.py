@@ -283,7 +283,6 @@ class CodeItem(BaseModel):
 
     code_id: str
     code_label: str
-    explanation: str
 
 
 class CodeItems(BaseModel):
