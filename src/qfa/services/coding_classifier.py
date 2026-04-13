@@ -199,7 +199,7 @@ async def classify_feedback(
     assigned_codes: list[tuple[str, str, str]] = []
     coding_frames = framework.get("coding_frames") or []
 
-    # Level 1: Coding frames (e.g. COVID-19 vs drought vs poverty)
+    # Level 1: Coding frames (e.g. COVID-19 vs drought vs poverty) TODO: Currently implemented, will be removed in future because known.
     frame_labels = [str(frame.get("name", "")) for frame in coding_frames]
     selected_frame_indices = await pick(
         llm,
