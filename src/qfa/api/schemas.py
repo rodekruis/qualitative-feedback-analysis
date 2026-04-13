@@ -37,23 +37,20 @@ def _assign_codes_request_examples() -> list[dict[str, Any]]:
     framework = json.loads(path.read_text(encoding="utf-8"))
     # Verbatim long examples from the COVID-19 frame in the coding framework (Excel export).
     quotes = [
-        "they belief now a day covid-19 is as such not big deal, but the ruling party "
-        "or the government used it as the agenda to divert the political view and opinion "
-        "of the people towards the election after the coming two months",
-        "This illness is creating a headache to us. We hear on the radio. All the things "
-        "we used to help us we have stopped. We no longer travel to sell our things to "
-        "other places. We are now hungry.",
-        "transport is a very important pillar in the dvpt but the government should "
-        "delimit areas of high contamination in order to limit movement to these areas",
+        "they belief now a day covid-19 is as such not big deal, but the ruling party or the government used it as the agenda to divert the political view and opinion of the people towards the election after the coming two months",
+        "This illness is creating a headache to us. We hear on the radio. All the things we used to help us we have stopped. We no longer travel to sell our things to other places. We are now hungry.",
+        "transport is a very important pillar in the dvpt but the government should delimit areas of high contamination in order to limit movement to these areas",
     ]
     return [
         {
             "coding_framework": framework,
-            "feedback_items": [{"id": f"covid-example-{i}", "content": text}],
+            "feedback_items": [
+                {"id": f"covid-example-{i}", "content": text}
+                for i, text in enumerate(quotes)
+            ],
             "max_codes": 10,
             "confidence_threshold": None,
         }
-        for i, text in enumerate(quotes, start=1)
     ]
 
 
