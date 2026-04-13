@@ -4,10 +4,57 @@ These Pydantic models are separate from the domain models so that the
 HTTP contract can evolve independently of the core domain.
 """
 
+import json
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
+
+
+def _assign_codes_request_examples() -> list[dict[str, Any]]:
+    """Build Swagger ``examples`` from ``fixtures/coding_framework.json`` + COVID-19 codebook quotes."""
+    root = Path(__file__).resolve().parents[3]
+    path = root / "fixtures" / "coding_framework.json"
+    if not path.is_file():
+        return [
+            {
+                "coding_framework": {"coding_frames": []},
+                "feedback_items": [
+                    {
+                        "id": "no-framework",
+                        "content": (
+                            "Repository root must contain fixtures/coding_framework.json "
+                            "for full Try-it-out examples."
+                        ),
+                    }
+                ],
+                "max_codes": 10,
+                "confidence_threshold": None,
+            }
+        ]
+    # Dev-only: load JSON for Swagger examples; TODO: link production framework through API
+    framework = json.loads(path.read_text(encoding="utf-8"))
+    # Verbatim long examples from the COVID-19 frame in the coding framework (Excel export).
+    quotes = [
+        "they belief now a day covid-19 is as such not big deal, but the ruling party "
+        "or the government used it as the agenda to divert the political view and opinion "
+        "of the people towards the election after the coming two months",
+        "This illness is creating a headache to us. We hear on the radio. All the things "
+        "we used to help us we have stopped. We no longer travel to sell our things to "
+        "other places. We are now hungry.",
+        "transport is a very important pillar in the dvpt but the government should "
+        "delimit areas of high contamination in order to limit movement to these areas",
+    ]
+    return [
+        {
+            "coding_framework": framework,
+            "feedback_items": [{"id": f"covid-example-{i}", "content": text}],
+            "max_codes": 10,
+            "confidence_threshold": None,
+        }
+        for i, text in enumerate(quotes, start=1)
+    ]
 
 
 class FeedbackItemInput(BaseModel):
@@ -223,6 +270,10 @@ class FeedbackItem(BaseModel):
 
 class AssignCodesRequest(BaseModel):
     """Request body for ``POST /v1/assign_codes``."""
+
+    model_config = {
+        "json_schema_extra": {"examples": _assign_codes_request_examples()},
+    }
 
     coding_framework: dict[str, Any]
     feedback_items: list[FeedbackItem] = Field(min_length=1)
