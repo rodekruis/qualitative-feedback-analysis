@@ -1,0 +1,37 @@
+# Auto-deploy a release to staging the moment it is published.
+#
+# Publishing a draft release on the Releases page is the human sign-off
+# that dev validation has passed and the release is ready for the next
+# environment. Under the deployment model, that next environment is
+# staging — so this workflow exists to bind the publish event to the
+# staging deploy automatically. The publish click is the trigger; no
+# extra workflow run is needed.
+#
+# Pre-releases (vX.Y.Z-rc.N etc.) are *not* filtered out — publishing a
+# pre-release also auto-deploys it to staging. That's intentional:
+# release candidates are exactly the thing you want to validate under
+# prod-like config in staging before cutting the final release. Prd
+# remains protected from pre-releases by promote-to-prd.yaml.
+#
+# For re-deploying staging to a previous release (rollback), or for
+# pointing staging at a release that was published while staging was
+# down, use the manual promote-to-staging.yaml workflow instead.
+name: Auto-deploy published release to staging
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/_deploy-release.yaml
+    with:
+      release_tag: ${{ github.event.release.tag_name }}
+      environment: staging
+    permissions:
+      contents: write
+      id-token: write

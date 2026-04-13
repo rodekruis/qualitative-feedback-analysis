@@ -3,20 +3,23 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "feedback-analysis-backend"
-version = "0.3.1"
-description = "Marius Helf's new project is a Python project."
+name = "qualitative-feedback-analysis"
+version = "0.4.0"
+description = "The feedback analysis tool receives feedback items and analyses trends, topics and their evolution over time."
 readme = "README.md"
 license = "LicenseRef-Proprietary"
 requires-python = ">=3.12"
 authors = [
-    { name = "Marius Helf", email = "marius@xomnia.com" },
+    { name = "Marius Helf", email = "mhelf@rodekruis.nl" },
+    { name = "Paul van Houtum", email = "pvanhoutum@rodekruis.nl" },
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
 ]
 
 dependencies = [
