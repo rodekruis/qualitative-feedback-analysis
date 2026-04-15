@@ -58,6 +58,29 @@ resource "azurerm_role_assignment" "github_tfstate_blob_contributor" {
   principal_id         = azurerm_user_assigned_identity.github.principal_id
 }
 
+# CI identity needs to read role assignments at shared-infra scopes so that
+# `terraform plan` can refresh the azurerm_role_assignment resources defined
+# here and in app_service.tf. The narrower data-plane roles already granted
+# (Container Registry Repository Writer, Storage Blob Data Contributor) do
+# not include Microsoft.Authorization/roleAssignments/read — only control-
+# plane roles do. `Reader` scoped per-resource is the least-privilege fit:
+# it grants `*/read` on exactly these two resources, nothing else.
+#
+# Write-side (apply creating or modifying role assignments at these scopes)
+# still requires operator credentials in a local apply. Reader covers the
+# steady-state CI plan/apply cycle.
+resource "azurerm_role_assignment" "github_acr_reader" {
+  scope                = local.acr_id
+  role_definition_name = "Reader"
+  principal_id         = azurerm_user_assigned_identity.github.principal_id
+}
+
+resource "azurerm_role_assignment" "github_tfstate_reader" {
+  scope                = local.tfstate_sa_id
+  role_definition_name = "Reader"
+  principal_id         = azurerm_user_assigned_identity.github.principal_id
+}
+
 resource "azurerm_federated_identity_credential" "github_environment" {
   name                      = "gh-qualitative-feedback-analysis-${local.env}"
   user_assigned_identity_id = azurerm_user_assigned_identity.github.id
