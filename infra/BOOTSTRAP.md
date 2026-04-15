@@ -27,6 +27,12 @@ via GitHub Actions.
 
   For a minimal single-RG deployment, all five roles can point at the same RG. For multi-RG isolation, give each role its own RG. Create each via the Azure portal or `az group create -n <name> -l westeurope`.
 
+### Required roles to run initial terraform apply:
+TODO: document which role on which resource group
+* Contributor
+* Key Vault Administrator
+* Role Based Access Control Administrator
+
 ## Steps
 
 ### 1. Change into the infra directory
