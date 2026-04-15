@@ -129,11 +129,10 @@ terraform workspace new prd
 This is the per-environment loop. Each environment lives in its own resource group, so `TF_VAR_resource_group_name` must be re-exported before each `terraform apply`. The same export is then used by `gh variable set AZ_RESOURCE_GROUP` to record that environment's RG in its GitHub environment. `terraform output -raw az_client_id` reads from the current workspace's state, so each block's `terraform output` call must follow that block's `terraform apply`.
 
 
-[!NOTE]
-This is the local bootstrap.
-It creates the full infrastructure, including the
-managed identity + federated credential that subsequently lets
-GitHub Actions authenticate into the RG without any secrets.
+> [!NOTE]
+> This is the local bootstrap. It creates the full infrastructure, including
+> the managed identity + federated credential that subsequently lets
+> GitHub Actions authenticate into the RG without any secrets.
 
 
 ```bash
