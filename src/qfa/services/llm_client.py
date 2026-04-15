@@ -1,5 +1,7 @@
 """LLM client adapter for OpenAI and Azure OpenAI providers."""
 
+import logging
+
 import openai
 from openai import AsyncAzureOpenAI, AsyncOpenAI
 
@@ -10,6 +12,8 @@ from qfa.domain.errors import (
 )
 from qfa.domain.models import LLMResponse
 from qfa.domain.ports import LLMPort
+
+logger = logging.getLogger(__name__)
 
 
 class OpenAiLLMClient(LLMPort):
@@ -76,10 +80,13 @@ class OpenAiLLMClient(LLMPort):
                 timeout=timeout,
             )
         except openai.APITimeoutError as exc:
+            logger.error(exc)
             raise LLMTimeoutError(str(exc)) from exc
         except openai.RateLimitError as exc:
+            logger.error(exc)
             raise LLMRateLimitError(str(exc)) from exc
         except openai.APIError as exc:
+            logger.error(exc)
             raise LLMError(str(exc)) from exc
 
         content = response.output_text

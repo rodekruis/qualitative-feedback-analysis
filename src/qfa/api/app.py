@@ -334,6 +334,7 @@ async def _handle_analysis_error(request: Request, exc: AnalysisError) -> JSONRe
     JSONResponse
         A 502 or 422 JSON response depending on the error cause.
     """
+    logger.debug("Analysis error: %s", exc, exc_info=True)
     if "injection" in str(exc).lower():
         body = ErrorResponse(
             error=ErrorDetail(
