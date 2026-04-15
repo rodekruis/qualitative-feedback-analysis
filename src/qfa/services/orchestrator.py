@@ -33,7 +33,7 @@ from qfa.domain.models import (
     SummaryResult,
 )
 from qfa.domain.ports import LLMPort, OrchestratorPort
-from qfa.services.coding_classifier import classify_feedback
+from qfa.services.coding_classifier import build_pick_messages, parse_selected_indices
 from qfa.settings import OrchestratorSettings
 
 logger = logging.getLogger(__name__)
@@ -324,6 +324,7 @@ class StandardOrchestrator(OrchestratorPort):
         self._check_injection(request.feedback_items)
 
         coded: list[CodedFeedbackItem] = []
+        coding_frames = request.coding_framework.get("coding_frames") or []
 
         for feedback_item in request.feedback_items:
             if datetime.now(UTC) >= deadline:
@@ -331,14 +332,129 @@ class StandardOrchestrator(OrchestratorPort):
                     "Coding deadline exceeded before all items were processed"
                 )
 
-            rows = await classify_feedback(
-                self._llm,
+            rows: list[tuple[str, str]] = []
+
+            frame_labels = [str(frame.get("name", "")) for frame in coding_frames]
+            frame_system, frame_user = build_pick_messages(
                 feedback_text=feedback_item.text,
-                framework=request.coding_framework,
-                tenant_id=request.tenant_id,
-                timeout=self._llm_timeout_seconds,
-                max_codes=request.max_codes,
+                current_level="Frames",
+                labels=frame_labels,
+                hierarchy_path=None,
             )
+            frame_indices: list[int] = []
+            if frame_user:
+                self._check_token_limit(frame_system, frame_user)
+                frame_response = await self._call_with_retries(
+                    system_message=frame_system,
+                    user_message=frame_user,
+                    tenant_id=request.tenant_id,
+                    deadline=deadline,
+                )
+                frame_indices = parse_selected_indices(
+                    frame_response.result, len(frame_labels)
+                )
+
+            for frame_index in frame_indices:
+                frame = coding_frames[frame_index]
+                frame_name = str(frame.get("name", ""))
+                types = frame.get("types") or []
+
+                type_labels = [str(type_entry.get("name", "")) for type_entry in types]
+                type_system, type_user = build_pick_messages(
+                    feedback_text=feedback_item.text,
+                    current_level="Types",
+                    labels=type_labels,
+                    hierarchy_path=[("Frame", frame_name)],
+                )
+                type_indices: list[int] = []
+                if type_user:
+                    self._check_token_limit(type_system, type_user)
+                    type_response = await self._call_with_retries(
+                        system_message=type_system,
+                        user_message=type_user,
+                        tenant_id=request.tenant_id,
+                        deadline=deadline,
+                    )
+                    type_indices = parse_selected_indices(
+                        type_response.result, len(type_labels)
+                    )
+
+                for type_index in type_indices:
+                    type_entry = types[type_index]
+                    type_name = str(type_entry.get("name", ""))
+                    categories = type_entry.get("categories") or []
+
+                    category_labels = [
+                        str(category.get("name", "")) for category in categories
+                    ]
+                    category_system, category_user = build_pick_messages(
+                        feedback_text=feedback_item.text,
+                        current_level="Categories",
+                        labels=category_labels,
+                        hierarchy_path=[("Frame", frame_name), ("Type", type_name)],
+                    )
+                    category_indices: list[int] = []
+                    if category_user:
+                        self._check_token_limit(category_system, category_user)
+                        category_response = await self._call_with_retries(
+                            system_message=category_system,
+                            user_message=category_user,
+                            tenant_id=request.tenant_id,
+                            deadline=deadline,
+                        )
+                        category_indices = parse_selected_indices(
+                            category_response.result, len(category_labels)
+                        )
+
+                    for category_index in category_indices:
+                        category = categories[category_index]
+                        category_name = str(category.get("name", ""))
+                        codes = category.get("codes") or []
+
+                        code_labels = [str(code.get("name", "")) for code in codes]
+                        code_system, code_user = build_pick_messages(
+                            feedback_text=feedback_item.text,
+                            current_level="Codes",
+                            labels=code_labels,
+                            hierarchy_path=[
+                                ("Frame", frame_name),
+                                ("Type", type_name),
+                                ("Category", category_name),
+                            ],
+                        )
+                        code_indices: list[int] = []
+                        if code_user:
+                            self._check_token_limit(code_system, code_user)
+                            code_response = await self._call_with_retries(
+                                system_message=code_system,
+                                user_message=code_user,
+                                tenant_id=request.tenant_id,
+                                deadline=deadline,
+                            )
+                            code_indices = parse_selected_indices(
+                                code_response.result, len(code_labels)
+                            )
+
+                        for code_index in code_indices:
+                            code = codes[code_index]
+                            rows.append(
+                                (
+                                    str(code.get("code_id", "")),
+                                    str(code.get("name", "")),
+                                )
+                            )
+                            if len(rows) >= request.max_codes:
+                                break
+
+                        if len(rows) >= request.max_codes:
+                            break
+
+                    if len(rows) >= request.max_codes:
+                        break
+
+                if len(rows) >= request.max_codes:
+                    break
+
             coded.append(
                 CodedFeedbackItem(
                     feedback_item_id=feedback_item.id,
