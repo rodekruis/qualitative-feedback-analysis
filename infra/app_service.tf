@@ -89,7 +89,7 @@ resource "azurerm_role_assignment" "app_keyvault_secrets" {
 
 # Grant the App Service pull access to ACR
 resource "azurerm_role_assignment" "app_acr_repository_reader" {
-  scope                = data.azurerm_container_registry.acr.id
+  scope                = local.acr_id
   role_definition_name = "Container Registry Repository Reader"
   principal_id         = azurerm_linux_web_app.backend.identity[0].principal_id
 }

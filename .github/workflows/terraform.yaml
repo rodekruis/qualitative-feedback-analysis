@@ -12,6 +12,7 @@ name: Terraform
 
 on:
   push:
+    branches: [main]
     paths:
       - "infra/**"
   pull_request:
@@ -66,32 +67,38 @@ jobs:
             -backend-config="storage_account_name=${{ vars.AZ_TF_STATE_STORAGE_ACCOUNT }}"
         env:
           ARM_USE_OIDC: true
+          ARM_USE_AZUREAD: true
 
       - name: Select workspace
         run: terraform workspace select ${{ inputs.environment || 'dev' }}
         env:
           ARM_USE_OIDC: true
+          ARM_USE_AZUREAD: true
 
       - name: Terraform plan
         if: ${{ inputs.command != 'apply' }}
         run: terraform plan
         env:
           ARM_USE_OIDC: true
+          ARM_USE_AZUREAD: true
           TF_VAR_subscription_id: ${{ vars.AZ_SUBSCRIPTION_ID }}
           TF_VAR_tenant_id: ${{ vars.AZ_TENANT_ID }}
           TF_VAR_resource_group_name: ${{ vars.AZ_RESOURCE_GROUP }}
           TF_VAR_acr_name: ${{ vars.AZ_ACR_NAME }}
           TF_VAR_acr_resource_group_name: ${{ vars.AZ_ACR_RESOURCE_GROUP }}
           TF_VAR_tf_state_storage_account: ${{ vars.AZ_TF_STATE_STORAGE_ACCOUNT }}
+          TF_VAR_tf_state_resource_group_name: ${{ vars.AZ_TF_STATE_RESOURCE_GROUP }}
 
       - name: Terraform apply
         if: inputs.command == 'apply'
         run: terraform apply -auto-approve
         env:
           ARM_USE_OIDC: true
+          ARM_USE_AZUREAD: true
           TF_VAR_subscription_id: ${{ vars.AZ_SUBSCRIPTION_ID }}
           TF_VAR_tenant_id: ${{ vars.AZ_TENANT_ID }}
           TF_VAR_resource_group_name: ${{ vars.AZ_RESOURCE_GROUP }}
           TF_VAR_acr_name: ${{ vars.AZ_ACR_NAME }}
           TF_VAR_acr_resource_group_name: ${{ vars.AZ_ACR_RESOURCE_GROUP }}
           TF_VAR_tf_state_storage_account: ${{ vars.AZ_TF_STATE_STORAGE_ACCOUNT }}
+          TF_VAR_tf_state_resource_group_name: ${{ vars.AZ_TF_STATE_RESOURCE_GROUP }}

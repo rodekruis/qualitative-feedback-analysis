@@ -41,10 +41,11 @@ export TF_VAR_subscription_id=<your-azure-subscription-id>
 #   * tf_state_resource_group_name — where the Terraform state SA lives
 #   * acr_resource_group_name      — where the ACR lives
 #
-# tf_state_resource_group_name is used only by bootstrap.sh and by the
-# `terraform init` command in step 4 (it cannot be a Terraform variable
-# because backend blocks forbid variable interpolation). acr_resource_group_name
-# is read by Terraform via container_registry.tf.
+# Both are read by bootstrap.sh, by the `terraform init` command in step 4
+# (for tf_state_resource_group_name — which cannot be a Terraform backend
+# variable because backend blocks forbid variable interpolation), and by
+# Terraform itself (cicd.tf looks up the state SA to grant CI a blob role;
+# container_registry.tf looks up the ACR).
 #
 # For a single-RG deployment, point both at the same RG. For a multi-RG
 # deployment, point each at its dedicated RG.
@@ -75,7 +76,25 @@ These two resources have to exist before `terraform init` can run, because Terra
 bash bootstrap.sh
 ```
 
-### 4. Initialize Terraform
+### 4. Grant yourself data-plane access to the Terraform state storage account
+
+The backend uses AAD authentication (`use_azuread_auth = true` in `providers.tf`), which talks to blob storage as you rather than fetching the SA's shared key. Azure Contributor/Owner on the resource group does **not** grant data-plane blob operations — you need `Storage Blob Data Contributor` scoped to the SA itself. Without it, `terraform init` in the next step will fail with a 403 `AuthorizationPermissionMismatch`.
+
+```bash
+SA_ID=$(az storage account show \
+  --name "$TF_VAR_tf_state_storage_account" \
+  --resource-group "$TF_VAR_tf_state_resource_group_name" \
+  --query id -o tsv)
+
+az role assignment create \
+  --role "Storage Blob Data Contributor" \
+  --assignee "$(az ad signed-in-user show --query id -o tsv)" \
+  --scope "$SA_ID"
+```
+
+Role assignments take 30–60 seconds to propagate in Azure AD. If the next step still 403s, wait a minute and retry.
+
+### 5. Initialize Terraform
 
 Terraform's `backend` block does not allow variable interpolation, so the resource group and storage account names must be supplied at `terraform init` time via `-backend-config` flags:
 
@@ -94,7 +113,7 @@ az login
 Then re-run the `terraform init` command above.
 If it still fails, make sure your roles are activated in the Azure portal.
 
-### 5. Create workspaces
+### 6. Create workspaces
 
 Terraform uses [workspaces](https://developer.hashicorp.com/terraform/language/state/workspaces)
 to manage `dev`, `staging`, and `prd` environments with separate state files.
@@ -105,7 +124,7 @@ terraform workspace new staging
 terraform workspace new prd
 ```
 
-### 6. Apply each environment and configure its GitHub variables
+### 7. Apply each environment and configure its GitHub variables
 
 This is the per-environment loop. Each environment lives in its own resource group, so `TF_VAR_resource_group_name` must be re-exported before each `terraform apply`. The same export is then used by `gh variable set AZ_RESOURCE_GROUP` to record that environment's RG in its GitHub environment. `terraform output -raw az_client_id` reads from the current workspace's state, so each block's `terraform output` call must follow that block's `terraform apply`.
 
@@ -113,9 +132,12 @@ This is the per-environment loop. Each environment lives in its own resource gro
 REPO="rodekruis/qualitative-feedback-analysis"
 
 # --- repo-scoped variables (shared across all environments) ---
+echo "$TF_VAR_tenant_id"                    | gh variable set AZ_TENANT_ID                --repo "$REPO"
+echo "$TF_VAR_subscription_id"              | gh variable set AZ_SUBSCRIPTION_ID          --repo "$REPO"
 echo "$TF_VAR_tf_state_resource_group_name" | gh variable set AZ_TF_STATE_RESOURCE_GROUP  --repo "$REPO"
 echo "$TF_VAR_tf_state_storage_account"     | gh variable set AZ_TF_STATE_STORAGE_ACCOUNT --repo "$REPO"
 echo "$TF_VAR_acr_resource_group_name"      | gh variable set AZ_ACR_RESOURCE_GROUP       --repo "$REPO"
+echo "$TF_VAR_acr_name"                     | gh variable set AZ_ACR_NAME                 --repo "$REPO"
 
 # === Dev ===
 export TF_VAR_resource_group_name=<your-dev-rg-name>
@@ -124,11 +146,8 @@ terraform apply
 
 gh api repos/$REPO/environments/dev -X PUT
 gh variable set AZ_CLIENT_ID       --env dev --repo $REPO --body "$(terraform output -raw az_client_id)"
-gh variable set AZ_TENANT_ID       --env dev --repo $REPO --body "$TF_VAR_tenant_id"
-gh variable set AZ_SUBSCRIPTION_ID --env dev --repo $REPO --body "$TF_VAR_subscription_id"
 gh variable set AZ_RESOURCE_GROUP  --env dev --repo $REPO --body "$TF_VAR_resource_group_name"
 gh variable set AZ_APP_NAME        --env dev --repo $REPO --body "qfa-dev-backend"
-gh variable set AZ_ACR_NAME        --env dev --repo $REPO --body "$TF_VAR_acr_name"
 
 # === Staging ===
 export TF_VAR_resource_group_name=<your-staging-rg-name>
@@ -137,11 +156,8 @@ terraform apply
 
 gh api repos/$REPO/environments/staging -X PUT
 gh variable set AZ_CLIENT_ID       --env staging --repo $REPO --body "$(terraform output -raw az_client_id)"
-gh variable set AZ_TENANT_ID       --env staging --repo $REPO --body "$TF_VAR_tenant_id"
-gh variable set AZ_SUBSCRIPTION_ID --env staging --repo $REPO --body "$TF_VAR_subscription_id"
 gh variable set AZ_RESOURCE_GROUP  --env staging --repo $REPO --body "$TF_VAR_resource_group_name"
 gh variable set AZ_APP_NAME        --env staging --repo $REPO --body "qfa-staging-backend"
-gh variable set AZ_ACR_NAME        --env staging --repo $REPO --body "$TF_VAR_acr_name"
 
 # === Production ===
 export TF_VAR_resource_group_name=<your-prd-rg-name>
@@ -150,16 +166,13 @@ terraform apply
 
 gh api repos/$REPO/environments/prd -X PUT
 gh variable set AZ_CLIENT_ID       --env prd --repo $REPO --body "$(terraform output -raw az_client_id)"
-gh variable set AZ_TENANT_ID       --env prd --repo $REPO --body "$TF_VAR_tenant_id"
-gh variable set AZ_SUBSCRIPTION_ID --env prd --repo $REPO --body "$TF_VAR_subscription_id"
 gh variable set AZ_RESOURCE_GROUP  --env prd --repo $REPO --body "$TF_VAR_resource_group_name"
 gh variable set AZ_APP_NAME        --env prd --repo $REPO --body "qfa-prd-backend"
-gh variable set AZ_ACR_NAME        --env prd --repo $REPO --body "$TF_VAR_acr_name"
 ```
 
 The `terraform.yaml` workflow can now run autonomously in CI.
 
-### 7. Seed Key Vault secrets
+### 8. Seed Key Vault secrets
 
 The App Service reads three secrets from Key Vault at runtime via [Key Vault references](https://learn.microsoft.com/en-us/azure/app-service/app-service-key-vault-references) (configured in `app_service.tf`). Terraform creates the vault and grants the App Service read access (`Key Vault Secrets User`), but does **not** manage secret values — those are set out-of-band to keep them out of Terraform state.
 
@@ -198,4 +211,4 @@ After the bootstrap, infrastructure changes follow the normal workflow:
 - Open a PR touching `infra/` → CI runs `terraform plan` automatically
 - Merge to `main` → trigger `terraform apply` manually from the Actions tab
 
-If the managed identity is ever recreated (e.g. after `terraform destroy`), re-run the affected environment's block from step 6 to update `AZ_CLIENT_ID`.
+If the managed identity is ever recreated (e.g. after `terraform destroy`), re-run the affected environment's block from step 7 to update `AZ_CLIENT_ID`.

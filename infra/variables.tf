@@ -23,6 +23,11 @@ variable "tf_state_storage_account" {
   type        = string
 }
 
+variable "tf_state_resource_group_name" {
+  description = "RG containing the Terraform state storage account. Separate from resource_group_name so state can live outside any environment RG."
+  type        = string
+}
+
 variable "acr_name" {
   description = "Globally unique name of the shared Azure Container Registry. Must be set explicitly per deployment to avoid name collisions across Azure tenants. ACR names are alphanumeric only (no dashes)."
   type        = string
