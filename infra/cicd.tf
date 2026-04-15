@@ -48,6 +48,21 @@ resource "azurerm_role_assignment" "github_contributor" {
   principal_id         = azurerm_user_assigned_identity.github.principal_id
 }
 
+# GitHub Actions identity needs data-plane access to the Terraform state
+# storage account so `terraform init`/`plan`/`apply` in CI can read and write
+# the state blob. Scoped to the SA (not the state RG) so the assignment cannot
+# accidentally widen if other resources are later added to that RG.
+data "azurerm_storage_account" "tfstate" {
+  name                = var.tf_state_storage_account
+  resource_group_name = var.tf_state_resource_group_name
+}
+
+resource "azurerm_role_assignment" "github_tfstate_blob_contributor" {
+  scope                = data.azurerm_storage_account.tfstate.id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = azurerm_user_assigned_identity.github.principal_id
+}
+
 resource "azurerm_federated_identity_credential" "github_environment" {
   name                      = "gh-qualitative-feedback-analysis-${local.env}"
   user_assigned_identity_id = azurerm_user_assigned_identity.github.id

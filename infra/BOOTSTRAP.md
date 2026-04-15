@@ -41,10 +41,11 @@ export TF_VAR_subscription_id=<your-azure-subscription-id>
 #   * tf_state_resource_group_name — where the Terraform state SA lives
 #   * acr_resource_group_name      — where the ACR lives
 #
-# tf_state_resource_group_name is used only by bootstrap.sh and by the
-# `terraform init` command in step 4 (it cannot be a Terraform variable
-# because backend blocks forbid variable interpolation). acr_resource_group_name
-# is read by Terraform via container_registry.tf.
+# Both are read by bootstrap.sh, by the `terraform init` command in step 4
+# (for tf_state_resource_group_name — which cannot be a Terraform backend
+# variable because backend blocks forbid variable interpolation), and by
+# Terraform itself (cicd.tf looks up the state SA to grant CI a blob role;
+# container_registry.tf looks up the ACR).
 #
 # For a single-RG deployment, point both at the same RG. For a multi-RG
 # deployment, point each at its dedicated RG.
