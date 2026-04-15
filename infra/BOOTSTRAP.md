@@ -8,6 +8,13 @@ The Terraform configuration in `infra/` manages Azure resources (Key Vault, App 
 
 Two of the resources Terraform depends on cannot be managed by Terraform itself: the storage account holding Terraform's own state, and the container registry that Terraform reads as a data source. These are the chicken-and-egg dependencies that `bootstrap.sh` creates before `terraform init` can run.
 
+Furthermore, the GitHub Actions require a managed identity and a federated identity credential
+to authenticate. These are managed by Terraform.
+To initially create them, we need to run `terraform apply`
+locally with personal credentials. Subsequently, `terraform apply` can and will be run
+via GitHub Actions.
+
+
 ## Prerequisites
 
 - [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli) — authenticated (`az login`)
