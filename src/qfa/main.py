@@ -1,11 +1,15 @@
 """Entry point for the feedback analysis backend."""
 
+import logging
+
 import uvicorn
 from dotenv import find_dotenv, load_dotenv
 
 from qfa.api.app import create_app
 from qfa.settings import AppSettings
 from qfa.utils import setup_logging
+
+logger = logging.getLogger(__name__)
 
 app = create_app()
 
@@ -16,6 +20,7 @@ def main() -> None:
     setup_logging()
 
     app_settings = AppSettings()
+    logger.info("Settings: %s", app_settings.model_dump_json(indent=2))
 
     network_settings = app_settings.network
     uvicorn.run(
