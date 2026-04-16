@@ -36,6 +36,9 @@ dependencies = [
 Homepage = "https://github.com/rodekruis/qualitative-feedback-analysis"
 Repository = "https://github.com/rodekruis/qualitative-feedback-analysis"
 
+[project.optional-dependencies]
+build = ["uv ~= 0.11.7"] # Included for the build command in semantic-release
+
 [tool.hatch.build]
 packages = ["src/qfa"]
 
@@ -90,6 +93,11 @@ invalid-method-override = "ignore"
 version_toml = ["pyproject.toml:project.version"]
 commit_parser = "conventional"
 allow_zero_version = true
+build_command = """
+    uv lock --upgrade-package "$PACKAGE_NAME"
+    git add uv.lock
+    uv build
+"""
 
 [tool.semantic_release.branches.main]
 match = "(master|main)"
