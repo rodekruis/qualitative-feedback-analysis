@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from openai import AsyncAzureOpenAI, AsyncOpenAI
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+import qfa
 from qfa.api.routes import router
 from qfa.api.schemas import (
     ErrorDetail,
@@ -462,7 +463,11 @@ def create_app() -> FastAPI:
     FastAPI
         The fully configured application instance.
     """
-    app = FastAPI(title="Feedback Analysis Backend", lifespan=lifespan)
+    app = FastAPI(
+        title="Feedback Analysis Backend",
+        lifespan=lifespan,
+        version=qfa.__version__,
+    )
     app.add_middleware(RequestLoggingMiddleware)  # type: ignore[arg-type]
     app.add_middleware(RequestIdMiddleware)  # type: ignore[arg-type]
     app.include_router(router)
