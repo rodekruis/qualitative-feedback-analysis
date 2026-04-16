@@ -2,8 +2,6 @@
 
 import logging
 
-import logging
-
 import openai
 from litellm import acompletion, completion_cost
 
@@ -12,7 +10,6 @@ from qfa.domain.models import LLMResponse
 from qfa.domain.ports import LLMPort
 
 logger = logging.getLogger(__name__)
-
 
 
 class LiteLLMClient(LLMPort):
