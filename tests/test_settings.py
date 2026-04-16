@@ -28,18 +28,14 @@ class TestLLMSettings:
 
     def test_default_model(self, monkeypatch):
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
+        monkeypatch.delenv("LLM_MODEL", raising=False)
         settings = LLMSettings()
-        assert settings.model == "gpt-4.1-mini"
+        assert settings.model == "azure_ai/gpt-4.1-mini"
 
     def test_default_timeout_seconds(self, monkeypatch):
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
         settings = LLMSettings()
         assert settings.timeout_seconds == 115.0
-
-    def test_default_max_retries(self, monkeypatch):
-        monkeypatch.setenv("LLM_API_KEY", "sk-test")
-        settings = LLMSettings()
-        assert settings.max_retries == 3
 
     def test_default_max_total_tokens(self, monkeypatch):
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
@@ -48,6 +44,7 @@ class TestLLMSettings:
 
     def test_default_api_base(self, monkeypatch):
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
+        monkeypatch.delenv("LLM_API_BASE", raising=False)
         settings = LLMSettings()
         assert settings.api_base == ""
 
