@@ -191,9 +191,9 @@ az role assignment create \
   --scope "$VAULT_ID"
 
 # Set the three required secrets
-az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "llm-azure-endpoint" --value "<your-azure-openai-endpoint-url>"
+az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "llm-api-base" --value "<your-azure-openai-endpoint-url>"
 az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "llm-api-key"        --value "<your-llm-api-key>"
-az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "auth-api-keys"      --value "<comma-separated-api-keys>"
+az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "auth-api-keys"      --value "<json-api-key-dicts>"
 ```
 
 | Secret | Description |
