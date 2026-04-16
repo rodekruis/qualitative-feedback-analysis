@@ -51,14 +51,13 @@ resource "azurerm_linux_web_app" "backend" {
   }
 
   app_settings = {
-    LLM_PROVIDER    = var.llm_provider
     LLM_MODEL       = var.llm_model
     LLM_API_VERSION = var.llm_api_version
 
     # Key Vault references — the App Service resolves these at runtime
-    LLM_AZURE_ENDPOINT = "@Microsoft.KeyVault(SecretUri=https://${local.keyvault_name}.vault.azure.net/secrets/llm-azure-endpoint)"
-    LLM_API_KEY        = "@Microsoft.KeyVault(SecretUri=https://${local.keyvault_name}.vault.azure.net/secrets/llm-api-key)"
-    AUTH_API_KEYS      = "@Microsoft.KeyVault(SecretUri=https://${local.keyvault_name}.vault.azure.net/secrets/auth-api-keys)"
+    LLM_API_BASE  = "@Microsoft.KeyVault(SecretUri=https://${local.keyvault_name}.vault.azure.net/secrets/llm-api-base)"
+    LLM_API_KEY   = "@Microsoft.KeyVault(SecretUri=https://${local.keyvault_name}.vault.azure.net/secrets/llm-api-key)"
+    AUTH_API_KEYS = "@Microsoft.KeyVault(SecretUri=https://${local.keyvault_name}.vault.azure.net/secrets/auth-api-keys)"
 
     WEBSITES_ENABLE_APP_SERVICE_STORAGE = "false"
     WEBSITES_PORT                       = "8000"
