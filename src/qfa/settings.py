@@ -56,12 +56,11 @@ class LLMSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="LLM_")
 
-    model: str = "gpt-4.1-mini"
+    model: str = "azure_ai/gpt-4.1-mini"
     api_key: SecretStr  # required, no default
     api_base: str = ""
     api_version: str = ""
     timeout_seconds: float = 115.0
-    max_retries: int = 3
     max_total_tokens: int = 100_000
 
 
