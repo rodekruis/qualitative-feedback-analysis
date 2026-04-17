@@ -6,7 +6,7 @@ HTTP contract can evolve independently of the core domain.
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class FeedbackItemInput(BaseModel):
@@ -211,6 +211,50 @@ class SummarizeResponse(BaseModel):
     """
 
     summaries: list[FeedbackItemSummary]
+
+
+class CodingNode(BaseModel):
+    """Contains the node of a singular coding and its' children."""
+
+    name: str = Field(description="Name of this coding")
+    children: list["CodingNode"] = Field(default_factory=list)
+
+    @property
+    def has_children(self) -> bool:
+        """If this coding node has children nodes, or is a leaf."""
+        return len(self.children) > 0
+
+    def max_child_depth(self) -> int:
+        """Returns the distance to the furthest child."""
+        if not self.has_children:
+            return 0
+        return max([child.max_child_depth() for child in self.children]) + 1
+
+    def min_child_depth(self) -> int:
+        """Returns the distance to the furthest child."""
+        if not self.has_children:
+            return 0
+        return min([child.min_child_depth() for child in self.children]) + 1
+
+
+class CodingLevels(BaseModel):
+    """Contains the hierarchical codings used for classification."""
+
+    root_codes: list[CodingNode] = Field(
+        description="The root (level 1) codes of your classification.", min_length=1
+    )
+
+    @model_validator(mode="after")
+    def verify_all_codes_have_same_depth(self) -> "CodingLevels":
+        """Checks if all codes have the same depth."""
+        max_lengths = set(code.max_child_depth() for code in self.root_codes)
+        min_lengths = set(code.min_child_depth() for code in self.root_codes)
+        if len(max_lengths.union(min_lengths)) > 1:
+            raise ValueError(
+                f"All codes must have the same depth {min_lengths=} {max_lengths=}"
+            )
+
+        return self
 
 
 class HealthResponse(BaseModel):
