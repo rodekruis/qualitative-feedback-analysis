@@ -95,6 +95,7 @@ version_toml = ["pyproject.toml:project.version"]
 commit_parser = "conventional"
 allow_zero_version = true
 build_command = """
+    python -m pip install -e '.[build]'
     uv lock --upgrade-package "$PACKAGE_NAME"
     git add uv.lock
     uv build
