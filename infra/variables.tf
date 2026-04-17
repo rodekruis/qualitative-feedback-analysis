@@ -51,7 +51,7 @@ variable "llm_provider" {
 variable "llm_model" {
   description = "LLM model name"
   type        = string
-  default     = "gpt-4.1-mini"
+  default     = "azure_ai/gpt-4.1-mini"
 }
 
 variable "llm_api_version" {

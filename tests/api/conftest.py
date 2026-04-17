@@ -45,6 +45,7 @@ class FakeOrchestrator(OrchestratorPort):
             model="gpt-4-test",
             prompt_tokens=10,
             completion_tokens=20,
+            cost=0.001,
         )
         self._summarize_result = summarize_result or SummaryResult(
             feedback_item_summaries=(
@@ -54,7 +55,8 @@ class FakeOrchestrator(OrchestratorPort):
                     summary="- Fake summary point",
                     quality_score=0.9,
                 ),
-            )
+            ),
+            cost=0.002,
         )
         self._error = error
 

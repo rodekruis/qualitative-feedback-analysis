@@ -1,0 +1,17 @@
+# Custom model pricing for models absent from LiteLLM's built-in cost map.
+# Registered at startup via litellm.register_model().
+# Prices are per-token in USD.
+#
+# To add a new model, add an entry under "models:" with:
+#   input_cost_per_token: cost per input token in USD
+#   output_cost_per_token: cost per output token in USD
+#   max_tokens: maximum context window size
+#   litellm_provider: the LiteLLM provider name (e.g. azure_ai, openai)
+#   mode: "chat" for chat completion models
+models:
+  azure_ai/mistral-large-2411:
+    input_cost_per_token: 0.000002
+    output_cost_per_token: 0.000006
+    max_tokens: 131072
+    litellm_provider: azure_ai
+    mode: chat

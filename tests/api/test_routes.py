@@ -406,7 +406,8 @@ class TestErrorMapping:
                         summary="- Custom point",
                         quality_score=0.75,
                     ),
-                )
+                ),
+                cost=42.69,
             )
         )
         async with _make_client(test_app) as c:
