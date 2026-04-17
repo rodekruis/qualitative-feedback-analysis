@@ -228,7 +228,7 @@ class StandardOrchestrator(OrchestratorPort):
         self._check_injection(request.feedback_items)
 
         feedback_item_summaries: list[FeedbackItemSummary] = []
-        total_cost: float | None = 0.0
+        total_cost = 0.0
 
         for feedback_item in request.feedback_items:
             system_message = _DEFAULT_SUMMARIZATION_PROMPT
@@ -248,10 +248,7 @@ class StandardOrchestrator(OrchestratorPort):
                 tenant_id=request.tenant_id,
                 deadline=deadline,
             )
-            if response.cost is None or total_cost is None:
-                total_cost = None
-            else:
-                total_cost += response.cost
+            total_cost += response.cost
 
             try:
                 payload = json.loads(response.result)
@@ -278,10 +275,7 @@ class StandardOrchestrator(OrchestratorPort):
                 tenant_id=request.tenant_id,
                 deadline=deadline,
             )
-            if judge_response.cost is None or total_cost is None:
-                total_cost = None
-            else:
-                total_cost += judge_response.cost
+            total_cost += judge_response.cost
             quality_score = _parse_judge_quality_score(judge_response.result)
 
             feedback_item_summaries.append(

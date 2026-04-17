@@ -108,8 +108,8 @@ class LiteLLMClient(LLMPort):
         try:
             cost = completion_cost(completion_response=response)
         except Exception:
-            logger.warning("No pricing data for model %s", self._model)
-            cost = None
+            logger.error("No pricing data for model %s", self._model)
+            cost = float("nan")
 
         return LLMResponse(
             text=content,
