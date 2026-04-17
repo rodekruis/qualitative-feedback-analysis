@@ -418,8 +418,9 @@ def _register_custom_model_prices() -> None:
     if custom_prices and custom_prices.get("models"):
         litellm.register_model(custom_prices["models"])
         logger.info(
-            "Registered %d custom model price(s)",
+            "Registered %d custom model price(s) for %s",
             len(custom_prices["models"]),
+            list(custom_prices["models"].keys()),
         )
 
 
