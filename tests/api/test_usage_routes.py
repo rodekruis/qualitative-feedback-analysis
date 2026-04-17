@@ -61,6 +61,7 @@ class TestUsageEndpointDisabled:
                 key=FAKE_SUPERUSER_KEY,
                 tenant_id="admin",
                 is_superuser=True,
+                key_id="admin-0",
             )
         )
         resp = await client.get(
@@ -113,6 +114,7 @@ class TestUsageAllEndpoint:
                 key=FAKE_SUPERUSER_KEY,
                 tenant_id="admin",
                 is_superuser=True,
+                key_id="admin-0",
             )
         )
         all_stats = [

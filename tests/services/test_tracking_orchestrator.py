@@ -5,7 +5,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from qfa.domain.models import AnalysisRequest, AnalysisResult, FeedbackDocument
+from qfa.domain import FeedbackItem
+from qfa.domain.models import AnalysisRequest, AnalysisResult
 from qfa.services.tracking_orchestrator import TrackingOrchestrator
 
 pytestmark = pytest.mark.asyncio
@@ -13,7 +14,7 @@ pytestmark = pytest.mark.asyncio
 
 def _make_request(tenant_id: str = "tenant-1") -> AnalysisRequest:
     return AnalysisRequest(
-        documents=(FeedbackDocument(id="d1", text="Some feedback text"),),
+        documents=(FeedbackItem(id="d1", text="Some feedback text"),),
         prompt="Summarize",
         tenant_id=tenant_id,
     )
@@ -25,6 +26,7 @@ def _make_result() -> AnalysisResult:
         model="gpt-4-test",
         prompt_tokens=10,
         completion_tokens=20,
+        cost=0.001,
     )
 
 
