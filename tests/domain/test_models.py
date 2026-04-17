@@ -108,6 +108,7 @@ class TestAnalysisResult:
             model="gpt-4",
             prompt_tokens=100,
             completion_tokens=50,
+            cost=0.001,
         )
         assert result.result == "Summary text"
         assert result.model == "gpt-4"
@@ -116,7 +117,11 @@ class TestAnalysisResult:
 
     def test_frozen_raises_on_assignment(self):
         result = AnalysisResult(
-            result="Summary", model="gpt-4", prompt_tokens=10, completion_tokens=5
+            result="Summary",
+            model="gpt-4",
+            prompt_tokens=10,
+            completion_tokens=5,
+            cost=0.001,
         )
         with pytest.raises(ValidationError):
             result.result = "changed"
@@ -132,6 +137,7 @@ class TestLLMResponse:
             model="gpt-4",
             prompt_tokens=80,
             completion_tokens=40,
+            cost=0.001,
         )
         assert resp.text == "Generated text"
         assert resp.model == "gpt-4"
@@ -140,7 +146,11 @@ class TestLLMResponse:
 
     def test_frozen_raises_on_assignment(self):
         resp = LLMResponse(
-            text="text", model="gpt-4", prompt_tokens=10, completion_tokens=5
+            text="text",
+            model="gpt-4",
+            prompt_tokens=10,
+            completion_tokens=5,
+            cost=0.001,
         )
         with pytest.raises(ValidationError):
             resp.text = "changed"

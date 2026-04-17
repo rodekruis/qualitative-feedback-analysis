@@ -1,5 +1,6 @@
 """Tests for the LiteLLM client adapter."""
 
+from math import isnan
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import openai
@@ -118,7 +119,7 @@ class TestLiteLLMClientCallParameters:
 
 class TestLiteLLMClientCostFallback:
     @pytest.mark.asyncio
-    async def test_cost_none_when_pricing_unavailable(self):
+    async def test_cost_nan_when_pricing_unavailable(self):
         mock_response = _make_mock_response()
         client = _make_client()
         with (
@@ -134,7 +135,7 @@ class TestLiteLLMClientCostFallback:
         ):
             result = await client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
 
-        assert result.cost is None
+        assert isnan(result.cost)
 
 
 class TestLiteLLMClientExceptionMapping:
