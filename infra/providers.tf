@@ -15,8 +15,9 @@ terraform {
     # ("Variables may not be used here"), so they cannot be read from
     # var.resource_group_name / var.tf_state_storage_account directly.
     # See infra/BOOTSTRAP.md for the init invocation.
-    container_name = "tfstate"
-    key            = "terraform.tfstate"
+    container_name   = "tfstate"
+    key              = "terraform.tfstate"
+    use_azuread_auth = true
   }
 }
 

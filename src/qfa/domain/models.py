@@ -69,6 +69,7 @@ class AnalysisResult(BaseModel):
     model: str
     prompt_tokens: int
     completion_tokens: int
+    cost: float
 
 
 class SummaryRequest(BaseModel):
@@ -130,6 +131,7 @@ class SummaryResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     feedback_item_summaries: tuple[FeedbackItemSummary, ...]
+    cost: float
 
 
 class CodingAssignmentRequest(BaseModel):
@@ -225,6 +227,7 @@ class LLMResponse(BaseModel):
     model: str
     prompt_tokens: int
     completion_tokens: int
+    cost: float
 
 
 class TenantApiKey(BaseModel):

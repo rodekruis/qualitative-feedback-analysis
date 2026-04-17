@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "qualitative-feedback-analysis"
-version = "0.4.0"
+version = "0.8.0"
 description = "The feedback analysis tool receives feedback items and analyses trends, topics and their evolution over time."
 readme = "README.md"
 license = "LicenseRef-Proprietary"
@@ -25,9 +25,10 @@ classifiers = [
 dependencies = [
     "fastapi~=0.135.0",
     "gunicorn~=25.3",
-    "openai~=2.30.0",
+    "litellm~=1.81.0",
     "pydantic~=2.0",
     "pydantic-settings~=2.0",
+    "pyyaml~=6.0",
     "tenacity~=9.1",
     "uvicorn[standard]~=0.42.0",
 ]

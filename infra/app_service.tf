@@ -51,14 +51,13 @@ resource "azurerm_linux_web_app" "backend" {
   }
 
   app_settings = {
-    LLM_PROVIDER    = var.llm_provider
     LLM_MODEL       = var.llm_model
     LLM_API_VERSION = var.llm_api_version
 
     # Key Vault references — the App Service resolves these at runtime
-    LLM_AZURE_ENDPOINT = "@Microsoft.KeyVault(SecretUri=https://${local.keyvault_name}.vault.azure.net/secrets/llm-azure-endpoint)"
-    LLM_API_KEY        = "@Microsoft.KeyVault(SecretUri=https://${local.keyvault_name}.vault.azure.net/secrets/llm-api-key)"
-    AUTH_API_KEYS      = "@Microsoft.KeyVault(SecretUri=https://${local.keyvault_name}.vault.azure.net/secrets/auth-api-keys)"
+    LLM_API_BASE  = "@Microsoft.KeyVault(SecretUri=https://${local.keyvault_name}.vault.azure.net/secrets/llm-api-base)"
+    LLM_API_KEY   = "@Microsoft.KeyVault(SecretUri=https://${local.keyvault_name}.vault.azure.net/secrets/llm-api-key)"
+    AUTH_API_KEYS = "@Microsoft.KeyVault(SecretUri=https://${local.keyvault_name}.vault.azure.net/secrets/auth-api-keys)"
 
     WEBSITES_ENABLE_APP_SERVICE_STORAGE = "false"
     WEBSITES_PORT                       = "8000"
@@ -89,7 +88,7 @@ resource "azurerm_role_assignment" "app_keyvault_secrets" {
 
 # Grant the App Service pull access to ACR
 resource "azurerm_role_assignment" "app_acr_repository_reader" {
-  scope                = data.azurerm_container_registry.acr.id
+  scope                = local.acr_id
   role_definition_name = "Container Registry Repository Reader"
   principal_id         = azurerm_linux_web_app.backend.identity[0].principal_id
 }

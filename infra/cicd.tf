@@ -21,7 +21,7 @@ resource "azurerm_user_assigned_identity" "github" {
 
 # Grant GitHub Actions write access to ACR (for CI/CD image builds)
 resource "azurerm_role_assignment" "github_acr_repository_writer" {
-  scope                = data.azurerm_container_registry.acr.id
+  scope                = local.acr_id
   role_definition_name = "Container Registry Repository Writer"
   principal_id         = azurerm_user_assigned_identity.github.principal_id
 }
@@ -45,6 +45,39 @@ resource "azurerm_role_assignment" "github_acr_repository_writer" {
 resource "azurerm_role_assignment" "github_contributor" {
   scope                = data.azurerm_resource_group.main.id
   role_definition_name = "Contributor"
+  principal_id         = azurerm_user_assigned_identity.github.principal_id
+}
+
+# GitHub Actions identity needs data-plane access to the Terraform state
+# storage account so `terraform init`/`plan`/`apply` in CI can read and write
+# the state blob. Scoped to the SA (not the state RG) so the assignment cannot
+# accidentally widen if other resources are later added to that RG.
+resource "azurerm_role_assignment" "github_tfstate_blob_contributor" {
+  scope                = local.tfstate_sa_id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = azurerm_user_assigned_identity.github.principal_id
+}
+
+# CI identity needs to read role assignments at shared-infra scopes so that
+# `terraform plan` can refresh the azurerm_role_assignment resources defined
+# here and in app_service.tf. The narrower data-plane roles already granted
+# (Container Registry Repository Writer, Storage Blob Data Contributor) do
+# not include Microsoft.Authorization/roleAssignments/read — only control-
+# plane roles do. `Reader` scoped per-resource is the least-privilege fit:
+# it grants `*/read` on exactly these two resources, nothing else.
+#
+# Write-side (apply creating or modifying role assignments at these scopes)
+# still requires operator credentials in a local apply. Reader covers the
+# steady-state CI plan/apply cycle.
+resource "azurerm_role_assignment" "github_acr_reader" {
+  scope                = local.acr_id
+  role_definition_name = "Reader"
+  principal_id         = azurerm_user_assigned_identity.github.principal_id
+}
+
+resource "azurerm_role_assignment" "github_tfstate_reader" {
+  scope                = local.tfstate_sa_id
+  role_definition_name = "Reader"
   principal_id         = azurerm_user_assigned_identity.github.principal_id
 }
 

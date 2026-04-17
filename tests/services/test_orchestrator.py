@@ -38,8 +38,10 @@ def _make_request(documents=None, prompt="Summarize feedback.", tenant_id=TENANT
     )
 
 
-def _make_llm_response(text="Analysis result.", model="gpt-4"):
-    return LLMResponse(text=text, model=model, prompt_tokens=100, completion_tokens=50)
+def _make_llm_response(text="Analysis result.", model="gpt-4", cost=0.001):
+    return LLMResponse(
+        text=text, model=model, prompt_tokens=100, completion_tokens=50, cost=cost
+    )
 
 
 def _make_summary_request(
