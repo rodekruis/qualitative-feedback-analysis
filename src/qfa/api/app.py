@@ -1,5 +1,6 @@
 """Application factory and composition root."""
 
+import importlib.resources
 import logging
 import secrets
 from collections.abc import AsyncGenerator
@@ -7,6 +8,8 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
 
+import litellm
+import yaml
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -18,6 +21,7 @@ from qfa.api.schemas import (
     ErrorFieldDetail,
     ErrorResponse,
 )
+from qfa.auth import validate_api_key
 from qfa.domain.errors import (
     AnalysisError,
     AnalysisTimeoutError,
@@ -155,8 +159,6 @@ class RequestLoggingMiddleware:
         Never logs the API key itself. Returns ``"anonymous"`` when the
         tenant cannot be determined.
         """
-        from qfa.auth import validate_api_key
-
         headers: list[tuple[bytes, bytes]] = scope.get("headers", [])
         token: str | None = None
         for name, value in headers:
@@ -408,11 +410,6 @@ def _register_custom_model_prices() -> None:
     Registers models with LiteLLM so that ``completion_cost()`` works
     for models not in the built-in cost map.
     """
-    import importlib.resources
-
-    import litellm
-    import yaml
-
     prices_path = importlib.resources.files("qfa.resources").joinpath(
         "model_prices.yaml"
     )
