@@ -9,10 +9,15 @@ terraform {
   }
 
   backend "azurerm" {
-    resource_group_name  = "qualitative-feedback-analysis-xomnia"
-    storage_account_name = "qfatfstate"
-    container_name       = "tfstate"
-    key                  = "terraform.tfstate"
+    # Partial configuration: resource_group_name and storage_account_name
+    # are supplied at `terraform init` time via -backend-config flags.
+    # Terraform forbids variable interpolation inside the backend block
+    # ("Variables may not be used here"), so they cannot be read from
+    # var.resource_group_name / var.tf_state_storage_account directly.
+    # See infra/BOOTSTRAP.md for the init invocation.
+    container_name   = "tfstate"
+    key              = "terraform.tfstate"
+    use_azuread_auth = true
   }
 }
 
@@ -21,4 +26,3 @@ provider "azurerm" {
   resource_provider_registrations = "none"
   features {}
 }
-

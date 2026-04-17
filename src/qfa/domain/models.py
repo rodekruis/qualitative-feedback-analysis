@@ -69,6 +69,7 @@ class AnalysisResult(BaseModel):
     model: str
     prompt_tokens: int
     completion_tokens: int
+    cost: float
 
 
 class SummaryRequest(BaseModel):
@@ -105,6 +106,9 @@ class FeedbackItemSummary(BaseModel):
         Generated short title for the feedback item.
     summary : str
         Generated bullet-point summary for the feedback item.
+    quality_score : float
+        Judge model score for summary quality (faithfulness, coverage, clarity)
+        in the range 0.0-1.0.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -112,6 +116,7 @@ class FeedbackItemSummary(BaseModel):
     id: str
     title: str
     summary: str
+    quality_score: float = Field(ge=0.0, le=1.0)
 
 
 class SummaryResult(BaseModel):
@@ -126,6 +131,7 @@ class SummaryResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     feedback_item_summaries: tuple[FeedbackItemSummary, ...]
+    cost: float
 
 
 class LLMResponse(BaseModel):
@@ -149,6 +155,7 @@ class LLMResponse(BaseModel):
     model: str
     prompt_tokens: int
     completion_tokens: int
+    cost: float
 
 
 class TenantApiKey(BaseModel):

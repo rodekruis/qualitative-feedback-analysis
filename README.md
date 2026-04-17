@@ -5,7 +5,7 @@
 
 # About
 
-The feedback analysis tool receives feedback documents and analyses trends, topics and their evolution over time.
+The feedback analysis tool receives feedback items and analyses trends, topics and their evolution over time.
 
 The feedback is collected in a CRM system and sent to this backend for analysis.
 
@@ -47,10 +47,30 @@ Before the CI/CD pipeline can run, the Azure infrastructure and GitHub environme
 
 ## CI/CD pipeline
 
-Releasing the backend is a two-step process:
+### For a normal release of, e.g., v0.4.0:
 
-1. **Release** (`release.yaml`) — trigger manually from the Actions tab. Runs CI, bumps the version via conventional commits, and creates a **draft** GitHub Release.
-2. **Deploy** (`publish.yaml`) — runs automatically when you publish the draft release. Pushes app settings and deploys the code to Azure.
+  1. Human runs Release from the Actions tab. CI runs, version bumps to v0.4.0, image builds, gets pushed to ACR as qfa-backend:v0.4.0, registry digest captured, draft
+  release v0.4.0 created with the digest in its body, dev App Service updated to run that digest. Total: one click.
+  2. Human pokes around in dev. Finds nothing wrong.
+  3. Human goes to Releases page, clicks Publish on the v0.4.0 draft. The release is now in published state. Nothing else happens automatically — this is just a metadata
+  flip.
+  4. Human runs Promote to staging from the Actions tab, types v0.4.0 as input. The verify job checks that v0.4.0 is published (it is), then deploys the same digest to
+  staging.
+  5. Final smoke testing in staging.
+  6. Human runs Promote to prd with input v0.4.0. Verify job checks published-and-not-prerelease, then enters the prd environment, which triggers GitHub's
+  required-reviewers prompt. Reviewer approves. Same digest deploys to prd.
+
+ ### For a rollback, e.g., from v0.4.0 to v0.3.7:
+
+  1. Human runs Promote to prd with input v0.3.7. Verify passes (v0.3.7 is published and final). Reviewer approves the prd environment prompt. App Service is repointed to
+   v0.3.7's digest, which is still sitting in ACR. Done.
+
+### For testing a feature branch in dev without cutting a release:
+
+  1. Human runs Build from commit with ref: feat/some-experiment and deploy_to_dev: true. Ephemeral image gets built and pushed as
+  qfa-backend:ephemeral-feat-some-experiment-abc1234, dev gets updated to that digest. No release is created — so the image cannot enter the promotion pipeline. To get
+  back to a real release, run Promote to dev with the latest released tag.
+
 
 **Infrastructure**:
 

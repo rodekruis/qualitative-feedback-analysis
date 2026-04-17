@@ -45,11 +45,57 @@ _SYSTEM_MESSAGE_TEMPLATE = (
 
 _DEFAULT_SUMMARIZATION_PROMPT = (
     "Summarize the feedback item as concise bullet points.\n"
-    "Also create a short descriptive title.\n"
-    'Return valid JSON with exactly these fields: {"title": "...", "summary": "- point 1\\n- point 2"}.\n'
+    "Strict Constraint: The summary must be extremely concise, using no more than 3-5 brief bullet points.\n"
+    "Constraint: Each bullet point should be a single sentence fragment focusing only on the core sentiment or issue.\n"
+    "Also create a short, 3-5 word descriptive title.\n"
+    "Do not output a quality score; evaluation is done separately.\n"
+    "Return valid JSON with exactly these fields: "
+    '{"title": "...", "summary": "- point 1\\n- point 2"}.\n'
     "Do not include markdown code fences.\n"
     "Use the same language as the input feedback item unless a target language is specified."
 )
+
+_JUDGE_PROMPT = """
+You are evaluating the quality of a summary.
+
+Source text:
+---
+{source_text}
+---
+
+Summary:
+---
+{summary}
+---
+
+Score the summary using three criteria. Each must be a float between 0 and 1.
+
+Faithfulness:
+1.0 = fully supported by source, no hallucinations
+0.5 = mostly correct, minor issues
+0.0 = major inaccuracies
+
+Coverage:
+1.0 = includes all key points
+0.5 = partially covers key points
+0.0 = misses most important points
+
+Clarity:
+1.0 = very clear and concise
+0.5 = somewhat clear
+0.0 = confusing or poorly written
+
+Compute the final score as:
+quality_score = 0.6 * faithfulness + 0.3 * coverage + 0.1 * clarity
+
+Output rules:
+- Return ONLY the final quality_score
+- Return a single float between 0 and 1
+- No JSON
+- No explanation
+- No extra text
+- Example output: 0.82
+"""
 
 #: Minimum time (seconds) required for an LLM attempt to be viable.
 _MINIMUM_ATTEMPT_WINDOW = 10.0
@@ -60,6 +106,25 @@ _INJECTION_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("null_byte", re.compile(r"\x00")),
     ("repeated_chars", re.compile(r"(.)\1{199,}")),
 ]
+
+_JUDGE_USER_MESSAGE = "."
+
+
+def _parse_judge_quality_score(raw: str) -> float:
+    """Parse a single float on the first line of the judge model output."""
+    line = raw.strip().split("\n", maxsplit=1)[0].strip()
+    try:
+        score = float(line)
+    except ValueError as exc:
+        raise AnalysisError("LLM judge returned invalid quality score") from exc
+    if not 0.0 <= score <= 1.0:
+        raise AnalysisError("LLM judge returned quality score outside 0.0-1.0")
+    return score
+
+
+def _build_judge_system_message(source_text: str, summary: str) -> str:
+    """Fill the judge prompt with the provided source text and summary."""
+    return _JUDGE_PROMPT.format(source_text=source_text, summary=summary)
 
 
 class StandardOrchestrator(OrchestratorPort):
@@ -163,6 +228,7 @@ class StandardOrchestrator(OrchestratorPort):
         self._check_injection(request.feedback_items)
 
         feedback_item_summaries: list[FeedbackItemSummary] = []
+        total_cost = 0.0
 
         for feedback_item in request.feedback_items:
             system_message = _DEFAULT_SUMMARIZATION_PROMPT
@@ -176,13 +242,13 @@ class StandardOrchestrator(OrchestratorPort):
             user_message = feedback_item.text
 
             self._check_token_limit(system_message, user_message)
-
             response = await self._call_with_retries(
                 system_message=system_message,
                 user_message=user_message,
                 tenant_id=request.tenant_id,
                 deadline=deadline,
             )
+            total_cost += response.cost
 
             try:
                 payload = json.loads(response.result)
@@ -199,14 +265,31 @@ class StandardOrchestrator(OrchestratorPort):
                     "LLM returned summary output missing title or summary"
                 )
 
+            summary_text = payload["summary"]
+            judge_system = _build_judge_system_message(feedback_item.text, summary_text)
+            self._check_token_limit(judge_system, _JUDGE_USER_MESSAGE)
+
+            judge_response = await self._call_with_retries(
+                system_message=judge_system,
+                user_message=_JUDGE_USER_MESSAGE,
+                tenant_id=request.tenant_id,
+                deadline=deadline,
+            )
+            total_cost += judge_response.cost
+            quality_score = _parse_judge_quality_score(judge_response.result)
+
             feedback_item_summaries.append(
                 FeedbackItemSummary(
                     id=feedback_item.id,
                     title=payload["title"],
-                    summary=payload["summary"],
+                    summary=summary_text,
+                    quality_score=quality_score,
                 )
             )
-        return SummaryResult(feedback_item_summaries=tuple(feedback_item_summaries))
+        return SummaryResult(
+            feedback_item_summaries=tuple(feedback_item_summaries),
+            cost=total_cost,
+        )
 
     # ------------------------------------------------------------------
     # Prompt injection filtering
@@ -368,12 +451,15 @@ class StandardOrchestrator(OrchestratorPort):
                 timeout=120,
                 tenant_id=tenant_id,
             )
+            cost_str = f"${response.cost:.6f}" if response.cost is not None else "N/A"
             logger.info(
-                "LLM response received for tenant %s: %s. Tokens: %d prompt; %d completion",
+                "LLM response received for tenant %s: %s. "
+                "Tokens: %d prompt; %d completion. Cost: %s",
                 tenant_id,
                 response.model,
                 response.prompt_tokens,
                 response.completion_tokens,
+                cost_str,
             )
         except (LLMTimeoutError, LLMRateLimitError):
             # raise timeout and rate limit errors (tenacity will retry)
@@ -391,4 +477,5 @@ class StandardOrchestrator(OrchestratorPort):
             model=response.model,
             prompt_tokens=response.prompt_tokens,
             completion_tokens=response.completion_tokens,
+            cost=response.cost,
         )

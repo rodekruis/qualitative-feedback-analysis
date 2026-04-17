@@ -1,0 +1,79 @@
+# Reusable workflow — deploys a released image to a specific environment.
+#
+# Called by release.yaml (for auto-deploy to dev at release creation time)
+# and by the promote-to-* workflows (for manual promotion between
+# environments).
+#
+# Flow:
+#   1. Read the GitHub Release body for the given tag.
+#   2. Extract the image digest (the first `sha256:<64 hex>` in the body).
+#      The digest is written into the release body by release.yaml when the
+#      draft is created, and is never mutated afterward.
+#   3. Update the target App Service to run that digest.
+#
+# The release is the source of truth for "which digest corresponds to which
+# version"; the App Service config is the source of truth for "what's running
+# right now". Deployment is a pointer change, not a copy or rebuild.
+#
+# Permissions note: `contents: write` is required (not just read) because
+# draft releases are only visible to GITHUB_TOKEN with push access, and the
+# dev auto-deploy path from release.yaml reads a still-in-draft release.
+name: _deploy-release
+
+on:
+  workflow_call:
+    inputs:
+      release_tag:
+        description: "Release tag to deploy (e.g. v0.4.0)"
+        required: true
+        type: string
+      environment:
+        description: "Target environment (dev, staging, prd)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  deploy:
+    environment: ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve image digest from release body
+        id: resolve
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          BODY=$(gh release view "${{ inputs.release_tag }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json body --jq .body)
+          DIGEST=$(printf '%s\n' "$BODY" | grep -oE 'sha256:[a-f0-9]{64}' | head -n 1 || true)
+          if [ -z "$DIGEST" ]; then
+            echo "::error::Release '${{ inputs.release_tag }}' has no image digest in its body."
+            echo "::error::Was it ever built? build-release-image.yaml writes the digest on release.published."
+            exit 1
+          fi
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "Deploying ${{ inputs.release_tag }} ($DIGEST) to ${{ inputs.environment }}"
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZ_CLIENT_ID }}
+          tenant-id: ${{ vars.AZ_TENANT_ID }}
+          subscription-id: ${{ vars.AZ_SUBSCRIPTION_ID }}
+
+      - name: Deploy image to App Service
+        env:
+          IMAGE: ${{ vars.AZ_ACR_NAME }}.azurecr.io/qfa-backend
+          DIGEST: ${{ steps.resolve.outputs.digest }}
+        run: |
+          set -euo pipefail
+          az webapp config container set \
+            --name "${{ vars.AZ_APP_NAME }}" \
+            --resource-group "${{ vars.AZ_RESOURCE_GROUP }}" \
+            --container-image-name "${IMAGE}@${DIGEST}" \
+            --container-registry-url "https://${{ vars.AZ_ACR_NAME }}.azurecr.io"

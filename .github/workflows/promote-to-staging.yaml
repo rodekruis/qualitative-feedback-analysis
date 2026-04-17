@@ -1,0 +1,65 @@
+# Manually deploy a released image to staging.
+#
+# This is the *secondary* path to staging. The primary path is
+# auto-staging-on-publish.yaml, which deploys to staging the moment a
+# release is published. Use this manual workflow when you need to:
+#
+#   - Roll back staging to a previous release.
+#   - Re-stage an older release for re-validation.
+#   - Deploy a release that was published while staging was unavailable.
+#   - Repoint staging at a specific pre-release for targeted validation.
+#
+# Staging runs the exact digest that prd is about to run, under
+# production-like configuration. Same image bytes dev validated → same
+# bytes staging validates → same bytes prd runs. No rebuilds between
+# environments.
+#
+# Requires the release to be *published* (not a draft). A draft release
+# means "still being validated in dev"; staging is downstream of that
+# validation. Publish the draft on the Releases page first.
+#
+# Pre-releases are allowed in staging (sometimes you want to validate a
+# release candidate under prod-like config before cutting the final release).
+name: Promote to staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to deploy (e.g. v0.4.0) — must be a published release, not a draft"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject drafts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          IS_DRAFT=$(gh release view "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json isDraft --jq .isDraft)
+          if [ "$IS_DRAFT" = "true" ]; then
+            echo "::error::Release $TAG is still a draft."
+            echo "::error::Publish it first (Releases page → Publish) before promoting to staging."
+            exit 1
+          fi
+          echo "$TAG is a published release — OK to promote to staging."
+
+  deploy:
+    needs: verify
+    uses: ./.github/workflows/_deploy-release.yaml
+    with:
+      release_tag: ${{ inputs.release_tag }}
+      environment: staging
+    permissions:
+      contents: write
+      id-token: write

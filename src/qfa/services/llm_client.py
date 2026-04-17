@@ -1,36 +1,44 @@
-"""LLM client adapter for OpenAI and Azure OpenAI providers."""
+"""LLM client adapter using LiteLLM for unified provider access."""
+
+import logging
 
 import openai
-from openai import AsyncAzureOpenAI, AsyncOpenAI
+from litellm import acompletion, completion_cost
 
-from qfa.domain.errors import (
-    LLMError,
-    LLMRateLimitError,
-    LLMTimeoutError,
-)
+from qfa.domain.errors import LLMError, LLMRateLimitError, LLMTimeoutError
 from qfa.domain.models import LLMResponse
 from qfa.domain.ports import LLMPort
 
+logger = logging.getLogger(__name__)
 
-class OpenAiLLMClient(LLMPort):
-    """LLM adapter satisfying LLMPort.
 
-    Wraps ``AsyncOpenAI`` or ``AsyncAzureOpenAI`` to translate OpenAI SDK
-    Responses API calls into the domain ``LLMResponse`` model. Exception
-    mapping converts SDK-specific errors into domain errors so that upper
-    layers remain provider-agnostic.
+class LiteLLMClient(LLMPort):
+    """LLM adapter satisfying LLMPort via LiteLLM.
+
+    Routes to any LLM provider based on the model string prefix
+    (e.g. ``"azure/gpt-4"``, ``"azure_ai/mistral-large-2411"``).
+    Calculates per-call cost using LiteLLM's built-in cost map
+    or custom pricing registered via ``litellm.register_model()``.
 
     Parameters
     ----------
-    client : AsyncOpenAI | AsyncAzureOpenAI
-        A pre-configured async OpenAI client instance.
     model : str
-        The model identifier to use for responses (e.g. ``"gpt-4"``).
+        LiteLLM model identifier (e.g. ``"azure_ai/mistral-large-2411"``).
+    api_key : str
+        API key for the provider.
+    api_base : str
+        Base URL for the provider endpoint. Empty string if not needed.
+    api_version : str
+        API version string. Empty string if not needed.
     """
 
-    def __init__(self, client: AsyncOpenAI | AsyncAzureOpenAI, model: str) -> None:
-        self._client = client
+    def __init__(
+        self, model: str, api_key: str, api_base: str, api_version: str
+    ) -> None:
         self._model = model
+        self._api_key = api_key
+        self._api_base = api_base
+        self._api_version = api_version
 
     async def complete(
         self,
@@ -39,7 +47,7 @@ class OpenAiLLMClient(LLMPort):
         timeout: float,
         tenant_id: str,
     ) -> LLMResponse:
-        """Send a completion request to the OpenAI Responses API.
+        """Send a completion request via LiteLLM.
 
         Parameters
         ----------
@@ -55,34 +63,41 @@ class OpenAiLLMClient(LLMPort):
         Returns
         -------
         LLMResponse
-            The model's response including token usage.
+            The model's response including token usage and cost.
 
         Raises
         ------
         LLMTimeoutError
-            When the OpenAI API does not respond in time.
+            When the provider does not respond in time.
         LLMRateLimitError
-            When the OpenAI API returns a rate-limit response.
+            When the provider returns a rate-limit response.
         LLMError
-            For any other OpenAI API error.
+            For any other provider error or empty response.
         """
         try:
-            response = await self._client.responses.create(
+            response = await acompletion(
                 model=self._model,
-                instructions=system_message,
-                input=user_message,
-                store=False,
+                messages=[
+                    {"role": "system", "content": system_message},
+                    {"role": "user", "content": user_message},
+                ],
+                api_key=self._api_key,
+                api_base=self._api_base or None,
+                api_version=self._api_version or None,
                 user=tenant_id,
                 timeout=timeout,
             )
         except openai.APITimeoutError as exc:
+            logger.error(exc)
             raise LLMTimeoutError(str(exc)) from exc
         except openai.RateLimitError as exc:
+            logger.error(exc)
             raise LLMRateLimitError(str(exc)) from exc
         except openai.APIError as exc:
+            logger.error(exc)
             raise LLMError(str(exc)) from exc
 
-        content = response.output_text
+        content = response.choices[0].message.content
         if not content:
             raise LLMError("LLM returned empty content")
 
@@ -90,9 +105,16 @@ class OpenAiLLMClient(LLMPort):
         if usage is None:
             raise LLMError("LLM response missing usage data")
 
+        try:
+            cost = completion_cost(completion_response=response)
+        except Exception:
+            logger.error("No pricing data for model %s", self._model)
+            cost = float("nan")
+
         return LLMResponse(
             text=content,
             model=response.model,
-            prompt_tokens=usage.input_tokens,
-            completion_tokens=usage.output_tokens,
+            prompt_tokens=usage.prompt_tokens,
+            completion_tokens=usage.completion_tokens,
+            cost=cost,
         )

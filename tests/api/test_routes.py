@@ -131,6 +131,7 @@ class TestSummarizeSuccess:
         assert summary_item["id"] == "doc-1"
         assert "title" in summary_item
         assert "summary" in summary_item
+        assert summary_item["quality_score"] == 0.9
 
     @pytest.mark.asyncio
     async def test_x_request_id_header_on_summarize(self, client):
@@ -403,8 +404,10 @@ class TestErrorMapping:
                         id="custom-1",
                         title="Custom title",
                         summary="- Custom point",
+                        quality_score=0.75,
                     ),
-                )
+                ),
+                cost=42.69,
             )
         )
         async with _make_client(test_app) as c:
@@ -429,6 +432,7 @@ class TestErrorMapping:
                 "id": "custom-1",
                 "title": "Custom title",
                 "summary": "- Custom point",
+                "quality_score": 0.75,
             }
         ]
 

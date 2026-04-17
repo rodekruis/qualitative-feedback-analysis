@@ -5,7 +5,7 @@ output "app_url" {
 
 output "acr_login_server" {
   description = "ACR login server URL"
-  value       = data.azurerm_container_registry.acr.login_server
+  value       = "${var.acr_name}.azurecr.io"
 }
 
 output "keyvault_uri" {
