@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "qualitative-feedback-analysis"
-version = "0.8.0"
+version = "0.8.1"
 description = "The feedback analysis tool receives feedback items and analyses trends, topics and their evolution over time."
 readme = "README.md"
 license = "LicenseRef-Proprietary"
@@ -36,6 +36,9 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/rodekruis/qualitative-feedback-analysis"
 Repository = "https://github.com/rodekruis/qualitative-feedback-analysis"
+
+[project.optional-dependencies]
+build = ["uv ~= 0.11.7"] # Included for the build command in semantic-release
 
 [tool.hatch.build]
 packages = ["src/qfa"]
@@ -91,6 +94,12 @@ invalid-method-override = "ignore"
 version_toml = ["pyproject.toml:project.version"]
 commit_parser = "conventional"
 allow_zero_version = true
+build_command = """
+    python -m pip install -e '.[build]'
+    uv lock --upgrade-package "$PACKAGE_NAME"
+    git add uv.lock
+    uv build
+"""
 
 [tool.semantic_release.branches.main]
 match = "(master|main)"
