@@ -12,6 +12,7 @@ from qfa.api.dependencies import (
 from qfa.api.schemas import (
     AnalyzeRequest,
     AnalyzeResponse,
+    CodingLevels,
     FeedbackItemSummary,
     HealthResponse,
     SummarizeFeedbackMetadata,
@@ -146,6 +147,17 @@ async def summarize(
             for item in result.feedback_item_summaries
         ],
     )
+
+
+@router.post("/v1/coding_levels")
+async def coding_levels(
+    body: CodingLevels,
+    tenant: TenantApiKey = Depends(authenticate_request),
+    orchestrator: OrchestratorPort = Depends(get_orchestrator),
+) -> CodingLevels:
+    """Receive coding levels (testing method)."""
+    print(body)
+    return body
 
 
 @router.get("/v1/health", response_model=HealthResponse, status_code=200)
