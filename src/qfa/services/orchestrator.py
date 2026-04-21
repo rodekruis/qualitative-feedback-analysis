@@ -11,7 +11,7 @@ import re
 from datetime import datetime
 
 from presidio_analyzer import AnalyzerEngine
-from presidio_anonymizer import AnonymizerEngine
+from presidio_anonymizer import AnonymizerEngine, OperatorConfig
 from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_exponential
 
 from qfa.domain.errors import (
@@ -162,18 +162,41 @@ class StandardOrchestrator(OrchestratorPort):
         self._analyzer: AnalyzerEngine = AnalyzerEngine()
         self._anonymizer: AnonymizerEngine = AnonymizerEngine()
 
-    def anonymize_text(self, text: str) -> str:
-        """
-        Anonymize input text by stripping PII.
+    def _get_unique_id(
+        self, original_value: str, entity_type: str, mapping: dict[str, str]
+    ) -> str:
+        """Helper to create unique IDs and store them in our map."""
+        placeholder = f"<{entity_type}_{len(mapping.keys())}>"
+        mapping[placeholder] = original_value
+        return placeholder
 
-        Uses local spacy model for recognizing this information..
-        """
-        analyzer_results = self._analyzer.analyze(text=text, language="en")
-        anonymized_results = self._anonymizer.anonymize(
+    def anonymize(self, text: str) -> tuple[str, dict[str, str]]:
+        """Anonimize text with placeholders."""
+        mapping: dict[str, str] = {}
+        self.count = 0
+
+        results = self._analyzer.analyze(text=text, language="en")
+
+        # We use a custom lambda as the operator
+        operators = {
+            "DEFAULT": OperatorConfig(
+                "custom",
+                {"lambda": lambda x: self._get_unique_id(x, "ENTITY", mapping)},
+            ),
+        }
+
+        anonymized = self._anonymizer.anonymize(
             text=text,
-            analyzer_results=analyzer_results,  # type: ignore
+            analyzer_results=results,  # type: ignore
+            operators=operators,
         )
-        return anonymized_results.text
+        return anonymized.text, mapping
+
+    def deanonymize(self, text: str, mapping: dict) -> str:
+        """Restore original values in text by replacing anonymized placeholders."""
+        for placeholder, original in mapping.items():
+            text = text.replace(placeholder, original)
+        return text
 
     async def analyze(
         self,
@@ -465,7 +488,7 @@ class StandardOrchestrator(OrchestratorPort):
             For non-recoverable LLM errors or persistent empty responses.
         """
         if anonymize:
-            user_message = self.anonymize_text(user_message)
+            user_message, anonymization_mapping = self.anonymize(user_message)
 
         try:
             response = await self._llm.complete(
@@ -496,7 +519,9 @@ class StandardOrchestrator(OrchestratorPort):
             raise AnalysisError("LLM returned empty response after retry")
 
         return AnalysisResult(
-            result=response.text,
+            result=self.deanonymize(response.text, anonymization_mapping)
+            if anonymize
+            else response.text,
             model=response.model,
             prompt_tokens=response.prompt_tokens,
             completion_tokens=response.completion_tokens,

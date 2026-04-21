@@ -471,11 +471,11 @@ class TestInjectionNullBytes:
 
 class TestAnonymization:
     @pytest.mark.parametrize(
-        "input_text, output_must_contain, output_cannot_contain",
+        "input_text, output_must_contain, sensitive_bit",
         [
-            ("Hi my name is Dick Schoof", "<PERSON>", "Dick Schoof"),
-            ("My number is 212-555-5555", "<PHONE_NUMBER>", "212-555-5555"),
-            ("I live in The Netherlands", "<LOCATION>", "The Netherlands"),
+            ("Hi my name is Dick Schoof", "<ENTITY", "Dick Schoof"),
+            ("My number is 212-555-5555", "<ENTITY", "212-555-5555"),
+            ("I live in The Netherlands", "<ENTITY", "The Netherlands"),
         ],
     )
     def test_anonymize_text(
@@ -483,7 +483,7 @@ class TestAnonymization:
         settings,
         input_text: str,
         output_must_contain: str,
-        output_cannot_contain: str,
+        sensitive_bit: str,
     ):
         fake_llm = FakeLLMPort(responses=[_make_llm_response()])
         orch = StandardOrchestrator(
@@ -493,9 +493,12 @@ class TestAnonymization:
             max_total_tokens=MAX_TOKENS,
         )
 
-        anonymized_text = orch.anonymize_text(input_text)
+        anonymized_text, mapping = orch.anonymize(input_text)
         assert output_must_contain in anonymized_text
-        assert output_cannot_contain not in anonymized_text
+        assert sensitive_bit not in anonymized_text
+
+        deanonimized_text = orch.deanonymize(anonymized_text, mapping)
+        assert sensitive_bit in deanonimized_text
 
 
 class TestInjectionRepeatedChars:
