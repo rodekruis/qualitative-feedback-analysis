@@ -147,6 +147,7 @@ async def summarize(
         ],
     )
 
+
 @router.get("/v1/health", response_model=HealthResponse, status_code=200)
 async def health() -> HealthResponse:
     """Return service health status.
