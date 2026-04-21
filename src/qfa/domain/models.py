@@ -142,8 +142,8 @@ class CodingAssignmentRequest(BaseModel):
     feedback_items : tuple[FeedbackItem, ...]
         Non-empty tuple of feedback items to code (``text`` is the body to classify).
     coding_framework : dict[str, Any]
-        Hierarchical framework payload (e.g. API ``coding_framework``), including
-        ``coding_frames`` and nested ``types``, ``categories``, and ``codes``.
+        Hierarchical framework payload with top-level ``types`` and nested
+        ``categories`` and ``codes``.
     max_codes : int
         Maximum number of leaf codes to retain per feedback item.
     tenant_id : str

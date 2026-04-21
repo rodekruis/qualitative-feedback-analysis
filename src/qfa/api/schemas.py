@@ -19,7 +19,7 @@ def _assign_codes_request_examples() -> list[dict[str, Any]]:
     if not path.is_file():
         return [
             {
-                "coding_framework": {"coding_frames": []},
+                "coding_framework": {"types": []},
                 "feedback_items": [
                     {
                         "id": "no-framework",
@@ -35,7 +35,7 @@ def _assign_codes_request_examples() -> list[dict[str, Any]]:
         ]
     # Dev-only: load JSON for Swagger examples; TODO: link production framework through API
     framework = json.loads(path.read_text(encoding="utf-8"))
-    # Verbatim long examples from the COVID-19 frame in the coding framework (Excel export).
+    # Verbatim long examples from the COVID-19 coding framework (Excel export).
     quotes = [
         "they belief now a day covid-19 is as such not big deal, but the ruling party or the government used it as the agenda to divert the political view and opinion of the people towards the election after the coming two months",
         "This illness is creating a headache to us. We hear on the radio. All the things we used to help us we have stopped. We no longer travel to sell our things to other places. We are now hungry.",

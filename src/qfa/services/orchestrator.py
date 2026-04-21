@@ -330,128 +330,61 @@ class StandardOrchestrator(OrchestratorPort):
         self._check_injection(request.feedback_items)
 
         coded: list[CodedFeedbackItem] = []
-        coding_frames = request.coding_framework.get("coding_frames") or []
+        types = request.coding_framework.get("types") or []
 
         for feedback_item in request.feedback_items:
-            if datetime.now(UTC) >= deadline:
-                raise AnalysisTimeoutError(
-                    "Coding deadline exceeded before all items were processed"
-                )
+            self._check_coding_deadline(deadline)
 
             rows: list[tuple[str, str]] = []
 
-            frame_labels = [str(frame.get("name", "")) for frame in coding_frames]
-            frame_system, frame_user = build_pick_messages(
+            type_indices = await self._pick_code_indices(
                 feedback_text=feedback_item.text,
-                current_level="Frames",
-                labels=frame_labels,
+                current_level="Types",
+                entries=types,
                 hierarchy_path=None,
+                tenant_id=request.tenant_id,
+                deadline=deadline,
             )
-            frame_indices: list[int] = []
-            if frame_user:
-                self._check_token_limit(frame_system, frame_user)
-                frame_response = await self._call_with_retries(
-                    system_message=frame_system,
-                    user_message=frame_user,
+
+            for type_index in type_indices:
+                type_entry = types[type_index]
+                type_name = str(type_entry.get("name", ""))
+                categories = type_entry.get("categories") or []
+
+                category_indices = await self._pick_code_indices(
+                    feedback_text=feedback_item.text,
+                    current_level="Categories",
+                    entries=categories,
+                    hierarchy_path=[("Type", type_name)],
                     tenant_id=request.tenant_id,
                     deadline=deadline,
                 )
-                frame_indices = parse_selected_indices(
-                    frame_response.result, len(frame_labels)
-                )
 
-            for frame_index in frame_indices:
-                frame = coding_frames[frame_index]
-                frame_name = str(frame.get("name", ""))
-                types = frame.get("types") or []
+                for category_index in category_indices:
+                    category = categories[category_index]
+                    category_name = str(category.get("name", ""))
+                    codes = category.get("codes") or []
 
-                type_labels = [str(type_entry.get("name", "")) for type_entry in types]
-                type_system, type_user = build_pick_messages(
-                    feedback_text=feedback_item.text,
-                    current_level="Types",
-                    labels=type_labels,
-                    hierarchy_path=[("Frame", frame_name)],
-                )
-                type_indices: list[int] = []
-                if type_user:
-                    self._check_token_limit(type_system, type_user)
-                    type_response = await self._call_with_retries(
-                        system_message=type_system,
-                        user_message=type_user,
+                    code_indices = await self._pick_code_indices(
+                        feedback_text=feedback_item.text,
+                        current_level="Codes",
+                        entries=codes,
+                        hierarchy_path=[
+                            ("Type", type_name),
+                            ("Category", category_name),
+                        ],
                         tenant_id=request.tenant_id,
                         deadline=deadline,
                     )
-                    type_indices = parse_selected_indices(
-                        type_response.result, len(type_labels)
-                    )
 
-                for type_index in type_indices:
-                    type_entry = types[type_index]
-                    type_name = str(type_entry.get("name", ""))
-                    categories = type_entry.get("categories") or []
-
-                    category_labels = [
-                        str(category.get("name", "")) for category in categories
-                    ]
-                    category_system, category_user = build_pick_messages(
-                        feedback_text=feedback_item.text,
-                        current_level="Categories",
-                        labels=category_labels,
-                        hierarchy_path=[("Frame", frame_name), ("Type", type_name)],
-                    )
-                    category_indices: list[int] = []
-                    if category_user:
-                        self._check_token_limit(category_system, category_user)
-                        category_response = await self._call_with_retries(
-                            system_message=category_system,
-                            user_message=category_user,
-                            tenant_id=request.tenant_id,
-                            deadline=deadline,
-                        )
-                        category_indices = parse_selected_indices(
-                            category_response.result, len(category_labels)
-                        )
-
-                    for category_index in category_indices:
-                        category = categories[category_index]
-                        category_name = str(category.get("name", ""))
-                        codes = category.get("codes") or []
-
-                        code_labels = [str(code.get("name", "")) for code in codes]
-                        code_system, code_user = build_pick_messages(
-                            feedback_text=feedback_item.text,
-                            current_level="Codes",
-                            labels=code_labels,
-                            hierarchy_path=[
-                                ("Frame", frame_name),
-                                ("Type", type_name),
-                                ("Category", category_name),
-                            ],
-                        )
-                        code_indices: list[int] = []
-                        if code_user:
-                            self._check_token_limit(code_system, code_user)
-                            code_response = await self._call_with_retries(
-                                system_message=code_system,
-                                user_message=code_user,
-                                tenant_id=request.tenant_id,
-                                deadline=deadline,
+                    for code_index in code_indices:
+                        code = codes[code_index]
+                        rows.append(
+                            (
+                                str(code.get("code_id", "")),
+                                str(code.get("name", "")),
                             )
-                            code_indices = parse_selected_indices(
-                                code_response.result, len(code_labels)
-                            )
-
-                        for code_index in code_indices:
-                            code = codes[code_index]
-                            rows.append(
-                                (
-                                    str(code.get("code_id", "")),
-                                    str(code.get("name", "")),
-                                )
-                            )
-                            if len(rows) >= request.max_codes:
-                                break
-
+                        )
                         if len(rows) >= request.max_codes:
                             break
 
@@ -475,6 +408,44 @@ class StandardOrchestrator(OrchestratorPort):
             )
 
         return CodingAssignmentResult(coded_feedback_items=tuple(coded))
+
+    def _check_coding_deadline(self, deadline: datetime) -> None:
+        """Raise when the coding deadline is exceeded."""
+        if datetime.now(UTC) >= deadline:
+            raise AnalysisTimeoutError(
+                "Coding deadline exceeded before all items were processed"
+            )
+
+    async def _pick_code_indices(
+        self,
+        *,
+        feedback_text: str,
+        current_level: str,
+        entries: list[dict],
+        hierarchy_path: list[tuple[str, str]] | None,
+        tenant_id: str,
+        deadline: datetime,
+    ) -> list[int]:
+        """Build one coding prompt, call the LLM, and parse selected indices."""
+        labels = [str(entry.get("name", "")) for entry in entries]
+        system_message, user_message = build_pick_messages(
+            feedback_text=feedback_text,
+            current_level=current_level,
+            labels=labels,
+            hierarchy_path=hierarchy_path,
+        )
+        if not user_message:
+            return []
+
+        self._check_coding_deadline(deadline)
+        self._check_token_limit(system_message, user_message)
+        response = await self._call_with_retries(
+            system_message=system_message,
+            user_message=user_message,
+            tenant_id=tenant_id,
+            deadline=deadline,
+        )
+        return parse_selected_indices(response.result, len(labels))
 
     # ------------------------------------------------------------------
     # Prompt injection filtering
