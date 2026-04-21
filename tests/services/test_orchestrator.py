@@ -469,6 +469,35 @@ class TestInjectionNullBytes:
         assert len(fake_llm.calls) == 0
 
 
+class TestAnonymization:
+    @pytest.mark.parametrize(
+        "input_text, output_must_contain, output_cannot_contain",
+        [
+            ("Hi my name is Dick Schoof", "<PERSON>", "Dick Schoof"),
+            ("My number is 212-555-5555", "<PHONE_NUMBER>", "212-555-5555"),
+            ("I live in The Netherlands", "<LOCATION>", "The Netherlands"),
+        ],
+    )
+    def test_anonymize_text(
+        self,
+        settings,
+        input_text: str,
+        output_must_contain: str,
+        output_cannot_contain: str,
+    ):
+        fake_llm = FakeLLMPort(responses=[_make_llm_response()])
+        orch = StandardOrchestrator(
+            llm=fake_llm,
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        anonymized_text = orch.anonymize_text(input_text)
+        assert output_must_contain in anonymized_text
+        assert output_cannot_contain not in anonymized_text
+
+
 class TestInjectionRepeatedChars:
     @pytest.mark.asyncio
     async def test_repeated_chars_rejected(self, settings):

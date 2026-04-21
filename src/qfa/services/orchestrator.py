@@ -10,6 +10,8 @@ import random
 import re
 from datetime import datetime
 
+from presidio_analyzer import AnalyzerEngine
+from presidio_anonymizer import AnonymizerEngine
 from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_exponential
 
 from qfa.domain.errors import (
@@ -157,6 +159,21 @@ class StandardOrchestrator(OrchestratorPort):
         self._settings = settings
         self._llm_timeout_seconds = llm_timeout_seconds
         self._max_total_tokens = max_total_tokens
+        self._analyzer: AnalyzerEngine = AnalyzerEngine()
+        self._anonymizer: AnonymizerEngine = AnonymizerEngine()
+
+    def anonymize_text(self, text: str) -> str:
+        """
+        Anonymize input text by stripping PII.
+
+        Uses local spacy model for recognizing this information..
+        """
+        analyzer_results = self._analyzer.analyze(text=text, language="en")
+        anonymized_results = self._anonymizer.anonymize(
+            text=text,
+            analyzer_results=analyzer_results,  # type: ignore
+        )
+        return anonymized_results.text
 
     async def analyze(
         self,
@@ -418,6 +435,7 @@ class StandardOrchestrator(OrchestratorPort):
         user_message: str,
         tenant_id: str,
         deadline: datetime,
+        anonymize: bool = True,
     ) -> AnalysisResult:
         """Call the LLM with retry logic and deadline enforcement.
 
@@ -431,6 +449,8 @@ class StandardOrchestrator(OrchestratorPort):
             Tenant identifier for the LLM call.
         deadline : datetime
             Absolute UTC deadline.
+        anonymize: bool
+            Whether the user_message should ben anonymized.
 
         Returns
         -------
@@ -444,6 +464,9 @@ class StandardOrchestrator(OrchestratorPort):
         AnalysisError
             For non-recoverable LLM errors or persistent empty responses.
         """
+        if anonymize:
+            user_message = self.anonymize_text(user_message)
+
         try:
             response = await self._llm.complete(
                 system_message=system_message,
