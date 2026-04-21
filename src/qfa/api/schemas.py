@@ -326,6 +326,48 @@ class ApiCodingLevels(BaseModel):
             )
 
         return self
+class ApiDetectSensitiveRequest(BaseModel):
+    """Request body for the ``POST /v1/detect-sensitive`` endpoint.
+
+    Attributes
+    ----------
+        feedback_items : list[ApiFeedbackRecordInput]
+    """
+
+    feedback_items: list[ApiFeedbackRecordInput] = Field(
+        min_length=1,
+        description="List of feedback items to check for sensitive content.",
+    )
+
+
+class ApiFeedbackItemSensitivityRating(BaseModel):
+    """Represents the sensitivity rating for a single feedback item.
+
+    Attributes
+    ----------
+    id : str
+        Identifier of the source feedback item.
+    is_sensitive : bool
+        Indicates whether the feedback item is considered sensitive.
+    explanation : str
+        Explanation for the sensitivity rating.
+    """
+
+    id: str = Field(description="Identifier of the source feedback item.")
+    is_sensitive: bool = Field(description="Indicates whether the feedback item is considered sensitive.")
+    explanation: str = Field(description="Explanation for the sensitivity rating.")
+
+
+class ApiDetectSensitiveResponse(BaseModel):
+    """Response body for the ``POST /v1/detect-sensitive`` endpoint.
+
+    Attributes
+    ----------
+    ratings : list[ApiFeedbackItemSensitivityRating]
+        Sensitivity rating for each submitted feedback item.
+    """
+
+    ratings: list[ApiFeedbackItemSensitivityRating]
 
 
 class ApiFeedbackRecord(BaseModel):

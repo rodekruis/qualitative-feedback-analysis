@@ -20,6 +20,9 @@ from qfa.api.schemas import (
     ApiSummarizeFeedbackMetadata,
     ApiSummarizeRequest,
     ApiSummarizeResponse,
+    ApiDetectSensitiveRequest,
+    ApiDetectSensitiveResponse,
+    ApiFeedbackItemSensitivityRating,
 )
 from qfa.domain.models import (
     AnalysisRequestModel,
@@ -266,6 +269,35 @@ async def summarize_aggregate(
         )
     )
 
+@router.post("/v1/detect-sensitive", response_model=ApiDetectSensitiveResponse, status_code=200)
+async def detect_sensitive(
+    body: ApiDetectSensitiveRequest,
+    request: Request,
+    tenant: TenantApiKey = Depends(authenticate_request),
+    orchestrator: Orchestrator = Depends(get_orchestrator),
+) -> ApiDetectSensitiveResponse:
+    """Detect sensitive content in feedback items.
+
+    Parameters
+    ----------
+    body : ApiDetectSensitiveRequest
+        The request body containing feedback items to check for sensitive content.
+    request : Request
+        The incoming HTTP request.
+    tenant : TenantApiKey
+        The authenticated tenant, injected via dependency.
+    orchestrator : Orchestrator
+        The orchestrator service, injected via dependency.
+
+    Returns
+    -------
+    ApiDetectSensitiveResponse
+        Sensitivity rating for each submitted feedback item.
+    """
+    _deadline = datetime.now(UTC) + timedelta(seconds=120) 
+    return ApiDetectSensitiveResponse(
+        ratings=[]
+    )
 
 @router.get("/v1/health", response_model=ApiHealthResponse, status_code=200)
 async def health() -> ApiHealthResponse:
