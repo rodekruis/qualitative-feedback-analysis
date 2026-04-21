@@ -473,9 +473,9 @@ class TestAnonymization:
     @pytest.mark.parametrize(
         "input_text, output_must_contain, sensitive_bit",
         [
-            ("Hi my name is Dick Schoof", "<ENTITY", "Dick Schoof"),
-            ("My number is 212-555-5555", "<ENTITY", "212-555-5555"),
-            ("I live in The Netherlands", "<ENTITY", "The Netherlands"),
+            ("Hi my name is Dick Schoof", "<PERSON", "Dick Schoof"),
+            ("My number is 212-555-5555", "<PHONE_NUMBER", "212-555-5555"),
+            ("I live in The Netherlands", "<LOCATION", "The Netherlands"),
         ],
     )
     def test_anonymize_text(

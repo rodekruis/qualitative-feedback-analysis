@@ -176,14 +176,18 @@ class StandardOrchestrator(OrchestratorPort):
         self.count = 0
 
         results = self._analyzer.analyze(text=text, language="en")
+        unique_entities = {res.entity_type for res in results}
 
         # We use a custom lambda as the operator
-        operators = {
-            "DEFAULT": OperatorConfig(
+        operators = {}
+        for entity in unique_entities:
+            operators[entity] = OperatorConfig(
                 "custom",
-                {"lambda": lambda x: self._get_unique_id(x, "ENTITY", mapping)},
-            ),
-        }
+                {
+                    # Capture 'entity' as a default argument 'ent' to avoid closure issues
+                    "lambda": lambda x, ent=entity: self._get_unique_id(x, ent, mapping)
+                },
+            )
 
         anonymized = self._anonymizer.anonymize(
             text=text,
