@@ -3,7 +3,7 @@
 All models are immutable (frozen) Pydantic models per ADR-001.
 """
 
-from typing import Any
+from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
@@ -195,16 +195,35 @@ class CodingAssignmentResult(BaseModel):
     coded_feedback_items: tuple[CodedFeedbackItem, ...]
 
 
-class LLMResponse(BaseModel):
-    """Raw response from an LLM provider."""
+# Define a TypeVar that must be a Pydantic BaseModel
+T_Response = TypeVar("T_Response", bound=BaseModel)
+
+
+class LLMResponse(BaseModel, Generic[T_Response]):
+    """Raw response from an LLM provider.
+
+    Attributes
+    ----------
+    text : str
+        The generated text.
+    data : T_Response
+        The parsed response data conforming to the expected schema.
+    model : str
+        The model that produced the response.
+    prompt_tokens : int
+        Number of tokens in the prompt.
+    completion_tokens : int
+        Number of tokens in the completion.
+    """
 
     model_config = ConfigDict(frozen=True)
 
-    text: str = Field(description="Generated text.")
-    model: str = Field(description="Model that produced the response.")
-    prompt_tokens: int = Field(description="Number of tokens in the prompt.")
-    completion_tokens: int = Field(description="Number of tokens in the completion.")
-    cost: float = Field(description="Estimated request cost in USD.")
+    text: str
+    structured: T_Response | None = None
+    model: str
+    prompt_tokens: int
+    completion_tokens: int
+    cost: float
 
 
 class TenantApiKey(BaseModel):
