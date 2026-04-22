@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Protocol
 
 from qfa.domain.models import (
+    AggregateSummaryResult,
     AnalysisRequest,
     AnalysisResult,
     LLMResponse,
@@ -112,5 +113,26 @@ class OrchestratorPort(Protocol):
         -------
         SummaryResult
             Per-feedback-item summaries and titles.
+        """
+        ...
+
+    async def summarize_aggregate(
+        self,
+        request: SummaryRequest,
+        deadline: datetime,
+    ) -> AggregateSummaryResult:
+        """Summarize multiple feedback items as a single aggregate summary.
+
+        Parameters
+        ----------
+        request : SummaryRequest
+            The summarization request containing feedback items and options.
+        deadline : datetime
+            Absolute deadline by which summarization must complete.
+
+        Returns
+        -------
+        AggregateSummaryResult
+            A single aggregate summary with themes ordered by frequency.
         """
         ...

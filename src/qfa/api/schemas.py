@@ -197,6 +197,29 @@ class SummarizeResponse(BaseModel):
     )
 
 
+class AggregateSummary(BaseModel):
+    """Aggregate summary covering all submitted feedback items."""
+
+    ids: list[str] = Field(description="Identifiers of all source feedback items.")
+    title: str = Field(description="Generated short title for the aggregate summary.")
+    summary: str = Field(
+        description="Generated bullet-point summary ordered by theme frequency."
+    )
+    quality_score: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Judge score for summary quality in the range 0.0-1.0.",
+    )
+
+
+class SummarizeAggregateResponse(BaseModel):
+    """Response body for the ``POST /v1/summarize-aggregate`` endpoint."""
+
+    summary: AggregateSummary = Field(
+        description="Aggregate summary of all submitted feedback items."
+    )
+
+
 class CodingNode(BaseModel):
     """Contains the node of a singular coding and its' children."""
 

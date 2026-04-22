@@ -20,6 +20,7 @@ from qfa.domain.errors import (
     LLMTimeoutError,
 )
 from qfa.domain.models import (
+    AggregateSummaryResult,
     AnalysisRequest,
     AnalysisResult,
     FeedbackItem,
@@ -53,6 +54,21 @@ _DEFAULT_SUMMARIZATION_PROMPT = (
     '{"title": "...", "summary": "- point 1\\n- point 2"}.\n'
     "Do not include markdown code fences.\n"
     "Use the same language as the input feedback item unless a target language is specified."
+)
+
+_DEFAULT_AGGREGATE_SUMMARIZATION_PROMPT = (
+    "You are an analytical assistant for a humanitarian organisation (Red Cross).\n"
+    "You are given multiple beneficiary feedback items collected during humanitarian operations.\n"
+    "Identify the key themes and issues raised across the feedback items.\n"
+    "Order the bullet points from most to least frequently mentioned, so the most important problems are shown first.\n"
+    "Each bullet point should name the theme and describe it as a concise sentence fragment.\n"
+    "Scale the number of bullet points to the size and diversity of the input — use judgement.\n"
+    "Also create a short, 3-5 word descriptive title reflecting the dominant theme.\n"
+    "Do not output a quality score; evaluation is done separately.\n"
+    "Return valid JSON with exactly these fields: "
+    '{"title": "...", "summary": "- point 1\\n- point 2"}.\n'
+    "Do not include markdown code fences.\n"
+    "Use the same language as the input feedback items unless a target language is specified."
 )
 
 _JUDGE_PROMPT = """
@@ -288,6 +304,85 @@ class StandardOrchestrator(OrchestratorPort):
             )
         return SummaryResult(
             feedback_item_summaries=tuple(feedback_item_summaries),
+            cost=total_cost,
+        )
+
+    async def summarize_aggregate(
+        self,
+        request: SummaryRequest,
+        deadline: datetime,
+    ) -> AggregateSummaryResult:
+        """Summarize multiple feedback items as a single aggregate summary.
+
+        Parameters
+        ----------
+        request : SummaryRequest
+            The summarization request containing feedback items and options.
+        deadline : datetime
+            Absolute UTC deadline by which summarization must complete.
+
+        Returns
+        -------
+        AggregateSummaryResult
+            A single aggregate summary with themes ordered by frequency.
+        """
+        self._check_injection(request.feedback_items)
+
+        system_message = _DEFAULT_AGGREGATE_SUMMARIZATION_PROMPT
+        if request.output_language:
+            system_message += (
+                f"\nWrite the title and summary in {request.output_language}."
+            )
+        if request.prompt:
+            system_message += f"\nAdditional instructions: {request.prompt}"
+
+        user_message = "\n\n".join(
+            f"{idx}. {item.text}"
+            for idx, item in enumerate(request.feedback_items, start=1)
+        )
+
+        self._check_token_limit(system_message, user_message)
+        response = await self._call_with_retries(
+            system_message=system_message,
+            user_message=user_message,
+            tenant_id=request.tenant_id,
+            deadline=deadline,
+        )
+        total_cost = response.cost
+
+        try:
+            payload = json.loads(response.result)
+        except json.JSONDecodeError as exc:
+            raise AnalysisError(
+                "LLM returned invalid JSON for aggregate summary output"
+            ) from exc
+        if not isinstance(payload, dict):
+            raise AnalysisError("LLM returned invalid aggregate summary payload")
+        if not isinstance(payload.get("title"), str) or not isinstance(
+            payload.get("summary"), str
+        ):
+            raise AnalysisError(
+                "LLM returned aggregate summary output missing title or summary"
+            )
+
+        summary_text = payload["summary"]
+        judge_system = _build_judge_system_message(user_message, summary_text)
+        self._check_token_limit(judge_system, _JUDGE_USER_MESSAGE)
+
+        judge_response = await self._call_with_retries(
+            system_message=judge_system,
+            user_message=_JUDGE_USER_MESSAGE,
+            tenant_id=request.tenant_id,
+            deadline=deadline,
+        )
+        total_cost += judge_response.cost
+        quality_score = _parse_judge_quality_score(judge_response.result)
+
+        return AggregateSummaryResult(
+            ids=tuple(item.id for item in request.feedback_items),
+            title=payload["title"],
+            summary=summary_text,
+            quality_score=quality_score,
             cost=total_cost,
         )
 
