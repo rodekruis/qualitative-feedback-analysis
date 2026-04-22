@@ -82,12 +82,15 @@ async def analyze(
         tenant_id=tenant.tenant_id,
     )
 
-    result = await orchestrator.analyze(domain_request, deadline)
+    result = await orchestrator.analyze(
+        domain_request, deadline, anonymize=not body.deactivate_anonymization
+    )
 
     return AnalyzeResponse(
         analysis=result.result,
         document_count=len(body.documents),
         request_id=request.state.request_id,
+        used_anonymization=not body.deactivate_anonymization,
     )
 
 
@@ -133,7 +136,11 @@ async def summarize(
         tenant_id=tenant.tenant_id,
     )
 
-    result = await orchestrator.summarize(domain_request, deadline)
+    result = await orchestrator.summarize(
+        domain_request,
+        deadline,
+        anonymize=not body.deactivate_anonymization,
+    )
 
     return SummarizeResponse(
         summaries=[
@@ -145,6 +152,7 @@ async def summarize(
             )
             for item in result.feedback_item_summaries
         ],
+        used_anonymization=not body.deactivate_anonymization,
     )
 
 

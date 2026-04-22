@@ -216,6 +216,7 @@ class StandardOrchestrator(OrchestratorPort):
         self,
         request: AnalysisRequest,
         deadline: datetime,
+        anonymize: bool = True,
     ) -> AnalysisResult:
         """Analyze a batch of feedback documents.
 
@@ -252,12 +253,14 @@ class StandardOrchestrator(OrchestratorPort):
             user_message=user_message,
             tenant_id=request.tenant_id,
             deadline=deadline,
+            anonymize=anonymize,
         )
 
     async def summarize(
         self,
         request: SummaryRequest,
         deadline: datetime,
+        anonymize: bool = True,
     ) -> SummaryResult:
         """Summarize each submitted feedback item individually.
 
@@ -301,6 +304,7 @@ class StandardOrchestrator(OrchestratorPort):
                 user_message=user_message,
                 tenant_id=request.tenant_id,
                 deadline=deadline,
+                anonymize=anonymize,
             )
             total_cost += response.cost
 
@@ -328,6 +332,7 @@ class StandardOrchestrator(OrchestratorPort):
                 user_message=_JUDGE_USER_MESSAGE,
                 tenant_id=request.tenant_id,
                 deadline=deadline,
+                anonymize=anonymize,
             )
             total_cost += judge_response.cost
             quality_score = _parse_judge_quality_score(judge_response.result)
