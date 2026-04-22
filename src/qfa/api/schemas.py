@@ -255,6 +255,48 @@ class CodingLevels(BaseModel):
             )
 
         return self
+class DetectSensitiveRequest(BaseModel):
+    """Request body for the ``POST /v1/detect-sensitive`` endpoint.
+
+    Attributes
+    ----------
+        feedback_items : list[FeedbackItemInput]
+    """
+
+    feedback_items: list[FeedbackItemInput] = Field(
+        min_length=1,
+        description="List of feedback items to check for sensitive content.",
+    )
+
+
+class FeedbackItemSensitivityRating(BaseModel):
+    """Represents the sensitivity rating for a single feedback item.
+
+    Attributes
+    ----------
+    id : str
+        Identifier of the source feedback item.
+    is_sensitive : bool
+        Indicates whether the feedback item is considered sensitive.
+    explanation : str
+        Explanation for the sensitivity rating.
+    """
+
+    id: str
+    is_sensitive: bool
+    explanation: str
+
+
+class DetectSensitiveResponse(BaseModel):
+    """Response body for the ``POST /v1/detect-sensitive`` endpoint.
+
+    Attributes
+    ----------
+    ratings : list[FeedbackItemSensitivityRating]
+        Sensitivity rating for each submitted feedback item.
+    """
+
+    ratings: list[FeedbackItemSensitivityRating]
 
 
 class HealthResponse(BaseModel):

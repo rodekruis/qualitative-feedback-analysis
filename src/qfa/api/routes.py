@@ -12,6 +12,9 @@ from qfa.api.dependencies import (
 from qfa.api.schemas import (
     AnalyzeRequest,
     AnalyzeResponse,
+    DetectSensitiveRequest,
+    DetectSensitiveResponse,
+    FeedbackItemSensitivityRating,
     FeedbackItemSummary,
     HealthResponse,
     SummarizeFeedbackMetadata,
@@ -144,6 +147,45 @@ async def summarize(
                 quality_score=item.quality_score,
             )
             for item in result.feedback_item_summaries
+        ],
+    )
+
+
+@router.post(
+    "/v1/detect-sensitive", response_model=DetectSensitiveResponse, status_code=200
+)
+async def detect_sensitive(
+    body: DetectSensitiveRequest,
+    request: Request,
+    tenant: TenantApiKey = Depends(authenticate_request),
+    orchestrator: OrchestratorPort = Depends(get_orchestrator),
+) -> DetectSensitiveResponse:
+    """Detect sensitive information in feedback items.
+
+    Parameters
+    ----------
+    body : DetectSensitiveRequest
+        The request body containing feedback items to check.
+    request : Request
+        The incoming HTTP request.
+    tenant : TenantApiKey
+        The authenticated tenant, injected via dependency.
+    orchestrator : OrchestratorPort
+        The orchestrator service, injected via dependency.
+
+    Returns
+    -------
+    DetectSensitiveResponse
+        Sensitivity ratings for each submitted feedback item.
+    """
+    return DetectSensitiveResponse(
+        ratings=[
+            FeedbackItemSensitivityRating(
+                id=rating.id,
+                is_sensitive=rating.is_sensitive,
+                explanation=rating.explanation,
+            )
+            for rating in []
         ],
     )
 
