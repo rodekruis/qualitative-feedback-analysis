@@ -9,6 +9,8 @@ from typing import Protocol
 from qfa.domain.models import (
     AnalysisRequest,
     AnalysisResult,
+    CodingAssignmentRequest,
+    CodingAssignmentResult,
     LLMResponse,
     SummaryRequest,
     SummaryResult,
@@ -118,5 +120,37 @@ class OrchestratorPort(Protocol):
         -------
         SummaryResult
             Per-feedback-item summaries and titles.
+        """
+        ...
+
+    async def assign_codes(
+        self,
+        request: CodingAssignmentRequest,
+        deadline: datetime,
+    ) -> CodingAssignmentResult:
+        """Assign hierarchical codes to each feedback item using the LLM.
+
+        Parameters
+        ----------
+        request : CodingAssignmentRequest
+            Items to code, framework payload, limits, and tenant id.
+        deadline : datetime
+            Absolute UTC deadline by which coding must complete.
+
+        Returns
+        -------
+        CodingAssignmentResult
+            Per-feedback-item assigned leaf codes.
+
+        Raises
+        ------
+        AnalysisTimeoutError
+            When the deadline is exceeded before finishing all items.
+        LLMTimeoutError
+            When an LLM call exceeds its per-request timeout.
+        LLMRateLimitError
+            When the LLM provider rate-limits a call.
+        LLMError
+            For other LLM provider failures.
         """
         ...

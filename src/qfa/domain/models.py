@@ -3,6 +3,8 @@
 All models are immutable (frozen) Pydantic models per ADR-001.
 """
 
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 
@@ -99,6 +101,78 @@ class SummaryResult(BaseModel):
         description="Per-feedback-item summaries returned by the summarize flow.",
     )
     cost: float = Field(description="Estimated summarization cost in USD.")
+
+
+class CodingAssignmentRequest(BaseModel):
+    """A request to assign hierarchical codes to feedback items.
+
+    Attributes
+    ----------
+    feedback_items : tuple[FeedbackItem, ...]
+        Non-empty tuple of feedback items to code (``text`` is the body to classify).
+    coding_framework : dict[str, Any]
+        Hierarchical framework payload with top-level ``types`` and nested
+        ``categories`` and ``codes``.
+    max_codes : int
+        Maximum number of leaf codes to retain per feedback item.
+    tenant_id : str
+        Tenant identifier, injected by the auth layer.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    feedback_items: tuple[FeedbackItem, ...] = Field(min_length=1)
+    coding_framework: dict[str, Any]
+    max_codes: int = Field(ge=1, le=50)
+    tenant_id: str
+
+
+class AssignedCode(BaseModel):
+    """A single leaf code assigned to a feedback item.
+
+    Attributes
+    ----------
+    code_id : str
+        Stable identifier from the framework (e.g. slug path).
+    code_label : str
+        Human-readable code name.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    code_id: str
+    code_label: str
+
+
+class CodedFeedbackItem(BaseModel):
+    """Coding output for one feedback item.
+
+    Attributes
+    ----------
+    feedback_item_id : str
+        Identifier of the source feedback item.
+    assigned_codes : tuple[AssignedCode, ...]
+        Leaf codes selected for this item.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    feedback_item_id: str
+    assigned_codes: tuple[AssignedCode, ...]
+
+
+class CodingAssignmentResult(BaseModel):
+    """The result of assigning codes to multiple feedback items.
+
+    Attributes
+    ----------
+    coded_feedback_items : tuple[CodedFeedbackItem, ...]
+        Per-item coding results, aligned with the request order.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    coded_feedback_items: tuple[CodedFeedbackItem, ...]
 
 
 class LLMResponse(BaseModel):
