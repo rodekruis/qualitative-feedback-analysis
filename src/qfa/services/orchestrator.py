@@ -166,6 +166,13 @@ class StandardOrchestrator(OrchestratorPort):
         self, original_value: str, entity_type: str, mapping: dict[str, str]
     ) -> str:
         """Helper to create unique IDs and store them in our map."""
+        if original_value == "PII":
+            return "<PII>"
+
+        for placeholder, value in mapping.items():
+            if value == original_value and placeholder.startswith(f"<{entity_type}_"):
+                return placeholder
+
         placeholder = f"<{entity_type}_{len(mapping.keys())}>"
         mapping[placeholder] = original_value
         return placeholder
