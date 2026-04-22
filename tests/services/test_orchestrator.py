@@ -500,6 +500,20 @@ class TestAnonymization:
         deanonimized_text = orch.deanonymize(anonymized_text, mapping)
         assert sensitive_bit in deanonimized_text
 
+    def test_date_not_anonymized(self, settings):
+        input_text = "I have a meeting on September 1st."
+        fake_llm = FakeLLMPort(responses=[_make_llm_response()])
+        orch = StandardOrchestrator(
+            llm=fake_llm,
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        anonymized_text, mapping = orch.anonymize(input_text)
+        assert "September 1st" in anonymized_text
+        assert len(mapping) == 0
+
 
 class TestInjectionRepeatedChars:
     @pytest.mark.asyncio

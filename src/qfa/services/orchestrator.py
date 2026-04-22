@@ -184,9 +184,6 @@ class StandardOrchestrator(OrchestratorPort):
 
         results = self._analyzer.analyze(text=text, language="en")
         unique_entities = {res.entity_type for res in results}
-        unique_entities.discard(
-            "DATE_TIME"
-        )  # Dates do not have PII, and can be useful for understanding by LLM.
 
         # We use a custom lambda as the operator
         operators = {}
@@ -198,6 +195,9 @@ class StandardOrchestrator(OrchestratorPort):
                     "lambda": lambda x, ent=entity: self._get_unique_id(x, ent, mapping)
                 },
             )
+
+        # Preserve DATE_TIME entities without anonymization
+        operators["DATE_TIME"] = OperatorConfig("keep")
 
         anonymized = self._anonymizer.anonymize(
             text=text,
