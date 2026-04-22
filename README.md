@@ -165,7 +165,7 @@ In production, API keys are stored as a JSON secret (`AUTH-API-KEYS`) in Azure K
 
 ```bash
 az login                                        # authenticate with the Azure CLI
-export AZURE_KEYVAULT="qfa-prd-keyvault"       # name of the target Key Vault
+export AZURE_KEYVAULT="<keyvault-name>"         # e.g. qfa-prd-keyvault
 ```
 
 **Usage**
