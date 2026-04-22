@@ -157,6 +157,36 @@ export AUTH_API_KEYS='[
 3. The key is matched using constant-time comparison (`secrets.compare_digest`) to prevent timing attacks.
 4. On success, the request is tagged with the matching `tenant_id`.
 
+### Managing keys in production (Azure Key Vault)
+
+In production, API keys are stored as a JSON secret (`AUTH-API-KEYS`) in Azure Key Vault and loaded by the app at startup. Use `scripts/update_auth_api_keys.py` to add, replace, or remove keys without touching the vault manually.
+
+**Prerequisites**
+
+```bash
+az login                                        # authenticate with the Azure CLI
+export AZURE_KEYVAULT="qfa-prd-keyvault"       # name of the target Key Vault
+```
+
+**Usage**
+
+```bash
+uv run python3 scripts/update_auth_api_keys.py --add     <tenant>   # add a new key (keeps existing)
+uv run python3 scripts/update_auth_api_keys.py --replace <tenant>   # replace all keys for tenant with one new key
+uv run python3 scripts/update_auth_api_keys.py --remove  <tenant>   # delete all keys for tenant
+```
+
+The script prints the generated key to stdout — copy it and share it with the tenant. It is not recoverable from Key Vault afterwards (only its hash is used at runtime).
+
+**Example**
+
+```
+$ uv run python3 scripts/update_auth_api_keys.py --add prd
+No existing keys for tenant 'prd'.
+Added key 'prd-0' for tenant 'prd'.
+Key: xK9mR2vNpL4wQjT8...
+```
+
 ## Running the Application
 
 ```bash
