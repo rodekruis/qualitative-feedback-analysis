@@ -70,6 +70,7 @@ class OrchestratorPort(Protocol):
         self,
         request: AnalysisRequest,
         deadline: datetime,
+        anonymize: bool = True,
     ) -> AnalysisResult:
         """Analyze a batch of feedback documents.
 
@@ -79,6 +80,8 @@ class OrchestratorPort(Protocol):
             The analysis request containing documents and prompt.
         deadline : datetime
             Absolute deadline by which the analysis must complete.
+        anonymize : bool
+            Whether to apply anonymization to the feedback text before analysis.
 
         Returns
         -------
@@ -100,6 +103,7 @@ class OrchestratorPort(Protocol):
         self,
         request: SummaryRequest,
         deadline: datetime,
+        anonymize: bool = True,
     ) -> SummaryResult:
         """Summarize each submitted feedback item individually.
 
@@ -109,6 +113,8 @@ class OrchestratorPort(Protocol):
             The summarization request containing feedback items and options.
         deadline : datetime
             Absolute deadline by which summarization must complete.
+        anonymize : bool
+            Whether to apply anonymization to the feedback text before summarization.
 
         Returns
         -------

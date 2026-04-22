@@ -67,6 +67,7 @@ class FakeOrchestrator(OrchestratorPort):
         self,
         request: AnalysisRequest,
         deadline: datetime,
+        anonymize: bool = True,
     ) -> AnalysisResult:
         if self._error is not None:
             raise self._error
@@ -76,6 +77,7 @@ class FakeOrchestrator(OrchestratorPort):
         self,
         request: SummaryRequest,
         deadline: datetime,
+        anonymize: bool = True,
     ) -> SummaryResult:
         if self._error is not None:
             raise self._error
