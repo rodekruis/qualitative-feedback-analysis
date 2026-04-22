@@ -10,6 +10,8 @@ import random
 import re
 from datetime import datetime
 
+from presidio_analyzer import AnalyzerEngine
+from presidio_anonymizer import AnonymizerEngine, OperatorConfig
 from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_exponential
 
 from qfa.domain.errors import (
@@ -157,11 +159,64 @@ class StandardOrchestrator(OrchestratorPort):
         self._settings = settings
         self._llm_timeout_seconds = llm_timeout_seconds
         self._max_total_tokens = max_total_tokens
+        self._analyzer: AnalyzerEngine = AnalyzerEngine()
+        self._anonymizer: AnonymizerEngine = AnonymizerEngine()
+
+    def _get_unique_id(
+        self, original_value: str, entity_type: str, mapping: dict[str, str]
+    ) -> str:
+        """Helper to create unique IDs and store them in our map."""
+        if original_value == "PII":
+            return "<PII>"
+
+        for placeholder, value in mapping.items():
+            if value == original_value and placeholder.startswith(f"<{entity_type}_"):
+                return placeholder
+
+        placeholder = f"<{entity_type}_{len(mapping.keys())}>"
+        mapping[placeholder] = original_value
+        return placeholder
+
+    def anonymize(self, text: str) -> tuple[str, dict[str, str]]:
+        """Anonimize text with placeholders."""
+        mapping: dict[str, str] = {}
+        self.count = 0
+
+        results = self._analyzer.analyze(text=text, language="en")
+        unique_entities = {res.entity_type for res in results}
+
+        # We use a custom lambda as the operator
+        operators = {}
+        for entity in unique_entities:
+            operators[entity] = OperatorConfig(
+                "custom",
+                {
+                    # Capture 'entity' as a default argument 'ent' to avoid closure issues
+                    "lambda": lambda x, ent=entity: self._get_unique_id(x, ent, mapping)
+                },
+            )
+
+        # Preserve DATE_TIME entities without anonymization
+        operators["DATE_TIME"] = OperatorConfig("keep")
+
+        anonymized = self._anonymizer.anonymize(
+            text=text,
+            analyzer_results=results,  # type: ignore
+            operators=operators,
+        )
+        return anonymized.text, mapping
+
+    def deanonymize(self, text: str, mapping: dict) -> str:
+        """Restore original values in text by replacing anonymized placeholders."""
+        for placeholder, original in mapping.items():
+            text = text.replace(placeholder, original)
+        return text
 
     async def analyze(
         self,
         request: AnalysisRequest,
         deadline: datetime,
+        anonymize: bool = True,
     ) -> AnalysisResult:
         """Analyze a batch of feedback documents.
 
@@ -198,12 +253,14 @@ class StandardOrchestrator(OrchestratorPort):
             user_message=user_message,
             tenant_id=request.tenant_id,
             deadline=deadline,
+            anonymize=anonymize,
         )
 
     async def summarize(
         self,
         request: SummaryRequest,
         deadline: datetime,
+        anonymize: bool = True,
     ) -> SummaryResult:
         """Summarize each submitted feedback item individually.
 
@@ -247,6 +304,7 @@ class StandardOrchestrator(OrchestratorPort):
                 user_message=user_message,
                 tenant_id=request.tenant_id,
                 deadline=deadline,
+                anonymize=anonymize,
             )
             total_cost += response.cost
 
@@ -274,6 +332,7 @@ class StandardOrchestrator(OrchestratorPort):
                 user_message=_JUDGE_USER_MESSAGE,
                 tenant_id=request.tenant_id,
                 deadline=deadline,
+                anonymize=anonymize,
             )
             total_cost += judge_response.cost
             quality_score = _parse_judge_quality_score(judge_response.result)
@@ -418,6 +477,7 @@ class StandardOrchestrator(OrchestratorPort):
         user_message: str,
         tenant_id: str,
         deadline: datetime,
+        anonymize: bool = True,
     ) -> AnalysisResult:
         """Call the LLM with retry logic and deadline enforcement.
 
@@ -431,6 +491,8 @@ class StandardOrchestrator(OrchestratorPort):
             Tenant identifier for the LLM call.
         deadline : datetime
             Absolute UTC deadline.
+        anonymize: bool
+            Whether the user_message should ben anonymized.
 
         Returns
         -------
@@ -444,6 +506,9 @@ class StandardOrchestrator(OrchestratorPort):
         AnalysisError
             For non-recoverable LLM errors or persistent empty responses.
         """
+        if anonymize:
+            user_message, anonymization_mapping = self.anonymize(user_message)
+
         try:
             response = await self._llm.complete(
                 system_message=system_message,
@@ -473,7 +538,9 @@ class StandardOrchestrator(OrchestratorPort):
             raise AnalysisError("LLM returned empty response after retry")
 
         return AnalysisResult(
-            result=response.text,
+            result=self.deanonymize(response.text, anonymization_mapping)
+            if anonymize
+            else response.text,
             model=response.model,
             prompt_tokens=response.prompt_tokens,
             completion_tokens=response.completion_tokens,

@@ -58,6 +58,10 @@ class AnalyzeRequest(BaseModel):
         max_length=4_000,
         description="Analysis instruction for the model.",
     )
+    deactivate_anonymization: bool = Field(
+        default=False,
+        description="If true, the service will not apply anonymization to the feedback text. Use with caution and only if you are sure that no personally identifiable information (PII) is present in the input.",
+    )
 
 
 class AnalyzeResponse(BaseModel):
@@ -66,6 +70,9 @@ class AnalyzeResponse(BaseModel):
     analysis: str = Field(description="Analysis output text.")
     document_count: int = Field(description="Number of documents that were analyzed.")
     request_id: str = Field(description="Unique identifier for this request.")
+    used_anonymization: bool = Field(
+        description="Indicates whether anonymization was applied to the feedback text."
+    )
 
 
 class SummarizeFeedbackMetadata(BaseModel):
@@ -172,6 +179,10 @@ class SummarizeRequest(BaseModel):
         max_length=4_000,
         description="Optional extra instruction appended to the default summarize prompt.",
     )
+    deactivate_anonymization: bool = Field(
+        default=False,
+        description="If true, the service will not apply anonymization to the feedback text. Use with caution and only if you are sure that no personally identifiable information (PII) is present in the input.",
+    )
 
 
 class FeedbackItemSummary(BaseModel):
@@ -194,6 +205,9 @@ class SummarizeResponse(BaseModel):
 
     summaries: list[FeedbackItemSummary] = Field(
         description="Title and summary for each submitted feedback item.",
+    )
+    used_anonymization: bool = Field(
+        description="Indicates whether anonymization was applied to the feedback text.",
     )
 
 
