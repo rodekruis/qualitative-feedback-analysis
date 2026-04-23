@@ -10,6 +10,7 @@ from qfa.api.dependencies import (
     get_orchestrator,
 )
 from qfa.api.schemas import (
+    AggregateSummary,
     AnalyzeRequest,
     AnalyzeResponse,
     AssignCodesRequest,
@@ -18,6 +19,7 @@ from qfa.api.schemas import (
     CodeItems,
     FeedbackItemSummary,
     HealthResponse,
+    SummarizeAggregateResponse,
     SummarizeFeedbackMetadata,
     SummarizeRequest,
     SummarizeResponse,
@@ -197,6 +199,64 @@ async def assign_codes(
             )
             for coded in result.coded_feedback_items
         ],
+    )
+
+
+@router.post(
+    "/v1/summarize-aggregate",
+    response_model=SummarizeAggregateResponse,
+    status_code=200,
+)
+async def summarize_aggregate(
+    body: SummarizeRequest,
+    request: Request,
+    tenant: TenantApiKey = Depends(authenticate_request),
+    orchestrator: OrchestratorPort = Depends(get_orchestrator),
+) -> SummarizeAggregateResponse:
+    """Summarize all submitted feedback items as a single aggregate summary.
+
+    Parameters
+    ----------
+    body : SummarizeRequest
+        The request body containing feedback items and summarization options.
+    request : Request
+        The incoming HTTP request.
+    tenant : TenantApiKey
+        The authenticated tenant, injected via dependency.
+    orchestrator : OrchestratorPort
+        The orchestrator service, injected via dependency.
+
+    Returns
+    -------
+    SummarizeAggregateResponse
+        A single summary with themes ordered by frequency across all items.
+    """
+    deadline = datetime.now(UTC) + timedelta(seconds=120)
+
+    feedback_items = tuple(
+        FeedbackItem(
+            id=item.id,
+            text=item.content,
+            metadata=_summarize_metadata_to_domain(item.metadata),
+        )
+        for item in body.feedback_items
+    )
+    domain_request = DomainSummaryRequest(
+        feedback_items=feedback_items,
+        output_language=body.output_language,
+        prompt=body.prompt,
+        tenant_id=tenant.tenant_id,
+    )
+
+    result = await orchestrator.summarize_aggregate(domain_request, deadline)
+
+    return SummarizeAggregateResponse(
+        summary=AggregateSummary(
+            ids=list(result.ids),
+            title=result.title,
+            summary=result.summary,
+            quality_score=result.quality_score,
+        )
     )
 
 

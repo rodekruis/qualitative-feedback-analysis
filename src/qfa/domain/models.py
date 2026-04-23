@@ -103,6 +103,26 @@ class SummaryResult(BaseModel):
     cost: float = Field(description="Estimated summarization cost in USD.")
 
 
+class AggregateSummaryResult(BaseModel):
+    """The result of summarizing multiple feedback items as a single aggregate."""
+
+    model_config = ConfigDict(frozen=True)
+
+    ids: tuple[str, ...] = Field(
+        description="Identifiers of all source feedback items."
+    )
+    title: str = Field(description="Generated short title for the aggregate summary.")
+    summary: str = Field(
+        description="Generated bullet-point summary ordered by theme frequency."
+    )
+    quality_score: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Judge model score for summary quality in the range 0.0-1.0.",
+    )
+    cost: float = Field(description="Estimated summarization cost in USD.")
+
+
 class CodingAssignmentRequest(BaseModel):
     """A request to assign hierarchical codes to feedback items.
 
