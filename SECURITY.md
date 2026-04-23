@@ -49,7 +49,8 @@ QFA is **not** a full security boundary on its own. In particular:
 
 4. **Potential sensitive details in propagated error messages/logs.**  
    Provider exception strings should be treated as potentially sensitive and sanitized.
-5. **Documented LLM retention guard (`store=False`) is not explicitly set in the LLM call path.**
+5. **Documented LLM retention guard is not explicitly set in the LLM call path.**  
+   Architecture expects explicit no-retention behavior, but the provider call does not currently set a provider-level no-retention flag.
 6. **CI/CD identity has broad permissions (Contributor at RG scope).**  
    Acceptable for simplicity, but should be narrowed over time.
 
@@ -75,7 +76,7 @@ For all deployments (especially humanitarian/sensitive use), minimum expectation
 6. **Operational readiness**  
    Define incident response, backup/recovery, and patch/update procedures.
 7. **Context-appropriate compliance**  
-   Align deployment with GDPR and ICRC data-protection principles (lawful basis, minimization, retention, access governance).
+   Align deployment with applicable data-protection law (for example GDPR where applicable) and ICRC data-protection principles (lawful basis, minimization, retention, access governance).
 
 ## Recommended improvements (prioritized)
 
@@ -88,7 +89,7 @@ For all deployments (especially humanitarian/sensitive use), minimum expectation
 4. **Harden Key Vault configuration**
    - Enable purge protection (at least staging/prd) and review network access restrictions.
 5. **Enforce LLM data-retention intent in code**
-   - Explicitly set provider options equivalent to `store=False` where supported.
+   - Explicitly set provider-specific no-retention options where supported.
 6. **Reduce CI/CD blast radius**
    - Split Terraform and deployment identities/permissions where feasible.
 7. **Run container as non-root**
@@ -103,7 +104,7 @@ For all deployments (especially humanitarian/sensitive use), minimum expectation
 - [ ] Rotate API keys periodically and on personnel/incident triggers.
 - [ ] Enable centralized logging/monitoring and alerting for auth failures and anomalies.
 - [ ] Verify no payload text or API keys are logged.
-- [ ] Review LLM-provider privacy/retention settings for the chosen provider/region.
+- [ ] Review LLM-provider privacy/retention controls for the chosen provider/region.
 - [ ] Document and test incident response and recovery procedures.
 
 ## Follow-up implementation issue (draft)
@@ -113,7 +114,7 @@ For all deployments (especially humanitarian/sensitive use), minimum expectation
 **Proposed scope**
 
 - [ ] Make anonymization bypass operator-controlled (or remove public bypass).
-- [ ] Add explicit LLM retention control (`store=False` equivalent) and tests.
+- [ ] Add explicit provider-specific no-retention controls and tests.
 - [ ] Sanitize provider errors returned to API clients.
 - [ ] Enable Key Vault purge protection for staging/prd Terraform configuration.
 - [ ] Add/adjust tests for the above security behaviors.
