@@ -10,6 +10,8 @@ from qfa.domain.models import (
     AggregateSummaryResult,
     AnalysisRequest,
     AnalysisResult,
+    CodingAssignmentRequest,
+    CodingAssignmentResult,
     LLMResponse,
     SummaryRequest,
     SummaryResult,
@@ -69,6 +71,7 @@ class OrchestratorPort(Protocol):
         self,
         request: AnalysisRequest,
         deadline: datetime,
+        anonymize: bool = True,
     ) -> AnalysisResult:
         """Analyze a batch of feedback documents.
 
@@ -78,6 +81,8 @@ class OrchestratorPort(Protocol):
             The analysis request containing documents and prompt.
         deadline : datetime
             Absolute deadline by which the analysis must complete.
+        anonymize : bool
+            Whether to apply anonymization to the feedback text before analysis.
 
         Returns
         -------
@@ -99,6 +104,7 @@ class OrchestratorPort(Protocol):
         self,
         request: SummaryRequest,
         deadline: datetime,
+        anonymize: bool = True,
     ) -> SummaryResult:
         """Summarize each submitted feedback item individually.
 
@@ -108,6 +114,8 @@ class OrchestratorPort(Protocol):
             The summarization request containing feedback items and options.
         deadline : datetime
             Absolute deadline by which summarization must complete.
+        anonymize : bool
+            Whether to apply anonymization to the feedback text before summarization.
 
         Returns
         -------
@@ -134,5 +142,37 @@ class OrchestratorPort(Protocol):
         -------
         AggregateSummaryResult
             A single aggregate summary with themes ordered by frequency.
+        """
+        ...
+
+    async def assign_codes(
+        self,
+        request: CodingAssignmentRequest,
+        deadline: datetime,
+    ) -> CodingAssignmentResult:
+        """Assign hierarchical codes to each feedback item using the LLM.
+
+        Parameters
+        ----------
+        request : CodingAssignmentRequest
+            Items to code, framework payload, limits, and tenant id.
+        deadline : datetime
+            Absolute UTC deadline by which coding must complete.
+
+        Returns
+        -------
+        CodingAssignmentResult
+            Per-feedback-item assigned leaf codes.
+
+        Raises
+        ------
+        AnalysisTimeoutError
+            When the deadline is exceeded before finishing all items.
+        LLMTimeoutError
+            When an LLM call exceeds its per-request timeout.
+        LLMRateLimitError
+            When the LLM provider rate-limits a call.
+        LLMError
+            For other LLM provider failures.
         """
         ...

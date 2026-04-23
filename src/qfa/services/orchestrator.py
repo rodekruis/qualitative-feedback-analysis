@@ -8,12 +8,15 @@ import json
 import logging
 import random
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 
+from presidio_analyzer import AnalyzerEngine
+from presidio_anonymizer import AnonymizerEngine, OperatorConfig
 from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_exponential
 
 from qfa.domain.errors import (
     AnalysisError,
+    AnalysisTimeoutError,
     DocumentsTooLargeError,
     LLMError,
     LLMRateLimitError,
@@ -23,12 +26,17 @@ from qfa.domain.models import (
     AggregateSummaryResult,
     AnalysisRequest,
     AnalysisResult,
+    AssignedCode,
+    CodedFeedbackItem,
+    CodingAssignmentRequest,
+    CodingAssignmentResult,
     FeedbackItem,
     FeedbackItemSummary,
     SummaryRequest,
     SummaryResult,
 )
 from qfa.domain.ports import LLMPort, OrchestratorPort
+from qfa.services.coding_classifier import build_pick_messages, parse_selected_indices
 from qfa.settings import OrchestratorSettings
 
 logger = logging.getLogger(__name__)
@@ -173,11 +181,64 @@ class StandardOrchestrator(OrchestratorPort):
         self._settings = settings
         self._llm_timeout_seconds = llm_timeout_seconds
         self._max_total_tokens = max_total_tokens
+        self._analyzer: AnalyzerEngine = AnalyzerEngine()
+        self._anonymizer: AnonymizerEngine = AnonymizerEngine()
+
+    def _get_unique_id(
+        self, original_value: str, entity_type: str, mapping: dict[str, str]
+    ) -> str:
+        """Helper to create unique IDs and store them in our map."""
+        if original_value == "PII":
+            return "<PII>"
+
+        for placeholder, value in mapping.items():
+            if value == original_value and placeholder.startswith(f"<{entity_type}_"):
+                return placeholder
+
+        placeholder = f"<{entity_type}_{len(mapping.keys())}>"
+        mapping[placeholder] = original_value
+        return placeholder
+
+    def anonymize(self, text: str) -> tuple[str, dict[str, str]]:
+        """Anonimize text with placeholders."""
+        mapping: dict[str, str] = {}
+        self.count = 0
+
+        results = self._analyzer.analyze(text=text, language="en")
+        unique_entities = {res.entity_type for res in results}
+
+        # We use a custom lambda as the operator
+        operators = {}
+        for entity in unique_entities:
+            operators[entity] = OperatorConfig(
+                "custom",
+                {
+                    # Capture 'entity' as a default argument 'ent' to avoid closure issues
+                    "lambda": lambda x, ent=entity: self._get_unique_id(x, ent, mapping)
+                },
+            )
+
+        # Preserve DATE_TIME entities without anonymization
+        operators["DATE_TIME"] = OperatorConfig("keep")
+
+        anonymized = self._anonymizer.anonymize(
+            text=text,
+            analyzer_results=results,  # type: ignore
+            operators=operators,
+        )
+        return anonymized.text, mapping
+
+    def deanonymize(self, text: str, mapping: dict) -> str:
+        """Restore original values in text by replacing anonymized placeholders."""
+        for placeholder, original in mapping.items():
+            text = text.replace(placeholder, original)
+        return text
 
     async def analyze(
         self,
         request: AnalysisRequest,
         deadline: datetime,
+        anonymize: bool = True,
     ) -> AnalysisResult:
         """Analyze a batch of feedback documents.
 
@@ -214,12 +275,14 @@ class StandardOrchestrator(OrchestratorPort):
             user_message=user_message,
             tenant_id=request.tenant_id,
             deadline=deadline,
+            anonymize=anonymize,
         )
 
     async def summarize(
         self,
         request: SummaryRequest,
         deadline: datetime,
+        anonymize: bool = True,
     ) -> SummaryResult:
         """Summarize each submitted feedback item individually.
 
@@ -263,6 +326,7 @@ class StandardOrchestrator(OrchestratorPort):
                 user_message=user_message,
                 tenant_id=request.tenant_id,
                 deadline=deadline,
+                anonymize=anonymize,
             )
             total_cost += response.cost
 
@@ -290,6 +354,7 @@ class StandardOrchestrator(OrchestratorPort):
                 user_message=_JUDGE_USER_MESSAGE,
                 tenant_id=request.tenant_id,
                 deadline=deadline,
+                anonymize=anonymize,
             )
             total_cost += judge_response.cost
             quality_score = _parse_judge_quality_score(judge_response.result)
@@ -385,6 +450,156 @@ class StandardOrchestrator(OrchestratorPort):
             quality_score=quality_score,
             cost=total_cost,
         )
+
+    async def assign_codes(
+        self,
+        request: CodingAssignmentRequest,
+        deadline: datetime,
+    ) -> CodingAssignmentResult:
+        """Assign hierarchical codes to each feedback item.
+
+        Parameters
+        ----------
+        request : CodingAssignmentRequest
+            Feedback items, coding framework, ``max_codes``, and tenant id.
+        deadline : datetime
+            Absolute UTC deadline by which all items must be coded.
+
+        Returns
+        -------
+        CodingAssignmentResult
+            Per-item leaf codes from ``classify_feedback``.
+
+        Raises
+        ------
+        AnalysisTimeoutError
+            When ``deadline`` is reached before every item is processed.
+        LLMTimeoutError
+            When a single LLM completion exceeds the configured timeout.
+        LLMRateLimitError
+            When the LLM provider returns rate limiting.
+        LLMError
+            For other LLM provider failures.
+        """
+        self._check_injection(request.feedback_items)
+
+        coded: list[CodedFeedbackItem] = []
+        types = request.coding_framework.get("types") or []
+
+        for feedback_item in request.feedback_items:
+            self._check_coding_deadline(deadline)
+
+            rows: list[tuple[str, str]] = []
+
+            type_indices = await self._pick_code_indices(
+                feedback_text=feedback_item.text,
+                current_level="Types",
+                entries=types,
+                hierarchy_path=None,
+                tenant_id=request.tenant_id,
+                deadline=deadline,
+            )
+
+            for type_index in type_indices:
+                type_entry = types[type_index]
+                type_name = str(type_entry.get("name", ""))
+                categories = type_entry.get("categories") or []
+
+                category_indices = await self._pick_code_indices(
+                    feedback_text=feedback_item.text,
+                    current_level="Categories",
+                    entries=categories,
+                    hierarchy_path=[("Type", type_name)],
+                    tenant_id=request.tenant_id,
+                    deadline=deadline,
+                )
+
+                for category_index in category_indices:
+                    category = categories[category_index]
+                    category_name = str(category.get("name", ""))
+                    codes = category.get("codes") or []
+
+                    code_indices = await self._pick_code_indices(
+                        feedback_text=feedback_item.text,
+                        current_level="Codes",
+                        entries=codes,
+                        hierarchy_path=[
+                            ("Type", type_name),
+                            ("Category", category_name),
+                        ],
+                        tenant_id=request.tenant_id,
+                        deadline=deadline,
+                    )
+
+                    for code_index in code_indices:
+                        code = codes[code_index]
+                        rows.append(
+                            (
+                                str(code.get("code_id", "")),
+                                str(code.get("name", "")),
+                            )
+                        )
+                        if len(rows) >= request.max_codes:
+                            break
+
+                    if len(rows) >= request.max_codes:
+                        break
+
+                if len(rows) >= request.max_codes:
+                    break
+
+            coded.append(
+                CodedFeedbackItem(
+                    feedback_item_id=feedback_item.id,
+                    assigned_codes=tuple(
+                        AssignedCode(
+                            code_id=code_id,
+                            code_label=code_label,
+                        )
+                        for code_id, code_label in rows
+                    ),
+                )
+            )
+
+        return CodingAssignmentResult(coded_feedback_items=tuple(coded))
+
+    def _check_coding_deadline(self, deadline: datetime) -> None:
+        """Raise when the coding deadline is exceeded."""
+        if datetime.now(UTC) >= deadline:
+            raise AnalysisTimeoutError(
+                "Coding deadline exceeded before all items were processed"
+            )
+
+    async def _pick_code_indices(
+        self,
+        *,
+        feedback_text: str,
+        current_level: str,
+        entries: list[dict],
+        hierarchy_path: list[tuple[str, str]] | None,
+        tenant_id: str,
+        deadline: datetime,
+    ) -> list[int]:
+        """Build one coding prompt, call the LLM, and parse selected indices."""
+        labels = [str(entry.get("name", "")) for entry in entries]
+        system_message, user_message = build_pick_messages(
+            feedback_text=feedback_text,
+            current_level=current_level,
+            labels=labels,
+            hierarchy_path=hierarchy_path,
+        )
+        if not user_message:
+            return []
+
+        self._check_coding_deadline(deadline)
+        self._check_token_limit(system_message, user_message)
+        response = await self._call_with_retries(
+            system_message=system_message,
+            user_message=user_message,
+            tenant_id=tenant_id,
+            deadline=deadline,
+        )
+        return parse_selected_indices(response.result, len(labels))
 
     # ------------------------------------------------------------------
     # Prompt injection filtering
@@ -513,6 +728,7 @@ class StandardOrchestrator(OrchestratorPort):
         user_message: str,
         tenant_id: str,
         deadline: datetime,
+        anonymize: bool = True,
     ) -> AnalysisResult:
         """Call the LLM with retry logic and deadline enforcement.
 
@@ -526,6 +742,8 @@ class StandardOrchestrator(OrchestratorPort):
             Tenant identifier for the LLM call.
         deadline : datetime
             Absolute UTC deadline.
+        anonymize: bool
+            Whether the user_message should ben anonymized.
 
         Returns
         -------
@@ -539,6 +757,9 @@ class StandardOrchestrator(OrchestratorPort):
         AnalysisError
             For non-recoverable LLM errors or persistent empty responses.
         """
+        if anonymize:
+            user_message, anonymization_mapping = self.anonymize(user_message)
+
         try:
             response = await self._llm.complete(
                 system_message=system_message,
@@ -568,7 +789,9 @@ class StandardOrchestrator(OrchestratorPort):
             raise AnalysisError("LLM returned empty response after retry")
 
         return AnalysisResult(
-            result=response.text,
+            result=self.deanonymize(response.text, anonymization_mapping)
+            if anonymize
+            else response.text,
             model=response.model,
             prompt_tokens=response.prompt_tokens,
             completion_tokens=response.completion_tokens,

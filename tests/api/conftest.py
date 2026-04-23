@@ -15,6 +15,9 @@ from qfa.api.routes import router
 from qfa.domain.models import (
     AnalysisRequest,
     AnalysisResult,
+    CodedFeedbackItem,
+    CodingAssignmentRequest,
+    CodingAssignmentResult,
     FeedbackItemSummary,
     SummaryRequest,
     SummaryResult,
@@ -64,6 +67,7 @@ class FakeOrchestrator(OrchestratorPort):
         self,
         request: AnalysisRequest,
         deadline: datetime,
+        anonymize: bool = True,
     ) -> AnalysisResult:
         if self._error is not None:
             raise self._error
@@ -73,10 +77,25 @@ class FakeOrchestrator(OrchestratorPort):
         self,
         request: SummaryRequest,
         deadline: datetime,
+        anonymize: bool = True,
     ) -> SummaryResult:
         if self._error is not None:
             raise self._error
         return self._summarize_result
+
+    async def assign_codes(
+        self,
+        request: CodingAssignmentRequest,
+        deadline: datetime,
+    ) -> CodingAssignmentResult:
+        if self._error is not None:
+            raise self._error
+        return CodingAssignmentResult(
+            coded_feedback_items=tuple(
+                CodedFeedbackItem(feedback_item_id=item.id, assigned_codes=())
+                for item in request.feedback_items
+            )
+        )
 
 
 @pytest.fixture
