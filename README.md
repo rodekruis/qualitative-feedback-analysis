@@ -37,6 +37,10 @@ synchronous API call.
   TBD: either via different API end points, API request parameters or automatically depending on task
 * hardened security.
 
+## Security guidance
+
+High-level security posture, hardening guidance, and prioritized recommendations are documented in [SECURITY.md](SECURITY.md).
+
 # Deployment
 
 Deployed to Azure App Service via Terraform (infrastructure) and GitHub Actions (app code).
