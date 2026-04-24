@@ -43,7 +43,10 @@ Deployed to Azure App Service via Terraform (infrastructure) and GitHub Actions 
 
 ## First-time setup
 
-Before the CI/CD pipeline can run, the Azure infrastructure and GitHub environments must be bootstrapped locally. See [infra/BOOTSTRAP.md](infra/BOOTSTRAP.md).
+Before the CI/CD pipeline can run, the Azure infrastructure and GitHub environments must be bootstrapped locally:
+
+1. [infra/BOOTSTRAP.md](infra/BOOTSTRAP.md) — one-time per deployment: Terraform state backend, shared container registry, and repo-scoped GitHub variables.
+2. [infra/setup-new-env.md](infra/setup-new-env.md) — run once per environment (`dev`, `staging`, `prd`, or any added later): Terraform workspace, App Service, Key Vault, managed identity, env-scoped GitHub variables, and Key Vault secrets.
 
 ## CI/CD pipeline
 
@@ -159,7 +162,7 @@ export AUTH_API_KEYS='[
 
 ### Managing keys in production (Azure Key Vault)
 
-In production, API keys are stored as a JSON secret (`AUTH-API-KEYS`) in Azure Key Vault and loaded by the app at startup. Use `scripts/update_auth_api_keys.py` to add, replace, or remove keys without touching the vault manually.
+In production, API keys are stored as a JSON secret (`AUTH-API-KEYS`) in Azure Key Vault and loaded by the app at startup. Use [`scripts/update_auth_api_keys.py`](scripts/update_auth_api_keys.py) to add, replace, or remove keys without touching the vault manually — see the module docstring at the top of the script for the full CLI reference.
 
 **Prerequisites**
 
