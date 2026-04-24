@@ -32,7 +32,7 @@ class LLMPort(Protocol):
         user_message: str,
         timeout: float,
         tenant_id: str,
-        response_model: type[T_Response] | None = None,
+        response_model: type[T_Response],
     ) -> LLMResponse[T_Response]:
         """Send a completion request to the LLM provider.
 

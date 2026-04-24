@@ -3,7 +3,7 @@
 All models are immutable (frozen) Pydantic models per ADR-001.
 """
 
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, TypeVar, Union
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
@@ -178,7 +178,7 @@ class CodingAssignmentResultModel(BaseModel):
 
 
 # Define a TypeVar that must be a Pydantic BaseModel
-T_Response = TypeVar("T_Response", bound=BaseModel)
+T_Response = TypeVar("T_Response", bound=Union[BaseModel, str])
 
 
 class LLMResponse(BaseModel, Generic[T_Response]):
@@ -186,10 +186,8 @@ class LLMResponse(BaseModel, Generic[T_Response]):
 
     model_config = ConfigDict(frozen=True)
 
-    text: str = Field(description="Generated text returned by the model.")
-    structured: T_Response | None = Field(
-        default=None,
-        description="Parsed structured response conforming to the expected schema.",
+    structured: T_Response = Field(
+        description="Parsed response conforming to the expected schema, either a string or Pydantic model.",
     )
     model: str = Field(description="LLM model that produced the response.")
     prompt_tokens: int = Field(description="Number of tokens in the prompt.")

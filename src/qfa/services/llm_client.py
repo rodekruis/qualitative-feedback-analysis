@@ -4,6 +4,7 @@ import logging
 
 import openai
 from litellm import acompletion, completion_cost
+from pydantic import BaseModel
 
 from qfa.domain.errors import LLMError, LLMRateLimitError, LLMTimeoutError
 from qfa.domain.models import LLMResponse, T_Response
@@ -46,7 +47,7 @@ class LiteLLMClient(LLMPort):
         user_message: str,
         timeout: float,
         tenant_id: str,
-        response_model: type[T_Response] | None = None,
+        response_model: type[T_Response],
     ) -> LLMResponse[T_Response]:
         """Send a completion request via LiteLLM.
 
@@ -87,7 +88,9 @@ class LiteLLMClient(LLMPort):
                 api_version=self._api_version or None,
                 user=tenant_id,
                 timeout=timeout,
-                response_format=response_model,
+                response_format=response_model
+                if issubclass(response_model, BaseModel)
+                else None,
             )
         except openai.APITimeoutError as exc:
             logger.error(exc)
@@ -113,12 +116,11 @@ class LiteLLMClient(LLMPort):
             logger.error("No pricing data for model %s", self._model)
             cost = float("nan")
 
-        parsed_data = None
-        if response_model is not None:
+        parsed_data = content
+        if issubclass(response_model, BaseModel):
             parsed_data = response_model.model_validate_json(content)
 
         return LLMResponse(
-            text=content,
             structured=parsed_data,
             model=response.model,
             prompt_tokens=usage.prompt_tokens,

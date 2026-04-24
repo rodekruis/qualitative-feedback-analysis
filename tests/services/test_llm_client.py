@@ -59,10 +59,12 @@ class TestLiteLLMClientHappyPath:
                 return_value=0.001,
             ),
         ):
-            result = await client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
+            result = await client.complete(
+                SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID, response_model=str
+            )
 
         assert isinstance(result, LLMResponse)
-        assert result.text == "This is the summary."
+        assert result.structured == "This is the summary."
         assert result.model == MODEL
         assert result.prompt_tokens == 100
         assert result.completion_tokens == 50
@@ -85,7 +87,9 @@ class TestLiteLLMClientCallParameters:
             ) as mock_ac,
             patch("qfa.services.llm_client.completion_cost", return_value=0.0),
         ):
-            await client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
+            await client.complete(
+                SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID, response_model=str
+            )
 
         call_kwargs = mock_ac.call_args.kwargs
         assert call_kwargs["model"] == MODEL
@@ -110,7 +114,9 @@ class TestLiteLLMClientCallParameters:
             ) as mock_ac,
             patch("qfa.services.llm_client.completion_cost", return_value=0.0),
         ):
-            await client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
+            await client.complete(
+                SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID, response_model=str
+            )
 
         call_kwargs = mock_ac.call_args.kwargs
         assert call_kwargs["api_base"] is None
@@ -133,7 +139,9 @@ class TestLiteLLMClientCostFallback:
                 side_effect=Exception("not found"),
             ),
         ):
-            result = await client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
+            result = await client.complete(
+                SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID, response_model=str
+            )
 
         assert isnan(result.cost)
 
@@ -148,7 +156,9 @@ class TestLiteLLMClientExceptionMapping:
             side_effect=openai.APITimeoutError(request=MagicMock()),
         ):
             with pytest.raises(LLMTimeoutError):
-                await client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
+                await client.complete(
+                    SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID, response_model=str
+                )
 
     @pytest.mark.asyncio
     async def test_rate_limit_error_mapped(self):
@@ -164,7 +174,9 @@ class TestLiteLLMClientExceptionMapping:
             ),
         ):
             with pytest.raises(LLMRateLimitError):
-                await client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
+                await client.complete(
+                    SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID, response_model=str
+                )
 
     @pytest.mark.asyncio
     async def test_generic_api_error_mapped(self):
@@ -177,7 +189,9 @@ class TestLiteLLMClientExceptionMapping:
             ),
         ):
             with pytest.raises(LLMError):
-                await client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
+                await client.complete(
+                    SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID, response_model=str
+                )
 
     @pytest.mark.asyncio
     async def test_empty_content_raises(self):
@@ -190,7 +204,9 @@ class TestLiteLLMClientExceptionMapping:
             return_value=mock_response,
         ):
             with pytest.raises(LLMError, match="empty content"):
-                await client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
+                await client.complete(
+                    SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID, response_model=str
+                )
 
     @pytest.mark.asyncio
     async def test_missing_usage_raises(self):
@@ -203,4 +219,6 @@ class TestLiteLLMClientExceptionMapping:
             return_value=mock_response,
         ):
             with pytest.raises(LLMError, match="missing usage"):
-                await client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
+                await client.complete(
+                    SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID, response_model=str
+                )

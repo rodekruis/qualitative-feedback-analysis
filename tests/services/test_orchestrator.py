@@ -40,7 +40,7 @@ def _make_request(documents=None, prompt="Summarize feedback.", tenant_id=TENANT
 
 def _make_llm_response(text="Analysis result.", model="gpt-4", cost=0.001):
     return LLMResponse(
-        text=text, model=model, prompt_tokens=100, completion_tokens=50, cost=cost
+        structured=text, model=model, prompt_tokens=100, completion_tokens=50, cost=cost
     )
 
 
@@ -77,7 +77,9 @@ class FakeLLMPort:
         self._call_count = 0
         self.calls = []
 
-    async def complete(self, system_message, user_message, timeout, tenant_id):
+    async def complete(
+        self, system_message, user_message, timeout, tenant_id, response_model=str
+    ):
         self.calls.append(
             {
                 "system_message": system_message,

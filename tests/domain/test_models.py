@@ -137,27 +137,27 @@ class TestAnalysisResultModel:
 class TestLLMResponse:
     def test_construct_with_valid_data(self):
         resp = LLMResponse(
-            text="Generated text",
+            structured="Generated text",
             model="gpt-4",
             prompt_tokens=80,
             completion_tokens=40,
             cost=0.001,
         )
-        assert resp.text == "Generated text"
+        assert resp.structured == "Generated text"
         assert resp.model == "gpt-4"
         assert resp.prompt_tokens == 80
         assert resp.completion_tokens == 40
 
     def test_frozen_raises_on_assignment(self):
         resp = LLMResponse(
-            text="text",
+            structured="text",
             model="gpt-4",
             prompt_tokens=10,
             completion_tokens=5,
             cost=0.001,
         )
         with pytest.raises(ValidationError):
-            resp.text = "changed"
+            resp.structured = "changed"
 
 
 # --- TenantApiKey ---

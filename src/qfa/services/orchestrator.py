@@ -766,6 +766,7 @@ class StandardOrchestrator(OrchestratorPort):
                 user_message=user_message,
                 timeout=120,
                 tenant_id=tenant_id,
+                response_model=str,
             )
             cost_str = f"${response.cost:.6f}" if response.cost is not None else "N/A"
             logger.info(
@@ -785,13 +786,11 @@ class StandardOrchestrator(OrchestratorPort):
             raise AnalysisError(str(exc)) from exc
 
         # Handle empty response
-        if not response.text.strip():
+        if not response.structured.strip():
             raise AnalysisError("LLM returned empty response after retry")
 
         return AnalysisResultModel(
-            result=self.deanonymize(response.text, anonymization_mapping)
-            if anonymize
-            else response.text,
+            result=self.deanonymize(response.structured, anonymization_mapping),
             model=response.model,
             prompt_tokens=response.prompt_tokens,
             completion_tokens=response.completion_tokens,
