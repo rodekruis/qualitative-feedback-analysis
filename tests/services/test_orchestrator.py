@@ -10,11 +10,11 @@ from qfa.domain.errors import (
     LLMError,
 )
 from qfa.domain.models import (
-    AnalysisRequest,
-    AnalysisResult,
-    FeedbackItem,
+    AnalysisRequestModel,
+    AnalysisResultModel,
+    FeedbackItemModel,
     LLMResponse,
-    SummaryRequest,
+    SummaryRequestModel,
 )
 from qfa.services.orchestrator import StandardOrchestrator
 from qfa.settings import OrchestratorSettings
@@ -25,13 +25,13 @@ MAX_TOKENS = 10_000
 
 
 def _make_document(doc_id="doc-1", text="Some feedback text.", metadata=None):
-    return FeedbackItem(id=doc_id, text=text, metadata=metadata or {})
+    return FeedbackItemModel(id=doc_id, text=text, metadata=metadata or {})
 
 
 def _make_request(documents=None, prompt="Summarize feedback.", tenant_id=TENANT_ID):
     if documents is None:
         documents = (_make_document(),)
-    return AnalysisRequest(
+    return AnalysisRequestModel(
         documents=documents,
         prompt=prompt,
         tenant_id=tenant_id,
@@ -52,7 +52,7 @@ def _make_summary_request(
 ):
     if feedback_items is None:
         feedback_items = (_make_document(),)
-    return SummaryRequest(
+    return SummaryRequestModel(
         feedback_items=feedback_items,
         output_language=output_language,
         prompt=prompt,
@@ -128,7 +128,7 @@ class TestHappyPath:
 
         result = await orch.analyze(_make_request(), _future_deadline())
 
-        assert isinstance(result, AnalysisResult)
+        assert isinstance(result, AnalysisResultModel)
         assert result.result == "Good analysis"
         assert result.model == "gpt-4o"
         assert result.prompt_tokens == 100
