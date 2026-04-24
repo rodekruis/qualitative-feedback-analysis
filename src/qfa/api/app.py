@@ -18,9 +18,9 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 import qfa
 from qfa.api.routes import router
 from qfa.api.schemas import (
-    ErrorDetail,
-    ErrorFieldDetail,
-    ErrorResponse,
+    ErrorDetailApi,
+    ErrorFieldDetailApi,
+    ErrorResponseApi,
 )
 from qfa.auth import validate_api_key
 from qfa.domain.errors import (
@@ -93,8 +93,8 @@ class RequestIdMiddleware:
             if response_started:
                 raise
             logger.exception("Unhandled exception for request %s", request_id)
-            body = ErrorResponse(
-                error=ErrorDetail(
+            body = ErrorResponseApi(
+                error=ErrorDetailApi(
                     code="internal_error",
                     message="An unexpected error occurred",
                     request_id=request_id,
@@ -220,8 +220,8 @@ async def _handle_authentication_error(
     JSONResponse
         A 401 JSON response.
     """
-    body = ErrorResponse(
-        error=ErrorDetail(
+    body = ErrorResponseApi(
+        error=ErrorDetailApi(
             code="authentication_required",
             message=str(exc),
             request_id=_get_request_id(request),
@@ -251,10 +251,10 @@ async def _handle_validation_error(
     for err in exc.errors():
         loc_parts = [str(part) for part in err.get("loc", [])]
         field_name = ".".join(loc_parts) if loc_parts else "unknown"
-        fields.append(ErrorFieldDetail(field=field_name, issue=err.get("msg", "")))
+        fields.append(ErrorFieldDetailApi(field=field_name, issue=err.get("msg", "")))
 
-    body = ErrorResponse(
-        error=ErrorDetail(
+    body = ErrorResponseApi(
+        error=ErrorDetailApi(
             code="validation_error",
             message="Request validation failed",
             request_id=_get_request_id(request),
@@ -281,8 +281,8 @@ async def _handle_documents_too_large(
     JSONResponse
         A 413 JSON response.
     """
-    body = ErrorResponse(
-        error=ErrorDetail(
+    body = ErrorResponseApi(
+        error=ErrorDetailApi(
             code="payload_too_large",
             message=str(exc),
             request_id=_get_request_id(request),
@@ -308,8 +308,8 @@ async def _handle_analysis_timeout(
     JSONResponse
         A 504 JSON response.
     """
-    body = ErrorResponse(
-        error=ErrorDetail(
+    body = ErrorResponseApi(
+        error=ErrorDetailApi(
             code="analysis_timeout",
             message=str(exc),
             request_id=_get_request_id(request),
@@ -339,8 +339,8 @@ async def _handle_analysis_error(request: Request, exc: AnalysisError) -> JSONRe
     logger.debug("Analysis error: %s", exc, exc_info=True)
 
     if "injection" in str(exc).lower():
-        body = ErrorResponse(
-            error=ErrorDetail(
+        body = ErrorResponseApi(
+            error=ErrorDetailApi(
                 code="validation_error",
                 message=str(exc),
                 request_id=_get_request_id(request),
@@ -348,8 +348,8 @@ async def _handle_analysis_error(request: Request, exc: AnalysisError) -> JSONRe
         )
         return JSONResponse(status_code=422, content=body.model_dump())
 
-    body = ErrorResponse(
-        error=ErrorDetail(
+    body = ErrorResponseApi(
+        error=ErrorDetailApi(
             code="analysis_unavailable",
             message=str(exc),
             request_id=_get_request_id(request),
@@ -374,8 +374,8 @@ async def _handle_unhandled_exception(request: Request, exc: Exception) -> JSONR
         A 500 JSON response.
     """
     logger.exception("Unhandled exception: %s", exc)
-    body = ErrorResponse(
-        error=ErrorDetail(
+    body = ErrorResponseApi(
+        error=ErrorDetailApi(
             code="internal_error",
             message="An unexpected error occurred",
             request_id=_get_request_id(request),

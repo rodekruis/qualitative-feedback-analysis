@@ -10,19 +10,19 @@ from qfa.api.dependencies import (
     get_orchestrator,
 )
 from qfa.api.schemas import (
-    AggregateSummary,
-    AnalyzeRequest,
-    AnalyzeResponse,
-    AssignCodesRequest,
-    AssignCodesResponse,
-    CodeItem,
-    CodeItems,
-    FeedbackItemSummary,
-    HealthResponse,
-    SummarizeAggregateResponse,
-    SummarizeFeedbackMetadata,
-    SummarizeRequest,
-    SummarizeResponse,
+    AggregateSummaryApi,
+    AnalyzeRequestApi,
+    AnalyzeResponseApi,
+    AssignCodesRequestApi,
+    AssignCodesResponseApi,
+    CodeItemApi,
+    CodeItemsApi,
+    FeedbackItemSummaryApi,
+    HealthResponseApi,
+    SummarizeAggregateResponseApi,
+    SummarizeFeedbackMetadataApi,
+    SummarizeRequestApi,
+    SummarizeResponseApi,
 )
 from qfa.domain.models import (
     AnalysisRequest,
@@ -39,7 +39,7 @@ router = APIRouter()
 
 
 def _summarize_metadata_to_domain(
-    meta: SummarizeFeedbackMetadata,
+    meta: SummarizeFeedbackMetadataApi,
 ) -> dict[str, str | int | float | bool]:
     """Flatten summarize metadata into the domain feedback metadata dict."""
     return {
@@ -51,13 +51,13 @@ def _summarize_metadata_to_domain(
     }
 
 
-@router.post("/v1/analyze", response_model=AnalyzeResponse, status_code=200)
+@router.post("/v1/analyze", response_model=AnalyzeResponseApi, status_code=200)
 async def analyze(
-    body: AnalyzeRequest,
+    body: AnalyzeRequestApi,
     request: Request,
     tenant: TenantApiKey = Depends(authenticate_request),
     orchestrator: OrchestratorPort = Depends(get_orchestrator),
-) -> AnalyzeResponse:
+) -> AnalyzeResponseApi:
     """Analyze a batch of feedback documents.
 
     Parameters
@@ -93,7 +93,7 @@ async def analyze(
         domain_request, deadline, anonymize=not body.deactivate_anonymization
     )
 
-    return AnalyzeResponse(
+    return AnalyzeResponseApi(
         analysis=result.result,
         document_count=len(body.documents),
         request_id=request.state.request_id,
@@ -101,13 +101,13 @@ async def analyze(
     )
 
 
-@router.post("/v1/summarize", response_model=SummarizeResponse, status_code=200)
+@router.post("/v1/summarize", response_model=SummarizeResponseApi, status_code=200)
 async def summarize(
-    body: SummarizeRequest,
+    body: SummarizeRequestApi,
     request: Request,
     tenant: TenantApiKey = Depends(authenticate_request),
     orchestrator: OrchestratorPort = Depends(get_orchestrator),
-) -> SummarizeResponse:
+) -> SummarizeResponseApi:
     """Summarize each submitted feedback item individually.
 
     Parameters
@@ -149,9 +149,9 @@ async def summarize(
         anonymize=not body.deactivate_anonymization,
     )
 
-    return SummarizeResponse(
+    return SummarizeResponseApi(
         summaries=[
-            FeedbackItemSummary(
+            FeedbackItemSummaryApi(
                 id=item.id,
                 title=item.title,
                 summary=item.summary,
@@ -163,12 +163,12 @@ async def summarize(
     )
 
 
-@router.post("/v1/assign_codes", response_model=AssignCodesResponse, status_code=200)
+@router.post("/v1/assign_codes", response_model=AssignCodesResponseApi, status_code=200)
 async def assign_codes(
-    body: AssignCodesRequest,
+    body: AssignCodesRequestApi,
     tenant: TenantApiKey = Depends(authenticate_request),
     orchestrator: OrchestratorPort = Depends(get_orchestrator),
-) -> AssignCodesResponse:
+) -> AssignCodesResponseApi:
     """Assign codes via iterative LLM picks at each level of the framework."""
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
@@ -185,12 +185,12 @@ async def assign_codes(
 
     result = await orchestrator.assign_codes(domain_request, deadline)
 
-    return AssignCodesResponse(
+    return AssignCodesResponseApi(
         coded_feedback_items=[
-            CodeItems(
+            CodeItemsApi(
                 feedback_item_id=coded.feedback_item_id,
                 code_items=[
-                    CodeItem(
+                    CodeItemApi(
                         code_id=assigned.code_id,
                         code_label=assigned.code_label,
                     )
@@ -204,15 +204,15 @@ async def assign_codes(
 
 @router.post(
     "/v1/summarize-aggregate",
-    response_model=SummarizeAggregateResponse,
+    response_model=SummarizeAggregateResponseApi,
     status_code=200,
 )
 async def summarize_aggregate(
-    body: SummarizeRequest,
+    body: SummarizeRequestApi,
     request: Request,
     tenant: TenantApiKey = Depends(authenticate_request),
     orchestrator: OrchestratorPort = Depends(get_orchestrator),
-) -> SummarizeAggregateResponse:
+) -> SummarizeAggregateResponseApi:
     """Summarize all submitted feedback items as a single aggregate summary.
 
     Parameters
@@ -250,8 +250,8 @@ async def summarize_aggregate(
 
     result = await orchestrator.summarize_aggregate(domain_request, deadline)
 
-    return SummarizeAggregateResponse(
-        summary=AggregateSummary(
+    return SummarizeAggregateResponseApi(
+        summary=AggregateSummaryApi(
             ids=list(result.ids),
             title=result.title,
             summary=result.summary,
@@ -260,8 +260,8 @@ async def summarize_aggregate(
     )
 
 
-@router.get("/v1/health", response_model=HealthResponse, status_code=200)
-async def health() -> HealthResponse:
+@router.get("/v1/health", response_model=HealthResponseApi, status_code=200)
+async def health() -> HealthResponseApi:
     """Return service health status.
 
     Returns
@@ -269,7 +269,7 @@ async def health() -> HealthResponse:
     HealthResponse
         Health status and package version.
     """
-    return HealthResponse(
+    return HealthResponseApi(
         status="ok",
         version=qfa.__version__,
     )
