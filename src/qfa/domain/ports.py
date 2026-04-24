@@ -7,14 +7,14 @@ from datetime import datetime
 from typing import Protocol
 
 from qfa.domain.models import (
-    AggregateSummaryResult,
-    AnalysisRequest,
-    AnalysisResult,
-    CodingAssignmentRequest,
-    CodingAssignmentResult,
+    AggregateSummaryResultModel,
+    AnalysisRequestModel,
+    AnalysisResultModel,
+    CodingAssignmentRequestModel,
+    CodingAssignmentResultModel,
     LLMResponse,
-    SummaryRequest,
-    SummaryResult,
+    SummaryRequestModel,
+    SummaryResultModel,
     T_Response,
 )
 
@@ -71,10 +71,10 @@ class OrchestratorPort(Protocol):
 
     async def analyze(
         self,
-        request: AnalysisRequest,
+        request: AnalysisRequestModel,
         deadline: datetime,
         anonymize: bool = True,
-    ) -> AnalysisResult:
+    ) -> AnalysisResultModel:
         """Analyze a batch of feedback documents.
 
         Parameters
@@ -104,10 +104,10 @@ class OrchestratorPort(Protocol):
 
     async def summarize(
         self,
-        request: SummaryRequest,
+        request: SummaryRequestModel,
         deadline: datetime,
         anonymize: bool = True,
-    ) -> SummaryResult:
+    ) -> SummaryResultModel:
         """Summarize each submitted feedback item individually.
 
         Parameters
@@ -128,9 +128,9 @@ class OrchestratorPort(Protocol):
 
     async def summarize_aggregate(
         self,
-        request: SummaryRequest,
+        request: SummaryRequestModel,
         deadline: datetime,
-    ) -> AggregateSummaryResult:
+    ) -> AggregateSummaryResultModel:
         """Summarize multiple feedback items as a single aggregate summary.
 
         Parameters
@@ -149,9 +149,9 @@ class OrchestratorPort(Protocol):
 
     async def assign_codes(
         self,
-        request: CodingAssignmentRequest,
+        request: CodingAssignmentRequestModel,
         deadline: datetime,
-    ) -> CodingAssignmentResult:
+    ) -> CodingAssignmentResultModel:
         """Assign hierarchical codes to each feedback item using the LLM.
 
         Parameters

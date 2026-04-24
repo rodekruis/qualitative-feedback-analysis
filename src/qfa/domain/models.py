@@ -8,7 +8,7 @@ from typing import Any, Generic, TypeVar
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 
-class FeedbackItem(BaseModel):
+class FeedbackItemModel(BaseModel):
     """A single feedback item submitted for analysis."""
 
     model_config = ConfigDict(frozen=True)
@@ -25,12 +25,12 @@ class FeedbackItem(BaseModel):
     )
 
 
-class AnalysisRequest(BaseModel):
+class AnalysisRequestModel(BaseModel):
     """A request to analyze one or more feedback items."""
 
     model_config = ConfigDict(frozen=True)
 
-    documents: tuple[FeedbackItem, ...] = Field(
+    documents: tuple[FeedbackItemModel, ...] = Field(
         min_length=1,
         description="Non-empty tuple of feedback items to analyze.",
     )
@@ -42,7 +42,7 @@ class AnalysisRequest(BaseModel):
     tenant_id: str = Field(description="Tenant identifier injected by the auth layer.")
 
 
-class AnalysisResult(BaseModel):
+class AnalysisResultModel(BaseModel):
     """The result of a feedback analysis."""
 
     model_config = ConfigDict(frozen=True)
@@ -54,12 +54,12 @@ class AnalysisResult(BaseModel):
     cost: float = Field(description="Estimated analysis cost in USD.")
 
 
-class SummaryRequest(BaseModel):
+class SummaryRequestModel(BaseModel):
     """A request to summarize one or more feedback items individually."""
 
     model_config = ConfigDict(frozen=True)
 
-    feedback_items: tuple[FeedbackItem, ...] = Field(
+    feedback_items: tuple[FeedbackItemModel, ...] = Field(
         min_length=1,
         description="Non-empty tuple of feedback items to summarize.",
     )
@@ -75,7 +75,7 @@ class SummaryRequest(BaseModel):
     tenant_id: str = Field(description="Tenant identifier injected by the auth layer.")
 
 
-class FeedbackItemSummary(BaseModel):
+class FeedbackItemSummaryModel(BaseModel):
     """Summary output for a single feedback item."""
 
     model_config = ConfigDict(frozen=True)
@@ -92,18 +92,18 @@ class FeedbackItemSummary(BaseModel):
     )
 
 
-class SummaryResult(BaseModel):
+class SummaryResultModel(BaseModel):
     """The result of summarizing multiple feedback items individually."""
 
     model_config = ConfigDict(frozen=True)
 
-    feedback_item_summaries: tuple[FeedbackItemSummary, ...] = Field(
+    feedback_item_summaries: tuple[FeedbackItemSummaryModel, ...] = Field(
         description="Per-feedback-item summaries returned by the summarize flow.",
     )
     cost: float = Field(description="Estimated summarization cost in USD.")
 
 
-class AggregateSummaryResult(BaseModel):
+class AggregateSummaryResultModel(BaseModel):
     """The result of summarizing multiple feedback items as a single aggregate."""
 
     model_config = ConfigDict(frozen=True)
@@ -123,12 +123,12 @@ class AggregateSummaryResult(BaseModel):
     cost: float = Field(description="Estimated summarization cost in USD.")
 
 
-class CodingAssignmentRequest(BaseModel):
+class CodingAssignmentRequestModel(BaseModel):
     """A request to assign hierarchical codes to feedback items."""
 
     model_config = ConfigDict(frozen=True)
 
-    feedback_items: tuple[FeedbackItem, ...] = Field(
+    feedback_items: tuple[FeedbackItemModel, ...] = Field(
         min_length=1,
         description="Non-empty tuple of feedback items to code.",
     )
@@ -143,7 +143,7 @@ class CodingAssignmentRequest(BaseModel):
     tenant_id: str = Field(description="Tenant identifier injected by the auth layer.")
 
 
-class AssignedCode(BaseModel):
+class AssignedCodeModel(BaseModel):
     """A single leaf code assigned to a feedback item."""
 
     model_config = ConfigDict(frozen=True)
@@ -154,7 +154,7 @@ class AssignedCode(BaseModel):
     code_label: str = Field(description="Human-readable code name.")
 
 
-class CodedFeedbackItem(BaseModel):
+class CodedFeedbackItemModel(BaseModel):
     """Coding output for one feedback item."""
 
     model_config = ConfigDict(frozen=True)
@@ -162,17 +162,17 @@ class CodedFeedbackItem(BaseModel):
     feedback_item_id: str = Field(
         description="Identifier of the source feedback item.",
     )
-    assigned_codes: tuple[AssignedCode, ...] = Field(
+    assigned_codes: tuple[AssignedCodeModel, ...] = Field(
         description="Leaf codes selected for this feedback item.",
     )
 
 
-class CodingAssignmentResult(BaseModel):
+class CodingAssignmentResultModel(BaseModel):
     """The result of assigning codes to multiple feedback items."""
 
     model_config = ConfigDict(frozen=True)
 
-    coded_feedback_items: tuple[CodedFeedbackItem, ...] = Field(
+    coded_feedback_items: tuple[CodedFeedbackItemModel, ...] = Field(
         description="Per-item coding results aligned with the request order.",
     )
 

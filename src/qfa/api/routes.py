@@ -25,13 +25,13 @@ from qfa.api.schemas import (
     SummarizeResponseApi,
 )
 from qfa.domain.models import (
-    AnalysisRequest,
-    CodingAssignmentRequest,
-    FeedbackItem,
+    AnalysisRequestModel,
+    CodingAssignmentRequestModel,
+    FeedbackItemModel,
     TenantApiKey,
 )
 from qfa.domain.models import (
-    SummaryRequest as DomainSummaryRequest,
+    SummaryRequestModel as DomainSummaryRequest,
 )
 from qfa.domain.ports import OrchestratorPort
 
@@ -79,11 +79,11 @@ async def analyze(
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
     domain_documents = tuple(
-        FeedbackItem(id=doc.id, text=doc.text, metadata=doc.metadata)
+        FeedbackItemModel(id=doc.id, text=doc.text, metadata=doc.metadata)
         for doc in body.documents
     )
 
-    domain_request = AnalysisRequest(
+    domain_request = AnalysisRequestModel(
         documents=domain_documents,
         prompt=body.prompt,
         tenant_id=tenant.tenant_id,
@@ -129,7 +129,7 @@ async def summarize(
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
     feedback_items = tuple(
-        FeedbackItem(
+        FeedbackItemModel(
             id=item.id,
             text=item.content,
             metadata=_summarize_metadata_to_domain(item.metadata),
@@ -173,10 +173,10 @@ async def assign_codes(
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
     domain_items = tuple(
-        FeedbackItem(id=item.id, text=item.content, metadata={})
+        FeedbackItemModel(id=item.id, text=item.content, metadata={})
         for item in body.feedback_items
     )
-    domain_request = CodingAssignmentRequest(
+    domain_request = CodingAssignmentRequestModel(
         feedback_items=domain_items,
         coding_framework=body.coding_framework,
         max_codes=body.max_codes,
@@ -234,7 +234,7 @@ async def summarize_aggregate(
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
     feedback_items = tuple(
-        FeedbackItem(
+        FeedbackItemModel(
             id=item.id,
             text=item.content,
             metadata=_summarize_metadata_to_domain(item.metadata),

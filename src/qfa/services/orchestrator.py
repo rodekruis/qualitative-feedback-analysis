@@ -23,17 +23,17 @@ from qfa.domain.errors import (
     LLMTimeoutError,
 )
 from qfa.domain.models import (
-    AggregateSummaryResult,
-    AnalysisRequest,
-    AnalysisResult,
-    AssignedCode,
-    CodedFeedbackItem,
-    CodingAssignmentRequest,
-    CodingAssignmentResult,
-    FeedbackItem,
-    FeedbackItemSummary,
-    SummaryRequest,
-    SummaryResult,
+    AggregateSummaryResultModel,
+    AnalysisRequestModel,
+    AnalysisResultModel,
+    AssignedCodeModel,
+    CodedFeedbackItemModel,
+    CodingAssignmentRequestModel,
+    CodingAssignmentResultModel,
+    FeedbackItemModel,
+    FeedbackItemSummaryModel,
+    SummaryRequestModel,
+    SummaryResultModel,
 )
 from qfa.domain.ports import LLMPort, OrchestratorPort
 from qfa.services.coding_classifier import build_pick_messages, parse_selected_indices
@@ -236,10 +236,10 @@ class StandardOrchestrator(OrchestratorPort):
 
     async def analyze(
         self,
-        request: AnalysisRequest,
+        request: AnalysisRequestModel,
         deadline: datetime,
         anonymize: bool = True,
-    ) -> AnalysisResult:
+    ) -> AnalysisResultModel:
         """Analyze a batch of feedback documents.
 
         Parameters
@@ -280,10 +280,10 @@ class StandardOrchestrator(OrchestratorPort):
 
     async def summarize(
         self,
-        request: SummaryRequest,
+        request: SummaryRequestModel,
         deadline: datetime,
         anonymize: bool = True,
-    ) -> SummaryResult:
+    ) -> SummaryResultModel:
         """Summarize each submitted feedback item individually.
 
         Parameters
@@ -306,7 +306,7 @@ class StandardOrchestrator(OrchestratorPort):
         """
         self._check_injection(request.feedback_items)
 
-        feedback_item_summaries: list[FeedbackItemSummary] = []
+        feedback_item_summaries: list[FeedbackItemSummaryModel] = []
         total_cost = 0.0
 
         for feedback_item in request.feedback_items:
@@ -360,23 +360,23 @@ class StandardOrchestrator(OrchestratorPort):
             quality_score = _parse_judge_quality_score(judge_response.result)
 
             feedback_item_summaries.append(
-                FeedbackItemSummary(
+                FeedbackItemSummaryModel(
                     id=feedback_item.id,
                     title=payload["title"],
                     summary=summary_text,
                     quality_score=quality_score,
                 )
             )
-        return SummaryResult(
+        return SummaryResultModel(
             feedback_item_summaries=tuple(feedback_item_summaries),
             cost=total_cost,
         )
 
     async def summarize_aggregate(
         self,
-        request: SummaryRequest,
+        request: SummaryRequestModel,
         deadline: datetime,
-    ) -> AggregateSummaryResult:
+    ) -> AggregateSummaryResultModel:
         """Summarize multiple feedback items as a single aggregate summary.
 
         Parameters
@@ -443,7 +443,7 @@ class StandardOrchestrator(OrchestratorPort):
         total_cost += judge_response.cost
         quality_score = _parse_judge_quality_score(judge_response.result)
 
-        return AggregateSummaryResult(
+        return AggregateSummaryResultModel(
             ids=tuple(item.id for item in request.feedback_items),
             title=payload["title"],
             summary=summary_text,
@@ -453,9 +453,9 @@ class StandardOrchestrator(OrchestratorPort):
 
     async def assign_codes(
         self,
-        request: CodingAssignmentRequest,
+        request: CodingAssignmentRequestModel,
         deadline: datetime,
-    ) -> CodingAssignmentResult:
+    ) -> CodingAssignmentResultModel:
         """Assign hierarchical codes to each feedback item.
 
         Parameters
@@ -483,7 +483,7 @@ class StandardOrchestrator(OrchestratorPort):
         """
         self._check_injection(request.feedback_items)
 
-        coded: list[CodedFeedbackItem] = []
+        coded: list[CodedFeedbackItemModel] = []
         types = request.coding_framework.get("types") or []
 
         for feedback_item in request.feedback_items:
@@ -549,10 +549,10 @@ class StandardOrchestrator(OrchestratorPort):
                     break
 
             coded.append(
-                CodedFeedbackItem(
+                CodedFeedbackItemModel(
                     feedback_item_id=feedback_item.id,
                     assigned_codes=tuple(
-                        AssignedCode(
+                        AssignedCodeModel(
                             code_id=code_id,
                             code_label=code_label,
                         )
@@ -561,7 +561,7 @@ class StandardOrchestrator(OrchestratorPort):
                 )
             )
 
-        return CodingAssignmentResult(coded_feedback_items=tuple(coded))
+        return CodingAssignmentResultModel(coded_feedback_items=tuple(coded))
 
     def _check_coding_deadline(self, deadline: datetime) -> None:
         """Raise when the coding deadline is exceeded."""
@@ -605,7 +605,7 @@ class StandardOrchestrator(OrchestratorPort):
     # Prompt injection filtering
     # ------------------------------------------------------------------
 
-    def _check_injection(self, documents: tuple[FeedbackItem, ...]) -> None:
+    def _check_injection(self, documents: tuple[FeedbackItemModel, ...]) -> None:
         """Scan documents for known prompt injection patterns.
 
         Parameters
@@ -636,7 +636,7 @@ class StandardOrchestrator(OrchestratorPort):
     # Prompt assembly
     # ------------------------------------------------------------------
 
-    def _assemble_documents(self, documents: tuple[FeedbackItem, ...]) -> str:
+    def _assemble_documents(self, documents: tuple[FeedbackItemModel, ...]) -> str:
         """Assemble documents into the user-message XML block.
 
         Parameters
@@ -729,7 +729,7 @@ class StandardOrchestrator(OrchestratorPort):
         tenant_id: str,
         deadline: datetime,
         anonymize: bool = True,
-    ) -> AnalysisResult:
+    ) -> AnalysisResultModel:
         """Call the LLM with retry logic and deadline enforcement.
 
         Parameters
@@ -788,7 +788,7 @@ class StandardOrchestrator(OrchestratorPort):
         if not response.text.strip():
             raise AnalysisError("LLM returned empty response after retry")
 
-        return AnalysisResult(
+        return AnalysisResultModel(
             result=self.deanonymize(response.text, anonymization_mapping)
             if anonymize
             else response.text,
