@@ -50,18 +50,34 @@ Before the CI/CD pipeline can run, the Azure infrastructure and GitHub environme
 
 ## CI/CD pipeline
 
+The release-promotion flow at a glance:
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    state "GitHub draft release created\nAuto-deployed to dev" as Dev
+    state "Release published\nAuto-deployed to staging" as Published
+    state "Deployed to prd" as Prd
+
+    [*] --> Dev: Run Release workflow
+    Dev --> Published: Click Publish on draft release
+    Published --> Prd: Run Promote to prd + reviewer approval
+```
+
+Three human actions drive the whole flow: run the Release workflow, click Publish on the draft release, and run Promote to prd (with reviewer approval). Publishing is both the sign-off that dev validation passed *and* the staging-deploy trigger — the click fires `auto-staging-on-publish.yaml`, which deploys the same digest to staging with no extra workflow run. The same image digest flows through all three states — no rebuilds between environments.
+
 ### For a normal release of, e.g., v0.4.0:
 
   1. Human runs Release from the Actions tab. CI runs, version bumps to v0.4.0, image builds, gets pushed to ACR as qfa-backend:v0.4.0, registry digest captured, draft
   release v0.4.0 created with the digest in its body, dev App Service updated to run that digest. Total: one click.
   2. Human pokes around in dev. Finds nothing wrong.
-  3. Human goes to Releases page, clicks Publish on the v0.4.0 draft. The release is now in published state. Nothing else happens automatically — this is just a metadata
-  flip.
-  4. Human runs Promote to staging from the Actions tab, types v0.4.0 as input. The verify job checks that v0.4.0 is published (it is), then deploys the same digest to
-  staging.
-  5. Final smoke testing in staging.
-  6. Human runs Promote to prd with input v0.4.0. Verify job checks published-and-not-prerelease, then enters the prd environment, which triggers GitHub's
+  3. Human goes to Releases page, clicks Publish on the v0.4.0 draft. Publishing the release automatically fires `auto-staging-on-publish.yaml`, which deploys the same digest to staging — the click is both the sign-off that dev validation passed *and* the trigger for the staging deploy.
+  4. Final smoke testing in staging.
+  5. Human runs Promote to prd with input v0.4.0. Verify job checks published-and-not-prerelease, then enters the prd environment, which triggers GitHub's
   required-reviewers prompt. Reviewer approves. Same digest deploys to prd.
+
+> [!NOTE]
+> The manual `Promote to dev` and `Promote to staging` workflows exist as **secondary** paths — used to restore an environment to a specific released tag outside the normal forward flow. Typical uses: re-point dev back to a release after an ephemeral feature-branch build (see below), roll staging back to a prior release, or re-stage an older release for re-validation. They are not part of the normal forward flow.
 
  ### For a rollback, e.g., from v0.4.0 to v0.3.7:
 
@@ -75,6 +91,21 @@ Before the CI/CD pipeline can run, the Azure infrastructure and GitHub environme
   back to a real release, run Promote to dev with the latest released tag.
 
 ### For an infrastructure change:
+
+The infra flow at a glance:
+
+```mermaid
+flowchart LR
+    PR["PR touches infra/"] -->|auto| Plan1[Plan on dev]
+    Plan1 --> Merge[Merge to main]
+    Merge -->|auto| Plan2[Plan on dev]
+    Plan2 --> Dispatch["Manual workflow_dispatch<br/>one run per environment"]
+    Dispatch --> Dev[Apply to dev]
+    Dispatch --> Staging[Apply to staging]
+    Dispatch --> Prd[Apply to prd]
+```
+
+Contrast with the release flow above: applies fan out from a single manual-dispatch hub to three independent environments — there is no promotion chain and no enforced ordering between them. `plan` runs automatically on PRs and on `main`, but `apply` is manual-only.
 
 Infrastructure (Azure App Service, Key Vault, managed identities, etc.) is managed by Terraform and deployed **independently** of application code. Unlike the app release flow above, there is no automatic promotion chain — each environment must be applied manually from the Actions tab.
 
