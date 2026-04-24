@@ -74,14 +74,19 @@ Before the CI/CD pipeline can run, the Azure infrastructure and GitHub environme
   qfa-backend:ephemeral-feat-some-experiment-abc1234, dev gets updated to that digest. No release is created — so the image cannot enter the promotion pipeline. To get
   back to a real release, run Promote to dev with the latest released tag.
 
+### For an infrastructure change:
 
-**Infrastructure**:
+Infrastructure (Azure App Service, Key Vault, managed identities, etc.) is managed by Terraform and deployed **independently** of application code. Unlike the app release flow above, there is no automatic promotion chain — each environment must be applied manually from the Actions tab.
 
-infrastructure (Azure App Service and other resources) and github environments are
-managed by terraform.
+The `terraform.yaml` workflow (`.github/workflows/terraform.yaml`) runs `plan` automatically on PRs and pushes touching `infra/`, but **never runs `apply` automatically** — `apply` only executes when dispatched manually with `command: apply`.
 
-Terraform is applied via the `terraform.yaml`. It runs automatically when any commits
-with changes to any file in the `infra` folder are pushed to the main branch.
+  1. Human opens a PR touching `infra/`. CI runs `terraform plan` automatically so reviewers can see the proposed diff. Note that the automated plan runs against the `dev` workspace only — diffs against `staging` / `prd` require a manual `workflow_dispatch` run.
+  2. Human merges the PR to `main`. Plan runs again on `main` as a sanity check. Nothing is applied.
+  3. Human runs the `Terraform` workflow from the Actions tab with `environment: dev`, `command: apply`. Verifies dev.
+  4. Human repeats step 3 for `staging`, then for `prd`.
+
+> [!IMPORTANT]
+> If an infrastructure change is a prerequisite for an app version (e.g. a new Key Vault reference, a new environment variable binding), apply the infra change to a given environment **before** promoting the app release that depends on it — otherwise the App Service will start but fail at runtime when the missing reference resolves.
 
 ## GitHub Configuration
 
