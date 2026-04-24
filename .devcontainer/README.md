@@ -43,6 +43,12 @@ and scoped credentials.
    ```bash
    devcontainer up --workspace-folder .
    devcontainer exec --workspace-folder . zsh
+   
+   # or shorthand scripts:
+   dcrebuild  # build or rebuild the container
+   dcexec zsh  # start the container and open a shell
+   dcc        # run Claude Code with --dangerously-skip-permissions
+   dcdown     # stop the container
    ```
 
 4. **First run** happens automatically — `postCreateCommand` runs
