@@ -1,5 +1,5 @@
 {
-  "name": "Python Dev",
+  "name": "the_next_iteration devcontainer",
   "dockerComposeFile": "docker-compose.yml",
   "service": "dev",
   "remoteUser": "dev",
@@ -12,9 +12,11 @@
 
   "containerEnv": {
     "CLAUDE_CONFIG_DIR": "/home/dev/.claude",
+    "COLORTERM": "truecolor",
     "DEVCONTAINER": "true",
     "HISTFILE": "/commandhistory/.zsh_history",
     "SHELL": "/bin/zsh",
+    "TERM": "xterm-256color",
     "TZ": "Europe/Amsterdam"
   },
 

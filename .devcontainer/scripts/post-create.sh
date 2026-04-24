@@ -7,6 +7,7 @@ sudo /usr/local/bin/fix-volume-ownership.sh
 
 echo "==> Configuring git to use HTTPS (host uses SSH, container uses HTTPS)..."
 git config --global url."https://github.com/".insteadOf "git@github.com:"
+gh auth setup-git
 
 echo "==> Installing Python dependencies..."
 cd /workspace
@@ -46,8 +47,31 @@ else
     echo "==> Skipping Claude Code setup (claude-setup.json or claude CLI not found)."
 fi
 
+# ~/.claude is a Docker volume mounted at runtime, so the Dockerfile cannot write there.
+# post-create.sh runs after the volume is mounted, making it the right place to provision
+# files into ~/.claude. We use jq-merge (not overwrite) because the Claude plugin setup
+# step above has already written plugin configs into settings.json.
+echo "==> Configuring Claude Code status line..."
+STATUSLINE_SRC="/workspace/.devcontainer/dotfiles/statusline-command.sh"
+CLAUDE_SETTINGS="$HOME/.claude/settings.json"
+if [ -f "$STATUSLINE_SRC" ]; then
+    mkdir -p "$HOME/.claude"
+    cp "$STATUSLINE_SRC" "$HOME/.claude/statusline-command.sh"
+    chmod +x "$HOME/.claude/statusline-command.sh"
+    if [ -f "$CLAUDE_SETTINGS" ]; then
+        tmp=$(mktemp)
+        jq '. + {"statusLine": {"type": "command", "command": "bash ~/.claude/statusline-command.sh"}}' \
+            "$CLAUDE_SETTINGS" > "$tmp" && mv "$tmp" "$CLAUDE_SETTINGS"
+    else
+        echo '{"statusLine": {"type": "command", "command": "bash ~/.claude/statusline-command.sh"}}' \
+            > "$CLAUDE_SETTINGS"
+    fi
+    echo "    Status line configured."
+fi
+
 echo "==> Installing pre-commit hooks..."
 cd /workspace
+git config --unset-all core.hooksPath 2>/dev/null || true
 pre-commit install
 
 echo "==> Post-create setup complete."

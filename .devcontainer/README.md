@@ -11,7 +11,7 @@ and scoped credentials.
 |---|---|
 | Base image | `debian:bookworm-slim` |
 | Python | Pinned version via [uv](https://github.com/astral-sh/uv) (see `PYTHON_VERSION` build arg) |
-| Linting | ruff, ty, pre-commit — installed via `uv sync` from the project's dev dependencies |
+| Linting | pre-commit — baked into the image; ruff, ty — installed via `uv sync` from the project's dev dependencies |
 | Shell | zsh + Oh My Zsh + Powerlevel10k + autosuggestions + syntax highlighting |
 | Claude Code | Native binary with pre-configured plugins and MCP servers |
 | GitHub CLI | `gh`, authenticated via `GH_TOKEN` from `.env` |
@@ -62,9 +62,15 @@ and scoped credentials.
   dotfiles/
     .zshrc                   # Oh My Zsh config (Powerlevel10k theme)
     .p10k.zsh                # Powerlevel10k prompt configuration
+    statusline-command.sh    # Claude Code status line script (copied into ~/.claude on create)
   scripts/
-    post-create.sh           # First-run setup (uv sync, pre-commit, Claude plugins)
+    post-create.sh           # First-run setup (uv sync, pre-commit, Claude plugins, status line)
     fix-volume-ownership.sh  # Fixes root-owned volume mount points
+  bin/                       # Host-side convenience wrappers (add to PATH or invoke directly)
+    dcc                      # Run Claude Code with --dangerously-skip-permissions in the devcontainer
+    dcdown                   # Stop the container (preserves volumes)
+    dcexec                   # Start container if needed, then exec a command
+    dcrebuild                # Rebuild the image and recreate the container
 ```
 
 ### Lifecycle
@@ -78,8 +84,10 @@ and scoped credentials.
 
 3. **Create** (`postCreateCommand`): Runs once after the container is first
    created. Installs Python dependencies (`uv sync`), sets up pre-commit
-   hooks, and configures Claude Code plugins/MCP servers from
-   `claude-setup.json`.
+   hooks, configures Claude Code plugins/MCP servers from `claude-setup.json`,
+   and provisions the Claude Code status line by copying
+   `dotfiles/statusline-command.sh` into `~/.claude/` and merging the
+   `statusLine` key into `~/.claude/settings.json`.
 
 ### Volume strategy
 
@@ -165,18 +173,18 @@ Replace `OWNER` and `REPO` with your GitHub username and repository name.
 
 Grant these permissions:
 
-| Permission    | Access       | Why |
-|---------------|--------------|-----|
-| Contents      | Read & Write | Push commits, read files |
-| Issues        | Read & Write | Create/comment on issues |
-| Metadata      | Read (auto)  | Required by GitHub |
-| Pull requests | Read & Write | Create/review PRs |
+| Permission    | Access       | Why                                                      |
+|---------------|--------------|----------------------------------------------------------|
+| Contents      | Read & Write | Push commits, read files                                 |
+| Issues        | Read & Write | Create/comment on issues                                 |
+| Metadata      | Read (auto)  | Required by GitHub                                       |
+| Pull requests | Read & Write | Create/review PRs                                        |
+| Actions       | Read         | Read workflow status, e.g. to see whether PRs are green |
 
 Leave **everything else** at "No access". In particular:
 
 - **Workflows** — omit to prevent modifying CI pipelines. GitHub blocks
   pushes that touch `.github/workflows/` without this permission.
-- **Actions** — omit to prevent triggering or cancelling workflow runs.
 - **Administration** — omit to prevent changes to repo settings.
 - **Secrets** — omit to prevent reading or writing Actions secrets.
 

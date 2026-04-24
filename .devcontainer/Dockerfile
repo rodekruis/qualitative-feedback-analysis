@@ -2,7 +2,7 @@ FROM ghcr.io/astral-sh/uv:latest AS uv
 FROM debian:bookworm-slim
 
 # ── Build args ──────────────────────────────────────────────────────
-ARG PYTHON_VERSION=3.12
+ARG PYTHON_VERSION=3.13
 ARG USERNAME=dev
 ARG USER_UID=1000
 ARG USER_GID=${USER_UID}
@@ -25,10 +25,9 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     && apt-get update && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
 
-# ── Layer 3: uv + Python ────────────────────────────────────────────
+# ── Layer 3: uv binary (Python itself is installed later as dev) ────
 COPY --from=uv /uv /usr/local/bin/uv
-ENV UV_PYTHON_INSTALL_DIR=/opt/python
-RUN uv python install ${PYTHON_VERSION}
+COPY --from=uv /uvx /usr/local/bin/uvx
 
 # ── Layer 4: Non-root user + firewall sudo ──────────────────────────
 RUN groupadd --gid ${USER_GID} ${USERNAME} \
@@ -59,6 +58,9 @@ RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master
         ${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
 
 COPY --chown=${USERNAME}:${USERNAME} dotfiles/.zshrc dotfiles/.p10k.zsh /home/${USERNAME}/
+
+# ── Python (installed as dev into uv's default ~/.local/share/uv/python) ──
+RUN uv python install ${PYTHON_VERSION}
 
 # ── Claude Code (native binary) ────────────────────────────────────
 WORKDIR /tmp
