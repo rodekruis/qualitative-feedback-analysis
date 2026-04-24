@@ -124,75 +124,57 @@ class AggregateSummaryResult(BaseModel):
 
 
 class CodingAssignmentRequest(BaseModel):
-    """A request to assign hierarchical codes to feedback items.
-
-    Attributes
-    ----------
-    feedback_items : tuple[FeedbackItem, ...]
-        Non-empty tuple of feedback items to code (``text`` is the body to classify).
-    coding_framework : dict[str, Any]
-        Hierarchical framework payload with top-level ``types`` and nested
-        ``categories`` and ``codes``.
-    max_codes : int
-        Maximum number of leaf codes to retain per feedback item.
-    tenant_id : str
-        Tenant identifier, injected by the auth layer.
-    """
+    """A request to assign hierarchical codes to feedback items."""
 
     model_config = ConfigDict(frozen=True)
 
-    feedback_items: tuple[FeedbackItem, ...] = Field(min_length=1)
-    coding_framework: dict[str, Any]
-    max_codes: int = Field(ge=1, le=50)
-    tenant_id: str
+    feedback_items: tuple[FeedbackItem, ...] = Field(
+        min_length=1,
+        description="Non-empty tuple of feedback items to code.",
+    )
+    coding_framework: dict[str, Any] = Field(
+        description="Hierarchical coding framework with types, categories, and codes.",
+    )
+    max_codes: int = Field(
+        ge=1,
+        le=50,
+        description="Maximum number of leaf codes to retain per feedback item.",
+    )
+    tenant_id: str = Field(description="Tenant identifier injected by the auth layer.")
 
 
 class AssignedCode(BaseModel):
-    """A single leaf code assigned to a feedback item.
-
-    Attributes
-    ----------
-    code_id : str
-        Stable identifier from the framework (e.g. slug path).
-    code_label : str
-        Human-readable code name.
-    """
+    """A single leaf code assigned to a feedback item."""
 
     model_config = ConfigDict(frozen=True)
 
-    code_id: str
-    code_label: str
+    code_id: str = Field(
+        description="Stable identifier from the coding framework.",
+    )
+    code_label: str = Field(description="Human-readable code name.")
 
 
 class CodedFeedbackItem(BaseModel):
-    """Coding output for one feedback item.
-
-    Attributes
-    ----------
-    feedback_item_id : str
-        Identifier of the source feedback item.
-    assigned_codes : tuple[AssignedCode, ...]
-        Leaf codes selected for this item.
-    """
+    """Coding output for one feedback item."""
 
     model_config = ConfigDict(frozen=True)
 
-    feedback_item_id: str
-    assigned_codes: tuple[AssignedCode, ...]
+    feedback_item_id: str = Field(
+        description="Identifier of the source feedback item.",
+    )
+    assigned_codes: tuple[AssignedCode, ...] = Field(
+        description="Leaf codes selected for this feedback item.",
+    )
 
 
 class CodingAssignmentResult(BaseModel):
-    """The result of assigning codes to multiple feedback items.
-
-    Attributes
-    ----------
-    coded_feedback_items : tuple[CodedFeedbackItem, ...]
-        Per-item coding results, aligned with the request order.
-    """
+    """The result of assigning codes to multiple feedback items."""
 
     model_config = ConfigDict(frozen=True)
 
-    coded_feedback_items: tuple[CodedFeedbackItem, ...]
+    coded_feedback_items: tuple[CodedFeedbackItem, ...] = Field(
+        description="Per-item coding results aligned with the request order.",
+    )
 
 
 # Define a TypeVar that must be a Pydantic BaseModel
@@ -200,30 +182,21 @@ T_Response = TypeVar("T_Response", bound=BaseModel)
 
 
 class LLMResponse(BaseModel, Generic[T_Response]):
-    """Raw response from an LLM provider.
-
-    Attributes
-    ----------
-    text : str
-        The generated text.
-    data : T_Response
-        The parsed response data conforming to the expected schema.
-    model : str
-        The model that produced the response.
-    prompt_tokens : int
-        Number of tokens in the prompt.
-    completion_tokens : int
-        Number of tokens in the completion.
-    """
+    """Raw response from an LLM provider."""
 
     model_config = ConfigDict(frozen=True)
 
-    text: str
-    structured: T_Response | None = None
-    model: str
-    prompt_tokens: int
-    completion_tokens: int
-    cost: float
+    text: str = Field(description="Generated text returned by the model.")
+    structured: T_Response | None = Field(
+        default=None,
+        description="Parsed structured response conforming to the expected schema.",
+    )
+    model: str = Field(description="LLM model that produced the response.")
+    prompt_tokens: int = Field(description="Number of tokens in the prompt.")
+    completion_tokens: int = Field(
+        description="Number of tokens in the completion.",
+    )
+    cost: float = Field(description="Estimated request cost in USD.")
 
 
 class TenantApiKey(BaseModel):
