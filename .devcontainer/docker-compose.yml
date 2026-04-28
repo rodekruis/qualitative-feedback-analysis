@@ -1,0 +1,45 @@
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        USER_UID: ${USER_UID:-1000}
+        USER_GID: ${USER_GID:-1000}
+    volumes:
+      - ..:/workspace:bind
+      # Isolation overlay — named volume masks .venv so host and container
+      # toolchains don't contaminate each other.
+      - venv:/workspace/.venv
+      - /etc/localtime:/etc/localtime:ro
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    env_file:
+      - path: .env
+        required: false
+    user: dev
+    # Keep container running for devcontainer exec
+    command: sleep infinity
+
+  # ── PostgreSQL sidecar (uncomment to enable) ────────────────────────
+  # To use: uncomment the db service and the depends_on block above,
+  # then set DATABASE_URL in the dev service's environment.
+  #
+  # db:
+  #   image: postgres:16
+  #   environment:
+  #     POSTGRES_USER: dev
+  #     POSTGRES_PASSWORD: dev
+  #     POSTGRES_DB: app
+  #   healthcheck:
+  #     test: ["CMD", "pg_isready", "-U", "dev"]
+  #     interval: 5s
+  #     timeout: 5s
+  #     retries: 5
+  #   volumes:
+  #     - pgdata:/var/lib/postgresql/data
+
+volumes:
+  venv:
+  # pgdata:

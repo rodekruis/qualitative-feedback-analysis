@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Host-side helper: run claude --dangerously-skip-permissions in devcontainer
+# Usage:
+set -euo pipefail
+
+exec dcexec claude --dangerously-skip-permissions
