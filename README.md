@@ -9,22 +9,22 @@ The feedback analysis tool receives feedback items and analyses trends, topics a
 
 The feedback is collected in a CRM system and sent to this backend for analysis.
 
-Each request contains dozens to thousands of feedback documents.
+Each request contains dozens to thousands of feedback records.
 
-The documents need to be analysed and, and the result sent back to the CRM system in a
+The records need to be analysed and, and the result sent back to the CRM system in a
 synchronous API call.
 
 ## Tech stack
 * fastapi
 * uvicorn
 * pydantic for settings manangement and environment loading
-* OpenAI API for document analysis
+* LLMs on Azure Foundry for feedback analysis
 
 ## Architecture
 * hexagonal architecture.
-* Flow: API call(documents) -> Orchestrator -> LLM API -> return result to user.
-* The Orcehstrator is an exchangeable service. 
-  * naive version: forward all documents to the LLM in one call, together with system prompt and user prompt
+* Flow: API call(records) -> Orchestrator -> LLM API -> return result to user.
+* The Orchestrator is an exchangeable service. 
+  * naive version: forward all records to the LLM in one call, together with system prompt and user prompt
   * possible future versions: apply embedding, chunking, other "smart" techniques, possibly multiple LLM calls.
 
 ## Requirements
@@ -33,8 +33,7 @@ synchronous API call.
 
 ## Non-functional requirements:
 * LLM provider must be exchangeable: declared via an `LLMPort`, so that implementation can be swapped
-* Orchestrator must be swappable depending on task.
-  TBD: either via different API end points, API request parameters or automatically depending on task
+  * implemented via one `LLMPort` implementation using LiteLLM.
 * hardened security.
 
 # Deployment
@@ -55,8 +54,8 @@ The release-promotion flow at a glance:
 ```mermaid
 stateDiagram-v2
     direction LR
-    state "GitHub draft release created\nAuto-deployed to dev" as Dev
-    state "Release published\nAuto-deployed to staging" as Published
+    state "GitHub draft release created<br/>Auto-deployed to dev" as Dev
+    state "Release published<br/>Auto-deployed to staging" as Published
     state "Deployed to prd" as Prd
 
     [*] --> Dev: Run Release workflow
@@ -68,7 +67,7 @@ Three human actions drive the whole flow: run the Release workflow, click Publis
 
 ### For a normal release of, e.g., v0.4.0:
 
-  1. Human runs Release from the Actions tab. CI runs, version bumps to v0.4.0, image builds, gets pushed to ACR as qfa-backend:v0.4.0, registry digest captured, draft
+  1. Human runs Release from the Actions tab. CI runs, version bumps to v0.4.0, image builds, gets pushed to Azure Container Regisrty (ACR) as qfa-backend:v0.4.0, registry digest captured, draft
   release v0.4.0 created with the digest in its body, dev App Service updated to run that digest. Total: one click.
   2. Human pokes around in dev. Finds nothing wrong.
   3. Human goes to Releases page, clicks Publish on the v0.4.0 draft. Publishing the release automatically fires `auto-staging-on-publish.yaml`, which deploys the same digest to staging — the click is both the sign-off that dev validation passed *and* the trigger for the staging deploy.
