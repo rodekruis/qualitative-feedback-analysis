@@ -27,7 +27,12 @@ metadata = sa.MetaData()
 llm_calls = sa.Table(
     "llm_calls",
     metadata,
-    sa.Column("id", sa.BigInteger, primary_key=True, autoincrement=True),
+    sa.Column(
+        "id",
+        sa.BigInteger().with_variant(sa.Integer(), "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    ),
     sa.Column("tenant_id", sa.String(255), nullable=False),
     sa.Column("operation", sa.String(64), nullable=False),
     sa.Column("timestamp", sa.DateTime(timezone=True), nullable=False),

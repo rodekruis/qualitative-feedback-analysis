@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
+import pytest_asyncio
 import sqlalchemy as sa
 
 from qfa.adapters.db import (
@@ -48,7 +49,7 @@ def _make_record(
     )
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def sqlite_repo(tmp_path):
     """Repo backed by an in-memory SQLite database (sync engine wrapper)."""
     from sqlalchemy.ext.asyncio import create_async_engine
