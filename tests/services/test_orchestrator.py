@@ -113,15 +113,18 @@ def settings():
     return OrchestratorSettings()
 
 
-@pytest.fixture
-def orchestrator(settings):
-    fake_llm = FakeLLMPort(responses=[_make_llm_response()])
+def _make_orchestrator(llm, settings, max_total_tokens=MAX_TOKENS):
+    """Build a StandardOrchestrator with no-op anonymisation and standard timeout.
+
+    Tests vary ``llm``, ``settings``, and occasionally ``max_total_tokens``;
+    everything else is held constant.
+    """
     return StandardOrchestrator(
-        llm=fake_llm,
+        llm=llm,
         settings=settings,
         anonymizer=FakeAnonymizer(),
         llm_timeout_seconds=LLM_TIMEOUT,
-        max_total_tokens=MAX_TOKENS,
+        max_total_tokens=max_total_tokens,
     )
 
 
@@ -130,13 +133,7 @@ class TestHappyPath:
     async def test_single_call_succeeds(self, settings):
         resp = _make_llm_response(text="Good analysis", model="gpt-4o")
         fake_llm = FakeLLMPort(responses=[resp])
-        orch = StandardOrchestrator(
-            llm=fake_llm,
-            settings=settings,
-            anonymizer=FakeAnonymizer(),
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
+        orch = _make_orchestrator(fake_llm, settings)
 
         result = await orch.analyze(_make_request(), _future_deadline())
 
@@ -158,13 +155,7 @@ class TestTokenLimit:
         request = _make_request(documents=(doc,))
 
         fake_llm = FakeLLMPort(responses=[_make_llm_response()])
-        orch = StandardOrchestrator(
-            llm=fake_llm,
-            settings=settings,
-            anonymizer=FakeAnonymizer(),
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=100,  # very low limit
-        )
+        orch = _make_orchestrator(fake_llm, settings, max_total_tokens=100)
 
         with pytest.raises(DocumentsTooLargeError) as exc_info:
             await orch.analyze(request, _future_deadline())
@@ -186,13 +177,7 @@ class TestTokenLimit:
                 ),
             ]
         )
-        orch = StandardOrchestrator(
-            llm=fake_llm,
-            settings=settings,
-            anonymizer=FakeAnonymizer(),
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=100,
-        )
+        orch = _make_orchestrator(fake_llm, settings, max_total_tokens=100)
 
         with pytest.raises(DocumentsTooLargeError):
             await orch.summarize(request, _future_deadline())
@@ -206,13 +191,7 @@ class TestNonTransientError:
         fake_llm = FakeLLMPort(
             errors=[LLMError("internal server error")],
         )
-        orch = StandardOrchestrator(
-            llm=fake_llm,
-            settings=settings,
-            anonymizer=FakeAnonymizer(),
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
+        orch = _make_orchestrator(fake_llm, settings)
 
         with pytest.raises(AnalysisError, match="internal server error"):
             await orch.analyze(_make_request(), _future_deadline())
@@ -223,13 +202,7 @@ class TestNonTransientError:
     @pytest.mark.asyncio
     async def test_summary_invalid_json_raises_analysis_error(self, settings):
         fake_llm = FakeLLMPort(responses=[_make_llm_response(text="not json")])
-        orch = StandardOrchestrator(
-            llm=fake_llm,
-            settings=settings,
-            anonymizer=FakeAnonymizer(),
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
+        orch = _make_orchestrator(fake_llm, settings)
 
         with pytest.raises(AnalysisError, match="invalid JSON"):
             await orch.summarize(_make_summary_request(), _future_deadline())
@@ -241,13 +214,7 @@ class TestNonTransientError:
         fake_llm = FakeLLMPort(
             responses=[_make_llm_response(text='{"title":"Only title"}')]
         )
-        orch = StandardOrchestrator(
-            llm=fake_llm,
-            settings=settings,
-            anonymizer=FakeAnonymizer(),
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
+        orch = _make_orchestrator(fake_llm, settings)
 
         with pytest.raises(AnalysisError, match="missing title or summary"):
             await orch.summarize(_make_summary_request(), _future_deadline())
@@ -262,13 +229,7 @@ class TestNonTransientError:
                 _make_llm_response(text="0.82\n"),
             ]
         )
-        orch = StandardOrchestrator(
-            llm=fake_llm,
-            settings=settings,
-            anonymizer=FakeAnonymizer(),
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
+        orch = _make_orchestrator(fake_llm, settings)
 
         result = await orch.summarize(_make_summary_request(), _future_deadline())
 
@@ -285,13 +246,7 @@ class TestNonTransientError:
                 _make_llm_response(text="not a float"),
             ]
         )
-        orch = StandardOrchestrator(
-            llm=fake_llm,
-            settings=settings,
-            anonymizer=FakeAnonymizer(),
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
+        orch = _make_orchestrator(fake_llm, settings)
 
         with pytest.raises(AnalysisError, match="invalid quality score"):
             await orch.summarize(_make_summary_request(), _future_deadline())
@@ -306,13 +261,7 @@ class TestNonTransientError:
                 _make_llm_response(text="1.5"),
             ]
         )
-        orch = StandardOrchestrator(
-            llm=fake_llm,
-            settings=settings,
-            anonymizer=FakeAnonymizer(),
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
+        orch = _make_orchestrator(fake_llm, settings)
 
         with pytest.raises(AnalysisError, match=r"outside 0\.0-1\.0"):
             await orch.summarize(_make_summary_request(), _future_deadline())
@@ -328,13 +277,7 @@ class TestMetadataFiltering:
         request = _make_request(documents=(doc,))
 
         fake_llm = FakeLLMPort(responses=[_make_llm_response()])
-        orch = StandardOrchestrator(
-            llm=fake_llm,
-            settings=settings,
-            anonymizer=FakeAnonymizer(),
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
+        orch = _make_orchestrator(fake_llm, settings)
 
         await orch.analyze(request, _future_deadline())
 
@@ -351,13 +294,7 @@ class TestNoMetadataByDefault:
         request = _make_request(documents=(doc,))
 
         fake_llm = FakeLLMPort(responses=[_make_llm_response()])
-        orch = StandardOrchestrator(
-            llm=fake_llm,
-            settings=settings,
-            anonymizer=FakeAnonymizer(),
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
+        orch = _make_orchestrator(fake_llm, settings)
 
         await orch.analyze(request, _future_deadline())
 
@@ -370,13 +307,7 @@ class TestTenantIdPassedThrough:
     @pytest.mark.asyncio
     async def test_tenant_id_in_llm_call(self, settings):
         fake_llm = FakeLLMPort(responses=[_make_llm_response()])
-        orch = StandardOrchestrator(
-            llm=fake_llm,
-            settings=settings,
-            anonymizer=FakeAnonymizer(),
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
+        orch = _make_orchestrator(fake_llm, settings)
 
         await orch.analyze(
             _make_request(tenant_id="special-tenant"),
@@ -390,13 +321,7 @@ class TestStructuralDelimiters:
     @pytest.mark.asyncio
     async def test_prompt_contains_xml_tags(self, settings):
         fake_llm = FakeLLMPort(responses=[_make_llm_response()])
-        orch = StandardOrchestrator(
-            llm=fake_llm,
-            settings=settings,
-            anonymizer=FakeAnonymizer(),
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
+        orch = _make_orchestrator(fake_llm, settings)
 
         await orch.analyze(_make_request(), _future_deadline())
 
@@ -418,13 +343,7 @@ class TestInjectionSystemPrefix:
         request = _make_request(documents=(doc,))
 
         fake_llm = FakeLLMPort(responses=[_make_llm_response()])
-        orch = StandardOrchestrator(
-            llm=fake_llm,
-            settings=settings,
-            anonymizer=FakeAnonymizer(),
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
+        orch = _make_orchestrator(fake_llm, settings)
 
         with pytest.raises(AnalysisError, match="injection"):
             await orch.analyze(request, _future_deadline())
@@ -438,13 +357,7 @@ class TestInjectionSystemPrefix:
         request = _make_request(documents=(doc,))
 
         fake_llm = FakeLLMPort(responses=[_make_llm_response()])
-        orch = StandardOrchestrator(
-            llm=fake_llm,
-            settings=settings,
-            anonymizer=FakeAnonymizer(),
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
+        orch = _make_orchestrator(fake_llm, settings)
 
         with pytest.raises(AnalysisError, match="injection"):
             await orch.analyze(request, _future_deadline())
@@ -462,13 +375,7 @@ class TestInjectionSystemPrefix:
                 _make_llm_response(text='{"title":"Title","summary":"- Point"}'),
             ]
         )
-        orch = StandardOrchestrator(
-            llm=fake_llm,
-            settings=settings,
-            anonymizer=FakeAnonymizer(),
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
+        orch = _make_orchestrator(fake_llm, settings)
 
         with pytest.raises(AnalysisError, match="injection"):
             await orch.summarize(request, _future_deadline())
@@ -483,13 +390,7 @@ class TestInjectionNullBytes:
         request = _make_request(documents=(doc,))
 
         fake_llm = FakeLLMPort(responses=[_make_llm_response()])
-        orch = StandardOrchestrator(
-            llm=fake_llm,
-            settings=settings,
-            anonymizer=FakeAnonymizer(),
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
+        orch = _make_orchestrator(fake_llm, settings)
 
         with pytest.raises(AnalysisError, match="injection"):
             await orch.analyze(request, _future_deadline())
@@ -504,13 +405,7 @@ class TestInjectionRepeatedChars:
         request = _make_request(documents=(doc,))
 
         fake_llm = FakeLLMPort(responses=[_make_llm_response()])
-        orch = StandardOrchestrator(
-            llm=fake_llm,
-            settings=settings,
-            anonymizer=FakeAnonymizer(),
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
+        orch = _make_orchestrator(fake_llm, settings)
 
         with pytest.raises(AnalysisError, match="injection"):
             await orch.analyze(request, _future_deadline())
@@ -526,13 +421,7 @@ class TestInjectionErrorNoMatchedText:
         request = _make_request(documents=(doc,))
 
         fake_llm = FakeLLMPort(responses=[_make_llm_response()])
-        orch = StandardOrchestrator(
-            llm=fake_llm,
-            settings=settings,
-            anonymizer=FakeAnonymizer(),
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
+        orch = _make_orchestrator(fake_llm, settings)
 
         with pytest.raises(AnalysisError) as exc_info:
             await orch.analyze(request, _future_deadline())
