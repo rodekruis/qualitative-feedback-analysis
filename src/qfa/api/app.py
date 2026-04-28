@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 import qfa
+from qfa.adapters.llm_client import LiteLLMClient
 from qfa.api.routes import router
 from qfa.api.schemas import (
     ErrorDetail,
@@ -29,7 +30,6 @@ from qfa.domain.errors import (
     AuthenticationError,
     DocumentsTooLargeError,
 )
-from qfa.services.llm_client import LiteLLMClient
 from qfa.services.orchestrator import StandardOrchestrator
 from qfa.settings import AppSettings, LLMSettings
 from qfa.utils import setup_logging
