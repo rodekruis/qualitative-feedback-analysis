@@ -30,7 +30,7 @@ from qfa.domain.errors import (
     AuthorizationError,
     DocumentsTooLargeError,
 )
-from qfa.domain.ports import OrchestratorPort
+from qfa.domain.ports import LLMPort, OrchestratorPort
 from qfa.services.llm_client import LiteLLMClient
 from qfa.services.orchestrator import StandardOrchestrator
 from qfa.settings import AppSettings, LLMSettings
@@ -472,17 +472,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     _register_custom_model_prices()
 
-    llm_client = build_llm_client(settings.llm)
-    orchestrator: OrchestratorPort = StandardOrchestrator(
-        llm=llm_client,
-        settings=settings.orchestrator,
-        llm_timeout_seconds=settings.llm.timeout_seconds,
-        max_total_tokens=settings.llm.max_total_tokens,
-    )
     api_keys = settings.auth.api_keys
 
     engine = None
     usage_repo = None
+
+    base_llm = build_llm_client(settings.llm)
+    llm_for_orch: LLMPort = base_llm
 
     if settings.db.track_usage:
         from qfa.adapters.db import (
@@ -490,13 +486,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             create_async_engine_from_url,
             create_session_factory,
         )
-        from qfa.services.tracking_orchestrator import TrackingOrchestrator
+        from qfa.adapters.migrations import upgrade_to_head
+        from qfa.adapters.tracking_llm import TrackingLLMAdapter
 
         engine = create_async_engine_from_url(settings.db.url)
+        await upgrade_to_head(engine, settings.db.url)
+
         session_factory = create_session_factory(engine)
         usage_repo = SqlAlchemyUsageRepository(session_factory)
-        orchestrator = TrackingOrchestrator(inner=orchestrator, usage_repo=usage_repo)
-        logger.info("Usage tracking enabled")
+        llm_for_orch = TrackingLLMAdapter(inner=base_llm, usage_repo=usage_repo)
+        logger.info("Usage tracking enabled (per-attempt, per-operation)")
+
+    orchestrator: OrchestratorPort = StandardOrchestrator(
+        llm=llm_for_orch,
+        settings=settings.orchestrator,
+        llm_timeout_seconds=settings.llm.timeout_seconds,
+        max_total_tokens=settings.llm.max_total_tokens,
+    )
 
     app.state.orchestrator = orchestrator
     app.state.api_keys = api_keys

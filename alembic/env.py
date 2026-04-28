@@ -58,8 +58,18 @@ async def run_async_migrations() -> None:
 
 
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode."""
-    asyncio.run(run_async_migrations())
+    """Run migrations in 'online' mode.
+
+    If the application has supplied an existing ``connection`` via
+    ``cfg.attributes["connection"]`` (used by the lifespan-startup
+    advisory-lock dance), reuse it directly; otherwise spin up a new
+    async engine.
+    """
+    sync_conn = config.attributes.get("connection", None)
+    if sync_conn is not None:
+        do_run_migrations(sync_conn)
+    else:
+        asyncio.run(run_async_migrations())
 
 
 if context.is_offline_mode():
