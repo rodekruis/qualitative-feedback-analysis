@@ -1,7 +1,7 @@
 import logging
 from typing import Any
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from qfa.domain.models import TenantApiKey
@@ -100,6 +100,12 @@ class DatabaseSettings(BaseSettings):
 
     url: str = ""
     track_usage: bool = False
+
+    @model_validator(mode="after")
+    def _require_url_when_track_usage(self) -> "DatabaseSettings":
+        if self.track_usage and not self.url:
+            raise ValueError("DB_URL must be set when DB_TRACK_USAGE=true")
+        return self
 
 
 class NetworkSettings(BaseSettings):
