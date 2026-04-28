@@ -17,7 +17,7 @@ from qfa.domain.models import (
     LLMResponse,
     TenantApiKey,
 )
-from qfa.domain.ports import LLMPort, OrchestratorPort
+from qfa.domain.ports import LLMPort
 
 __all__ = [
     "AnalysisError",
@@ -33,6 +33,5 @@ __all__ = [
     "LLMRateLimitError",
     "LLMResponse",
     "LLMTimeoutError",
-    "OrchestratorPort",
     "TenantApiKey",
 ]

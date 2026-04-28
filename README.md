@@ -23,9 +23,13 @@ synchronous API call.
 ## Architecture
 * hexagonal architecture.
 * Flow: API call(documents) -> Orchestrator -> LLM API -> return result to user.
-* The Orcehstrator is an exchangeable service. 
-  * naive version: forward all documents to the LLM in one call, together with system prompt and user prompt
-  * possible future versions: apply embedding, chunking, other "smart" techniques, possibly multiple LLM calls.
+* The Orchestrator is a single application service composed of multiple
+  use cases (analyze, summarize, summarize_aggregate, assign_codes).
+  Per-task behaviour is selected by the route handler calling the
+  appropriate method, not by swapping orchestrator implementations
+  (see ADR-011).
+* Driven adapters (LLM provider, anonymization) sit behind ports
+  (`LLMPort`, `AnonymizationPort`) and remain swappable.
 
 ## Requirements
 * only authenticated API calls (via API keys)
@@ -33,8 +37,6 @@ synchronous API call.
 
 ## Non-functional requirements:
 * LLM provider must be exchangeable: declared via an `LLMPort`, so that implementation can be swapped
-* Orchestrator must be swappable depending on task.
-  TBD: either via different API end points, API request parameters or automatically depending on task
 * hardened security.
 
 # Deployment

@@ -1,21 +1,13 @@
 """Port interfaces (protocols) for the feedback analysis backend.
 
-Both ports use ``typing.Protocol`` for structural subtyping per ADR-002.
+Driven ports declared here use ``typing.Protocol`` for structural
+subtyping per ADR-002. The orchestrator is exposed as the concrete
+``StandardOrchestrator`` class per ADR-011 (no driving port).
 """
 
-from datetime import datetime
 from typing import Protocol
 
-from qfa.domain.models import (
-    AggregateSummaryResult,
-    AnalysisRequest,
-    AnalysisResult,
-    CodingAssignmentRequest,
-    CodingAssignmentResult,
-    LLMResponse,
-    SummaryRequest,
-    SummaryResult,
-)
+from qfa.domain.models import LLMResponse
 
 
 class LLMPort(Protocol):
@@ -49,130 +41,5 @@ class LLMPort(Protocol):
         -------
         LLMResponse
             The model's response including token usage.
-        """
-        ...
-
-
-class OrchestratorPort(Protocol):
-    """Port for the analysis orchestration service.
-
-    Even with a single implementation this port is kept explicit per ADR-008
-    so that the API layer depends only on the abstraction.
-
-    Contract
-    --------
-    - Raises ``AnalysisTimeoutError`` when *deadline* is exceeded.
-    - Raises ``DocumentsTooLargeError`` when estimated tokens exceed the limit.
-    - Raises ``AnalysisError`` for non-recoverable LLM failures.
-    - Never returns partial results.
-    """
-
-    async def analyze(
-        self,
-        request: AnalysisRequest,
-        deadline: datetime,
-        anonymize: bool = True,
-    ) -> AnalysisResult:
-        """Analyze a batch of feedback documents.
-
-        Parameters
-        ----------
-        request : AnalysisRequest
-            The analysis request containing documents and prompt.
-        deadline : datetime
-            Absolute deadline by which the analysis must complete.
-        anonymize : bool
-            Whether to apply anonymization to the feedback text before analysis.
-
-        Returns
-        -------
-        AnalysisResult
-            The complete analysis result.
-
-        Raises
-        ------
-        AnalysisTimeoutError
-            When the deadline is exceeded.
-        DocumentsTooLargeError
-            When estimated tokens for documents exceed the configured limit.
-        AnalysisError
-            For non-recoverable LLM failures.
-        """
-        ...
-
-    async def summarize(
-        self,
-        request: SummaryRequest,
-        deadline: datetime,
-        anonymize: bool = True,
-    ) -> SummaryResult:
-        """Summarize each submitted feedback item individually.
-
-        Parameters
-        ----------
-        request : SummaryRequest
-            The summarization request containing feedback items and options.
-        deadline : datetime
-            Absolute deadline by which summarization must complete.
-        anonymize : bool
-            Whether to apply anonymization to the feedback text before summarization.
-
-        Returns
-        -------
-        SummaryResult
-            Per-feedback-item summaries and titles.
-        """
-        ...
-
-    async def summarize_aggregate(
-        self,
-        request: SummaryRequest,
-        deadline: datetime,
-    ) -> AggregateSummaryResult:
-        """Summarize multiple feedback items as a single aggregate summary.
-
-        Parameters
-        ----------
-        request : SummaryRequest
-            The summarization request containing feedback items and options.
-        deadline : datetime
-            Absolute deadline by which summarization must complete.
-
-        Returns
-        -------
-        AggregateSummaryResult
-            A single aggregate summary with themes ordered by frequency.
-        """
-        ...
-
-    async def assign_codes(
-        self,
-        request: CodingAssignmentRequest,
-        deadline: datetime,
-    ) -> CodingAssignmentResult:
-        """Assign hierarchical codes to each feedback item using the LLM.
-
-        Parameters
-        ----------
-        request : CodingAssignmentRequest
-            Items to code, framework payload, limits, and tenant id.
-        deadline : datetime
-            Absolute UTC deadline by which coding must complete.
-
-        Returns
-        -------
-        CodingAssignmentResult
-            Per-feedback-item assigned leaf codes.
-
-        Raises
-        ------
-        AnalysisTimeoutError
-            When the deadline is exceeded before finishing all items.
-        LLMTimeoutError
-            When an LLM call exceeds its per-request timeout.
-        LLMRateLimitError
-            When the LLM provider rate-limits a call.
-        LLMError
-            For other LLM provider failures.
         """
         ...

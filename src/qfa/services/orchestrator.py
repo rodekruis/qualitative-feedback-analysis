@@ -35,7 +35,7 @@ from qfa.domain.models import (
     SummaryRequest,
     SummaryResult,
 )
-from qfa.domain.ports import LLMPort, OrchestratorPort
+from qfa.domain.ports import LLMPort
 from qfa.services.coding_classifier import build_pick_messages, parse_selected_indices
 from qfa.settings import OrchestratorSettings
 
@@ -151,7 +151,7 @@ def _build_judge_system_message(source_text: str, summary: str) -> str:
     return _JUDGE_PROMPT.format(source_text=source_text, summary=summary)
 
 
-class StandardOrchestrator(OrchestratorPort):
+class StandardOrchestrator:
     """Core orchestration service for feedback analysis.
 
     Assembles prompts from feedback documents, validates input,
