@@ -28,7 +28,8 @@ can be confidently and securely be used.
 It supports two workflows:
 
 1. inside the devcontainer, use claude to modify your code directly: the host's code
-   base is bind-mounted into the container, meaning that code changes inside the container
+   base is bind-mounted into the container, meaning that code changes inside the
+   container
    are visible directly on the host. The developer can use their normal workflows, and
    just use the devcontainer as a secure container for running an agent.
 2. work in git worktrees inside the container, allowing for multiple parallel agents
@@ -47,8 +48,8 @@ for each of them.
 - Docker and Docker Compose
 - An IDE that supports devcontainers (VS Code, JetBrains, etc.) or the
   [devcontainer CLI](https://github.com/devcontainers/cli)
-- An Anthropic API key (`ANTHROPIC_API_KEY`) for Claude Code
-- A GitHub fine-grained PAT (see [GitHub token](#github-token) below)
+- Optional: An Anthropic API key (`ANTHROPIC_API_KEY`) for Claude Code
+- Optional: A GitHub fine-grained PAT (see [GitHub token](#github-token) below)
 
 ## Setup
 
@@ -62,6 +63,15 @@ for each of them.
    GH_TOKEN=github_pat_XXXXX
    EOF
    ```
+   
+> [!WARNING]
+> The devcontainer is only as secure as your setup. If you give the agent access to
+> GitHub (recommended), make sure to
+> 1. use a fine-grained access token with minimal
+     permissions: only the repositories that it needs to access, only the capabilities
+     that it really needs.
+> 2. protect your main branch from destructive actions. If you skip this, your agent
+     can, in theory, force-push to main and destroy your entire repository.
 
 3. **Open in your IDE** or start manually:
 
@@ -78,6 +88,15 @@ for each of them.
 
 4. **First run** happens automatically — `postCreateCommand` runs
    `uv sync`, installs pre-commit hooks, and sets up Claude Code plugins.
+
+> [!TIP]
+> devcontainer defaults to aggressive caching, and rebuilding a container as you're used
+> from plain docker/docker compose does not always yield the desired results. E.g., even
+> a change in `Dockerfile` does not necessarily trigger an automatic rebuild in the
+> default IDEs or the CLI.
+> 
+> Use the `dcrebuild` script to force a rebuild.
+
 
 ## Architecture
 
