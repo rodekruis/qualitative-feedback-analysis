@@ -225,6 +225,11 @@ uv sync
 uv run pre-commit install
 ```
 
+If you want to manually run linters and formatters, you can use:
+
+```bash
+make pre_commit
+```
 ## Running Tests
 
 ```bash
