@@ -225,14 +225,11 @@ uv sync
 uv run pre-commit install
 ```
 
-Pre-commit hooks include linting, formatting, and [`nbstripout`](https://github.com/kynan/nbstripout)
-which strips Jupyter notebook outputs before every commit. To run all hooks
-manually:
+If you want to manually run linters and formatters, you can use:
 
 ```bash
-uv run pre-commit run --all-files
+make pre_commit
 ```
-
 ## Running Tests
 
 ```bash
