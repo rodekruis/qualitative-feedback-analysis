@@ -10,7 +10,7 @@ ARG USER_GID=${USER_UID}
 # ── Layer 1: System packages (changes very rarely) ──────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
     # Dev tools
-    git zsh fzf jq vim sudo less curl ca-certificates gpg make \
+    git zsh fzf jq ripgrep vim sudo less curl ca-certificates gpg make \
     # Firewall
     iptables ipset iproute2 dnsutils dnsmasq \
     # Claude Code dependencies
@@ -69,5 +69,8 @@ ENV PATH="/home/${USERNAME}/.local/bin:${PATH}"
 
 # ── pre-commit (installed via uv as a standalone tool) ──────────────
 RUN uv tool install pre-commit
+
+# ── ast-grep (structural code search, installed via uv) ─────────────
+RUN uv tool install ast-grep-cli
 
 WORKDIR /workspace

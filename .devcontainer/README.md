@@ -12,6 +12,7 @@ and scoped credentials.
 | Base image | `debian:bookworm-slim` |
 | Python | Pinned version via [uv](https://github.com/astral-sh/uv) (see `PYTHON_VERSION` build arg) |
 | Linting | pre-commit — baked into the image; ruff, ty — installed via `uv sync` from the project's dev dependencies |
+| Code search | `ripgrep` (apt), `ast-grep` / `sg` (installed via `uv tool install ast-grep-cli`) for structural AST-based search |
 | Shell | zsh + Oh My Zsh + Powerlevel10k + autosuggestions + syntax highlighting |
 | Claude Code | Native binary with pre-configured plugins and MCP servers |
 | GitHub CLI | `gh`, authenticated via `GH_TOKEN` from `.env` |
