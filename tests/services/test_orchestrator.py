@@ -16,7 +16,7 @@ from qfa.domain.models import (
     LLMResponse,
     SummaryRequest,
 )
-from qfa.services.orchestrator import StandardOrchestrator
+from qfa.services.orchestrator import Orchestrator
 from qfa.settings import OrchestratorSettings
 
 TENANT_ID = "tenant-42"
@@ -135,7 +135,7 @@ def _make_orchestrator(llm, settings, max_total_tokens=MAX_TOKENS):
     Tests vary ``llm``, ``settings``, and occasionally ``max_total_tokens``;
     everything else is held constant.
     """
-    return StandardOrchestrator(
+    return Orchestrator(
         llm=llm,
         settings=settings,
         anonymizer=FakeAnonymizer(),

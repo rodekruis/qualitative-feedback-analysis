@@ -31,7 +31,7 @@ from qfa.domain.errors import (
     AuthenticationError,
     DocumentsTooLargeError,
 )
-from qfa.services.orchestrator import StandardOrchestrator
+from qfa.services.orchestrator import Orchestrator
 from qfa.settings import AppSettings, LLMSettings
 from qfa.utils import setup_logging
 
@@ -446,7 +446,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     llm_client = build_llm_client(settings.llm)
     anonymizer = PresidioAnonymizer()
-    orchestrator = StandardOrchestrator(
+    orchestrator = Orchestrator(
         llm=llm_client,
         anonymizer=anonymizer,
         settings=settings.orchestrator,

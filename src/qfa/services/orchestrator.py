@@ -149,7 +149,7 @@ def _build_judge_system_message(source_text: str, summary: str) -> str:
     return _JUDGE_PROMPT.format(source_text=source_text, summary=summary)
 
 
-class StandardOrchestrator:
+class Orchestrator:
     """Core orchestration service for feedback analysis.
 
     Assembles prompts from feedback documents, validates input,
