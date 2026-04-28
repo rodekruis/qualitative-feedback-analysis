@@ -14,6 +14,7 @@ from presidio_analyzer import AnalyzerEngine
 from presidio_anonymizer import AnonymizerEngine, OperatorConfig
 from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_exponential
 
+from qfa.adapters.call_context import call_scope
 from qfa.domain.errors import (
     AnalysisError,
     AnalysisTimeoutError,
@@ -32,6 +33,7 @@ from qfa.domain.models import (
     CodingAssignmentResult,
     FeedbackItem,
     FeedbackItemSummary,
+    Operation,
     SummaryRequest,
     SummaryResult,
 )
@@ -263,20 +265,21 @@ class StandardOrchestrator(OrchestratorPort):
         AnalysisError
             For non-recoverable LLM failures or prompt injection.
         """
-        self._check_injection(request.documents)
+        async with call_scope(tenant_id=request.tenant_id, operation=Operation.ANALYZE):
+            self._check_injection(request.documents)
 
-        system_message = _SYSTEM_MESSAGE_TEMPLATE.format(prompt=request.prompt)
-        user_message = self._assemble_documents(request.documents)
+            system_message = _SYSTEM_MESSAGE_TEMPLATE.format(prompt=request.prompt)
+            user_message = self._assemble_documents(request.documents)
 
-        self._check_token_limit(system_message, user_message)
+            self._check_token_limit(system_message, user_message)
 
-        return await self._call_with_retries(
-            system_message=system_message,
-            user_message=user_message,
-            tenant_id=request.tenant_id,
-            deadline=deadline,
-            anonymize=anonymize,
-        )
+            return await self._call_with_retries(
+                system_message=system_message,
+                user_message=user_message,
+                tenant_id=request.tenant_id,
+                deadline=deadline,
+                anonymize=anonymize,
+            )
 
     async def summarize(
         self,
@@ -304,6 +307,17 @@ class StandardOrchestrator(OrchestratorPort):
             When the LLM returns invalid output or another non-recoverable
             error occurs.
         """
+        async with call_scope(
+            tenant_id=request.tenant_id, operation=Operation.SUMMARIZE
+        ):
+            return await self._summarize_inner(request, deadline, anonymize)
+
+    async def _summarize_inner(
+        self,
+        request: SummaryRequest,
+        deadline: datetime,
+        anonymize: bool,
+    ) -> SummaryResult:
         self._check_injection(request.feedback_items)
 
         feedback_item_summaries: list[FeedbackItemSummary] = []
@@ -391,6 +405,17 @@ class StandardOrchestrator(OrchestratorPort):
         AggregateSummaryResult
             A single aggregate summary with themes ordered by frequency.
         """
+        async with call_scope(
+            tenant_id=request.tenant_id,
+            operation=Operation.SUMMARIZE_AGGREGATE,
+        ):
+            return await self._summarize_aggregate_inner(request, deadline)
+
+    async def _summarize_aggregate_inner(
+        self,
+        request: SummaryRequest,
+        deadline: datetime,
+    ) -> AggregateSummaryResult:
         self._check_injection(request.feedback_items)
 
         system_message = _DEFAULT_AGGREGATE_SUMMARIZATION_PROMPT
@@ -481,6 +506,17 @@ class StandardOrchestrator(OrchestratorPort):
         LLMError
             For other LLM provider failures.
         """
+        async with call_scope(
+            tenant_id=request.tenant_id,
+            operation=Operation.ASSIGN_CODES,
+        ):
+            return await self._assign_codes_inner(request, deadline)
+
+    async def _assign_codes_inner(
+        self,
+        request: CodingAssignmentRequest,
+        deadline: datetime,
+    ) -> CodingAssignmentResult:
         self._check_injection(request.feedback_items)
 
         coded: list[CodedFeedbackItem] = []

@@ -558,3 +558,33 @@ class TestInjectionErrorNoMatchedText:
         assert "pattern=" in error_message
         assert malicious_text not in error_message
         assert "drop all tables" not in error_message
+
+
+# --- call_scope wiring ---
+
+
+@pytest.mark.asyncio
+async def test_analyze_enters_call_scope_with_analyze_operation():
+    from qfa.adapters.call_context import current_call_context
+    from qfa.domain.models import Operation
+
+    captured: list = []
+
+    class CapturingLLM:
+        async def complete(self, system_message, user_message, timeout, tenant_id):
+            captured.append(current_call_context.get())
+            return _make_llm_response()
+
+    orch = StandardOrchestrator(
+        llm=CapturingLLM(),
+        settings=OrchestratorSettings(),
+        llm_timeout_seconds=LLM_TIMEOUT,
+        max_total_tokens=MAX_TOKENS,
+    )
+
+    await orch.analyze(_make_request(), _future_deadline(), anonymize=False)
+
+    assert len(captured) >= 1
+    assert captured[0] is not None
+    assert captured[0].operation == Operation.ANALYZE
+    assert captured[0].tenant_id == TENANT_ID
