@@ -7,16 +7,40 @@ and scoped credentials.
 
 ## What's inside
 
-| Component | Details |
-|---|---|
-| Base image | `debian:bookworm-slim` |
-| Python | Pinned version via [uv](https://github.com/astral-sh/uv) (see `PYTHON_VERSION` build arg) |
-| Linting | pre-commit — baked into the image; ruff, ty — installed via `uv sync` from the project's dev dependencies |
-| Code search | `ripgrep` (apt), `ast-grep` / `sg` (installed via `uv tool install ast-grep-cli`) for structural AST-based search |
-| Shell | zsh + Oh My Zsh + Powerlevel10k + autosuggestions + syntax highlighting |
-| Claude Code | Native binary with pre-configured plugins and MCP servers |
-| GitHub CLI | `gh`, authenticated via `GH_TOKEN` from `.env` |
-| Firewall | Default-deny egress via iptables + dnsmasq + ipset |
+| Component     | Details                                                                                                                                                                                                                                                                                                                                                                             |
+|---------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Base image    | `debian:bookworm-slim`                                                                                                                                                                                                                                                                                                                                                              |
+| Python        | Pinned version via [uv](https://github.com/astral-sh/uv) (see `PYTHON_VERSION` build arg)                                                                                                                                                                                                                                                                                           |
+| Linting       | pre-commit — baked into the image; ruff, ty — installed via `uv sync` from the project's dev dependencies                                                                                                                                                                                                                                                                           |
+| Code search   | `ripgrep` (apt), `ast-grep` / `sg` (installed via `uv tool install ast-grep-cli`) for structural AST-based search                                                                                                                                                                                                                                                                   |
+| Shell         | zsh + Oh My Zsh + Powerlevel10k + autosuggestions + syntax highlighting                                                                                                                                                                                                                                                                                                             |
+| Claude Code   | Native binary with pre-configured plugins and MCP servers                                                                                                                                                                                                                                                                                                                           |
+| GitHub CLI    | `gh`, authenticated via `GH_TOKEN` from `.env`                                                                                                                                                                                                                                                                                                                                      |
+| Firewall      | Default-deny egress via iptables + dnsmasq + ipset                                                                                                                                                                                                                                                                                                                                  |
+| Claude Skills | [superpowers](https://github.com/obra/superpowers), [design-advisor](https://github.com/mariushelf/claude-swe-tools/blob/main/swe-tools/skills/design-advisor/SKILL.md), [working-on-parallel-issues](https://github.com/mariushelf/claude-swe-tools/blob/main/swe-tools/skills/working-on-parallel-issues/SKILL.md), [memsearch](https://github.com/zilliztech/memsearch) and more |
+
+## Intention and workflows
+
+This devcontainer setup intends to create an environment in which
+`claude --dangerously-skip-permissions`
+can be confidently and securely be used.
+
+It supports two workflows:
+
+1. inside the devcontainer, use claude to modify your code directly: the host's code
+   base is bind-mounted into the container, meaning that code changes inside the container
+   are visible directly on the host. The developer can use their normal workflows, and
+   just use the devcontainer as a secure container for running an agent.
+2. work in git worktrees inside the container, allowing for multiple parallel agents
+   working on tickets in parallel. In that case, the agents should push to git and
+   create a PR automatically. This allows for heavy use of parallelized autonomous
+   agents.
+
+The second workflow is facilitated by the
+[working-on-parallel-issues](https://github.com/mariushelf/claude-swe-tools/blob/main/swe-tools/skills/working-on-parallel-issues/SKILL.md)
+skill, which is automatically installed to the devcontainer. It allows spawning one
+or more background agents, which will work autonomously on GitHub issues and file a PR
+for each of them.
 
 ## Prerequisites
 
@@ -103,12 +127,12 @@ host IDE and the container are always in sync. Generated directories that
 differ between host and container (like `.venv`) are masked with named
 volumes to prevent cross-contamination.
 
-| Mount | Type | Purpose |
-|---|---|---|
-| `..:/workspace` | bind | Project source code (read-write) |
-| `venv:/workspace/.venv` | named volume | Isolates container's virtualenv from host |
-| `*-claude-config` | named volume | Persists Claude Code config across rebuilds |
-| `*-shell-history` | named volume | Persists zsh history across rebuilds |
+| Mount                   | Type         | Purpose                                     |
+|-------------------------|--------------|---------------------------------------------|
+| `..:/workspace`         | bind         | Project source code (read-write)            |
+| `venv:/workspace/.venv` | named volume | Isolates container's virtualenv from host   |
+| `*-claude-config`       | named volume | Persists Claude Code config across rebuilds |
+| `*-shell-history`       | named volume | Persists zsh history across rebuilds        |
 
 The claude-config and shell-history volume names include the project folder
 name (`${localWorkspaceFolderBasename}-*`) so multiple devcontainers don't
@@ -130,14 +154,14 @@ mechanism for running Claude Code with `--dangerously-skip-permissions`.
 
 **Allowed destinations:**
 
-| Service | Hosts |
-|---|---|
-| Claude Code | `api.anthropic.com`, `claude.ai`, `platform.claude.com`, `sentry.io`, `statsig.anthropic.com` |
-| GitHub | `github.com`, `api.github.com`, `objects.githubusercontent.com` + published CIDR ranges |
-| Python packages | `pypi.org`, `files.pythonhosted.org` |
-| npm (MCP servers) | `registry.npmjs.org` |
-| Docker network | Auto-detected subnet (for database sidecars) |
-| DNS | UDP/TCP port 53 (locked to upstream resolver only) |
+| Service           | Hosts                                                                                         |
+|-------------------|-----------------------------------------------------------------------------------------------|
+| Claude Code       | `api.anthropic.com`, `claude.ai`, `platform.claude.com`, `sentry.io`, `statsig.anthropic.com` |
+| GitHub            | `github.com`, `api.github.com`, `objects.githubusercontent.com` + published CIDR ranges       |
+| Python packages   | `pypi.org`, `files.pythonhosted.org`                                                          |
+| npm (MCP servers) | `registry.npmjs.org`                                                                          |
+| Docker network    | Auto-detected subnet (for database sidecars)                                                  |
+| DNS               | UDP/TCP port 53 (locked to upstream resolver only)                                            |
 
 Everything else is rejected. To add domains, edit the `ALLOWED_HOSTS` array
 in `init-firewall.sh`. Changes take effect on the next container start.
@@ -154,10 +178,23 @@ don't block the dev environment.
 
 ```json
 {
-  "marketplaces": ["anthropics/claude-plugins-official", "..."],
-  "plugins": ["superpowers", "..."],
+  "marketplaces": [
+    "anthropics/claude-plugins-official",
+    "..."
+  ],
+  "plugins": [
+    "superpowers",
+    "..."
+  ],
   "mcp_servers": [
-    { "name": "context7", "command": "npx", "args": ["-y", "@upstash/context7-mcp@latest"] }
+    {
+      "name": "context7",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@upstash/context7-mcp@latest"
+      ]
+    }
   ]
 }
 ```
@@ -180,12 +217,12 @@ Replace `OWNER` and `REPO` with your GitHub username and repository name.
 
 Grant these permissions:
 
-| Permission    | Access       | Why                                                      |
-|---------------|--------------|----------------------------------------------------------|
-| Contents      | Read & Write | Push commits, read files                                 |
-| Issues        | Read & Write | Create/comment on issues                                 |
-| Metadata      | Read (auto)  | Required by GitHub                                       |
-| Pull requests | Read & Write | Create/review PRs                                        |
+| Permission    | Access       | Why                                                     |
+|---------------|--------------|---------------------------------------------------------|
+| Contents      | Read & Write | Push commits, read files                                |
+| Issues        | Read & Write | Create/comment on issues                                |
+| Metadata      | Read (auto)  | Required by GitHub                                      |
+| Pull requests | Read & Write | Create/review PRs                                       |
 | Actions       | Read         | Read workflow status, e.g. to see whether PRs are green |
 
 Leave **everything else** at "No access". In particular:
