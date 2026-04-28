@@ -59,7 +59,7 @@ class UsageRepositoryPort(Protocol):
     """Port for recording and querying LLM usage data."""
 
     async def record_call(self, record: LLMCallRecord) -> None:
-        """Record a single LLM call.
+        """Record a single LLM call attempt.
 
         Parameters
         ----------
@@ -68,23 +68,43 @@ class UsageRepositoryPort(Protocol):
         """
         ...
 
-    async def get_usage_stats(self, tenant_id: str) -> UsageStats | None:
+    async def get_usage_stats(
+        self,
+        tenant_id: str,
+        from_: datetime | None = None,
+        to: datetime | None = None,
+    ) -> UsageStats | None:
         """Get aggregated usage stats for a single tenant.
 
         Parameters
         ----------
         tenant_id : str
             The tenant to query.
+        from_ : datetime | None
+            Inclusive lower bound (UTC tz-aware), or None.
+        to : datetime | None
+            Exclusive upper bound (UTC tz-aware), or None.
 
         Returns
         -------
         UsageStats | None
-            Stats for the tenant, or None if no calls recorded.
+            Stats for the tenant, or None if no calls in window.
         """
         ...
 
-    async def get_all_usage_stats(self) -> list[UsageStats]:
+    async def get_all_usage_stats(
+        self,
+        from_: datetime | None = None,
+        to: datetime | None = None,
+    ) -> list[UsageStats]:
         """Get per-tenant stats plus a grand total entry (tenant_id=None).
+
+        Parameters
+        ----------
+        from_ : datetime | None
+            Inclusive lower bound (UTC tz-aware), or None.
+        to : datetime | None
+            Exclusive upper bound (UTC tz-aware), or None.
 
         Returns
         -------
