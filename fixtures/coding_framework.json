@@ -1,0 +1,1937 @@
+{
+      "name": "COVID-19",
+      "types": [
+        {
+          "name": "Encouragement or praise",
+          "categories": [
+            {
+              "name": "Statement of encouragement to continue the work",
+              "codes": [
+                {
+                  "code_id": "covid-19:encouragement-or-praise:statement-of-encouragement-to-continue-the-work:statement-of-encouragement-to-continue-the-work",
+                  "name": "Statement of encouragement to continue the work",
+                  "code_description": "Statemetn of thanks specifically for community health promotion.",
+                  "sensitive": false,
+                  "examples": [
+                    "Thanks for the message that this is not the last time.",
+                    "Thanks Red Cross for the covid messages some of us forgot on how to prevent the spread of the virus",
+                    "Thank you for the door-to-door outreach."
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Statement of thanks",
+              "codes": [
+                {
+                  "code_id": "covid-19:encouragement-or-praise:statement-of-thanks:statement-of-thanks",
+                  "name": "Statement of thanks",
+                  "code_description": "Statements on thanks, this includes general statements without specification, as well as any other statements showing gratitude that are not specifically talking about community ehalth promotion.",
+                  "sensitive": false,
+                  "examples": [
+                    "Thank you for your courage in the field.",
+                    "Our thanks for the red cross team",
+                    "Thank you to the president of the republic"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Statement of thanks for health promotion",
+              "codes": [
+                {
+                  "code_id": "covid-19:encouragement-or-praise:statement-of-thanks-for-health-promotion:statement-of-thanks-for-health-promotion",
+                  "name": "Statement of thanks for health promotion",
+                  "code_description": "Statements encouraging the volunteers and the response in general to continue the work.",
+                  "sensitive": false,
+                  "examples": [
+                    "That CR continues with awareness-raising and its good humanitarian actions",
+                    "Courage and good work",
+                    "Encouragement to the team that teaches us to fight covid19"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Statement that acknowledges the work",
+              "codes": [
+                {
+                  "code_id": "covid-19:encouragement-or-praise:statement-that-acknowledges-the-work:statement-that-acknowledges-the-work",
+                  "name": "Statement that acknowledges the work",
+                  "code_description": "Statements acknowledging the work of the volunteers, the Red Cross red Crescent or the response in general.",
+                  "sensitive": false,
+                  "examples": [
+                    "Many people are praising Red cross for the job well done covid 19",
+                    "It is noble work that you are doing, it is God who pays the volunteers.",
+                    "Good job."
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Observation, perception or belief",
+          "categories": [
+            {
+              "name": "Belief about how the disease spreads",
+              "codes": [
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:belief-about-how-the-disease-spreads:beliefs-about-the-survival-of-virus-under-specific-circumstances",
+                  "name": "Beliefs about the survival of virus under specific circumstances",
+                  "code_description": "Statements about if and how the virus can survive in different circumstances, including being exposed to heat, survival on surfaces",
+                  "sensitive": false,
+                  "examples": [
+                    "Covid-19 is a disease that is not heat resistant.",
+                    "Sun heat can kill the virus.",
+                    "The Covid-19 is more resistant on a plastic object than on a metal object."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:belief-about-how-the-disease-spreads:beliefs-about-ways-of-transmission",
+                  "name": "Beliefs about ways of transmission",
+                  "code_description": "Statements mentioning how one can catch the disease, including specific modes of transmission (such as transmission through droplets, touching objects, the disease being airborne).",
+                  "sensitive": false,
+                  "examples": [
+                    "The transmission of covid-19 occurs through the eyes, nose and mouth.",
+                    "Corona can be transmitted by sex",
+                    "We are told that corona is transmitted to the toilet",
+                    "the coronavirus is not transmitted through breastfeeding"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Beliefs about behaviors that protect people or prevention",
+              "codes": [
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:beliefs-about-behaviors-that-protect-people-or-prevention:beliefs-about-face-masks",
+                  "name": "Beliefs about face masks",
+                  "code_description": "Statements about face masks and the use thereof, including difficulties, rumours about them having side effects or being infected",
+                  "sensitive": false,
+                  "examples": [
+                    "Masks results in difficulties in breathing",
+                    "The mask does not fully protect",
+                    "The nose mask is only used for access to public places."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:beliefs-about-behaviors-that-protect-people-or-prevention:beliefs-about-hand-washing-or-hand-sanitizers",
+                  "name": "Beliefs about hand washing or hand sanitizers",
+                  "code_description": "Statements about hand washing and the use of hand sanitizer. NOT the observation of adherence to hand washing rules, this would be coded under \"Observations of adherence to health measures\"",
+                  "sensitive": false,
+                  "examples": [
+                    "Il n'y a pas de points d'eau",
+                    "Many people are complaining about lack of soap",
+                    "Pour nous protéger avec nos familles nous devons laver les mains"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:beliefs-about-behaviors-that-protect-people-or-prevention:beliefs-about-other-behaviors-that-can-protect-people-from-the-disease",
+                  "name": "Beliefs about other behaviors that can protect people from the disease",
+                  "code_description": "Any other statements about preventive behaviour that does not fall under the more specific codes above, such as comments about physical distancing, preventive behaviour in general (without specification)",
+                  "sensitive": false,
+                  "examples": [
+                    "Have no protective materials",
+                    "Eating well strengthens the immune system",
+                    "Yes, it ignores the fact that the sick person must be left alone to prevent the spread of coronavirus."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:beliefs-about-behaviors-that-protect-people-or-prevention:beliefs-about-prayer",
+                  "name": "Beliefs about prayer",
+                  "code_description": "Statements about the reliance on prayer to prevent or cure the disease.",
+                  "sensitive": false,
+                  "examples": [
+                    "We believe in God that this disease is not going to reach us.",
+                    "God protects us in the face of this pandemic",
+                    "If someone prays to their God, they may not get the coronavirus."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:beliefs-about-behaviors-that-protect-people-or-prevention:beliefs-about-use-of-alcohol-for-prevention",
+                  "name": "Beliefs about use of alcohol for prevention",
+                  "code_description": "Statements mentioning the consumption of alcohol to prevent the disease (NOT the treatment or cure of the disease, this would be coded under \"Beliefs about use of alcohol for treament\")",
+                  "sensitive": false,
+                  "examples": [
+                    "We are informed that alcoholic beverages must be taken extensively to prevent corona virus.",
+                    "If you have too much alcohol in your body, you cannot become infected."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:beliefs-about-behaviors-that-protect-people-or-prevention:beliefs-about-use-of-herbs-or-other-natural-materials-for-prevention",
+                  "name": "Beliefs about use of herbs or other natural materials for prevention",
+                  "code_description": "Statements mentioning the use or consumption of herbs or other natural materials to prevent the disease (NOT the treatment or cure of the disease, this would be coded under \"Beliefs about use of herbs or other natural materials for treatment\")",
+                  "sensitive": false,
+                  "examples": [
+                    "If we drink ginger tea will not contract COVID-19",
+                    "Lemons and warm water help in fighting against Covid-19",
+                    "Nous avons nos infusions naturelles contre le corona"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Beliefs about the disease",
+              "codes": [
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:beliefs-about-the-disease:belief-about-the-symptoms-of-the-disease",
+                  "name": "Belief about the symptoms of the disease",
+                  "code_description": "Statements about the signs and symptoms of COVID-19 - no matter if correct or wrong.",
+                  "sensitive": false,
+                  "examples": [
+                    "Corona has signs like  fever and coughing",
+                    "The signs of COVID-19 are almost similar to those of Ebola"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:beliefs-about-the-disease:belief-that-a-disease-is-caused-by-foreigners",
+                  "name": "Belief that a disease is caused by foreigners",
+                  "code_description": "Statements on the diease being caused by foreigners. IF mention the disease having been manufactured by foreigners, the more specific code \"Belief that the disease is man-made\" should be used.",
+                  "sensitive": false,
+                  "examples": [
+                    "Whites are responsible for the spread of the corona virus.",
+                    "It is white people who bring these kinds of diseases to the Congo."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:beliefs-about-the-disease:belief-that-disease-does-exist-or-is-real",
+                  "name": "Belief that disease does exist or is real",
+                  "code_description": "Statements explicitly confirming the existence of the COVID outbreak, including that COVID-19 does exist, or that COVID-19 is real.",
+                  "sensitive": false,
+                  "examples": [
+                    "The pandemic truly exists. Each one of us has had around us at least one case of an infected person.",
+                    "We didn’t believe but now we do."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:beliefs-about-the-disease:belief-that-disease-does-not-exist-or-is-not-real",
+                  "name": "Belief that disease does NOT exist or is NOT real",
+                  "code_description": "Statements about denial of the COVID outbreak, including that COVID-19 does not exist, or that COVID-19 is not real , COVID-19 is not a disease.\n\nNOT “COVID-19 does not exist here” or “it has ended already”, which would be coded as 'Belief that the disease does not exist in this region or country\" or \"Belief that the outbreak has ended\".",
+                  "sensitive": false,
+                  "examples": [
+                    "Coronavirus does not exist",
+                    "COVID-19 does not exists, it is a simple flu."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:beliefs-about-the-disease:belief-that-disease-is-man-made",
+                  "name": "Belief that disease is man-made",
+                  "code_description": "Statements on the diease having been created by people, including comments that it was created in laboratories.",
+                  "sensitive": false,
+                  "examples": [
+                    "Covid-19 is a disease manufactures by the whites."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:beliefs-about-the-disease:belief-that-disease-of-supernatural-origin",
+                  "name": "Belief that disease of supernatural origin",
+                  "code_description": "Statements about supernatural causes of COVID-19 [excluding any natural cause or intentional scheme or action by a person/institution/group].\nIncludes both existential questions about where does it come from and more pragmatic causes (how did it get here, how do people get it?)",
+                  "sensitive": false,
+                  "examples": [
+                    "Corona is a satanic disease",
+                    "Covid-19 is a punishment from God",
+                    "It's the end of the world."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:beliefs-about-the-disease:observations-or-beliefs-about-new-variants-or-mutations",
+                  "name": "Observations or beliefs about new variants or mutations",
+                  "code_description": "Statements about new strains, variants or mutations of the disease, NOT beliefs about the vaccine being effective towards new strains, variants or mutations. This should be coded under \"Other observations or beliefs about the vaccines\"",
+                  "sensitive": false,
+                  "examples": [
+                    "Rumour says with this new variant, if you are tested positive it means you are definitely going to die.",
+                    "The British variant does not exist, it's a big lie."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:beliefs-about-the-disease:other-belief-about-the-disease",
+                  "name": "Other belief about the disease",
+                  "code_description": "Any other statement about the characteristics of the disease itself and what it does to a human body. NOT comments about the pandemic as a whole and what it does to our society (this would be coded under the category \"Beliefs_about_the_disease_outbreak)\n\nThis includes statements about the incubation period (how long it takes to show symptoms) or its difference to other diseases",
+                  "sensitive": false,
+                  "examples": [
+                    "Coronavirus is a very dangerous disease.",
+                    "COVID-19 is a virus like cholera.",
+                    "The incubation period is 6 days."
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Beliefs about the disease outbreak",
+              "codes": [
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:beliefs-about-the-disease-outbreak:belief-about-the-consequences-of-the-disease-outbreak",
+                  "name": "Belief about the consequences of the disease outbreak",
+                  "code_description": "Statements about the impacts/outcomes of the EVD outbreak on communities (poverty, families, orphans, lack of education, rise of violence or mental health problems)",
+                  "sensitive": false,
+                  "examples": [
+                    "COVID 19 has stopped our normal business",
+                    "Price of rice is high as a result of Covid 19",
+                    "This illness is creating a headache to us. We hear on the radio. All the things we used to help us we have stopped. We no longer travel to sell our things to other places. We are now hungry.",
+                    "Corona virus has come to diminish love."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:beliefs-about-the-disease-outbreak:belief-about-the-nature-and-evolution-of-the-disease-outbreak",
+                  "name": "Belief about the nature and evolution of the disease outbreak",
+                  "code_description": "Statements about characteristics, the nature and evolution of the pandemic, such as its duration, it spreading in waves.",
+                  "sensitive": false,
+                  "examples": [
+                    "Covid-19  will not end",
+                    "Coronavirus is a pandemic.",
+                    "Another spread wave which will affect more people is on the way coming"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:beliefs-about-the-disease-outbreak:belief-about-the-number-of-cases-and-geographic-areas-affected",
+                  "name": "Belief about the number of cases and geographic areas affected",
+                  "code_description": "Statements about the total caseload (how many are infected or have died), as well as about which districts or countries are affected by the pandemic.",
+                  "sensitive": false,
+                  "examples": [
+                    "Covid-19 has killed 8 persons in Juba",
+                    "Too many death of Covid 19 in Freetown"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:beliefs-about-the-disease-outbreak:belief-about-who-is-or-is-not-affected-by-the-disease",
+                  "name": "Belief about who is or is not affected by the disease",
+                  "code_description": "Statements about who can or is at risk of catching the disease, including it being a white people's disease, or the disease of only old people",
+                  "sensitive": false,
+                  "examples": [
+                    "Covid 19 is for white people. Vulnerable are those with HIV. CVOID does not kill blac people.This disease does not infect Muslims."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:beliefs-about-the-disease-outbreak:belief-that-the-disease-does-not-exist-in-this-region-or-country",
+                  "name": "Belief that the disease does not exist in this region or country",
+                  "code_description": "Statements about the disease not existing in that specific geographic location (district, region, country or continent), including that there are no cases in that area.",
+                  "sensitive": false,
+                  "examples": [
+                    "This disease does not exist in ituri",
+                    "Covid19 has never existed here in this province.",
+                    "There is no Corona virus in Malawi"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:beliefs-about-the-disease-outbreak:belief-that-the-outbreak-has-ended",
+                  "name": "Belief that the outbreak has ended",
+                  "code_description": "Statement about the pandemic already having ended, including that there are no cases ANYMORE (NOT that it does not exist, this would be coded under \"Belief that disease does NOT exist or is NOT real\")",
+                  "sensitive": false,
+                  "examples": [
+                    "COVID-19 doesn't exist anymore",
+                    "Covid messages are not important because the disease has ended",
+                    "They say Covid-19 is gone"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:beliefs-about-the-disease-outbreak:other-belief-about-the-disease-outbreak",
+                  "name": "Other belief about the disease outbreak",
+                  "code_description": "Any other statement about the pandemic as a whole that do not fall in the more specific codes above (NOT about the disease and virus and its impact on a single person specifically, but its impact and characteristic as a whole).",
+                  "sensitive": false,
+                  "examples": [
+                    "we will learn to live with it like AIDS",
+                    "It's a disease that came from the West."
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Beliefs about the lockdown restriction of movement and closing borders",
+              "codes": [
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:beliefs-about-the-lockdown-restriction-of-movement-and-closing-borders:observation-or-belief-about-lockdown",
+                  "name": "Observation or belief about lockdown",
+                  "code_description": "Statements about lockdown measures or cessation of movements. This includes comments about certain places being closed and difficulties to adhere to the lockdown.",
+                  "sensitive": false,
+                  "examples": [
+                    "Due to lockdown some people have lost their livelihoods",
+                    "The opening of bars and public places means the end of the pandemic.",
+                    "The National Assembly has extended the lockdown"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:beliefs-about-the-lockdown-restriction-of-movement-and-closing-borders:observation-or-belief-about-points-of-control",
+                  "name": "Observation or belief about points of control",
+                  "code_description": "Statements about actions at points of control and points of entry, such as the taking of temperature at barriers, the obligation of washing hands or using hand sanitizers at certain places.",
+                  "sensitive": false,
+                  "examples": [
+                    "All health checkpoints no longer exist, the existence of covid-19 is uncertain in this entity.",
+                    "COVID-19 will eventually arrive in Mambasa due to the lack of checkpoints."
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Beliefs about treatment for the disease",
+              "codes": [
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:beliefs-about-treatment-for-the-disease:belief-about-treatments-for-the-disease",
+                  "name": "Belief about treatments for the disease",
+                  "code_description": "Statements about how COVID-19 can be treated or cured (NOT prevented, that would be coded under the previous codes), including the availability of medicine",
+                  "sensitive": false,
+                  "examples": [
+                    "there is already the remedy",
+                    "no treatment is available",
+                    "The corona drug is aspirin."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:beliefs-about-treatment-for-the-disease:beliefs-about-use-of-alcohol-for-treament",
+                  "name": "Beliefs about use of alcohol for treament",
+                  "code_description": "Statements about the consumption of alcohol for treating or curing COVID-19 (NOT prevention, that would be coded under \"Beliefs about use of alcohol for prevention\")",
+                  "sensitive": false,
+                  "examples": [
+                    "Taking alcoholic drink can cure COVID-19",
+                    "Alcohol is a remedy for Covid-19"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:beliefs-about-treatment-for-the-disease:beliefs-about-use-of-herbs-or-other-natural-materials-for-treatment",
+                  "name": "Beliefs about use of herbs or other natural materials for treatment",
+                  "code_description": "Statements about the use or consumption of herbs or other natural materials for treating or curing COVID-19 (NOT prevention, that would be coded under \"Beliefs about use of alcohol for prevention\")",
+                  "sensitive": false,
+                  "examples": [
+                    "COVID-19 can be cured by traditional remedies",
+                    "When you eat a lot of lemons you get cured",
+                    "Dry chilli pepper can cure covid 19"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Fear or stigma",
+              "codes": [
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:fear-or-stigma:fear-of-the-disease",
+                  "name": "Fear of the disease",
+                  "code_description": "Statements mentioning the fear of contracting the disease.",
+                  "sensitive": false,
+                  "examples": [
+                    "This disease frightens us.",
+                    "We are afraid of the disease because it does not come from us; it comes from white people."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:fear-or-stigma:fear-or-suspicion-of-specific-people-groups-or-populations-in-ways-that-could-be-stigmatizing",
+                  "name": "Fear or suspicion of specific people groups or populations in ways that could be stigmatizing",
+                  "code_description": "Statements indicating a certain fear or suspicion of a group of people that can be stigmatizing, this includes comments about a certain group of people that are responsible for the spread (such as Chinese for example), or the stigmatization of people wearing face masks.",
+                  "sensitive": false,
+                  "examples": [
+                    "I'm embarrassed to wear the mask because in the city they say that all the people who wear them blame them for being sick.",
+                    "the authorities and those travelling to europe who contract the disease can transmit the disease to others.",
+                    "Some affected communities said they want to disclose their status as community members are stigmatizing them"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:fear-or-stigma:other-fears",
+                  "name": "Other fears",
+                  "code_description": "Statements mentioning other fears, including the fear of going to the hospital, of being tested or of the worening of the situation.",
+                  "sensitive": false,
+                  "examples": [
+                    "People are afraid that Covid 19 will get worst when Schools reopen",
+                    "We are afraid to go to the hospital because all the fevers have become covid-19.",
+                    "one of the fears the weak health services will not cover the treatment of the cases"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Observations on general situation and behaviours",
+              "codes": [
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:observations-on-general-situation-and-behaviours:observations-of-adherence-to-health-measures",
+                  "name": "Observations of adherence to health measures",
+                  "code_description": "Statements about people following public health measures, such as washing your hands, wearing face masks and physical distancing.",
+                  "sensitive": false,
+                  "examples": [
+                    "The community makes an effort to wash their hands regularly and we make sure that they do.",
+                    "We wear masks all the time",
+                    "The population of Rukumbuka complies with the barrier measures as several households have handwashing facilities."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:observations-on-general-situation-and-behaviours:observations-of-non-compliance-with-health-measures",
+                  "name": "Observations of non-compliance with health measures",
+                  "code_description": "Statements about people NOT following public health measures, such as washing your hands, wearing face masks and physical distancing.",
+                  "sensitive": false,
+                  "examples": [
+                    "The leaders themselves do not respect the barrier measures.",
+                    "No one wears their mask any more"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:observations-on-general-situation-and-behaviours:statement-about-people-being-tired-about-covid-19",
+                  "name": "Statement about people being tired about COVID-19",
+                  "code_description": "Statements being tired of the disease, including not to want to talk about the disease and the pandemic anymore",
+                  "sensitive": false,
+                  "examples": [
+                    "People so tired of hearing about covid 19.",
+                    "We are hungry, we are tired of corona.",
+                    "we are tired of your comedy"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:observations-on-general-situation-and-behaviours:statement-not-to-have-seen-any-dead-or-sick-people",
+                  "name": "Statement not to have seen any dead or sick people",
+                  "code_description": "Any mentions of never having seen a sick persons or not know sick people, or anyone who has died of the disease",
+                  "sensitive": false,
+                  "examples": [
+                    "I have never seen a sick or dead person from the covid",
+                    "The covid does not exist in Africa because the dead are not seen."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:observations-on-general-situation-and-behaviours:statements-of-encouragement-to-follow-the-phms",
+                  "name": "Statements of encouragement to follow the PHMs",
+                  "code_description": "Statements encouraging communities and populations to respect and follow the public health measures such as handwashing, wearing of masks, physical distancing, respecting curfews, etc.",
+                  "sensitive": false,
+                  "examples": [
+                    "Since the situation is critical we really need to follow all prevention measures",
+                    "Let's abide to all health guidelines, wearing of mask and social distancing"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Observations or beliefs about government not responding or responding well",
+              "codes": [
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:observations-or-beliefs-about-government-not-responding-or-responding-well:observations-or-beliefs-about-government-not-responding-or-responding-well",
+                  "name": "Observations or beliefs about government not responding or responding well",
+                  "code_description": "Comments specifically about inaction or non-response on the part of the government, things outside of the purview of the COVID response (roads, housing). Only includes comments that do not fall under more specific codes, such as comments about specific response actions (eg. \"Observations  or beliefs about testing\"), or comments indicating mistrust (these are coded under the category \"Statements_indicating_mistrust_in_the_response\").",
+                  "sensitive": false,
+                  "examples": [
+                    "If people die during an epidemic it is the responsibility of the government.",
+                    "The political authorities are not active in ending covid-19",
+                    "The state really does nothing for our health."
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Observations or beliefs about health care services for the disease",
+              "codes": [
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:observations-or-beliefs-about-health-care-services-for-the-disease:observations-or-beliefs-about-other-health-care-services",
+                  "name": "Observations or beliefs about other health care services",
+                  "code_description": "Statements about COVID tests and testing activities, including comments about the costs of test, as well as the accuracy of test results.",
+                  "sensitive": false,
+                  "examples": [
+                    "Everybody is going to be tested for Covid 19",
+                    "The screening test at 20,000 f is a scandal.",
+                    "The screening test gives the covid"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:observations-or-beliefs-about-health-care-services-for-the-disease:observations-or-beliefs-about-testing",
+                  "name": "Observations or beliefs about testing",
+                  "code_description": "Statements about COVID tests and testing activities, including comments about the costs of test, as well as the accuracy of test results.",
+                  "sensitive": false,
+                  "examples": [
+                    "Everybody is going to be tested for Covid 19",
+                    "The screening test at 20,000 f is a scandal.",
+                    "The screening test gives the covid"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Observations or beliefs about people or organizations responding to the disease",
+              "codes": [
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:observations-or-beliefs-about-people-or-organizations-responding-to-the-disease:observation-or-belief-about-other-people-or-organizations-responding-to-the-disease",
+                  "name": "Observation or belief about other people or organizations responding to the disease",
+                  "code_description": "Statements about Ebola responders, excluding Red Cross and Red Crescent. Includes investigation teams, vaccination teams, sensitizers/health promoters, ambulance teams, and other NGOs/volunteers, and how they interact with community members. Includes response processes, for example, people calling for transportation of sick people and no one coming, toll-free number not going through.",
+                  "sensitive": false,
+                  "examples": [
+                    "WHO is poorly placed to give instructions regarding Covid-19.",
+                    "All the NGOs brought here by the French do nothing for Cameroon.",
+                    "In some training courses the agents do not respect the barrier rules as a measure of 1 m."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:observations-or-beliefs-about-people-or-organizations-responding-to-the-disease:observation-or-belief-about-the-red-cross",
+                  "name": "Observation or belief about the Red Cross",
+                  "code_description": "Any specific reference to the Red Cross, in any context. This may be double-coded with other relevant areas like burials, healthcare, etc. This includes statements said directly to the volunteers, such as “You kill the people”/ “vous tuez les gens”, can be assumed to be about the Red Cross.",
+                  "sensitive": false,
+                  "examples": [
+                    "Red Cross is just looking for money",
+                    "Red Cross is bringing the covid-19 to the communities.",
+                    "The Red Cross is very close to the community."
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Observations or beliefs about people recovered from the disease",
+              "codes": [
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:observations-or-beliefs-about-people-recovered-from-the-disease:observation-or-belief-about-people-recovered-from-the-disease",
+                  "name": "Observation or belief about people recovered from the disease",
+                  "code_description": "Statements about people who have recovered from the disease, including comments about people who had the disease still being infectious, about long-term consequences of the diesease, or the surveillance and protection of people who have recovered.",
+                  "sensitive": false,
+                  "examples": [
+                    "You can't get sick once you've caught the virus.",
+                    "Those cured of the covid-19 virus receive a donation and a sum of $1,000 after being discharged from hospital.",
+                    "We have often waited to talk about covid-19 recovered cases, but we have never seen these people cured."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:observations-or-beliefs-about-people-recovered-from-the-disease:other-observations-or-beliefs-about-people-who-have-had-the-disease",
+                  "name": "Other observations or beliefs about people who have had the disease",
+                  "code_description": "Any other statements about people who have had the disease that does not relate to people who have recovered from the disease",
+                  "sensitive": false,
+                  "examples": [
+                    "In my neighborhood there has been only one case since March 2020"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Observations or beliefs about preparedness or response activities pertaining to the disease",
+              "codes": [
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:observations-or-beliefs-about-preparedness-or-response-activities-pertaining-to-the-disease:observation-or-belief-about-communication-or-information-about-the-disease",
+                  "name": "Observation or belief about communication or information about the disease",
+                  "code_description": "Comments about communication or information in relation to COVID-19, including channles for receiving information, as well as information about the response efforts, in healthcare settings or in public health and health promotion.",
+                  "sensitive": false,
+                  "examples": [
+                    "they don't talk about it on television anymore, so it doesn't exist anymore.",
+                    "There is a lot of misinformation about the covid",
+                    "No clarity in this area of covid19",
+                    "We are informed about Covid-19 on the Radio"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:observations-or-beliefs-about-preparedness-or-response-activities-pertaining-to-the-disease:observation-or-belief-about-contact-tracing",
+                  "name": "Observation or belief about contact tracing",
+                  "code_description": "Comments about contact tracing team activities, the contact tracing process, or about contacts of COVID-19 patients.",
+                  "sensitive": false,
+                  "examples": [
+                    "We do not agree with this disease because the real patients are not identified.",
+                    "The nursing staff have done well to find the person with Corona without infecting us."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:observations-or-beliefs-about-preparedness-or-response-activities-pertaining-to-the-disease:observations-or-beliefs-about-management-of-the-dead",
+                  "name": "Observations or beliefs about management of the dead",
+                  "code_description": "Statements about the management of dead bodies, including mentions of burials teams and burials in general.",
+                  "sensitive": false,
+                  "examples": [
+                    "We have been waiting for a dignified and secure burial team to be on the ground if cases increase in North Kivu.",
+                    "The corona exists and kills a multitude of people but we do not know the cemetery where the dead are buried, contrary to what is shown in Europe.",
+                    "The government is forcing all corpses to go to the morgue to maximise revenue, so people are burying them regardless of the disease."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:observations-or-beliefs-about-preparedness-or-response-activities-pertaining-to-the-disease:observations-or-beliefs-about-other-preparedness-or-response-activities",
+                  "name": "Observations or beliefs about other preparedness or response activities",
+                  "code_description": "Statements about other activities which are conducted as part of the COVID-19 response, such as provision of face masks or sanitizers, community health promotion, surveillance, hotlines. NOT anything part of health care services.",
+                  "sensitive": false,
+                  "examples": [
+                    "The government does not distribute face masks to the population.",
+                    "Sensitisation without protective materials is null and void."
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Observations or beliefs about schools and education",
+              "codes": [
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:observations-or-beliefs-about-schools-and-education:observations-or-beliefs-about-return-to-schools",
+                  "name": "Observations or beliefs about return to schools",
+                  "code_description": "Statements about the reopening of schools and the precautions taken there.",
+                  "sensitive": false,
+                  "examples": [
+                    "Government planning to spray all Schools to prevent Covid 19",
+                    "Covid 19 will get worst if all Schools reopen in Sierra Leone",
+                    "Some Schools do not have hand washing soap"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:observations-or-beliefs-about-schools-and-education:other-observations-or-beliefs-about-schools-and-education",
+                  "name": "Other observations or beliefs about schools and education",
+                  "code_description": "Any other statements that do not mention the return to schools",
+                  "sensitive": false,
+                  "examples": [
+                    "Teachers in my school always wear face mask"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Observations or beliefs about vaccines or immunizations",
+              "codes": [
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:observations-or-beliefs-about-vaccines-or-immunizations:comments-about-vaccine-effectiveness",
+                  "name": "Comments about vaccine effectiveness",
+                  "code_description": "Statement about the efficacy of the COVID-19 vaccines as well as how long it will stay effective",
+                  "sensitive": false,
+                  "examples": [
+                    "The protection only lasts 1 year.",
+                    "People taking COVID-19 Vaccine are still having COVID-19 Virus"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:observations-or-beliefs-about-vaccines-or-immunizations:comments-in-favour-of-the-vaccine",
+                  "name": "Comments in favour of the vaccine",
+                  "code_description": "Statements expressing desire to receive vaccine or that the person or community is in favour of immunization.",
+                  "sensitive": false,
+                  "examples": [
+                    "When the vaccine is available, I will be vaccinated.",
+                    "I don't know anybody here who won't get the vaccine."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:observations-or-beliefs-about-vaccines-or-immunizations:obersations-or-beliefs-about-vaccine-access-and-priority-groups",
+                  "name": "Obersations or beliefs about vaccine access and priority groups",
+                  "code_description": "Comments about how to access or obtain a vaccine. This includes comments about vaccine availability, prioritization groups, registration or physical locations for immunization.",
+                  "sensitive": false,
+                  "examples": [
+                    "Government will undertake massive COVID-19 vaccination for workers and school children",
+                    "I was able to locate a vaccination center in the community by watching the ad on TV",
+                    "Pregnant women can't take the vaccine"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:observations-or-beliefs-about-vaccines-or-immunizations:obersvations-or-beliefs-about-vaccination-campaigns",
+                  "name": "Obersvations or beliefs about  vaccination campaigns",
+                  "code_description": "Comments about immunization campaigns including costs of the vaccine, vaccinations cards and forced vaccinations. NOT comments related to vaccination approvals which can be coded under Obersations or beliefs about the vaccine origin, testing or Government approval.",
+                  "sensitive": false,
+                  "examples": [
+                    "The Hospitals are selling the vaccine for huge amount",
+                    "People are going to be forced to be vaccinated"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:observations-or-beliefs-about-vaccines-or-immunizations:obersvations-or-beliefs-about-vaccination-schedule-and-use",
+                  "name": "Obersvations or beliefs about vaccination schedule and use",
+                  "code_description": "Questions about vaccine doses, including intervals and mixing vaccines between doses. It does not include comments or suspicions of the vaccine related to the clinical trials that should be coded under Observations and beliefs about the vaccine origin, testing and Government approvals",
+                  "sensitive": false,
+                  "examples": [
+                    "People are not taken the full dose of the COVID-19 Vaccine",
+                    "The first dose of the vaccine include the mixture the virus for trial in the human system"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:observations-or-beliefs-about-vaccines-or-immunizations:observations-or-beliefs-about-the-vaccine-origin-testing-or-government-approval",
+                  "name": "Observations or beliefs about the vaccine origin, testing or Government approval",
+                  "code_description": "Statements about where vaccines have been developed, and how they have tested or approved. This includes specific mentions of countries or vaccines and efficiency",
+                  "sensitive": false,
+                  "examples": [
+                    "We have learned that the government has agreed to allow the corona vaccine to be tested in the DRC.",
+                    "Don't trust the vaccines because it has not gone under 5-20 years verification",
+                    "The government only approved this vaccine because we don't have money for the better ones.",
+                    "I can't trust the vaccine that is available because it was made abroad."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:observations-or-beliefs-about-vaccines-or-immunizations:observations-or-beliefs-about-vaccine-safety",
+                  "name": "Observations or beliefs about vaccine safety",
+                  "code_description": "Statements about side effects or health risks related to the vaccine",
+                  "sensitive": false,
+                  "examples": [
+                    "The COVID-19 vaccine causes paralysis after a few years.",
+                    "Covid Vaccine is poison and make people stop having children (family planning)"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:observations-or-beliefs-about-vaccines-or-immunizations:other-beliefs-and-observations-about-vaccines",
+                  "name": "Other beliefs and observations about vaccines",
+                  "code_description": "Any other statements about vaccines and vaccination activities",
+                  "sensitive": false,
+                  "examples": [
+                    "the vaccination centers are less",
+                    "Most people are concern about the Country not been able to reach herd immunity"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:observations-or-beliefs-about-vaccines-or-immunizations:statements-indicating-non-acceptance-of-the-vaccine",
+                  "name": "Statements indicating non-acceptance of the vaccine",
+                  "code_description": "Statements indicating non-acceptance of the vaccine or beliefs that the vaccine would do harm, this includes comments stating fear of the vaccine (not related to de-population claims, bioweapons, etc).",
+                  "sensitive": false,
+                  "examples": [
+                    "We don't want the corona vaccine",
+                    "I want my body to fight COVID-19 naturally, not with a vaccine.",
+                    "He will not attempt to get the vaccine because he believes it is not good",
+                    "People are afraid of the vaccine"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:observations-or-beliefs-about-vaccines-or-immunizations:statements-indicating-suspicion-of-the-vaccine",
+                  "name": "Statements indicating suspicion of the vaccine",
+                  "code_description": "Statements indicating suspicion of the vaccine or beliefs that the vaccine has a hidden agenda",
+                  "sensitive": false,
+                  "examples": [
+                    "Bill Gates wants to destroy Africa with his vaccine"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Other rumors observations or beliefs",
+              "codes": [
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:other-rumors-observations-or-beliefs:other-rumor-observation-or-belief",
+                  "name": "Other rumor, observation or belief",
+                  "code_description": "Statements that do not fit into any of the above codes.",
+                  "sensitive": false,
+                  "examples": []
+                }
+              ]
+            },
+            {
+              "name": "Statements indicating mistrust in the response",
+              "codes": [
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:statements-indicating-mistrust-in-the-response:belief-that-a-disease-is-being-used-for-political-purposes",
+                  "name": "Belief that a disease is being used for political purposes",
+                  "code_description": "Actors specifically include the government, politicians or political groups. Intentional uses may include deception or lying to the population or beliefs related to the election. Includes statements about Ebola being politicized, a policy or politics and electoral schemes.",
+                  "sensitive": false,
+                  "examples": [
+                    "Covid-19 is a policy of our authorities",
+                    "they belief now a day covid-19 is as such not big deal, but the ruling party or the government used it as the agenda to divert the political view and opinion of the people towards the election after the coming  two months"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:statements-indicating-mistrust-in-the-response:belief-that-people-are-spreading-the-disease",
+                  "name": "Belief that people are spreading the disease",
+                  "code_description": "Includes statements about people infecting the population with COVID, including using injections (for example, individuals going around communities injecting COVID-19). Does not have to be explicitly intentional but it does have a human actor.",
+                  "sensitive": false,
+                  "examples": [
+                    "Nurses are distributing tents with Covid 19 Virus to kill us all in Sierra Leone",
+                    "it is you who bring us the covid",
+                    "The rice distributed by the authorities contains the Chinese COVID-19 virus ;"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:statements-indicating-mistrust-in-the-response:belief-that-people-or-institutions-are-intentionally-harming-people",
+                  "name": "Belief that people or institutions are intentionally harming people",
+                  "code_description": "Any mentions of the disease meing used to intentionally harm people. Includes statements about politically-motivated killing. Any mention of COVID being a means to massacre people, planned murders or COVID being used as a weapon (see examples). If there is any ambiguity about the actor, code here. If specifically a healthcare worker harming, code under health care services.",
+                  "sensitive": false,
+                  "examples": [
+                    "White people want to finish the elderly people",
+                    "Epidemics are weapons to kill people.",
+                    "Corona white politics to kill Africans"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:statements-indicating-mistrust-in-the-response:belief-that-some-people-institutions-are-making-money-because-of-the-disease",
+                  "name": "Belief that some people/institutions are making money because of the disease",
+                  "code_description": "Statements that specifically mention money or business as a motivator for the outbreak, including healthcare workers, politicians and response workers. Commonly includes NGOs, foreigners, outsiders and white people using COVID for financial or economic gain.",
+                  "sensitive": false,
+                  "examples": [
+                    "The covid-19 does not exist, you are only looking for money",
+                    "covid-19 is a business for the benefit of the authorities",
+                    "Covid-19 is a disease created in the Chinese laboratory to enrich themselves.",
+                    "Those who work in the corona virus are in it for the money."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:statements-indicating-mistrust-in-the-response:belief-that-wrong-numbers-are-being-communicated",
+                  "name": "Belief that wrong numbers are being communicated",
+                  "code_description": "Statements indicating mistrust in the information on the number of cases reported, including that it is not the correct numbers that are shared, or that the numbers are increased.",
+                  "sensitive": false,
+                  "examples": [
+                    "The Covid-19 cases we are hearing are false",
+                    "The published covid-19 positive case numbers are fictional.",
+                    "Cases of corona virus are exaggerated as if people did not die before this pandemic."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:observation-perception-or-belief:statements-indicating-mistrust-in-the-response:other-statements-indicating-suspicion-of-people-or-institutions",
+                  "name": "Other statements indicating suspicion of people or institutions",
+                  "code_description": "Any other statements indicating suspicion in the people and instiutions in relation to the COVID-19 reponse, which do not fall under the more specific codes aboce.",
+                  "sensitive": false,
+                  "examples": [
+                    "You're lying with your advertising there",
+                    "band of thieves and crooks",
+                    "covid-19 is a staged production"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Question",
+          "categories": [
+            {
+              "name": "Other questions",
+              "codes": [
+                {
+                  "code_id": "covid-19:question:other-questions:other-questions",
+                  "name": "Other questions",
+                  "code_description": "Any other questions that do not fit into any of the codes above.",
+                  "sensitive": false,
+                  "examples": []
+                }
+              ]
+            },
+            {
+              "name": "Questions about behaviors that can protect people from the disease",
+              "codes": [
+                {
+                  "code_id": "covid-19:question:questions-about-behaviors-that-can-protect-people-from-the-disease:other-questions-about-behaviors-that-can-protect-people-from-the-disease",
+                  "name": "Other questions about behaviors that can protect people from the disease",
+                  "code_description": "Other questions about preventive behaviours, including the general question on what to do to protect ourselves and the people around us.",
+                  "sensitive": false,
+                  "examples": [
+                    "How does one protect oneself against coronavirus?",
+                    "How can covid-19 be prevented?"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-behaviors-that-can-protect-people-from-the-disease:questions-about-face-masks",
+                  "name": "Questions about face masks",
+                  "code_description": "Questions about face masks, including questions about who should wear them, where to finds them, and negative side effects.\n\nNOT questions about the provision of face masks by humantarian responders, this would be coded under \"Questions about the distribution of personal protective equipment\".",
+                  "sensitive": false,
+                  "examples": [
+                    "That a 2 year old baby can wear a nose pad?",
+                    "What is the importance of wearing a face mask",
+                    "How can I wear a medical mask safely?"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-behaviors-that-can-protect-people-from-the-disease:questions-about-hand-washing-or-hand-sanitizers",
+                  "name": "Questions about hand washing or hand sanitizers",
+                  "code_description": "Questions about hand washing and hand sanitizers, including how to wash your hands propoerly, how to wash hands without water or soap and how often to wash hands.",
+                  "sensitive": false,
+                  "examples": [
+                    "Can regular hand washing eradicate Covid-19?",
+                    "How do you fight covid-19 and yet there is no water?",
+                    "When to wash your hands?"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-behaviors-that-can-protect-people-from-the-disease:questions-about-physical-distancing",
+                  "name": "Questions about physical distancing",
+                  "code_description": "Questions about physical (social) distancing, including questions about how to keep a distance in markets or public transport, and about the necessity and feasibility of keeping a distance within couples or households.",
+                  "sensitive": false,
+                  "examples": [
+                    "What is Social Distance",
+                    "How can spouses concretely apply social distancing?",
+                    "Can we maintain Social Distance with our family?",
+                    "Is it necessary to separate from the bed?"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Questions about disease outbreak",
+              "codes": [
+                {
+                  "code_id": "covid-19:question:questions-about-disease-outbreak:other-questions-about-the-disease-outbreak",
+                  "name": "Other questions about the disease outbreak",
+                  "code_description": "Any other questions about the pandemic and its effects on the society.",
+                  "sensitive": false,
+                  "examples": [
+                    "What is the difference between epidemic and pandemic?",
+                    "Once COVID-19 is eradicated can it come back?",
+                    "What is needed to stop this pandemic?",
+                    "Why does the coronavirus make us feel scared and create panic when we have seen worse diseases like EBOLA?",
+                    "After corona there will not be another disease?"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-disease-outbreak:question-about-the-number-of-cases-and-geographic-areas-affected",
+                  "name": "Question about the number of cases and geographic areas affected",
+                  "code_description": "Questions about the number of cases or deaths, and where they are. Includes questions about which areas are most affected.",
+                  "sensitive": false,
+                  "examples": [
+                    "How many cases are now in South Sudan?",
+                    "Which district have not register a confirm case of Covid 19 in Sierra Leone",
+                    "Is the Coronavirus in Burkina Faso?",
+                    "We would like to know the exact number of deaths"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-disease-outbreak:questions-about-how-long-the-disease-outbreak-may-last",
+                  "name": "Questions about how long the disease outbreak may last",
+                  "code_description": "Questions about the anticipated length of the outbreak and when it will stop.",
+                  "sensitive": false,
+                  "examples": [
+                    "When will Covid-19 come to an end?",
+                    "Is this virus going to end?",
+                    "Jusqu'à quand persistera cette pandémie?"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-disease-outbreak:questions-about-the-evolution-of-the-pandemic",
+                  "name": "Questions about the evolution of the pandemic",
+                  "code_description": "Questions about the evolution of the pandemic, including if the peak has been reached, if it comes in waves.",
+                  "sensitive": false,
+                  "examples": [
+                    "Have we reached the peak of the pandemic in Gabon?",
+                    "Why hasn't the corona virus reached the rural areas?",
+                    "Has the corona virus still returned to China and America?"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-disease-outbreak:questions-about-who-is-or-is-not-affected",
+                  "name": "Questions about who is or is not affected",
+                  "code_description": "Questions about who can or is at risk of catching the disease, including questions about children catching it, or why it only affects white or old people.",
+                  "sensitive": false,
+                  "examples": [
+                    "The disease there also catches children?",
+                    "Are pregnant women more exposed to the coronavirus?",
+                    "Does corona only affect older people?",
+                    "Why does Covid-19 kill more whites than blacks?"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-disease-outbreak:questions-whether-the-outbreak-has-ended",
+                  "name": "Questions whether the outbreak has ended",
+                  "code_description": "Questions about whether the end of the pandemic has already been reached.",
+                  "sensitive": false,
+                  "examples": [
+                    "Does covid-19 still exist?",
+                    "Corona is not finished yet?",
+                    "Is it true that covid has ended?"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Questions about general situation and behaviours",
+              "codes": [
+                {
+                  "code_id": "covid-19:question:questions-about-general-situation-and-behaviours:questions-about-enforcement-of-phm",
+                  "name": "Questions about enforcement of PHM",
+                  "code_description": "Questions about the enforcement of public health measures, and mainly about why there is a lack of enforcement.",
+                  "sensitive": false,
+                  "examples": [
+                    "Why doesn't the government follow up on barrier measures?",
+                    "Why doesn't the government currently put more rigour in the application of barrier measures?",
+                    "Why should Police arrest business owners for allowing people to shop without facemask?"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-general-situation-and-behaviours:questions-about-why-we-don-t-see-sick-people",
+                  "name": "Questions about why we don't see sick people",
+                  "code_description": "Questions about not having seen people infected with the virus or who have died from the disease. \n\nNOT questions about why pictures of sick or dead people are not shown, or why their names are not published, this would be coded under \"Questions about communication and information about the pandemic\".",
+                  "sensitive": false,
+                  "examples": [
+                    "Have you ever seen a person suffering from covid19?",
+                    "Why have we never seen on television someone from South Kivu who died from covid19?",
+                    "Why are there no testimonies from victims of this disease?",
+                    "where are the people with covid19?"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Questions about health care services for the disease",
+              "codes": [
+                {
+                  "code_id": "covid-19:question:questions-about-health-care-services-for-the-disease:questions-about-health-care-services-for-the-disease",
+                  "name": "Questions about health care services for the disease",
+                  "code_description": "Questions about any health care services not falling under the other categories under this category. This includes clinical care and anything that happens at hospitals, ambulance services, where COVID-19 patients are treated, and if there are specialised doctors for COVID-19.",
+                  "sensitive": false,
+                  "examples": [
+                    "Who takes care of patients in covid 19?",
+                    "How is psychological care provided?",
+                    "Where are people with covid19 disease kept?",
+                    "What kind of doctor can treat COVID-19?"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-health-care-services-for-the-disease:questions-about-testing",
+                  "name": "Questions about testing",
+                  "code_description": "Questions about COVID tests, including about the process of getting tested, the accuracy of tests, as well as their avilability.",
+                  "sensitive": false,
+                  "examples": [
+                    "Why are tests not made available to the public?",
+                    "Why is the test done after death?",
+                    "Is the test free of charge?",
+                    "Where can covid-19 tests be done?"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Questions about how the disease spreads",
+              "codes": [
+                {
+                  "code_id": "covid-19:question:questions-about-how-the-disease-spreads:other-ways-of-transmission",
+                  "name": "Other ways of transmission",
+                  "code_description": "Other questions about ways of transmission of the virus, including whether the disease is airborne, if it can be transmitted via breastfeeding, or by sharing or touching certain objects.",
+                  "sensitive": false,
+                  "examples": [
+                    "How does Covid-19 spread?",
+                    "What are the modes of transmission of this disease?",
+                    "Can a breastfeeding woman infect her baby with corona through breast milk?",
+                    "Can you get Covid-19 from money?"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-how-the-disease-spreads:sexual-transmission",
+                  "name": "Sexual transmission",
+                  "code_description": "Questions whether the virus can be transmitted through sexual intercourse.",
+                  "sensitive": false,
+                  "examples": [
+                    "Can Covid-19 be transmitted through sexual intercourse?"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-how-the-disease-spreads:survival-of-virus-under-specific-circumstances",
+                  "name": "Survival of virus under specific circumstances",
+                  "code_description": "Questions about the the resistance of the virus to certain condition, including if the virus is killed by heat, sunlight, alcohol.\n\nNOT questions about prevention or treatment using alcohol, herbs or other substances. When prevention or treatment are mentioned, the codes under these categories are used.",
+                  "sensitive": false,
+                  "examples": [
+                    "Does the sun can kill this virus ?",
+                    "For how long does this virus stays on air?",
+                    "How long can Covid19 live on the surface?",
+                    "Can intense heat contribute to slowing down the virus?"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Questions about people or organizations responding to the disease",
+              "codes": [
+                {
+                  "code_id": "covid-19:question:questions-about-people-or-organizations-responding-to-the-disease:questions-about-people-or-organizations-responding-to-the-disease",
+                  "name": "Questions about people or organizations responding to the disease",
+                  "code_description": "Questions about the personnel, actions and mandate of other organisations in volved in the COVID-19 response.",
+                  "sensitive": false,
+                  "examples": [
+                    "The WHO is donating the vehicles, but we want them to be repaired and the government is accepting this for what?",
+                    "What made the MSF people recruit people, where are they going to work?",
+                    "Where have the NGOs that helped us against Ebola gone?"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-people-or-organizations-responding-to-the-disease:questions-about-the-red-cross",
+                  "name": "Questions about the Red Cross",
+                  "code_description": "Questions about the Red Cross Red Crescent in any context, can be double-coded with comments about preparedness activities for example. Includes questions about the payment of volunteers, about how to become a volunteer, and what the Red Cross Red Crescent it.",
+                  "sensitive": false,
+                  "examples": [
+                    "What is the red cross?",
+                    "Is CRC distributing kits to the population?",
+                    "How to get involved with Red Cross volunteers?",
+                    "Where is the red cross situated?"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Questions about people recovered from the disease",
+              "codes": [
+                {
+                  "code_id": "covid-19:question:questions-about-people-recovered-from-the-disease:questions-about-people-who-have-recovered-from-the-disease",
+                  "name": "Questions about people who have recovered from the disease",
+                  "code_description": "Any question about people who recovered from the disease. This includes questions about how many people have recovered, if they are being monitored, if they can get the disease again, as well as if people recovered have any long-term complications.",
+                  "sensitive": false,
+                  "examples": [
+                    "How many of the people cured of covid-19 are in Goma?",
+                    "Can I get infected again if had before",
+                    "Where is the follow-up for the people recovered from COVID?"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Questions about preparedness or response activities pertaining to the disease",
+              "codes": [
+                {
+                  "code_id": "covid-19:question:questions-about-preparedness-or-response-activities-pertaining-to-the-disease:questions-about-communication-and-information-about-the-pandemic",
+                  "name": "Questions about communication and information about the pandemic",
+                  "code_description": "Questions about the response's efforts to communicate about the pandemic and the response efforts. NOT questions about community health promotion activities, as these would be coded under \" Questions about community health promotion about the disease\".\n\nIncludes questions about updates on the situation, about why sick people are not shown on the media or their names published.",
+                  "sensitive": false,
+                  "examples": [
+                    "Why is it that the confirmed but not the healed are announced?",
+                    "Why don't the radio stations inform us about the epidemiological situation?",
+                    "Why has Government stopped giving COVID-19 Updates?",
+                    "Why not show the public the person who died with a corona so that they can understand the existence of the corona?"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-preparedness-or-response-activities-pertaining-to-the-disease:questions-about-community-health-promotion-about-the-disease",
+                  "name": "Questions about community health promotion about the disease",
+                  "code_description": "Questions about community health promotion activities, including household visits, radio shows and other social mobilisation activities.",
+                  "sensitive": false,
+                  "examples": [
+                    "Why are you conducting community health promotion activities without distributing anything?",
+                    "Why is community health promotion limited?",
+                    "Why are you only coming to raise awareness now?"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-preparedness-or-response-activities-pertaining-to-the-disease:questions-about-contract-tracing",
+                  "name": "Questions about contract tracing",
+                  "code_description": "Questions about the process of identifying all people that a COVID-19 patient has come in contact.",
+                  "sensitive": false,
+                  "examples": [
+                    "What mechanisms are in place to prevent people under surveillance from moving?",
+                    "Are the people contacted listed?",
+                    "How do you follow up on suspicious cases that stay at home?"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-preparedness-or-response-activities-pertaining-to-the-disease:questions-about-livelihood-support",
+                  "name": "Questions about livelihood support",
+                  "code_description": "Questions about the provision of livelihoods support to community members, including finanical aid and food.",
+                  "sensitive": false,
+                  "examples": [
+                    "where are the food vouchers?",
+                    "When are getting food parcels",
+                    "Has the government made any provision for support"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-preparedness-or-response-activities-pertaining-to-the-disease:questions-about-management-of-the-dead",
+                  "name": "Questions about management of the dead",
+                  "code_description": "Questions about the management of dead bodies, including questions about burials teams, burials in general, and whether the Red Cross is conducting safe and dignified burials.",
+                  "sensitive": false,
+                  "examples": [
+                    "Where do we bury coronavirus people?",
+                    "Why aren't the bodies of the deceased handed over?",
+                    "Why is there no SDB team during this period of Covid-19?"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-preparedness-or-response-activities-pertaining-to-the-disease:questions-about-other-preparedness-or-response-activities",
+                  "name": "Questions about other preparedness or response activities",
+                  "code_description": "Questions about any other activities of the COVID-19 response, which do not fall under the more specific codes.",
+                  "sensitive": false,
+                  "examples": [
+                    "What can be done to end covid19?",
+                    "How to reduce the impact of corona virus in the community?",
+                    "Do we have a response team for this covid-19 pandemic?"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-preparedness-or-response-activities-pertaining-to-the-disease:questions-about-provision-of-hand-washing-utensils-or-hand-sanitizers",
+                  "name": "Questions about provision of hand washing utensils or hand sanitizers",
+                  "code_description": "Questions about the provision of soaps, hand sanitizers, buckets, hand washing stations - either in public spaces or to individuals.",
+                  "sensitive": false,
+                  "examples": [
+                    "Why are hand washers available without water?",
+                    "Where are the washbasins that were at the entry points?",
+                    "Why aren't gels shared?"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-preparedness-or-response-activities-pertaining-to-the-disease:questions-about-the-distribution-of-personal-protective-equipment",
+                  "name": "Questions about the distribution of personal protective equipment",
+                  "code_description": "Questions about the provision of personal protective equipment, mainly face masks.",
+                  "sensitive": false,
+                  "examples": [
+                    "Where are the nose cones you were given to distribute?",
+                    "Why doesn't the state distribute the masks to the population?",
+                    "Where are the protection kits?"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Questions about schools and education",
+              "codes": [
+                {
+                  "code_id": "covid-19:question:questions-about-schools-and-education:questions-about-return-to-schools",
+                  "name": "Questions about return to schools",
+                  "code_description": "Questions about the reopening of schools, including when they will open, and which precautions are taken there.",
+                  "sensitive": false,
+                  "examples": [
+                    "What are the measures put in place by the government to prevent Covid 19 when all Schools reopen ?",
+                    "When will Schools be open?",
+                    "Why doesn't the government give face masks to schools?"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Questions about the disease",
+              "codes": [
+                {
+                  "code_id": "covid-19:question:questions-about-the-disease:other-questions-about-the-disease",
+                  "name": "Other questions about the disease",
+                  "code_description": "Any other questions about the disease and the virus specifically, including if the disease is mortal, if it always leads to death, what the differences to other diseases are, what the disease is in general and questions about the name.",
+                  "sensitive": false,
+                  "examples": [
+                    "What does corona mean?",
+                    "Why are coronaviruses and covid-19 called coronaviruses?",
+                    "What are the dangers of corona virus?",
+                    "What is the different between normal flu and corona flu?"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-the-disease:questions-about-new-variants-or-mutations",
+                  "name": "Questions about new variants or mutations",
+                  "code_description": "Questions about new strains, variants or mutations of the disease, NOT questions about the vaccine being effective towards new strains, variants or mutations. This should be coded under \"Other questions about the vaccines\"",
+                  "sensitive": false,
+                  "examples": [
+                    "The new variant is here in Cameroon?",
+                    "How did we get the new British variant?",
+                    "How did the copil know that among the tests made, one was a British variant?"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-the-disease:questions-about-the-existence-of-the-disease",
+                  "name": "Questions about the existence of the disease",
+                  "code_description": "Questions about the existence of the disease, including if it is real. NOT about the number of cases and geographic areas or if the pandemic has ended already, these kinds of comments would be coded under \"Question about the number of cases and geographic areas affected\" or \"Questions whether the outbreak has ended\" . This code is more about if the disease is a real disease.",
+                  "sensitive": false,
+                  "examples": [
+                    "Does covid19 actually exist?",
+                    "How do you know the disease exists?"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-the-disease:questions-about-the-origin-of-the-disease",
+                  "name": "Questions about the origin of the disease",
+                  "code_description": "Questions about where COVID-19 originated, its history, its discovery",
+                  "sensitive": false,
+                  "examples": [
+                    "Where does this Covid 19 disease come from?",
+                    "What is the origin of corona virus?",
+                    "Who is the first to get corona virus",
+                    "Where would covid-19 have started for the first time?"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-the-disease:questions-about-the-symptoms-of-the-disease",
+                  "name": "Questions about the symptoms of the disease",
+                  "code_description": "Questions about signs and symptoms of Ebola Virus Disease.\nNote: questions about the incubation period (time to symptoms) go in the \"Autres questions sur la maladie\" code.",
+                  "sensitive": false,
+                  "examples": [
+                    "What are the symptoms of the corona virus?",
+                    "Is sore throat a sign of Corona",
+                    "How can we know that someone has covid?",
+                    "Est-ce que toute sorte de toux c'est covid-19 ?"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Questions about the lockdown restriction of movement and closing borders",
+              "codes": [
+                {
+                  "code_id": "covid-19:question:questions-about-the-lockdown-restriction-of-movement-and-closing-borders:questions-about-closing-country-borders",
+                  "name": "Questions about closing country borders",
+                  "code_description": "Questions about closing country borders, about the reason for closing them and when they will be opened again.",
+                  "sensitive": false,
+                  "examples": [
+                    "When will borders be open for business people to come with goods?",
+                    "Why aren't the borders open?"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-the-lockdown-restriction-of-movement-and-closing-borders:questions-about-lockdown",
+                  "name": "Questions about lockdown",
+                  "code_description": "Questions about the lockdown measures, curfews or cessation of movements. This includes questions about why certain places are closed and how to cope with the restrictions.",
+                  "sensitive": false,
+                  "examples": [
+                    "How many people are allowed to meet in public?",
+                    "Why the curfew?",
+                    "When will the curfew be over?",
+                    "Will the government impose new containment?"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-the-lockdown-restriction-of-movement-and-closing-borders:questions-about-points-of-control-and-points-of-entry",
+                  "name": "Questions about points of control and points of entry",
+                  "code_description": "Questions about actions at points of control and points of entry, such as the taking of temperature at barriers, the obligation of washin hands or using hand sanitizers at certain places.",
+                  "sensitive": false,
+                  "examples": [
+                    "Why is the checkpoint no longer functional?",
+                    "Why is there a lighter barrier for washing hands and taking the temperature of passengers?"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-the-lockdown-restriction-of-movement-and-closing-borders:questions-about-reopening-of-certain-places",
+                  "name": "Questions about reopening of certain places",
+                  "code_description": "Questions about the reopening of places, such as bars, restaurants and places of worship. This includes questions about the reasons for the opening, and about when these places will open.",
+                  "sensitive": false,
+                  "examples": [
+                    "When will places of worship be open in Gabon?",
+                    "When will public markets be open to the public?",
+                    "Why lift the lockdown when the pandemic continues to exist?"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Questions about the role of government",
+              "codes": [
+                {
+                  "code_id": "covid-19:question:questions-about-the-role-of-government:questions-about-the-role-of-government",
+                  "name": "Questions about the role of government",
+                  "code_description": "Questions about the role and the actions of the government. NOT questions about response activities that fall under more specific codes under the category \"Questions_about_preparedness_or_response_activities_pertaining_to_the_disease\"",
+                  "sensitive": false,
+                  "examples": [
+                    "Why is our government receiving funding for covid-19 but doesn't even want to put it to use?",
+                    "What action is the government taking against covid-19?",
+                    "What did the government do to support the population in the pandemic?"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Questions about treatment for the disease",
+              "codes": [
+                {
+                  "code_id": "covid-19:question:questions-about-treatment-for-the-disease:questions-about-how-to-care-for-people-with-the-disease-at-home-outside-of-health-care-system",
+                  "name": "Questions about how to care for people with the disease at home (outside of health care system)",
+                  "code_description": "Questions related to treating or caring for people who have suspected or confirmed covid-19 at home, not in a health clinic or hospital. NOT what prevention measures to take at home.",
+                  "sensitive": false,
+                  "examples": [
+                    "How can we care for corona patients at home?"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-treatment-for-the-disease:questions-about-treatment-s-for-the-disease",
+                  "name": "Questions about treatment(s) for the disease",
+                  "code_description": "Questions about how to treat COVID-19, about the existence of a cure or medication.",
+                  "sensitive": false,
+                  "examples": [
+                    "Does covid19 have any medications",
+                    "What is used to treat the corona?",
+                    "Does Chloroquine really treat Corona?"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-treatment-for-the-disease:questions-about-use-of-herbs-or-other-natural-remedies-for-treatment",
+                  "name": "Questions about use of herbs or other natural remedies for treatment",
+                  "code_description": "Questions about the use or consumption of herbs or other natural materials for treating or curing COVID-19 (NOT for preventing COVID-19, that would be under \"Questions about other behaviours that can protect people from the disease)",
+                  "sensitive": false,
+                  "examples": [
+                    "It is true that streaming with bruegum trees works to kill the virus in patient?"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Questions about vaccines or immunizations",
+              "codes": [
+                {
+                  "code_id": "covid-19:question:questions-about-vaccines-or-immunizations:other-vaccine-questions",
+                  "name": "Other vaccine questions",
+                  "code_description": null,
+                  "sensitive": false,
+                  "examples": []
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-vaccines-or-immunizations:questions-about-the-vaccine-origin-testing-or-government-approval",
+                  "name": "Questions about the vaccine origin, testing or Government approval",
+                  "code_description": "Questions about where vaccines have been developed, and how they have tested or approved. This includes specific mentions of countries or vaccines.",
+                  "sensitive": false,
+                  "examples": [
+                    "Why isn't the government giving the covid-19 vaccination program?",
+                    "Has the vaccine been tested on blacks?",
+                    "The WHO does not validate the vaccine in Cameroon, why?"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-vaccines-or-immunizations:questions-about-vaccination-campaigns",
+                  "name": "Questions about vaccination campaigns",
+                  "code_description": "Questions about COVID vaccination campaigns, including timing of campaigns, costs of the vaccines, vaccination cards, and questions about forced vaccinations . NOT questions related to access and priority groups or questions related to vaccination approvals.",
+                  "sensitive": false,
+                  "examples": [
+                    "is the vaccine mandatory?",
+                    "Are the vaccines free?",
+                    "will the vaccine be an annual shot?"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-vaccines-or-immunizations:questions-about-vaccination-schedule-and-use",
+                  "name": "Questions about vaccination schedule and use",
+                  "code_description": "Questions about vaccine doses, including intervals and mixing vaccines between doses",
+                  "sensitive": false,
+                  "examples": [
+                    "How many days different between the first and the last dose of COVID-19 Vaccine",
+                    "why double vaccination",
+                    "Can you take any other vaccine after AstraZeneca should it not come in time"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-vaccines-or-immunizations:questions-about-vaccine-access-and-priority-groups",
+                  "name": "Questions about vaccine access and priority groups",
+                  "code_description": "Questions about how to access or obtain a vaccine. This includes questions about prioritization groups, registration or physical locations for immunization.",
+                  "sensitive": false,
+                  "examples": [
+                    "Who will get the vaccine?",
+                    "Where do we have to go to get vaccinated?",
+                    "Is everyone going to get vaccinated?"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-vaccines-or-immunizations:questions-about-vaccine-effectiveness",
+                  "name": "Questions about vaccine effectiveness",
+                  "code_description": "Questions about vaccine efficiency and efficacy and how long the vaccine is effective for",
+                  "sensitive": false,
+                  "examples": [
+                    "Can those who have been vaccinated get affected again with COVID-19?",
+                    "why have the number of deaths reduced? Does it mean the vaccine is working ?",
+                    "Is it true that the vaccine provides complete immunity from the virus"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-vaccines-or-immunizations:questions-about-vaccine-safety",
+                  "name": "Questions about vaccine safety",
+                  "code_description": "Questions about side effects or other health risks related to the vaccine.",
+                  "sensitive": false,
+                  "examples": [
+                    "There is now a vaccine for Covid-19, and rumour has it that it is fatal, is this true?",
+                    "Does this vaccine have side effects?",
+                    "How can we be sure that this vaccine will not cause us any inconvenience?"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:question:questions-about-vaccines-or-immunizations:questions-about-whether-there-is-a-vaccine-for-the-disease",
+                  "name": "Questions about whether there is a vaccine for the disease",
+                  "code_description": "Questions about the availability of a vaccine. This includes questions about when it will be availability and the progress of vaccine trials.",
+                  "sensitive": false,
+                  "examples": [
+                    "Is there a vaccine for this disease",
+                    "Why isn't there a Covid 19 vaccine?",
+                    "How can we find the vaccine?",
+                    "What stage has the covid19 vaccine study reached?"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Questions about what to do if you suspect someone has the disease",
+              "codes": [
+                {
+                  "code_id": "covid-19:question:questions-about-what-to-do-if-you-suspect-someone-has-the-disease:questions-about-what-to-do-if-you-suspect-someone-has-the-disease",
+                  "name": "Questions about what to do if you suspect someone has the disease",
+                  "code_description": "Questions about the steps to take if you believe you or another person has COVID-19, including on where to go and who to call.",
+                  "sensitive": false,
+                  "examples": [
+                    "What number do we call to report a case of this virus.",
+                    "My girlfriend sneeze alot, what can I do?",
+                    "What should I do if I get sick?"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Questions that reveal mistrust or suspicion about people or institutions",
+              "codes": [
+                {
+                  "code_id": "covid-19:question:questions-that-reveal-mistrust-or-suspicion-about-people-or-institutions:questions-that-reveal-mistrust-or-suspicion-about-people-or-institutions",
+                  "name": "Questions that reveal mistrust or suspicion about people or institutions",
+                  "code_description": "Any question indicating mistrust in the response, this includes questions about COVID funds not being used properly, about the diease being used to exterminate people, about it being used for political purposes.",
+                  "sensitive": false,
+                  "examples": [
+                    "Where do the funds that institutions give to CORUS on a daily basis go?",
+                    "Why is the government increasing the number of cases?",
+                    "Aren't the new greetings forms of colonisation?"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Request or suggestion",
+          "categories": [
+            {
+              "name": "Other suggestions",
+              "codes": [
+                {
+                  "code_id": "covid-19:request-or-suggestion:other-suggestions:other-suggestions",
+                  "name": "Other suggestions",
+                  "code_description": "Any other suggestions.",
+                  "sensitive": false,
+                  "examples": []
+                }
+              ]
+            },
+            {
+              "name": "Refusal or request to be left alone",
+              "codes": [
+                {
+                  "code_id": "covid-19:request-or-suggestion:refusal-or-request-to-be-left-alone:refusal-or-request-to-be-left-alone",
+                  "name": "Refusal or request to be left alone",
+                  "code_description": "Statements not to want to talk to the person and requests to be left alone.",
+                  "sensitive": false,
+                  "examples": [
+                    "You, children of Bill Gates, leave us alone.",
+                    "Stop bothering us with your questions",
+                    "corona is already finished, don't confuse people with it anymore."
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Request for flexible, efficient action",
+              "codes": [
+                {
+                  "code_id": "covid-19:request-or-suggestion:request-for-flexible-efficient-action:request-for-flexible-efficient-action",
+                  "name": "Request for flexible, efficient action",
+                  "code_description": "Suggestion at the response level, including faster and more flexible action. Speed, modifying action, notions of efficiency of response processes.\n\nNOT requests for specific response interventions, this would be coded under \"Suggestions_about_preparedness_or_response_activities_pertaining_to_the_disease\"",
+                  "sensitive": false,
+                  "examples": [
+                    "People Demand Action",
+                    "Instead of chatting for nothing, come out and help us",
+                    "Also act with deeds and not with the mouth."
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Request for quality health care service (test, medicine, treatment)",
+              "codes": [
+                {
+                  "code_id": "covid-19:request-or-suggestion:request-for-quality-health-care-service-test-medicine-treatment:request-for-support-for-specific-case",
+                  "name": "Request for support for specific case",
+                  "code_description": "Request for medical support of a specific case, this includes support to provide ambulance services.",
+                  "sensitive": false,
+                  "examples": [
+                    "One sick patient, help with ambulance service",
+                    "My wife is sick, please help us."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:request-or-suggestion:request-for-quality-health-care-service-test-medicine-treatment:request-to-improve-health-care",
+                  "name": "Request to improve health care",
+                  "code_description": "Requests to improve or provide health care services. This includes the request to take care of COVID-19 patients, to treat people for free, to ensure right equipment of hospitals, as well as to build treatment centres for COVID-19.",
+                  "sensitive": false,
+                  "examples": [
+                    "There is a need to equip hospitals in rural areas",
+                    "Build the appropriate hospitals for Covid-19 in Bafwasende",
+                    "Taking good care of patients to avoid the further spread of corona."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:request-or-suggestion:request-for-quality-health-care-service-test-medicine-treatment:request-to-provide-medicines",
+                  "name": "Request to provide medicines",
+                  "code_description": "Requests for the provision of medicines. This includes requests to speed up and support of medicine trials.",
+                  "sensitive": false,
+                  "examples": [
+                    "Red Cross to help with Corona medication",
+                    "There is need to find medicine quickly",
+                    "We are asking the government to help us find a good corrona virus medicine."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:request-or-suggestion:request-for-quality-health-care-service-test-medicine-treatment:request-to-test-people",
+                  "name": "Request to test people",
+                  "code_description": "Requests to test people, this includes requests for making tests available to people, for them to be for free, as well as requests for mass testing.",
+                  "sensitive": false,
+                  "examples": [
+                    "That the covid-19 test be free of charge",
+                    "Test the populations",
+                    "We want a testing point accessible to all"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:request-or-suggestion:request-for-quality-health-care-service-test-medicine-treatment:request-to-vaccinate-people",
+                  "name": "Request to vaccinate people",
+                  "code_description": "Request to vaccinate people. This includes requests to speed up or support vaccine trials.",
+                  "sensitive": false,
+                  "examples": [
+                    "Make the vaccine available to everyone",
+                    "Help us find the vaccine",
+                    "Please bring us the vaccine against covid-19"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:request-or-suggestion:request-for-quality-health-care-service-test-medicine-treatment:suggestions-about-immunization",
+                  "name": "Suggestions about immunization",
+                  "code_description": "Suggestions on how to improve or engage with vaccination",
+                  "sensitive": false,
+                  "examples": [
+                    "The vaccine should go to teachers. I think you should focus on convincing young people to get vaccinated"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Request for responsive government action against the disease",
+              "codes": [
+                {
+                  "code_id": "covid-19:request-or-suggestion:request-for-responsive-government-action-against-the-disease:enforcement-and-encouragement-of-phm",
+                  "name": "Enforcement and encouragement of PHM",
+                  "code_description": "Requests for the government to make sure public health measures are followed. This includes requests for better monitoring, as well as the sanction the non-adherence to rules.",
+                  "sensitive": false,
+                  "examples": [
+                    "That the barriers are well controlled to reduce the transmission.",
+                    "Government to monitor Covid 19 health measures in Schools and markets",
+                    "That the police insist on the compulsory wearing of masks."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:request-or-suggestion:request-for-responsive-government-action-against-the-disease:request-for-responsive-government-action-against-the-disease",
+                  "name": "Request for responsive government action against the disease",
+                  "code_description": "Requests for the government to take an active role in the COVID-19 response.\n\nNOT requests for specific response interventions, this would be coded under \"Suggestions_about_preparedness_or_response_activities_pertaining_to_the_disease\"",
+                  "sensitive": false,
+                  "examples": [
+                    "Government should be more proactive and try to stop this virus from spreading in Nigeria",
+                    "That the government can get involved",
+                    "Pray to the Minister of Health to make further efforts in the eradication of this pandemic of corona virus disease"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Request to stop the disease outbreak",
+              "codes": [
+                {
+                  "code_id": "covid-19:request-or-suggestion:request-to-stop-the-disease-outbreak:request-to-stop-the-disease-outbreak",
+                  "name": "Request to stop the disease outbreak",
+                  "code_description": "Requests  to the government or the humanitarian community to end the pandemic.",
+                  "sensitive": false,
+                  "examples": [
+                    "People call on government to end covid pendemia-19",
+                    "Please eradicate this corona virus disease",
+                    "Doctors should do everything they can to stop this disease."
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Request to train or involve certain people or institutions",
+              "codes": [
+                {
+                  "code_id": "covid-19:request-or-suggestion:request-to-train-or-involve-certain-people-or-institutions:request-to-train-or-involve-certain-people-or-institutions",
+                  "name": "Request to train or involve certain people or institutions",
+                  "code_description": "Requests for the implication and participation of certain groups or people.",
+                  "sensitive": false,
+                  "examples": [
+                    "Strengthen the capacity of local leaders",
+                    "That the police be trained in the fight against corona virus",
+                    "Please train pastors in the fight against covid-19"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Suggestions about preparedness or response activities pertaining to the disease",
+              "codes": [
+                {
+                  "code_id": "covid-19:request-or-suggestion:suggestions-about-preparedness-or-response-activities-pertaining-to-the-disease:request-for-community-health-promotion-about-the-disease",
+                  "name": "Request for community health promotion about the disease",
+                  "code_description": "Requests for community health promotion on the disease. This includes requests to scale up efforts, to conduct these activities in certain areas, or reach specific groups of people.",
+                  "sensitive": false,
+                  "examples": [
+                    "Health promotion activities on covid-19 must be carried out in the suburbs and even in the villages.",
+                    "The Red Cross must organise health promotion sessions.",
+                    "Instead of a caravan with a loudspeaker, it was better to go door to door to reach as many people as possible."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:request-or-suggestion:suggestions-about-preparedness-or-response-activities-pertaining-to-the-disease:request-for-distribution-of-hand-washing-utensils-or-hand-sanitizers",
+                  "name": "Request for distribution of hand washing utensils or hand sanitizers",
+                  "code_description": "Requests for the provision of soaps, hand sanitizers, buckets, hand washing stations - either in public spaces or to individuals.",
+                  "sensitive": false,
+                  "examples": [
+                    "Demand for water and soap",
+                    "There must be a free distribution of veronica buckets and hand washing facilities",
+                    "Install the tap buckets in the crossroads for hand washing"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:request-or-suggestion:suggestions-about-preparedness-or-response-activities-pertaining-to-the-disease:request-for-distribution-of-personal-protective-equipment",
+                  "name": "Request for distribution of personal protective equipment",
+                  "code_description": "Requests for the provision of personal protective equipment, mainly face masks.",
+                  "sensitive": false,
+                  "examples": [
+                    "Distribute the masks",
+                    "The government should share with us someface masks and other things"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:request-or-suggestion:suggestions-about-preparedness-or-response-activities-pertaining-to-the-disease:request-for-educational-materials-about-the-disease",
+                  "name": "Request for educational materials about the disease",
+                  "code_description": "Requests for educational materials, including flyers and posters.",
+                  "sensitive": false,
+                  "examples": [
+                    "We need the Covid-19 leaflets",
+                    "That the Red Cross distributes awareness leaflets to households in Nyamugo."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:request-or-suggestion:suggestions-about-preparedness-or-response-activities-pertaining-to-the-disease:suggestion-to-show-sick-or-recovered-people",
+                  "name": "Suggestion to show sick or recovered people",
+                  "code_description": "Requests to show sick, recovered or people deceased of COVID-19 in the media.",
+                  "sensitive": false,
+                  "examples": [
+                    "We need to be shown the sick, the healed and even the dead of the covid19",
+                    "The importance of witnessing must be shown in order to encourage the covid healers to do this.",
+                    "Show us where the Covid 19 patients are"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:request-or-suggestion:suggestions-about-preparedness-or-response-activities-pertaining-to-the-disease:suggestions-about-contact-tracing",
+                  "name": "Suggestions about contact tracing",
+                  "code_description": "Suggestions linked to contact tracing team activities, and the contact tracing process",
+                  "sensitive": false,
+                  "examples": [
+                    "Do everything you can to properly supervise the contact that a person has had in recent times so that they cannot contaminate others.",
+                    "That you make a good identification of contact persons."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:request-or-suggestion:suggestions-about-preparedness-or-response-activities-pertaining-to-the-disease:suggestions-about-other-preparedness-or-response-activities",
+                  "name": "Suggestions about other preparedness or response activities",
+                  "code_description": "Suggestions or requests linked to any other response activities.",
+                  "sensitive": false,
+                  "examples": [
+                    "The Red Cross should have its toll-free number.",
+                    "WHO must reassure people, not scare them.",
+                    "disinfect the markets twice a week"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:request-or-suggestion:suggestions-about-preparedness-or-response-activities-pertaining-to-the-disease:suggestions-to-provide-livelihood-support",
+                  "name": "Suggestions to provide livelihood support",
+                  "code_description": "Requests for livelihoods support, including financial support, or request for food.",
+                  "sensitive": false,
+                  "examples": [
+                    "I just want the food vouchers, that's all",
+                    "Red Cross to provide food for us during lockdown",
+                    "We need accompanying measures, we are poor."
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Suggestions linked to lockdown restriction of movement and closing borders",
+              "codes": [
+                {
+                  "code_id": "covid-19:request-or-suggestion:suggestions-linked-to-lockdown-restriction-of-movement-and-closing-borders:suggestions-about-points-of-control-and-points-of-entry",
+                  "name": "Suggestions about points of control and points of entry",
+                  "code_description": "Suggestions linked to point of control and points of entry. This includes suggestions to have more check-points, to control more thoroughly, and to use thermoflashs.",
+                  "sensitive": false,
+                  "examples": [
+                    "Put thermoflashes in all travel agencies and other public places.",
+                    "Set up the checkpoint in the middle of RUTSHURU and Nyiragongo to detect people with corona.",
+                    "Reinforce devices to test travellers at barriers"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:request-or-suggestion:suggestions-linked-to-lockdown-restriction-of-movement-and-closing-borders:suggestions-about-transportation",
+                  "name": "Suggestions about transportation",
+                  "code_description": "Suggestions linked to transport",
+                  "sensitive": false,
+                  "examples": [
+                    "Avoid continuous travel during this period of the epidemic.",
+                    "Restrict transit in certain areas",
+                    "transport is a very important pillar in the dvpt but the government should delimit areas of high contamination in order to limit movement to these areas"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:request-or-suggestion:suggestions-linked-to-lockdown-restriction-of-movement-and-closing-borders:suggestions-to-close-country-borders",
+                  "name": "Suggestions to close country borders",
+                  "code_description": "Suggestions to close country borders.",
+                  "sensitive": false,
+                  "examples": [
+                    "Let the borders be closed",
+                    "we don't want any of the people extern of cameroon"
+                  ]
+                },
+                {
+                  "code_id": "covid-19:request-or-suggestion:suggestions-linked-to-lockdown-restriction-of-movement-and-closing-borders:suggestions-to-introduce-lockdown-or-close-certain-places",
+                  "name": "Suggestions to introduce lockdown or close certain places",
+                  "code_description": "Requests to reintroduce the lockdown or to close certain places.",
+                  "sensitive": false,
+                  "examples": [
+                    "The Government to lockdown the capital City (Freetown) because of the increase in Covid 19",
+                    "We ask our authorities to re-contain the population because of the failure to comply with the barrier measures in public areas."
+                  ]
+                },
+                {
+                  "code_id": "covid-19:request-or-suggestion:suggestions-linked-to-lockdown-restriction-of-movement-and-closing-borders:suggestions-to-lift-lockdown-or-open-certain-places",
+                  "name": "Suggestions to lift lockdown or open certain places",
+                  "code_description": "Requests to lift the lockdown or to open certain places. This includes requests to open churches and schools.",
+                  "sensitive": false,
+                  "examples": [
+                    "Call for the opening of schools",
+                    "To lift the lockdown in DRC, otherwise people will die of starvation.",
+                    "Open the churches to worship our lord"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Suggestions linked to schools and education",
+              "codes": [
+                {
+                  "code_id": "covid-19:request-or-suggestion:suggestions-linked-to-schools-and-education:protection-and-guidance-of-children-at-schools",
+                  "name": "Protection and guidance of children at schools",
+                  "code_description": "Suggestions and requests linked to the reopneing of schools. This includes the disinfection of classrooms, the provision of masks at schools, as well as physical distancing.",
+                  "sensitive": false,
+                  "examples": [
+                    "We need to strengthen the monitoring of our children at school",
+                    "Consider providing schools with covid protective equipment-19",
+                    "That teachers monitor pupils at school and put a lot of emphasis on hygiene measures."
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Sensitive or violent comment",
+          "categories": [
+            {
+              "name": "Other sensitive or violent statement",
+              "codes": [
+                {
+                  "code_id": "covid-19:sensitive-or-violent-comment:other-sensitive-or-violent-statement:other-sensitive-or-violent-statement",
+                  "name": "Other sensitive or violent statement",
+                  "code_description": "Statement that is threatening the Red Cross or the response and the people involved in general.",
+                  "sensitive": true,
+                  "examples": [
+                    "I'm gonna pull the machete out on you, disappear.",
+                    "If the corona vaccinators come here to us, they will be beaten to death.",
+                    "Please really tell the mayor that if covid-19 comes back to Butembo again, we'll all gather to burn down the Butembo town hall."
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Statement about sexual exploitation or abuse",
+              "codes": [
+                {
+                  "code_id": "covid-19:sensitive-or-violent-comment:statement-about-sexual-exploitation-or-abuse:statement-about-sexual-exploitation-or-abuse",
+                  "name": "Statement about sexual exploitation or abuse",
+                  "code_description": "Any statement mentioning or indicating cases of sexual exploitation or abuse. This also includes cases of sexual and gender based violence.",
+                  "sensitive": true,
+                  "examples": [
+                    "A 14 years old girl was raped and authorities are demanding money from the father before investigation",
+                    "Le personnel humanitaire maltraite nos femmes"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Statement that is a complaint about a specific responder",
+              "codes": [
+                {
+                  "code_id": "covid-19:sensitive-or-violent-comment:statement-that-is-a-complaint-about-a-specific-responder:statement-that-is-a-complaint-about-a-specific-responder",
+                  "name": "Statement that is a complaint about a specific responder",
+                  "code_description": "Specific complaint about an actor involved in the humanitarian response. This includes mentions of corruption or nepotism.",
+                  "sensitive": true,
+                  "examples": [
+                    "The distribution of donations is done by affinity",
+                    "Police beaten people for facemask"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Statement that is a threat",
+              "codes": [
+                {
+                  "code_id": "covid-19:sensitive-or-violent-comment:statement-that-is-a-threat:statement-that-is-a-threat",
+                  "name": "Statement that is a threat",
+                  "code_description": "Any statement on issues that could have security implications. This includes statements that show that people are or could be harmed.",
+                  "sensitive": true,
+                  "examples": [
+                    "killing affected persons will reduce Covid-19",
+                    "One person wanted to stone the vehicle with the believe volunteers are Coronavirus carriers"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

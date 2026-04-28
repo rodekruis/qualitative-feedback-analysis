@@ -1,0 +1,24 @@
+{
+  "marketplaces": [
+    "anthropics/claude-plugins-official",
+    "mariushelf/claude-swe-tools",
+    "ast-grep/agent-skill",
+    "zilliztech/memsearch"
+  ],
+  "plugins": [
+    "superpowers",
+    "pyright-lsp",
+    "commit-commands",
+    "frontend-design",
+    "swe-tools",
+    "memsearch",
+    "ast-grep"
+  ],
+  "mcp_servers": [
+    {
+      "name": "context7",
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp@latest"]
+    }
+  ]
+}

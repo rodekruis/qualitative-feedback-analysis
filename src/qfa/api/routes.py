@@ -12,12 +12,18 @@ from qfa.api.dependencies import (
     require_superuser,
 )
 from qfa.api.schemas import (
+    AggregateSummary,
     AllUsageStatsResponse,
     AnalyzeRequest,
     AnalyzeResponse,
+    AssignCodesRequest,
+    AssignCodesResponse,
+    CodeItem,
+    CodeItems,
     DistributionStatsResponse,
     FeedbackItemSummary,
     HealthResponse,
+    SummarizeAggregateResponse,
     SummarizeFeedbackMetadata,
     SummarizeRequest,
     SummarizeResponse,
@@ -26,6 +32,7 @@ from qfa.api.schemas import (
 )
 from qfa.domain.models import (
     AnalysisRequest,
+    CodingAssignmentRequest,
     DistributionStats,
     FeedbackItem,
     TenantApiKey,
@@ -91,12 +98,15 @@ async def analyze(
         tenant_id=tenant.tenant_id,
     )
 
-    result = await orchestrator.analyze(domain_request, deadline)
+    result = await orchestrator.analyze(
+        domain_request, deadline, anonymize=not body.deactivate_anonymization
+    )
 
     return AnalyzeResponse(
         analysis=result.result,
         document_count=len(body.documents),
         request_id=request.state.request_id,
+        used_anonymization=not body.deactivate_anonymization,
     )
 
 
@@ -246,7 +256,11 @@ async def summarize(
         tenant_id=tenant.tenant_id,
     )
 
-    result = await orchestrator.summarize(domain_request, deadline)
+    result = await orchestrator.summarize(
+        domain_request,
+        deadline,
+        anonymize=not body.deactivate_anonymization,
+    )
 
     return SummarizeResponse(
         summaries=[
@@ -258,6 +272,104 @@ async def summarize(
             )
             for item in result.feedback_item_summaries
         ],
+        used_anonymization=not body.deactivate_anonymization,
+    )
+
+
+@router.post("/v1/assign_codes", response_model=AssignCodesResponse, status_code=200)
+async def assign_codes(
+    body: AssignCodesRequest,
+    tenant: TenantApiKey = Depends(authenticate_request),
+    orchestrator: OrchestratorPort = Depends(get_orchestrator),
+) -> AssignCodesResponse:
+    """Assign codes via iterative LLM picks at each level of the framework."""
+    deadline = datetime.now(UTC) + timedelta(seconds=120)
+
+    domain_items = tuple(
+        FeedbackItem(id=item.id, text=item.content, metadata={})
+        for item in body.feedback_items
+    )
+    domain_request = CodingAssignmentRequest(
+        feedback_items=domain_items,
+        coding_framework=body.coding_framework,
+        max_codes=body.max_codes,
+        tenant_id=tenant.tenant_id,
+    )
+
+    result = await orchestrator.assign_codes(domain_request, deadline)
+
+    return AssignCodesResponse(
+        coded_feedback_items=[
+            CodeItems(
+                feedback_item_id=coded.feedback_item_id,
+                code_items=[
+                    CodeItem(
+                        code_id=assigned.code_id,
+                        code_label=assigned.code_label,
+                    )
+                    for assigned in coded.assigned_codes
+                ],
+            )
+            for coded in result.coded_feedback_items
+        ],
+    )
+
+
+@router.post(
+    "/v1/summarize-aggregate",
+    response_model=SummarizeAggregateResponse,
+    status_code=200,
+)
+async def summarize_aggregate(
+    body: SummarizeRequest,
+    request: Request,
+    tenant: TenantApiKey = Depends(authenticate_request),
+    orchestrator: OrchestratorPort = Depends(get_orchestrator),
+) -> SummarizeAggregateResponse:
+    """Summarize all submitted feedback items as a single aggregate summary.
+
+    Parameters
+    ----------
+    body : SummarizeRequest
+        The request body containing feedback items and summarization options.
+    request : Request
+        The incoming HTTP request.
+    tenant : TenantApiKey
+        The authenticated tenant, injected via dependency.
+    orchestrator : OrchestratorPort
+        The orchestrator service, injected via dependency.
+
+    Returns
+    -------
+    SummarizeAggregateResponse
+        A single summary with themes ordered by frequency across all items.
+    """
+    deadline = datetime.now(UTC) + timedelta(seconds=120)
+
+    feedback_items = tuple(
+        FeedbackItem(
+            id=item.id,
+            text=item.content,
+            metadata=_summarize_metadata_to_domain(item.metadata),
+        )
+        for item in body.feedback_items
+    )
+    domain_request = DomainSummaryRequest(
+        feedback_items=feedback_items,
+        output_language=body.output_language,
+        prompt=body.prompt,
+        tenant_id=tenant.tenant_id,
+    )
+
+    result = await orchestrator.summarize_aggregate(domain_request, deadline)
+
+    return SummarizeAggregateResponse(
+        summary=AggregateSummary(
+            ids=list(result.ids),
+            title=result.title,
+            summary=result.summary,
+            quality_score=result.quality_score,
+        )
     )
 
 

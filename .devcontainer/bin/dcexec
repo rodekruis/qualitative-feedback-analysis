@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Host-side helper: start the devcontainer (if not running) and drop into it.
+# Usage:
+#   dcexec              # interactive zsh
+#   dcexec claude       # run a single command (e.g. claude) then exit
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel)"
+cd "$root"
+
+devcontainer up --workspace-folder .
+exec devcontainer exec --workspace-folder . "${@:-zsh}"

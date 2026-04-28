@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Host-side helper: rebuild the devcontainer image and recreate the container.
+# Use after editing Dockerfile, docker-compose.yml, or anything else baked
+# into the image. Named volumes (venv, claude-config, shell-history) are
+# preserved — pass --wipe to also drop them for a fully clean slate.
+#
+# Usage:
+#   dcrebuild              # rebuild image (with cache), recreate container
+#   dcrebuild --no-cache   # force full rebuild, ignoring Docker layer cache
+#   dcrebuild --wipe       # also remove named volumes (loses .venv, Claude config)
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel)"
+cd "$root"
+
+compose_file=".devcontainer/docker-compose.yml"
+
+build_args=()
+wipe=0
+for arg in "$@"; do
+    case "$arg" in
+        --no-cache) build_args+=(--no-cache) ;;
+        --wipe)     wipe=1 ;;
+        *) echo "unknown flag: $arg" >&2; exit 2 ;;
+    esac
+done
+
+if [[ "$wipe" -eq 1 ]]; then
+    echo "==> Removing container and named volumes (--wipe)..."
+    docker compose -f "$compose_file" down -v
+fi
+
+echo "==> Building image..."
+docker compose -f "$compose_file" build "${build_args[@]}"
+
+echo "==> Recreating container..."
+exec devcontainer up --workspace-folder . --remove-existing-container
