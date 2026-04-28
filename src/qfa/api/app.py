@@ -3,7 +3,7 @@
 import importlib.resources
 import logging
 import secrets
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
@@ -481,65 +481,65 @@ def _register_custom_model_prices() -> None:
         )
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Application lifespan: compose and inject all dependencies.
+LLMFactory = Callable[[LLMSettings], LLMPort]
+"""Factory that builds an ``LLMPort`` from settings.
 
-    Parameters
-    ----------
-    app : FastAPI
-        The FastAPI application instance.
+The default is ``build_llm_client`` (real LiteLLM client). Tests can pass
+their own factory to ``create_app`` to inject a fake without monkeypatching.
+"""
 
-    Yields
-    ------
-    None
-    """
-    settings = AppSettings()
-    setup_logging(settings.log)
 
-    _register_custom_model_prices()
+def _make_lifespan(llm_factory: LLMFactory):
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+        settings = AppSettings()
+        setup_logging(settings.log)
 
-    api_keys = settings.auth.api_keys
+        _register_custom_model_prices()
 
-    engine = None
-    usage_repo = None
+        api_keys = settings.auth.api_keys
 
-    base_llm = build_llm_client(settings.llm)
-    llm_for_orch: LLMPort = base_llm
+        engine = None
+        usage_repo = None
 
-    if settings.db.track_usage:
-        from qfa.adapters.db import (
-            SqlAlchemyUsageRepository,
-            create_async_engine_from_url,
-            create_session_factory,
+        base_llm = llm_factory(settings.llm)
+        llm_for_orch: LLMPort = base_llm
+
+        if settings.db.track_usage:
+            from qfa.adapters.db import (
+                SqlAlchemyUsageRepository,
+                create_async_engine_from_url,
+                create_session_factory,
+            )
+            from qfa.adapters.migrations import upgrade_to_head
+            from qfa.adapters.tracking_llm import TrackingLLMAdapter
+
+            engine = create_async_engine_from_url(settings.db.url)
+            await upgrade_to_head(engine, settings.db.url)
+
+            session_factory = create_session_factory(engine)
+            usage_repo = SqlAlchemyUsageRepository(session_factory)
+            llm_for_orch = TrackingLLMAdapter(inner=base_llm, usage_repo=usage_repo)
+            logger.info("Usage tracking enabled (per-attempt, per-operation)")
+
+        orchestrator: OrchestratorPort = StandardOrchestrator(
+            llm=llm_for_orch,
+            settings=settings.orchestrator,
+            llm_timeout_seconds=settings.llm.timeout_seconds,
+            max_total_tokens=settings.llm.max_total_tokens,
         )
-        from qfa.adapters.migrations import upgrade_to_head
-        from qfa.adapters.tracking_llm import TrackingLLMAdapter
 
-        engine = create_async_engine_from_url(settings.db.url)
-        await upgrade_to_head(engine, settings.db.url)
+        app.state.orchestrator = orchestrator
+        app.state.api_keys = api_keys
+        app.state.settings = settings
+        app.state.usage_repo = usage_repo
 
-        session_factory = create_session_factory(engine)
-        usage_repo = SqlAlchemyUsageRepository(session_factory)
-        llm_for_orch = TrackingLLMAdapter(inner=base_llm, usage_repo=usage_repo)
-        logger.info("Usage tracking enabled (per-attempt, per-operation)")
+        yield
 
-    orchestrator: OrchestratorPort = StandardOrchestrator(
-        llm=llm_for_orch,
-        settings=settings.orchestrator,
-        llm_timeout_seconds=settings.llm.timeout_seconds,
-        max_total_tokens=settings.llm.max_total_tokens,
-    )
+        if engine is not None:
+            await engine.dispose()
 
-    app.state.orchestrator = orchestrator
-    app.state.api_keys = api_keys
-    app.state.settings = settings
-    app.state.usage_repo = usage_repo
-
-    yield
-
-    if engine is not None:
-        await engine.dispose()
+    return lifespan
 
 
 def register_exception_handlers(app: FastAPI) -> None:
@@ -560,17 +560,27 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(Exception, _handle_unhandled_exception)
 
 
-def create_app() -> FastAPI:
+def create_app(*, llm_factory: LLMFactory | None = None) -> FastAPI:
     """Create and configure the FastAPI application.
+
+    Parameters
+    ----------
+    llm_factory : LLMFactory | None
+        Optional override for the LLM-port factory. Defaults to
+        ``build_llm_client`` (the real LiteLLM client). Tests pass a fake
+        factory here to inject a stubbed ``LLMPort`` without monkeypatching
+        — the lifespan still wraps it in ``TrackingLLMAdapter`` exactly as
+        it would the real client.
 
     Returns
     -------
     FastAPI
         The fully configured application instance.
     """
+    factory: LLMFactory = llm_factory if llm_factory is not None else build_llm_client
     app = FastAPI(
         title="Feedback Analysis Backend",
-        lifespan=lifespan,
+        lifespan=_make_lifespan(factory),
         version=qfa.__version__,
     )
     app.add_middleware(RequestLoggingMiddleware)  # type: ignore[arg-type]

@@ -2,9 +2,9 @@
 
 These tests boot the real FastAPI stack via ``LifespanManager`` so the
 startup-time advisory-lock migration and ``TrackingLLMAdapter`` wiring run
-exactly as in production. LiteLLM is faked at the HTTP transport layer
-via ``respx`` so the real ``LiteLLMClient`` and ``TrackingLLMAdapter`` are
-exercised — including ``response_cost`` extraction and exception classes.
+exactly as in production. The LLM port is injected via ``create_app``'s
+``llm_factory`` parameter — no monkeypatching, no respx; ``TrackingLLMAdapter``
+still wraps the fake exactly as it would wrap the real client.
 
 Gated by ``@pytest.mark.e2e`` and excluded from the default test run.
 Run with ``make db-up && make test-integration``.
@@ -21,11 +21,73 @@ import sqlalchemy as sa
 from asgi_lifespan import LifespanManager
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from qfa.domain.models import LLMResponse
 from tests.integration.conftest import integration_db_url
 
 E2E_TENANT_ID = "tenant-e2e"
 E2E_API_KEY = "e2e-key"
 E2E_SUPER_KEY = "e2e-super"
+
+
+class FakeLLMPort:
+    """Queue-based ``LLMPort`` fake for e2e tests.
+
+    Each ``complete()`` call pops the next queued item. Items are either
+    ``LLMResponse`` (returned) or ``Exception`` (raised). An empty queue
+    raises ``AssertionError`` so unexpected calls fail loudly.
+    """
+
+    def __init__(self) -> None:
+        self._queued: list[LLMResponse | Exception] = []
+        self.calls: list[dict] = []
+
+    def queue_response(self, response: LLMResponse) -> None:
+        self._queued.append(response)
+
+    def queue_failure(self, exc: Exception) -> None:
+        self._queued.append(exc)
+
+    def queue_default_response(
+        self,
+        text: str = "ok",
+        model: str = "gpt-3.5-turbo",
+        prompt_tokens: int = 5,
+        completion_tokens: int = 2,
+        cost: float = 0.0001,
+    ) -> None:
+        self._queued.append(
+            LLMResponse(
+                text=text,
+                model=model,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                cost=cost,
+            )
+        )
+
+    async def complete(
+        self,
+        system_message: str,
+        user_message: str,
+        timeout: float,
+        tenant_id: str,
+    ) -> LLMResponse:
+        self.calls.append(
+            {
+                "system_message": system_message,
+                "user_message": user_message,
+                "timeout": timeout,
+                "tenant_id": tenant_id,
+            }
+        )
+        if not self._queued:
+            raise AssertionError(
+                "FakeLLMPort.complete called with no queued response/failure"
+            )
+        item = self._queued.pop(0)
+        if isinstance(item, BaseException):
+            raise item
+        return item
 
 
 async def _probe_or_skip(url: str) -> None:
@@ -52,15 +114,16 @@ async def e2e_db_url() -> str:
 
 
 @pytest_asyncio.fixture
-async def e2e_app(e2e_db_url: str, monkeypatch_session):
-    """Boot the FastAPI app with full lifespan against the test DB."""
-    monkeypatch_session.setenv("DB_TRACK_USAGE", "true")
-    monkeypatch_session.setenv("DB_URL", e2e_db_url)
+async def e2e_app(e2e_db_url: str, monkeypatch):
+    """Boot the FastAPI app with a FakeLLMPort wired via ``create_app``."""
+    monkeypatch.setenv("DB_TRACK_USAGE", "true")
+    monkeypatch.setenv("DB_URL", e2e_db_url)
 
-    monkeypatch_session.setenv("LLM_MODEL", "gpt-3.5-turbo")
-    monkeypatch_session.setenv("LLM_API_KEY", "fake-test-key")
-    monkeypatch_session.setenv("LLM_API_BASE", "")
-    monkeypatch_session.setenv("LLM_API_VERSION", "")
+    # The fake LLM ignores model/api_base, but settings still need to validate.
+    monkeypatch.setenv("LLM_MODEL", "gpt-3.5-turbo")
+    monkeypatch.setenv("LLM_API_KEY", "fake-test-key")
+    monkeypatch.setenv("LLM_API_BASE", "")
+    monkeypatch.setenv("LLM_API_VERSION", "")
 
     api_keys_json = (
         f'[{{"key_id":"e2e-0","name":"e2e","key":"{E2E_API_KEY}",'
@@ -68,38 +131,35 @@ async def e2e_app(e2e_db_url: str, monkeypatch_session):
         f'{{"key_id":"e2e-su","name":"e2e-super","key":"{E2E_SUPER_KEY}",'
         f'"tenant_id":"admin","is_superuser":true}}]'
     )
-    monkeypatch_session.setenv("AUTH_API_KEYS", api_keys_json)
+    monkeypatch.setenv("AUTH_API_KEYS", api_keys_json)
 
     from qfa.api.app import create_app
 
-    app = create_app()
+    fake_llm = FakeLLMPort()
+    app = create_app(llm_factory=lambda _settings: fake_llm)
+
     async with LifespanManager(app):
-        # TRUNCATE between tests so each run starts clean.
         engine = create_async_engine(e2e_db_url)
         async with engine.begin() as conn:
             await conn.execute(sa.text("TRUNCATE TABLE llm_calls RESTART IDENTITY"))
         await engine.dispose()
-        yield app
+        yield app, fake_llm
 
 
 @pytest_asyncio.fixture
 async def e2e_client(e2e_app):
+    app, _fake = e2e_app
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=e2e_app),
+        transport=httpx.ASGITransport(app=app),
         base_url="http://test",
     ) as c:
         yield c
 
 
-@pytest.fixture
-def monkeypatch_session(monkeypatch):
-    """Alias for ``monkeypatch`` to make env-mutation intent explicit.
-
-    Pytest's built-in ``monkeypatch`` is function-scoped; we keep that scope
-    so each test gets a fresh env, but rename for readability inside the
-    e2e fixtures.
-    """
-    return monkeypatch
+@pytest_asyncio.fixture
+async def e2e_fake_llm(e2e_app) -> FakeLLMPort:
+    _app, fake = e2e_app
+    return fake
 
 
 @pytest_asyncio.fixture
@@ -109,51 +169,19 @@ async def e2e_engine(e2e_db_url: str):
     await engine.dispose()
 
 
-@pytest.fixture
-def openai_chat_response():
-    """A canonical OpenAI chat completion JSON body."""
-
-    def _make(
-        text: str = "ok",
-        prompt_tokens: int = 5,
-        completion_tokens: int = 2,
-        model: str = "gpt-3.5-turbo",
-    ) -> dict:
-        return {
-            "id": "chatcmpl-test",
-            "object": "chat.completion",
-            "created": 0,
-            "model": model,
-            "choices": [
-                {
-                    "index": 0,
-                    "message": {"role": "assistant", "content": text},
-                    "finish_reason": "stop",
-                }
-            ],
-            "usage": {
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "total_tokens": prompt_tokens + completion_tokens,
-            },
-        }
-
-    return _make
-
-
-# Avoid leaking the integration conftest's pg_url fixture by reimporting it
-# (pytest discovers fixtures across conftests within the same package tree).
 __all__ = [
     "E2E_API_KEY",
     "E2E_SUPER_KEY",
     "E2E_TENANT_ID",
+    "FakeLLMPort",
     "e2e_app",
     "e2e_client",
     "e2e_db_url",
     "e2e_engine",
-    "openai_chat_response",
+    "e2e_fake_llm",
 ]
 
 
-# Make INTEGRATION_DB_URL discoverable as the same DB:
+# Make the integration DB URL discoverable to the integration conftest fixtures
+# this conftest reuses (it imports ``integration_db_url`` directly).
 os.environ.setdefault("INTEGRATION_DB_URL", integration_db_url())
