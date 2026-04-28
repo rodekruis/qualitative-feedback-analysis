@@ -59,3 +59,35 @@ variable "llm_api_version" {
   type        = string
   default     = "2025-04-01-preview"
 }
+
+# --- PostgreSQL configuration ---
+
+variable "postgres_admin_username" {
+  description = "Administrator username for PostgreSQL Flexible Server"
+  type        = string
+  default     = "qfaadmin"
+}
+
+variable "postgres_admin_password" {
+  description = "Administrator password for PostgreSQL Flexible Server"
+  type        = string
+  sensitive   = true
+}
+
+variable "postgres_db_name" {
+  description = "Application database name"
+  type        = string
+  default     = "qfa"
+}
+
+variable "postgres_sku_name" {
+  description = "SKU for PostgreSQL Flexible Server"
+  type        = string
+  default     = "B_Standard_B1ms"
+}
+
+variable "postgres_storage_mb" {
+  description = "Storage size in MB for PostgreSQL Flexible Server"
+  type        = number
+  default     = 32768
+}
