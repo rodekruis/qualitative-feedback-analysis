@@ -230,7 +230,7 @@ which strips Jupyter notebook outputs before every commit. To run all hooks
 manually:
 
 ```bash
-pre-commit run --all-files
+uv run pre-commit run --all-files
 ```
 
 ## Running Tests
