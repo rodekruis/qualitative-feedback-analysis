@@ -10,7 +10,7 @@ from typing import Any
 
 import litellm
 import yaml
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -387,6 +387,33 @@ async def _handle_analysis_error(request: Request, exc: AnalysisError) -> JSONRe
     return JSONResponse(status_code=502, content=body.model_dump())
 
 
+async def _handle_http_exception(request: Request, exc: HTTPException) -> JSONResponse:
+    """Wrap HTTPException with the standard error envelope.
+
+    When ``detail`` is a dict with ``code``/``message`` keys, those are
+    surfaced. Otherwise the detail string becomes the message and a
+    generic ``http_error`` code is used.
+    """
+    detail = exc.detail
+    if isinstance(detail, dict):
+        body = ErrorResponse(
+            error=ErrorDetail(
+                code=str(detail.get("code", "http_error")),
+                message=str(detail.get("message", "")),
+                request_id=_get_request_id(request),
+            )
+        )
+    else:
+        body = ErrorResponse(
+            error=ErrorDetail(
+                code="http_error",
+                message=str(detail) if detail is not None else "",
+                request_id=_get_request_id(request),
+            )
+        )
+    return JSONResponse(status_code=exc.status_code, content=body.model_dump())
+
+
 async def _handle_unhandled_exception(request: Request, exc: Exception) -> JSONResponse:
     """Handle unexpected exceptions.
 
@@ -529,6 +556,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(DocumentsTooLargeError, _handle_documents_too_large)  # type: ignore[arg-type]
     app.add_exception_handler(AnalysisTimeoutError, _handle_analysis_timeout)  # type: ignore[arg-type]
     app.add_exception_handler(AnalysisError, _handle_analysis_error)  # type: ignore[arg-type]
+    app.add_exception_handler(HTTPException, _handle_http_exception)  # type: ignore[arg-type]
     app.add_exception_handler(Exception, _handle_unhandled_exception)
 
 

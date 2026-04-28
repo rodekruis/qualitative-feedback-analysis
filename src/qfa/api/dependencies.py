@@ -48,7 +48,10 @@ def get_usage_repo(request: Request) -> UsageRepositoryPort:
     if repo is None:
         raise HTTPException(
             status_code=503,
-            detail="Usage tracking is not enabled",
+            detail={
+                "code": "usage_tracking_disabled",
+                "message": "Usage tracking is not enabled",
+            },
         )
     return repo
 
