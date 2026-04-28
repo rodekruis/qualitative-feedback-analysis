@@ -17,13 +17,14 @@ from qfa.domain.models import (
     LLMResponse,
     TenantApiKey,
 )
-from qfa.domain.ports import LLMPort
+from qfa.domain.ports import AnonymizationPort, LLMPort
 
 __all__ = [
     "AnalysisError",
     "AnalysisRequest",
     "AnalysisResult",
     "AnalysisTimeoutError",
+    "AnonymizationPort",
     "AuthenticationError",
     "DocumentsTooLargeError",
     "DomainError",

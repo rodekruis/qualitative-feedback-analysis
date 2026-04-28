@@ -10,8 +10,6 @@ import random
 import re
 from datetime import UTC, datetime
 
-from presidio_analyzer import AnalyzerEngine
-from presidio_anonymizer import AnonymizerEngine, OperatorConfig
 from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_exponential
 
 from qfa.domain.errors import (
@@ -35,7 +33,7 @@ from qfa.domain.models import (
     SummaryRequest,
     SummaryResult,
 )
-from qfa.domain.ports import LLMPort
+from qfa.domain.ports import AnonymizationPort, LLMPort
 from qfa.services.coding_classifier import build_pick_messages, parse_selected_indices
 from qfa.settings import OrchestratorSettings
 
@@ -162,6 +160,8 @@ class StandardOrchestrator:
     ----------
     llm : LLMPort
         The LLM provider adapter.
+    anonymizer : AnonymizationPort
+        The anonymisation adapter used to redact PII before LLM calls.
     settings : OrchestratorSettings
         Configuration for the orchestrator behaviour.
     llm_timeout_seconds : float
@@ -173,66 +173,16 @@ class StandardOrchestrator:
     def __init__(
         self,
         llm: LLMPort,
+        anonymizer: AnonymizationPort,
         settings: OrchestratorSettings,
         llm_timeout_seconds: float,
         max_total_tokens: int,
     ) -> None:
         self._llm = llm
+        self._anonymizer = anonymizer
         self._settings = settings
         self._llm_timeout_seconds = llm_timeout_seconds
         self._max_total_tokens = max_total_tokens
-        self._analyzer: AnalyzerEngine = AnalyzerEngine()
-        self._anonymizer: AnonymizerEngine = AnonymizerEngine()
-
-    def _get_unique_id(
-        self, original_value: str, entity_type: str, mapping: dict[str, str]
-    ) -> str:
-        """Helper to create unique IDs and store them in our map."""
-        if original_value == "PII":
-            return "<PII>"
-
-        for placeholder, value in mapping.items():
-            if value == original_value and placeholder.startswith(f"<{entity_type}_"):
-                return placeholder
-
-        placeholder = f"<{entity_type}_{len(mapping.keys())}>"
-        mapping[placeholder] = original_value
-        return placeholder
-
-    def anonymize(self, text: str) -> tuple[str, dict[str, str]]:
-        """Anonimize text with placeholders."""
-        mapping: dict[str, str] = {}
-        self.count = 0
-
-        results = self._analyzer.analyze(text=text, language="en")
-        unique_entities = {res.entity_type for res in results}
-
-        # We use a custom lambda as the operator
-        operators = {}
-        for entity in unique_entities:
-            operators[entity] = OperatorConfig(
-                "custom",
-                {
-                    # Capture 'entity' as a default argument 'ent' to avoid closure issues
-                    "lambda": lambda x, ent=entity: self._get_unique_id(x, ent, mapping)
-                },
-            )
-
-        # Preserve DATE_TIME entities without anonymization
-        operators["DATE_TIME"] = OperatorConfig("keep")
-
-        anonymized = self._anonymizer.anonymize(
-            text=text,
-            analyzer_results=results,  # type: ignore
-            operators=operators,
-        )
-        return anonymized.text, mapping
-
-    def deanonymize(self, text: str, mapping: dict) -> str:
-        """Restore original values in text by replacing anonymized placeholders."""
-        for placeholder, original in mapping.items():
-            text = text.replace(placeholder, original)
-        return text
 
     async def analyze(
         self,
@@ -758,7 +708,9 @@ class StandardOrchestrator:
             For non-recoverable LLM errors or persistent empty responses.
         """
         if anonymize:
-            user_message, anonymization_mapping = self.anonymize(user_message)
+            user_message, anonymization_mapping = self._anonymizer.anonymize(
+                user_message
+            )
 
         try:
             response = await self._llm.complete(
@@ -789,7 +741,7 @@ class StandardOrchestrator:
             raise AnalysisError("LLM returned empty response after retry")
 
         return AnalysisResult(
-            result=self.deanonymize(response.text, anonymization_mapping)
+            result=self._anonymizer.deanonymize(response.text, anonymization_mapping)
             if anonymize
             else response.text,
             model=response.model,

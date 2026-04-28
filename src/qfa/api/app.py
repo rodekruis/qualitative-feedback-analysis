@@ -17,6 +17,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 import qfa
 from qfa.adapters.llm_client import LiteLLMClient
+from qfa.adapters.presidio_anonymizer import PresidioAnonymizer
 from qfa.api.routes import router
 from qfa.api.schemas import (
     ErrorDetail,
@@ -444,8 +445,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     _register_custom_model_prices()
 
     llm_client = build_llm_client(settings.llm)
+    anonymizer = PresidioAnonymizer()
     orchestrator = StandardOrchestrator(
         llm=llm_client,
+        anonymizer=anonymizer,
         settings=settings.orchestrator,
         llm_timeout_seconds=settings.llm.timeout_seconds,
         max_total_tokens=settings.llm.max_total_tokens,

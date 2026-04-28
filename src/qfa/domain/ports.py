@@ -43,3 +43,49 @@ class LLMPort(Protocol):
             The model's response including token usage.
         """
         ...
+
+
+class AnonymizationPort(Protocol):
+    """Port for anonymising and de-anonymising user-supplied text.
+
+    Implementations replace named entities (people, locations, phone
+    numbers, etc.) in ``text`` with stable placeholders, returning the
+    redacted text together with a mapping that can be used to restore
+    the original values via ``deanonymize``.
+
+    Implementations must be deterministic for a given input within a
+    single call (same entity replaced by the same placeholder).
+    """
+
+    def anonymize(self, text: str) -> tuple[str, dict[str, str]]:
+        """Replace sensitive entities in ``text`` with placeholders.
+
+        Parameters
+        ----------
+        text : str
+            The text to anonymise.
+
+        Returns
+        -------
+        tuple[str, dict[str, str]]
+            The anonymised text and a mapping from placeholder to
+            original value, suitable for passing to ``deanonymize``.
+        """
+        ...
+
+    def deanonymize(self, text: str, mapping: dict[str, str]) -> str:
+        """Restore original values in ``text`` using ``mapping``.
+
+        Parameters
+        ----------
+        text : str
+            The anonymised text, possibly containing placeholders.
+        mapping : dict[str, str]
+            Placeholder-to-original mapping returned by ``anonymize``.
+
+        Returns
+        -------
+        str
+            The text with placeholders replaced by original values.
+        """
+        ...

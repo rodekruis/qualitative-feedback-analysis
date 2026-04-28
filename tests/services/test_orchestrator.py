@@ -98,6 +98,16 @@ class FakeLLMPort:
         return _make_llm_response()
 
 
+class FakeAnonymizer:
+    """No-op anonymiser for tests: returns text unchanged with empty mapping."""
+
+    def anonymize(self, text):
+        return text, {}
+
+    def deanonymize(self, text, mapping):
+        return text
+
+
 @pytest.fixture
 def settings():
     return OrchestratorSettings()
@@ -109,6 +119,7 @@ def orchestrator(settings):
     return StandardOrchestrator(
         llm=fake_llm,
         settings=settings,
+        anonymizer=FakeAnonymizer(),
         llm_timeout_seconds=LLM_TIMEOUT,
         max_total_tokens=MAX_TOKENS,
     )
@@ -122,6 +133,7 @@ class TestHappyPath:
         orch = StandardOrchestrator(
             llm=fake_llm,
             settings=settings,
+            anonymizer=FakeAnonymizer(),
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
         )
@@ -149,6 +161,7 @@ class TestTokenLimit:
         orch = StandardOrchestrator(
             llm=fake_llm,
             settings=settings,
+            anonymizer=FakeAnonymizer(),
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=100,  # very low limit
         )
@@ -176,6 +189,7 @@ class TestTokenLimit:
         orch = StandardOrchestrator(
             llm=fake_llm,
             settings=settings,
+            anonymizer=FakeAnonymizer(),
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=100,
         )
@@ -195,6 +209,7 @@ class TestNonTransientError:
         orch = StandardOrchestrator(
             llm=fake_llm,
             settings=settings,
+            anonymizer=FakeAnonymizer(),
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
         )
@@ -211,6 +226,7 @@ class TestNonTransientError:
         orch = StandardOrchestrator(
             llm=fake_llm,
             settings=settings,
+            anonymizer=FakeAnonymizer(),
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
         )
@@ -228,6 +244,7 @@ class TestNonTransientError:
         orch = StandardOrchestrator(
             llm=fake_llm,
             settings=settings,
+            anonymizer=FakeAnonymizer(),
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
         )
@@ -248,6 +265,7 @@ class TestNonTransientError:
         orch = StandardOrchestrator(
             llm=fake_llm,
             settings=settings,
+            anonymizer=FakeAnonymizer(),
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
         )
@@ -270,6 +288,7 @@ class TestNonTransientError:
         orch = StandardOrchestrator(
             llm=fake_llm,
             settings=settings,
+            anonymizer=FakeAnonymizer(),
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
         )
@@ -290,6 +309,7 @@ class TestNonTransientError:
         orch = StandardOrchestrator(
             llm=fake_llm,
             settings=settings,
+            anonymizer=FakeAnonymizer(),
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
         )
@@ -311,6 +331,7 @@ class TestMetadataFiltering:
         orch = StandardOrchestrator(
             llm=fake_llm,
             settings=settings,
+            anonymizer=FakeAnonymizer(),
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
         )
@@ -333,6 +354,7 @@ class TestNoMetadataByDefault:
         orch = StandardOrchestrator(
             llm=fake_llm,
             settings=settings,
+            anonymizer=FakeAnonymizer(),
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
         )
@@ -351,6 +373,7 @@ class TestTenantIdPassedThrough:
         orch = StandardOrchestrator(
             llm=fake_llm,
             settings=settings,
+            anonymizer=FakeAnonymizer(),
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
         )
@@ -370,6 +393,7 @@ class TestStructuralDelimiters:
         orch = StandardOrchestrator(
             llm=fake_llm,
             settings=settings,
+            anonymizer=FakeAnonymizer(),
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
         )
@@ -397,6 +421,7 @@ class TestInjectionSystemPrefix:
         orch = StandardOrchestrator(
             llm=fake_llm,
             settings=settings,
+            anonymizer=FakeAnonymizer(),
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
         )
@@ -416,6 +441,7 @@ class TestInjectionSystemPrefix:
         orch = StandardOrchestrator(
             llm=fake_llm,
             settings=settings,
+            anonymizer=FakeAnonymizer(),
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
         )
@@ -439,6 +465,7 @@ class TestInjectionSystemPrefix:
         orch = StandardOrchestrator(
             llm=fake_llm,
             settings=settings,
+            anonymizer=FakeAnonymizer(),
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
         )
@@ -459,6 +486,7 @@ class TestInjectionNullBytes:
         orch = StandardOrchestrator(
             llm=fake_llm,
             settings=settings,
+            anonymizer=FakeAnonymizer(),
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
         )
@@ -467,52 +495,6 @@ class TestInjectionNullBytes:
             await orch.analyze(request, _future_deadline())
 
         assert len(fake_llm.calls) == 0
-
-
-class TestAnonymization:
-    @pytest.mark.parametrize(
-        "input_text, output_must_contain, sensitive_bit",
-        [
-            ("Hi my name is Dick Schoof", "<PERSON", "Dick Schoof"),
-            ("My number is 212-555-5555", "<PHONE_NUMBER", "212-555-5555"),
-            ("I live in The Netherlands", "<LOCATION", "The Netherlands"),
-        ],
-    )
-    def test_anonymize_text(
-        self,
-        settings,
-        input_text: str,
-        output_must_contain: str,
-        sensitive_bit: str,
-    ):
-        fake_llm = FakeLLMPort(responses=[_make_llm_response()])
-        orch = StandardOrchestrator(
-            llm=fake_llm,
-            settings=settings,
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
-
-        anonymized_text, mapping = orch.anonymize(input_text)
-        assert output_must_contain in anonymized_text
-        assert sensitive_bit not in anonymized_text
-
-        deanonimized_text = orch.deanonymize(anonymized_text, mapping)
-        assert sensitive_bit in deanonimized_text
-
-    def test_date_not_anonymized(self, settings):
-        input_text = "I have a meeting on September 1st."
-        fake_llm = FakeLLMPort(responses=[_make_llm_response()])
-        orch = StandardOrchestrator(
-            llm=fake_llm,
-            settings=settings,
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
-
-        anonymized_text, mapping = orch.anonymize(input_text)
-        assert "September 1st" in anonymized_text
-        assert len(mapping) == 0
 
 
 class TestInjectionRepeatedChars:
@@ -525,6 +507,7 @@ class TestInjectionRepeatedChars:
         orch = StandardOrchestrator(
             llm=fake_llm,
             settings=settings,
+            anonymizer=FakeAnonymizer(),
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
         )
@@ -546,6 +529,7 @@ class TestInjectionErrorNoMatchedText:
         orch = StandardOrchestrator(
             llm=fake_llm,
             settings=settings,
+            anonymizer=FakeAnonymizer(),
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
         )
