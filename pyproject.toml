@@ -46,6 +46,11 @@ packages = ["src/qfa"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "integration: requires a real Postgres instance (excluded by default)",
+    "e2e: end-to-end test with respx-mocked LiteLLM (excluded by default)",
+]
+addopts = "-m 'not integration and not e2e'"
 
 [tool.ruff]
 lint.select = [

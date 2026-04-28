@@ -42,3 +42,21 @@ pre_commit:
 format:
 	# format all code
 	uv run ruff format
+
+.PHONY: db-up db-down db-reset migrate test-integration
+
+db-up:
+	docker compose up -d postgres
+
+db-down:
+	docker compose down
+
+db-reset:
+	docker compose down -v
+	docker compose up -d postgres
+
+migrate:
+	uv run alembic upgrade head
+
+test-integration:
+	uv run pytest -m "integration or e2e"
