@@ -27,9 +27,37 @@ Use `uv` for all dependency management (not `pip`). Examples:
 
 Hexagonal architecture. Key concepts:
 - Flow: API call(documents) -> Orchestrator -> LLM API -> return result
-- The Orchestrator is an exchangeable service behind an interface
-- LLM provider is declared via an `LLMPort` so implementations can be swapped
-- API calls are authenticated via API keys
+- The Orchestrator is a single application service composed of multiple
+  use cases (analyze, summarize, summarize_aggregate, assign_codes).
+  Per-task behaviour is selected by the route handler calling the
+  appropriate method, not by swapping orchestrator implementations
+  (see ADR-011).
+- Driven adapters (LLM provider, anonymisation) sit behind ports
+  declared in `qfa.domain.ports` — for example `LLMPort` and
+  `AnonymizationPort` — so implementations can be swapped.
+- **Adapter classes must explicitly inherit from their port** (e.g.
+  `class LiteLLMClient(LLMPort):`, `class PresidioAnonymizer(AnonymizationPort):`).
+  Although Python `Protocol`s support structural typing without
+  inheritance, the explicit base class makes the port↔adapter
+  relationship discoverable in IDEs ("go to definition" jumps to the
+  contract) and signals intent to readers. Structural conformance is
+  reserved for ad-hoc test fakes that don't need to be navigable as
+  port implementations.
+- API calls are authenticated via API keys.
+
+Layer rules are enforced by `import-linter` contracts in
+`pyproject.toml` (`make lint` runs them). The hexagonal package
+layout is:
+
+- `qfa.domain` — entities, value objects, errors, and driven ports
+  (the inner core; no third-party infrastructure imports).
+- `qfa.services` — application services / use cases (orchestrator and
+  pure helpers; depends on `qfa.domain`).
+- `qfa.adapters` — driven adapter implementations of ports declared
+  in `qfa.domain.ports` (LiteLLM, Presidio, etc.).
+- `qfa.api` — driving adapter (FastAPI routes, dependencies, app
+  composition). `qfa.api.app` is the composition root that wires
+  adapters into the orchestrator at startup.
 
 ## Tech Stack
 

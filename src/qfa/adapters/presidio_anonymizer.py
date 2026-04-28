@@ -8,8 +8,10 @@ so the application service layer never imports Presidio directly.
 from presidio_analyzer import AnalyzerEngine
 from presidio_anonymizer import AnonymizerEngine, OperatorConfig
 
+from qfa.domain.ports import AnonymizationPort
 
-class PresidioAnonymizer:
+
+class PresidioAnonymizer(AnonymizationPort):
     """``AnonymizationPort`` implementation backed by Presidio.
 
     Replaces detected entities with stable placeholders of the form
