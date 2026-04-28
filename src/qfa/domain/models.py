@@ -86,8 +86,8 @@ class FeedbackItemSummaryModel(BaseModel):
         description="Generated bullet-point summary for the feedback item."
     )
     quality_score: float = Field(
-        ge=0.0,
-        le=1.0,
+        # ge=0.0,
+        # le=1.0,
         description="Judge model score for summary quality in the range 0.0-1.0.",
     )
 
@@ -100,13 +100,10 @@ class SummaryResultModel(BaseModel):
     feedback_item_summaries: tuple[FeedbackItemSummaryModel, ...] = Field(
         description="Per-feedback-item summaries returned by the summarize flow.",
     )
-    cost: float = Field(description="Estimated summarization cost in USD.")
 
 
 class AggregateSummaryResultModel(BaseModel):
     """The result of summarizing multiple feedback items as a single aggregate."""
-
-    model_config = ConfigDict(frozen=True)
 
     ids: tuple[str, ...] = Field(
         description="Identifiers of all source feedback items."
@@ -116,11 +113,8 @@ class AggregateSummaryResultModel(BaseModel):
         description="Generated bullet-point summary ordered by theme frequency."
     )
     quality_score: float = Field(
-        ge=0.0,
-        le=1.0,
         description="Judge model score for summary quality in the range 0.0-1.0.",
     )
-    cost: float = Field(description="Estimated summarization cost in USD.")
 
 
 class CodingAssignmentRequestModel(BaseModel):

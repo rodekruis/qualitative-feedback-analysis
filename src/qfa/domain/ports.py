@@ -30,9 +30,10 @@ class LLMPort(Protocol):
         self,
         system_message: str,
         user_message: str,
-        timeout: float,
         tenant_id: str,
         response_model: type[T_Response],
+        anonymize: bool = True,
+        timeout: float = 20.0,
     ) -> LLMResponse[T_Response]:
         """Send a completion request to the LLM provider.
 
@@ -42,10 +43,14 @@ class LLMPort(Protocol):
             The system-level instruction for the model.
         user_message : str
             The user-level message to complete.
-        timeout : float
-            Maximum time in seconds to wait for a response.
         tenant_id : str
             Tenant identifier for tracking and billing.
+        response_model : type[T_Response]
+            The Pydantic model to parse the response into.
+        anonymize : bool
+            Whether to anonymize the user message before sending.
+        timeout : float
+            Maximum time in seconds to wait for a response.
 
         Returns
         -------

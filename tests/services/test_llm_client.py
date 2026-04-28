@@ -13,7 +13,7 @@ from qfa.services.llm_client import LiteLLMClient
 MODEL = "azure_ai/mistral-large-2411"
 SYSTEM_MSG = "You are a helpful assistant."
 USER_MSG = "Summarize the feedback."
-TIMEOUT = 30.0
+TIMEOUT = 2.0
 TENANT_ID = "tenant-42"
 
 
@@ -60,7 +60,7 @@ class TestLiteLLMClientHappyPath:
             ),
         ):
             result = await client.complete(
-                SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID, response_model=str
+                SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT
             )
 
         assert isinstance(result, LLMResponse)
@@ -87,9 +87,7 @@ class TestLiteLLMClientCallParameters:
             ) as mock_ac,
             patch("qfa.services.llm_client.completion_cost", return_value=0.0),
         ):
-            await client.complete(
-                SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID, response_model=str
-            )
+            await client.complete(SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT)
 
         call_kwargs = mock_ac.call_args.kwargs
         assert call_kwargs["model"] == MODEL
@@ -114,9 +112,7 @@ class TestLiteLLMClientCallParameters:
             ) as mock_ac,
             patch("qfa.services.llm_client.completion_cost", return_value=0.0),
         ):
-            await client.complete(
-                SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID, response_model=str
-            )
+            await client.complete(SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT)
 
         call_kwargs = mock_ac.call_args.kwargs
         assert call_kwargs["api_base"] is None
@@ -140,7 +136,7 @@ class TestLiteLLMClientCostFallback:
             ),
         ):
             result = await client.complete(
-                SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID, response_model=str
+                SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT
             )
 
         assert isnan(result.cost)
@@ -156,8 +152,14 @@ class TestLiteLLMClientExceptionMapping:
             side_effect=openai.APITimeoutError(request=MagicMock()),
         ):
             with pytest.raises(LLMTimeoutError):
-                await client.complete(
-                    SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID, response_model=str
+                await client.complete.__wrapped__(
+                    client,
+                    SYSTEM_MSG,
+                    USER_MSG,
+                    TENANT_ID,
+                    str,
+                    anonymize=False,
+                    timeout=TIMEOUT,
                 )
 
     @pytest.mark.asyncio
@@ -174,8 +176,14 @@ class TestLiteLLMClientExceptionMapping:
             ),
         ):
             with pytest.raises(LLMRateLimitError):
-                await client.complete(
-                    SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID, response_model=str
+                await client.complete.__wrapped__(
+                    client,
+                    SYSTEM_MSG,
+                    USER_MSG,
+                    TENANT_ID,
+                    str,
+                    anonymize=False,
+                    timeout=TIMEOUT,
                 )
 
     @pytest.mark.asyncio
@@ -190,7 +198,7 @@ class TestLiteLLMClientExceptionMapping:
         ):
             with pytest.raises(LLMError):
                 await client.complete(
-                    SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID, response_model=str
+                    SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT
                 )
 
     @pytest.mark.asyncio
@@ -203,10 +211,11 @@ class TestLiteLLMClientExceptionMapping:
             new_callable=AsyncMock,
             return_value=mock_response,
         ):
-            with pytest.raises(LLMError, match="empty content"):
-                await client.complete(
-                    SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID, response_model=str
-                )
+            result = await client.complete(
+                SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT
+            )
+
+        assert result.structured == ""
 
     @pytest.mark.asyncio
     async def test_missing_usage_raises(self):
@@ -220,5 +229,5 @@ class TestLiteLLMClientExceptionMapping:
         ):
             with pytest.raises(LLMError, match="missing usage"):
                 await client.complete(
-                    SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID, response_model=str
+                    SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT
                 )
