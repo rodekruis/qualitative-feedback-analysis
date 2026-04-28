@@ -109,6 +109,7 @@ class Operation(StrEnum):
     SUMMARIZE           = "summarize"
     SUMMARIZE_AGGREGATE = "summarize_aggregate"
     ASSIGN_CODES        = "assign_codes"
+    UNKNOWN             = "unknown"     # sentinel for backfilled / pre-tracking rows; never written by orchestrator code
 
 class CallStatus(StrEnum):
     OK    = "ok"
@@ -531,7 +532,7 @@ These are intentional non-goals for this iteration. Listed so they don't quietly
 
 ## Open follow-ups (intentionally undecided here, decided in implementation plan)
 
-- Migration strategy for the existing `llm_calls` table: additive migration (preserve historical rows, default `operation` to a sentinel like `"unknown"`) vs. drop-and-recreate (clean slate, since data is only weeks old). Both are viable; the choice is a small operational call best made when the implementer surveys current row count.
+- Migration strategy for the existing `llm_calls` table: additive migration (preserve historical rows, default `operation` to `Operation.UNKNOWN`) vs. drop-and-recreate (clean slate, since data is only weeks old). Both are viable; the choice is a small operational call best made when the implementer surveys current row count. The `Operation.UNKNOWN` enum member exists to make the additive path sound; if drop-and-recreate is chosen, the member is unused but kept (removing it later would orphan any historical rows that referenced it).
 - Disposition of the existing `TrackingOrchestrator`: delete vs. transitional shim. Either works; pick what minimizes diff risk.
 
 ## References
