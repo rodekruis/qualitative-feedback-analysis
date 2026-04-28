@@ -61,6 +61,11 @@ export TF_VAR_acr_name=<globally-unique-acr-name>
 
 # Optional — Azure region for the bootstrapped resources. Defaults to westeurope.
 export LOCATION=westeurope
+
+# Required — PostgreSQL Flexible Server admin credentials used by Terraform.
+# Keep the password in a secure secret manager and inject it in CI/local shell.
+export TF_VAR_postgres_admin_username=qfaadmin
+export TF_VAR_postgres_admin_password=<strong-random-password>
 ```
 
 ### 3. Create the chicken-and-egg resources
@@ -174,7 +179,7 @@ The `terraform.yaml` workflow can now run autonomously in CI.
 
 ### 8. Seed Key Vault secrets
 
-The App Service reads three secrets from Key Vault at runtime via [Key Vault references](https://learn.microsoft.com/en-us/azure/app-service/app-service-key-vault-references) (configured in `app_service.tf`). Terraform creates the vault and grants the App Service read access (`Key Vault Secrets User`), but does **not** manage secret values — those are set out-of-band to keep them out of Terraform state.
+The App Service reads four secrets from Key Vault at runtime via [Key Vault references](https://learn.microsoft.com/en-us/azure/app-service/app-service-key-vault-references) (configured in `app_service.tf`). Terraform creates the vault and grants the App Service read access (`Key Vault Secrets User`), but does **not** manage secret values — those are set out-of-band to keep them out of Terraform state.
 
 The Key Vault uses RBAC authorization, so Azure Contributor/Owner on the resource group alone does **not** grant data-plane access to secrets. You must first assign yourself `Key Vault Secrets Officer` on each vault.
 
@@ -190,17 +195,19 @@ az role assignment create \
   --assignee "$(az ad signed-in-user show --query id -o tsv)" \
   --scope "$VAULT_ID"
 
-# Set the three required secrets
+# Set the required secrets
 az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "llm-api-base" --value "<your-azure-openai-endpoint-url>"
 az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "llm-api-key"        --value "<your-llm-api-key>"
 az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "auth-api-keys"      --value "<json-api-key-dicts>"
+az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "db-url"             --value "postgresql+asyncpg://<admin-username>:<admin-password>@qfa-${ENV}-db.postgres.database.azure.com:5432/qfa?sslmode=require"
 ```
 
 | Secret | Description |
 |--------|-------------|
-| `llm-azure-endpoint` | Base URL of your Azure OpenAI deployment (e.g. `https://<resource>.openai.azure.com/`) |
+| `llm-api-base` | Base URL of your Azure OpenAI deployment (e.g. `https://<resource>.openai.azure.com/`) |
 | `llm-api-key` | API key for the Azure OpenAI deployment |
-| `auth-api-keys` | Comma-separated list of API keys that authenticate callers to this backend |
+| `auth-api-keys` | JSON array of API key objects that authenticate callers to this backend |
+| `db-url` | SQLAlchemy asyncpg URL to the private PostgreSQL server (must include `sslmode=require`) |
 
 Without these secrets the App Service will start and pass health checks, but API calls will fail with a Key Vault reference resolution error.
 
