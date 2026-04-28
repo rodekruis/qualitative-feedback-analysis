@@ -57,3 +57,14 @@ class AuthenticationError(DomainError):
 
 class AuthorizationError(DomainError):
     """Raised when a user lacks permission for the requested operation."""
+
+
+# --- Tracking errors ---
+
+
+class MissingCallScopeError(RuntimeError):
+    """Raised when an LLM call is recorded without an active CallContext.
+
+    Indicates a wiring bug: the orchestrator forgot to enter a ``call_scope``
+    block before calling the LLM. Should never reach a user.
+    """

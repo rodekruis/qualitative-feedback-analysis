@@ -4,9 +4,11 @@ All models are immutable (frozen) Pydantic models per ADR-001.
 """
 
 from datetime import datetime
+from decimal import Decimal
+from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
 
 class FeedbackItem(BaseModel):
@@ -220,33 +222,98 @@ class TenantApiKey(BaseModel):
     is_superuser: bool = False
 
 
-class LLMCallRecord(BaseModel):
-    """A single recorded LLM call for usage tracking.
+class Operation(StrEnum):
+    """Orchestrator operations that produce LLM calls.
+
+    Stored as plain strings in the database; new members can be added
+    without a DB migration. ``UNKNOWN`` is a sentinel for backfilled rows
+    from before per-operation tracking was introduced and must never be
+    removed (removal would orphan historical rows).
+    """
+
+    ANALYZE = "analyze"
+    SUMMARIZE = "summarize"
+    SUMMARIZE_AGGREGATE = "summarize_aggregate"
+    ASSIGN_CODES = "assign_codes"
+    UNKNOWN = "unknown"
+
+
+class CallStatus(StrEnum):
+    """Outcome of a single LLM call attempt."""
+
+    OK = "ok"
+    ERROR = "error"
+
+
+class CallContext(BaseModel):
+    """Per-call context propagated via ContextVar from orchestrator to tracker.
 
     Attributes
     ----------
     tenant_id : str
-        Tenant that made the call.
-    timestamp : datetime
-        When the call was made.
-    call_duration_ms : int
-        Wall-clock duration of the call in milliseconds.
-    model : str
-        The LLM model used.
-    input_tokens : int
-        Number of input (prompt) tokens.
-    output_tokens : int
-        Number of output (completion) tokens.
+        Tenant making the call.
+    operation : Operation
+        Public orchestrator operation that issued the call.
     """
 
     model_config = ConfigDict(frozen=True)
 
     tenant_id: str
+    operation: Operation
+
+
+class LLMCallRecord(BaseModel):
+    """A single recorded LLM call attempt for usage and cost tracking.
+
+    Recorded once per LLM-call attempt — success or failure. ``cost_usd``
+    and token counts are populated only for successful attempts; failures
+    record zeros plus ``error_class``.
+
+    Attributes
+    ----------
+    tenant_id : str
+        Tenant that made the call.
+    operation : Operation
+        Public orchestrator operation that issued the call.
+    timestamp : datetime
+        UTC wall-clock when the call started.
+    call_duration_ms : int
+        Wall-clock duration of the call in milliseconds.
+    model : str
+        The LLM model used.
+    input_tokens : int
+        Number of input (prompt) tokens; 0 on failure.
+    output_tokens : int
+        Number of output (completion) tokens; 0 on failure.
+    cost_usd : Decimal
+        Estimated cost in USD; 0 on failure.
+    status : CallStatus
+        Outcome of the attempt.
+    error_class : str | None
+        ``type(exc).__name__`` when ``status == CallStatus.ERROR``;
+        ``None`` otherwise. Enforced by ``model_validator``.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    tenant_id: str
+    operation: Operation
     timestamp: datetime
     call_duration_ms: int
     model: str
-    input_tokens: int
-    output_tokens: int
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost_usd: Decimal = Decimal("0")
+    status: CallStatus
+    error_class: str | None = None
+
+    @model_validator(mode="after")
+    def _error_class_iff_error(self) -> "LLMCallRecord":
+        if self.status == CallStatus.ERROR and self.error_class is None:
+            raise ValueError("error_class is required when status='error'")
+        if self.status == CallStatus.OK and self.error_class is not None:
+            raise ValueError("error_class must be None when status='ok'")
+        return self
 
 
 class DistributionStats(BaseModel):
@@ -287,27 +354,70 @@ class TokenStats(DistributionStats):
     total: int
 
 
+class OperationStats(BaseModel):
+    """Per-operation aggregated stats for a tenant or grand total.
+
+    Attributes
+    ----------
+    operation : Operation
+        The orchestrator operation.
+    total_calls : int
+        Total attempts (successful + failed).
+    failed_calls : int
+        Attempts with ``status='error'``.
+    cost_usd : Decimal
+        Sum of ``cost_usd`` for successful attempts only.
+    input_tokens_total : int
+        Sum of ``input_tokens`` for successful attempts only.
+    output_tokens_total : int
+        Sum of ``output_tokens`` for successful attempts only.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    operation: Operation
+    total_calls: int
+    failed_calls: int
+    cost_usd: Decimal
+    input_tokens_total: int
+    output_tokens_total: int
+
+
 class UsageStats(BaseModel):
     """Aggregated usage statistics for a tenant or grand total.
+
+    The token and duration distributions and ``total_cost_usd`` are scoped
+    to ``status='ok'`` rows. ``total_calls`` and ``failed_calls`` count all
+    attempts including failures (policy "alpha").
 
     Attributes
     ----------
     tenant_id : str | None
         Tenant identifier, or None for grand total.
     total_calls : int
-        Total number of LLM calls.
+        Total attempts (successful + failed).
+    failed_calls : int
+        Attempts with ``status='error'``.
+    total_cost_usd : Decimal
+        Sum of cost over successful attempts only.
     call_duration : DistributionStats
-        Call duration distribution in milliseconds.
+        Call duration distribution in milliseconds (successful attempts only).
     input_tokens : TokenStats
-        Input token distribution.
+        Input token distribution (successful attempts only).
     output_tokens : TokenStats
-        Output token distribution.
+        Output token distribution (successful attempts only).
+    by_operation : tuple[OperationStats, ...]
+        Per-operation breakdown, sorted ``cost_usd`` desc with ties broken
+        by ``operation`` asc.
     """
 
     model_config = ConfigDict(frozen=True)
 
     tenant_id: str | None = None
     total_calls: int
+    failed_calls: int = 0
+    total_cost_usd: Decimal = Decimal("0")
     call_duration: DistributionStats
     input_tokens: TokenStats
     output_tokens: TokenStats
+    by_operation: tuple[OperationStats, ...] = ()
