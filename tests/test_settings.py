@@ -129,6 +129,43 @@ class TestDatabaseSettings:
         assert settings.url == "postgresql+asyncpg://user:pass@host/db"
         assert settings.track_usage is True
 
+    def test_accepts_parts_based_password_config(self, monkeypatch):
+        monkeypatch.delenv("DB_URL", raising=False)
+        monkeypatch.setenv("DB_TRACK_USAGE", "true")
+        monkeypatch.setenv("DB_HOST", "db.internal")
+        monkeypatch.setenv("DB_PORT", "5432")
+        monkeypatch.setenv("DB_NAME", "qfa")
+        monkeypatch.setenv("DB_USER", "qfaadmin")
+        monkeypatch.setenv("DB_PASSWORD", "secret")
+        settings = DatabaseSettings()
+        assert settings.url == ""
+        assert settings.auth_mode == "password"
+        assert settings.host == "db.internal"
+
+    def test_requires_password_in_password_mode_when_url_missing(self, monkeypatch):
+        monkeypatch.delenv("DB_URL", raising=False)
+        monkeypatch.setenv("DB_TRACK_USAGE", "true")
+        monkeypatch.setenv("DB_AUTH_MODE", "password")
+        monkeypatch.setenv("DB_HOST", "db.internal")
+        monkeypatch.setenv("DB_PORT", "5432")
+        monkeypatch.setenv("DB_NAME", "qfa")
+        monkeypatch.setenv("DB_USER", "qfaadmin")
+        monkeypatch.delenv("DB_PASSWORD", raising=False)
+        with pytest.raises(ValidationError):
+            DatabaseSettings()
+
+    def test_accepts_entra_mode_without_password(self, monkeypatch):
+        monkeypatch.delenv("DB_URL", raising=False)
+        monkeypatch.setenv("DB_TRACK_USAGE", "true")
+        monkeypatch.setenv("DB_AUTH_MODE", "entra")
+        monkeypatch.setenv("DB_HOST", "db.internal")
+        monkeypatch.setenv("DB_PORT", "5432")
+        monkeypatch.setenv("DB_NAME", "qfa")
+        monkeypatch.setenv("DB_USER", "app-msi")
+        monkeypatch.delenv("DB_PASSWORD", raising=False)
+        settings = DatabaseSettings()
+        assert settings.auth_mode == "entra"
+
 
 class TestAuthSettings:
     def test_reads_from_auth_prefixed_env_vars(self, monkeypatch):

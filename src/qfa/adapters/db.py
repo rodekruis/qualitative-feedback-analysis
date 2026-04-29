@@ -2,10 +2,12 @@
 
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
+from urllib.parse import quote
 
 import sqlalchemy as sa
+from azure.identity import DefaultAzureCredential
 from sqlalchemy.exc import InterfaceError, OperationalError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -24,6 +26,7 @@ from qfa.domain.models import (
     UsageStats,
 )
 from qfa.domain.ports import UsageRepositoryPort
+from qfa.settings import DatabaseSettings
 
 
 @asynccontextmanager
@@ -78,6 +81,70 @@ llm_calls = sa.Table(
     sa.Index("idx_llm_calls_tenant_timestamp", "tenant_id", "timestamp"),
     sa.Index("idx_llm_calls_timestamp", "timestamp"),
 )
+
+
+class _AadTokenProvider:
+    """Cache AAD access tokens and refresh before expiry."""
+
+    def __init__(self, scope: str) -> None:
+        self._scope = scope
+        self._credential = DefaultAzureCredential()
+        self._token: str | None = None
+        self._expires_on: float = 0
+
+    def get_token(self) -> str:
+        now = datetime.now(UTC).timestamp()
+        if self._token is not None and now < (self._expires_on - 120):
+            return self._token
+
+        token = self._credential.get_token(self._scope)
+        self._token = token.token
+        self._expires_on = float(token.expires_on)
+        return token.token
+
+
+def resolve_database_url(settings: DatabaseSettings) -> str:
+    """Resolve an SQLAlchemy database URL from DB settings.
+
+    If ``settings.url`` is provided, it is returned unchanged.
+    Otherwise the URL is assembled from host/user/port/name and auth mode.
+    """
+    if settings.url:
+        return settings.url
+
+    user = quote(settings.user)
+    host = settings.host
+    port = settings.port
+    name = settings.name
+
+    if settings.auth_mode == "entra":
+        return f"postgresql+asyncpg://{user}@{host}:{port}/{name}?ssl=require"
+
+    password = ""
+    if settings.password is not None:
+        password = quote(settings.password.get_secret_value())
+    return f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{name}"
+
+
+def create_async_engine_from_settings(settings: DatabaseSettings) -> AsyncEngine:
+    """Create an async engine from app DB settings.
+
+    In ``entra`` mode, a fresh AAD access token is injected on each new
+    physical connection via SQLAlchemy's ``do_connect`` hook.
+    """
+    url = resolve_database_url(settings)
+    engine = create_async_engine_from_url(url)
+
+    if settings.auth_mode != "entra":
+        return engine
+
+    token_provider = _AadTokenProvider(settings.aad_scope)
+
+    @sa.event.listens_for(engine.sync_engine, "do_connect")
+    def _inject_aad_token(_dialect, _conn_rec, _cargs, cparams) -> None:  # noqa: ANN001
+        cparams["password"] = token_provider.get_token()
+
+    return engine
 
 
 def create_async_engine_from_url(url: str) -> AsyncEngine:

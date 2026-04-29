@@ -175,7 +175,7 @@ az role assignment create \
 az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "llm-api-base" --value "<your-azure-openai-endpoint-url>"
 az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "llm-api-key"        --value "<your-llm-api-key>"
 az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "auth-api-keys"      --value "<json-api-key-dicts>"
-az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "db-url"             --value "postgresql+asyncpg://${TF_VAR_postgres_admin_username}:$(terraform output -raw postgres_admin_password)@qfa-${ENV}-db.postgres.database.azure.com:5432/qfa?sslmode=require"
+az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "db-password"             --value "<your-postgres-admin-password>"
 ```
 
 | Secret | Description |
@@ -183,7 +183,7 @@ az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "db-url"       
 | `llm-api-base` | Base URL of your Azure OpenAI deployment (e.g. `https://<resource>.openai.azure.com/`) |
 | `llm-api-key` | API key for the Azure OpenAI deployment |
 | `auth-api-keys` | JSON array of API key objects that authenticate callers to this backend |
-| `db-url` | SQLAlchemy asyncpg URL to the private PostgreSQL server (must include `sslmode=require`) |
+| `db-password` | Password for the PostgreSQL admin user |
 
 Without these secrets the App Service will start and pass health checks, but API calls will fail with a Key Vault reference resolution error.
 

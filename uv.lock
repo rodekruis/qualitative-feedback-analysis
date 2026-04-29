@@ -1504,6 +1504,7 @@ source = { editable = "." }
 dependencies = [
     { name = "alembic" },
     { name = "asyncpg" },
+    { name = "azure-identity" },
     { name = "fastapi" },
     { name = "gunicorn" },
     { name = "litellm" },
@@ -1521,7 +1522,6 @@ dependencies = [
 dev = [
     { name = "aiosqlite" },
     { name = "asgi-lifespan" },
-    { name = "azure-identity" },
     { name = "azure-keyvault-secrets" },
     { name = "httpx" },
     { name = "import-linter" },
@@ -1536,6 +1536,7 @@ dev = [
 requires-dist = [
     { name = "alembic", specifier = ">=1.15" },
     { name = "asyncpg", specifier = ">=0.31.0" },
+    { name = "azure-identity", specifier = "~=1.25" },
     { name = "fastapi", specifier = "~=0.135.0" },
     { name = "gunicorn", specifier = "~=25.3" },
     { name = "litellm", specifier = "~=1.83.7" },
@@ -1553,7 +1554,6 @@ requires-dist = [
 dev = [
     { name = "aiosqlite", specifier = "~=0.20" },
     { name = "asgi-lifespan", specifier = "~=2.1" },
-    { name = "azure-identity", specifier = "~=1.25" },
     { name = "azure-keyvault-secrets", specifier = "~=4.10" },
     { name = "httpx", specifier = "~=0.28" },
     { name = "import-linter", specifier = ">=2.11" },
