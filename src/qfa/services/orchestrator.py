@@ -25,7 +25,7 @@ from qfa.domain.models import (
     SummaryRequestModel,
     SummaryResultModel,
 )
-from qfa.domain.ports import LLMPort, OrchestratorPort
+from qfa.domain.ports import AnonymizationPort, LLMPort
 from qfa.services.coding_classifier import build_pick_messages, parse_selected_indices
 from qfa.settings import OrchestratorSettings
 
@@ -141,7 +141,7 @@ def _build_judge_system_message(source_text: str, summary: str) -> str:
     return _JUDGE_PROMPT.format(source_text=source_text, summary=summary)
 
 
-class StandardOrchestrator(OrchestratorPort):
+class Orchestrator:
     """Core orchestration service for feedback analysis.
 
     Assembles prompts from feedback documents, validates input,
@@ -152,6 +152,8 @@ class StandardOrchestrator(OrchestratorPort):
     ----------
     llm : LLMPort
         The LLM provider adapter.
+    anonymizer : AnonymizationPort
+        The anonymisation adapter used to redact PII before LLM calls.
     settings : OrchestratorSettings
         Configuration for the orchestrator behaviour.
     llm_timeout_seconds : float
@@ -163,11 +165,13 @@ class StandardOrchestrator(OrchestratorPort):
     def __init__(
         self,
         llm: LLMPort,
+        anonymizer: AnonymizationPort,
         settings: OrchestratorSettings,
         llm_timeout_seconds: float,
         max_total_tokens: int,
     ) -> None:
-        self._llm: LLMPort = llm
+        self._llm = llm
+        self._anonymizer = anonymizer
         self._settings = settings
         self._llm_timeout_seconds = llm_timeout_seconds
         self._max_total_tokens = max_total_tokens

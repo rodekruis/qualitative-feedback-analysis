@@ -1,0 +1,2 @@
+# local .gitignore to ensure that secrets are protected in any environment.
+.env

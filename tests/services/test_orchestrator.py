@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from qfa.adapters.llm_client import LiteLLMClient
 from qfa.domain.errors import (
     AnalysisError,
     LLMError,
@@ -18,8 +19,7 @@ from qfa.domain.models import (
     SummaryRequestModel,
     SummaryResultModel,
 )
-from qfa.services.llm_client import LiteLLMClient
-from qfa.services.orchestrator import StandardOrchestrator
+from qfa.services.orchestrator import Orchestrator
 from qfa.settings import OrchestratorSettings
 
 TENANT_ID = "tenant-42"
@@ -160,6 +160,16 @@ class FakeLLMPort:
         return _make_llm_response(structured=_make_analysis_result())
 
 
+class FakeAnonymizer:
+    """No-op anonymiser for tests: returns text unchanged with empty mapping."""
+
+    def anonymize(self, text):
+        return text, {}
+
+    def deanonymize(self, text, mapping):
+        return text
+
+
 @pytest.fixture
 def settings():
     return OrchestratorSettings()
@@ -170,8 +180,9 @@ def orchestrator(settings):
     fake_llm = FakeLLMPort(
         responses=[_make_llm_response(structured=_make_analysis_result())]
     )
-    return StandardOrchestrator(
+    return Orchestrator(
         llm=fake_llm,
+        anonymizer=FakeAnonymizer(),
         settings=settings,
         llm_timeout_seconds=LLM_TIMEOUT,
         max_total_tokens=MAX_TOKENS,
@@ -186,8 +197,9 @@ class TestHappyPath:
             model="gpt-4o",
         )
         fake_llm = FakeLLMPort(responses=[resp])
-        orch = StandardOrchestrator(
+        orch = Orchestrator(
             llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
             settings=settings,
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
@@ -213,8 +225,9 @@ class TestTokenLimit:
         request = _make_request(documents=(doc,))
 
         fake_llm = FakeLLMPort(responses=[_make_llm_response()])
-        orch = StandardOrchestrator(
+        orch = Orchestrator(
             llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
             settings=settings,
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=100,  # very low limit
@@ -238,8 +251,9 @@ class TestTokenLimit:
                 ),
             ]
         )
-        orch = StandardOrchestrator(
+        orch = Orchestrator(
             llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
             settings=settings,
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=100,
@@ -256,8 +270,9 @@ class TestNonTransientError:
         fake_llm = FakeLLMPort(
             errors=[LLMError("internal server error")],
         )
-        orch = StandardOrchestrator(
+        orch = Orchestrator(
             llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
             settings=settings,
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
@@ -280,8 +295,9 @@ class TestNonTransientError:
                 )
             ]
         )
-        orch = StandardOrchestrator(
+        orch = Orchestrator(
             llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
             settings=settings,
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
@@ -295,8 +311,9 @@ class TestNonTransientError:
     @pytest.mark.asyncio
     async def test_summary_llm_error_bubbles_up(self, settings):
         fake_llm = FakeLLMPort(errors=[LLMError("invalid JSON from provider")])
-        orch = StandardOrchestrator(
+        orch = Orchestrator(
             llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
             settings=settings,
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
@@ -315,8 +332,9 @@ class TestNonTransientError:
                 _make_llm_response(structured="0.82\n"),
             ]
         )
-        orch = StandardOrchestrator(
+        orch = Orchestrator(
             llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
             settings=settings,
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
@@ -339,8 +357,9 @@ class TestNonTransientError:
                 _make_llm_response(structured="not a float"),
             ]
         )
-        orch = StandardOrchestrator(
+        orch = Orchestrator(
             llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
             settings=settings,
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
@@ -359,8 +378,9 @@ class TestNonTransientError:
                 _make_llm_response(structured="1.5"),
             ]
         )
-        orch = StandardOrchestrator(
+        orch = Orchestrator(
             llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
             settings=settings,
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
@@ -380,8 +400,9 @@ class TestMetadataFiltering:
         request = _make_request(documents=(doc,))
 
         fake_llm = FakeLLMPort(responses=[_make_llm_response()])
-        orch = StandardOrchestrator(
+        orch = Orchestrator(
             llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
             settings=settings,
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
@@ -402,8 +423,9 @@ class TestNoMetadataByDefault:
         request = _make_request(documents=(doc,))
 
         fake_llm = FakeLLMPort(responses=[_make_llm_response()])
-        orch = StandardOrchestrator(
+        orch = Orchestrator(
             llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
             settings=settings,
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
@@ -420,8 +442,9 @@ class TestTenantIdPassedThrough:
     @pytest.mark.asyncio
     async def test_tenant_id_in_llm_call(self, settings):
         fake_llm = FakeLLMPort(responses=[_make_llm_response()])
-        orch = StandardOrchestrator(
+        orch = Orchestrator(
             llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
             settings=settings,
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
@@ -439,8 +462,9 @@ class TestStructuralDelimiters:
     @pytest.mark.asyncio
     async def test_prompt_contains_xml_tags(self, settings):
         fake_llm = FakeLLMPort(responses=[_make_llm_response()])
-        orch = StandardOrchestrator(
+        orch = Orchestrator(
             llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
             settings=settings,
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
@@ -468,8 +492,9 @@ class TestInjectionSystemPrefix:
         fake_llm = FakeLLMPort(
             responses=[_make_llm_response(structured=_make_analysis_result())]
         )
-        orch = StandardOrchestrator(
+        orch = Orchestrator(
             llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
             settings=settings,
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
@@ -487,8 +512,9 @@ class TestInjectionSystemPrefix:
         fake_llm = FakeLLMPort(
             responses=[_make_llm_response(structured=_make_analysis_result())]
         )
-        orch = StandardOrchestrator(
+        orch = Orchestrator(
             llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
             settings=settings,
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
@@ -511,8 +537,9 @@ class TestInjectionSystemPrefix:
                 _make_llm_response(structured=_make_summary_result()),
             ]
         )
-        orch = StandardOrchestrator(
+        orch = Orchestrator(
             llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
             settings=settings,
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
@@ -532,8 +559,9 @@ class TestInjectionNullBytes:
         fake_llm = FakeLLMPort(
             responses=[_make_llm_response(structured=_make_analysis_result())]
         )
-        orch = StandardOrchestrator(
+        orch = Orchestrator(
             llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
             settings=settings,
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
@@ -591,8 +619,9 @@ class TestInjectionRepeatedChars:
         fake_llm = FakeLLMPort(
             responses=[_make_llm_response(structured=_make_analysis_result())]
         )
-        orch = StandardOrchestrator(
+        orch = Orchestrator(
             llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
             settings=settings,
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
@@ -613,8 +642,9 @@ class TestInjectionErrorNoMatchedText:
         fake_llm = FakeLLMPort(
             responses=[_make_llm_response(structured=_make_analysis_result())]
         )
-        orch = StandardOrchestrator(
+        orch = Orchestrator(
             llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
             settings=settings,
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,

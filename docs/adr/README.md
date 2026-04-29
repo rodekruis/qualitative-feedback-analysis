@@ -17,6 +17,12 @@ to them, the options considered, and the reasoning behind the chosen approach.
 | [005](005-bearer-auth.md) | Bearer token authentication | Accepted |
 | [006](006-composed-settings.md) | Composed settings with env prefix isolation | Accepted |
 | [007](007-separate-api-schemas.md) | Separate API schemas from domain models | Accepted |
-| [008](008-keep-orchestrator-port.md) | Keep OrchestratorPort despite single implementation | Accepted |
 | [009](009-dedicated-state-storage-rg.md) | Dedicated resource group for Terraform state storage | Accepted |
 | [010](010-shared-container-registry.md) | Shared container registry across environments | Accepted |
+| [011](011-drop-orchestrator-port.md) | Drop swappable-orchestrator requirement and remove OrchestratorPort | Accepted (supersedes [008](obsolete/008-keep-orchestrator-port.md)) |
+
+## Obsolete
+
+| ADR | Title | Status |
+|-----|-------|--------|
+| [008](obsolete/008-keep-orchestrator-port.md) | Keep OrchestratorPort despite single implementation | Superseded by [011](011-drop-orchestrator-port.md) |

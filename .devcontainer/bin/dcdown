@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Host-side helper: stop the devcontainer without removing it.
+# Named volumes (venv, claude-config, shell-history) and the container
+# filesystem are preserved, so the next `dcexec` is near-instant.
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel)"
+exec docker compose -f "$root/.devcontainer/docker-compose.yml" stop

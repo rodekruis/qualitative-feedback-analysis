@@ -16,6 +16,8 @@ from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 import qfa
+from qfa.adapters.llm_client import LiteLLMClient
+from qfa.adapters.presidio_anonymizer import PresidioAnonymizer
 from qfa.api.routes import router
 from qfa.api.schemas import (
     ErrorDetailApi,
@@ -29,8 +31,7 @@ from qfa.domain.errors import (
     AuthenticationError,
     DocumentsTooLargeError,
 )
-from qfa.services.llm_client import LiteLLMClient
-from qfa.services.orchestrator import StandardOrchestrator
+from qfa.services.orchestrator import Orchestrator
 from qfa.settings import AppSettings, LLMSettings
 from qfa.utils import setup_logging
 
@@ -444,8 +445,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     _register_custom_model_prices()
 
     llm_client = build_llm_client(settings.llm)
-    orchestrator = StandardOrchestrator(
+    anonymizer = PresidioAnonymizer()
+    orchestrator = Orchestrator(
         llm=llm_client,
+        anonymizer=anonymizer,
         settings=settings.orchestrator,
         llm_timeout_seconds=settings.llm.timeout_seconds,
         max_total_tokens=settings.llm.max_total_tokens,
