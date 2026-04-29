@@ -8,6 +8,13 @@ The Terraform configuration in `infra/` manages Azure resources (Key Vault, App 
 
 Two of the resources Terraform depends on cannot be managed by Terraform itself: the storage account holding Terraform's own state, and the container registry that Terraform reads as a data source. These are the chicken-and-egg dependencies that `bootstrap.sh` creates before `terraform init` can run.
 
+Furthermore, the GitHub Actions require a managed identity and a federated identity credential
+to authenticate. These are managed by Terraform.
+To initially create them, we need to run `terraform apply`
+locally with personal credentials. Subsequently, `terraform apply` can and will be run
+via GitHub Actions.
+
+
 ## Prerequisites
 
 - [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli) — authenticated (`az login`)
@@ -19,6 +26,12 @@ Two of the resources Terraform depends on cannot be managed by Terraform itself:
   - One for the **shared container registry** — passed via `TF_VAR_acr_resource_group_name` in step 2. May be the same as one of the env RGs or its own.
 
   For a minimal single-RG deployment, all five roles can point at the same RG. For multi-RG isolation, give each role its own RG. Create each via the Azure portal or `az group create -n <name> -l westeurope`.
+
+### Required roles to run initial terraform apply:
+
+* Contributor
+* Key Vault Administrator
+* Role Based Access Control Administrator
 
 ## Steps
 
@@ -108,70 +121,30 @@ terraform init \
   -backend-config="storage_account_name=$TF_VAR_tf_state_storage_account"
 ```
 
-If `terraform init` fails with an Azure CLI authorizer or tenant ID error, make sure you are successfully logged in to Azure:
 
-```bash
-az login
-```
+> [!NOTE]
+> If `terraform init` fails with an Azure CLI authorizer or tenant ID error, make sure you are successfully logged in to Azure:
+> 
+> ```bash
+> az login
+> ```
+> 
+> Then re-run the `terraform init` command above.
+> If it still fails, make sure your roles are activated in the Azure portal.
 
-Then re-run the `terraform init` command above.
-If it still fails, make sure your roles are activated in the Azure portal.
+### 6. Set the repo-scoped GitHub Actions variables
 
-### 6. Create workspaces
-
-Terraform uses [workspaces](https://developer.hashicorp.com/terraform/language/state/workspaces)
-to manage `dev`, `staging`, and `prd` environments with separate state files.
-
-```bash
-terraform workspace new dev
-terraform workspace new staging
-terraform workspace new prd
-```
-
-### 7. Apply each environment and configure its GitHub variables
-
-This is the per-environment loop. Each environment lives in its own resource group, so `TF_VAR_resource_group_name` must be re-exported before each `terraform apply`. The same export is then used by `gh variable set AZ_RESOURCE_GROUP` to record that environment's RG in its GitHub environment. `terraform output -raw az_client_id` reads from the current workspace's state, so each block's `terraform output` call must follow that block's `terraform apply`.
+These GitHub variables are shared across all environments and only need to be set once per deployment. They are read by the `terraform.yaml` workflow so CI can locate the Terraform state backend and the container registry without hardcoding their names.
 
 ```bash
 REPO="rodekruis/qualitative-feedback-analysis"
 
-# --- repo-scoped variables (shared across all environments) ---
 echo "$TF_VAR_tenant_id"                    | gh variable set AZ_TENANT_ID                --repo "$REPO"
 echo "$TF_VAR_subscription_id"              | gh variable set AZ_SUBSCRIPTION_ID          --repo "$REPO"
 echo "$TF_VAR_tf_state_resource_group_name" | gh variable set AZ_TF_STATE_RESOURCE_GROUP  --repo "$REPO"
 echo "$TF_VAR_tf_state_storage_account"     | gh variable set AZ_TF_STATE_STORAGE_ACCOUNT --repo "$REPO"
 echo "$TF_VAR_acr_resource_group_name"      | gh variable set AZ_ACR_RESOURCE_GROUP       --repo "$REPO"
 echo "$TF_VAR_acr_name"                     | gh variable set AZ_ACR_NAME                 --repo "$REPO"
-
-# === Dev ===
-export TF_VAR_resource_group_name=<your-dev-rg-name>
-terraform workspace select dev
-terraform apply
-
-gh api repos/$REPO/environments/dev -X PUT
-gh variable set AZ_CLIENT_ID       --env dev --repo $REPO --body "$(terraform output -raw az_client_id)"
-gh variable set AZ_RESOURCE_GROUP  --env dev --repo $REPO --body "$TF_VAR_resource_group_name"
-gh variable set AZ_APP_NAME        --env dev --repo $REPO --body "qfa-dev-backend"
-
-# === Staging ===
-export TF_VAR_resource_group_name=<your-staging-rg-name>
-terraform workspace select staging
-terraform apply
-
-gh api repos/$REPO/environments/staging -X PUT
-gh variable set AZ_CLIENT_ID       --env staging --repo $REPO --body "$(terraform output -raw az_client_id)"
-gh variable set AZ_RESOURCE_GROUP  --env staging --repo $REPO --body "$TF_VAR_resource_group_name"
-gh variable set AZ_APP_NAME        --env staging --repo $REPO --body "qfa-staging-backend"
-
-# === Production ===
-export TF_VAR_resource_group_name=<your-prd-rg-name>
-terraform workspace select prd
-terraform apply
-
-gh api repos/$REPO/environments/prd -X PUT
-gh variable set AZ_CLIENT_ID       --env prd --repo $REPO --body "$(terraform output -raw az_client_id)"
-gh variable set AZ_RESOURCE_GROUP  --env prd --repo $REPO --body "$TF_VAR_resource_group_name"
-gh variable set AZ_APP_NAME        --env prd --repo $REPO --body "qfa-prd-backend"
 ```
 
 The `terraform.yaml` workflow can now run autonomously in CI.
@@ -184,8 +157,12 @@ The Key Vault uses RBAC authorization, so Azure Contributor/Owner on the resourc
 
 Repeat the block below for each environment (`ENV=dev`, `ENV=staging`, `ENV=prd`):
 
-```bash
-ENV=dev  # then staging, then prd
+## Next: create each environment
+
+> [!NOTE]
+> The steps above create the shared Terraform backend and container registry, and the repo-scoped GitHub variables. They do **not** yet create any App Service, Key Vault, or managed identity — those are per-environment and are provisioned in the next document.
+ 
+Run [setup-new-env.md](setup-new-env.md) once for each environment (`dev`, `staging`, `prd`). That doc creates a Terraform workspace, applies the per-environment resources (including the managed identity + federated credential that lets GitHub Actions authenticate without any secrets), configures the per-environment GitHub variables, and seeds Key Vault secrets.
 
 # Grant yourself write access to secrets
 VAULT_ID=$(az keyvault show --name "qfa-${ENV}-keyvault" --query id -o tsv)
@@ -212,9 +189,9 @@ Without these secrets the App Service will start and pass health checks, but API
 
 ## Subsequent infrastructure changes
 
-After the bootstrap, infrastructure changes follow the normal workflow:
+After the bootstrap and per-environment setup are complete, infrastructure changes follow the normal workflow:
 
 - Open a PR touching `infra/` → CI runs `terraform plan` automatically
 - Merge to `main` → trigger `terraform apply` manually from the Actions tab
 
-If the managed identity is ever recreated (e.g. after `terraform destroy`), re-run the affected environment's block from step 7 to update `AZ_CLIENT_ID`.
+If the managed identity is ever recreated (e.g. after `terraform destroy`), re-run steps 4 and 5 of [setup-new-env.md](setup-new-env.md) for the affected environment to update `AZ_CLIENT_ID`.

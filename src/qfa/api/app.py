@@ -16,6 +16,8 @@ from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 import qfa
+from qfa.adapters.llm_client import LiteLLMClient
+from qfa.adapters.presidio_anonymizer import PresidioAnonymizer
 from qfa.api.routes import router
 from qfa.api.routes_usage import router as usage_router
 from qfa.api.schemas import (
@@ -32,9 +34,8 @@ from qfa.domain.errors import (
     DocumentsTooLargeError,
     UsageRepositoryUnavailableError,
 )
-from qfa.domain.ports import LLMPort, OrchestratorPort
-from qfa.services.llm_client import LiteLLMClient
-from qfa.services.orchestrator import StandardOrchestrator
+from qfa.domain.ports import LLMPort
+from qfa.services.orchestrator import Orchestrator
 from qfa.settings import AppSettings, LLMSettings
 from qfa.utils import setup_logging
 
@@ -588,6 +589,7 @@ def _make_lifespan(llm_factory: LLMFactory):
 
         _register_custom_model_prices()
 
+        anonymizer = PresidioAnonymizer()
         api_keys = settings.auth.api_keys
 
         engine = None
@@ -611,8 +613,9 @@ def _make_lifespan(llm_factory: LLMFactory):
             llm_for_orch = TrackingLLMAdapter(inner=base_llm, usage_repo=usage_repo)
             logger.info("Usage tracking enabled (per-attempt, per-operation)")
 
-        orchestrator: OrchestratorPort = StandardOrchestrator(
+        orchestrator = Orchestrator(
             llm=llm_for_orch,
+            anonymizer=anonymizer,
             settings=settings.orchestrator,
             llm_timeout_seconds=settings.llm.timeout_seconds,
             max_total_tokens=settings.llm.max_total_tokens,

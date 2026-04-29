@@ -22,13 +22,14 @@ from qfa.domain.models import (
     OperationStats,
     TenantApiKey,
 )
-from qfa.domain.ports import LLMPort, OrchestratorPort
+from qfa.domain.ports import AnonymizationPort, LLMPort
 
 __all__ = [
     "AnalysisError",
     "AnalysisRequest",
     "AnalysisResult",
     "AnalysisTimeoutError",
+    "AnonymizationPort",
     "AuthenticationError",
     "CallContext",
     "CallStatus",

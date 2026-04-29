@@ -30,7 +30,7 @@ from qfa.domain.models import (
 from qfa.domain.models import (
     SummaryRequest as DomainSummaryRequest,
 )
-from qfa.domain.ports import OrchestratorPort
+from qfa.services.orchestrator import Orchestrator
 
 router = APIRouter()
 
@@ -53,7 +53,7 @@ async def analyze(
     body: AnalyzeRequest,
     request: Request,
     tenant: TenantApiKey = Depends(authenticate_request),
-    orchestrator: OrchestratorPort = Depends(get_orchestrator),
+    orchestrator: Orchestrator = Depends(get_orchestrator),
 ) -> AnalyzeResponse:
     """Analyze a batch of feedback documents.
 
@@ -65,7 +65,7 @@ async def analyze(
         The incoming HTTP request.
     tenant : TenantApiKey
         The authenticated tenant, injected via dependency.
-    orchestrator : OrchestratorPort
+    orchestrator : Orchestrator
         The orchestrator service, injected via dependency.
 
     Returns
@@ -103,7 +103,7 @@ async def summarize(
     body: SummarizeRequest,
     request: Request,
     tenant: TenantApiKey = Depends(authenticate_request),
-    orchestrator: OrchestratorPort = Depends(get_orchestrator),
+    orchestrator: Orchestrator = Depends(get_orchestrator),
 ) -> SummarizeResponse:
     """Summarize each submitted feedback item individually.
 
@@ -115,7 +115,7 @@ async def summarize(
         The incoming HTTP request.
     tenant : TenantApiKey
         The authenticated tenant, injected via dependency.
-    orchestrator : OrchestratorPort
+    orchestrator : Orchestrator
         The orchestrator service, injected via dependency.
 
     Returns
@@ -164,7 +164,7 @@ async def summarize(
 async def assign_codes(
     body: AssignCodesRequest,
     tenant: TenantApiKey = Depends(authenticate_request),
-    orchestrator: OrchestratorPort = Depends(get_orchestrator),
+    orchestrator: Orchestrator = Depends(get_orchestrator),
 ) -> AssignCodesResponse:
     """Assign codes via iterative LLM picks at each level of the framework."""
     deadline = datetime.now(UTC) + timedelta(seconds=120)
@@ -208,7 +208,7 @@ async def summarize_aggregate(
     body: SummarizeRequest,
     request: Request,
     tenant: TenantApiKey = Depends(authenticate_request),
-    orchestrator: OrchestratorPort = Depends(get_orchestrator),
+    orchestrator: Orchestrator = Depends(get_orchestrator),
 ) -> SummarizeAggregateResponse:
     """Summarize all submitted feedback items as a single aggregate summary.
 
@@ -220,7 +220,7 @@ async def summarize_aggregate(
         The incoming HTTP request.
     tenant : TenantApiKey
         The authenticated tenant, injected via dependency.
-    orchestrator : OrchestratorPort
+    orchestrator : Orchestrator
         The orchestrator service, injected via dependency.
 
     Returns

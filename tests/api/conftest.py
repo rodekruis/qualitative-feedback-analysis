@@ -24,7 +24,6 @@ from qfa.domain.models import (
     SummaryResult,
     TenantApiKey,
 )
-from qfa.domain.ports import OrchestratorPort
 
 FAKE_API_KEY = "test-key-abc123"
 FAKE_SUPERUSER_KEY = "superuser-key-xyz789"
@@ -32,7 +31,7 @@ FAKE_TENANT_ID = "tenant-test"
 FAKE_API_KEY_NAME = "test-key"
 
 
-class FakeOrchestrator(OrchestratorPort):
+class FakeOrchestrator:
     """Fake orchestrator for testing.
 
     Returns configurable analyze and summarize results or raises a

@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import openai
 import pytest
 
+from qfa.adapters.llm_client import LiteLLMClient
 from qfa.domain.errors import LLMError, LLMRateLimitError, LLMTimeoutError
 from qfa.domain.models import LLMResponse
-from qfa.services.llm_client import LiteLLMClient
 
 MODEL = "azure_ai/mistral-large-2411"
 SYSTEM_MSG = "You are a helpful assistant."
@@ -50,12 +50,12 @@ class TestLiteLLMClientHappyPath:
         client = _make_client()
         with (
             patch(
-                "qfa.services.llm_client.acompletion",
+                "qfa.adapters.llm_client.acompletion",
                 new_callable=AsyncMock,
                 return_value=mock_response,
             ),
             patch(
-                "qfa.services.llm_client.completion_cost",
+                "qfa.adapters.llm_client.completion_cost",
                 return_value=0.001,
             ),
         ):
@@ -79,11 +79,11 @@ class TestLiteLLMClientCallParameters:
         )
         with (
             patch(
-                "qfa.services.llm_client.acompletion",
+                "qfa.adapters.llm_client.acompletion",
                 new_callable=AsyncMock,
                 return_value=mock_response,
             ) as mock_ac,
-            patch("qfa.services.llm_client.completion_cost", return_value=0.0),
+            patch("qfa.adapters.llm_client.completion_cost", return_value=0.0),
         ):
             await client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
 
@@ -104,11 +104,11 @@ class TestLiteLLMClientCallParameters:
         client = _make_client(api_base="", api_version="")
         with (
             patch(
-                "qfa.services.llm_client.acompletion",
+                "qfa.adapters.llm_client.acompletion",
                 new_callable=AsyncMock,
                 return_value=mock_response,
             ) as mock_ac,
-            patch("qfa.services.llm_client.completion_cost", return_value=0.0),
+            patch("qfa.adapters.llm_client.completion_cost", return_value=0.0),
         ):
             await client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
 
@@ -124,12 +124,12 @@ class TestLiteLLMClientCostFallback:
         client = _make_client()
         with (
             patch(
-                "qfa.services.llm_client.acompletion",
+                "qfa.adapters.llm_client.acompletion",
                 new_callable=AsyncMock,
                 return_value=mock_response,
             ),
             patch(
-                "qfa.services.llm_client.completion_cost",
+                "qfa.adapters.llm_client.completion_cost",
                 side_effect=Exception("not found"),
             ),
         ):
@@ -143,7 +143,7 @@ class TestLiteLLMClientExceptionMapping:
     async def test_timeout_error_mapped(self):
         client = _make_client()
         with patch(
-            "qfa.services.llm_client.acompletion",
+            "qfa.adapters.llm_client.acompletion",
             new_callable=AsyncMock,
             side_effect=openai.APITimeoutError(request=MagicMock()),
         ):
@@ -157,7 +157,7 @@ class TestLiteLLMClientExceptionMapping:
         mock_resp.status_code = 429
         mock_resp.headers = {}
         with patch(
-            "qfa.services.llm_client.acompletion",
+            "qfa.adapters.llm_client.acompletion",
             new_callable=AsyncMock,
             side_effect=openai.RateLimitError(
                 message="rate limited", response=mock_resp, body=None
@@ -170,7 +170,7 @@ class TestLiteLLMClientExceptionMapping:
     async def test_generic_api_error_mapped(self):
         client = _make_client()
         with patch(
-            "qfa.services.llm_client.acompletion",
+            "qfa.adapters.llm_client.acompletion",
             new_callable=AsyncMock,
             side_effect=openai.APIError(
                 message="server error", request=MagicMock(), body=None
@@ -185,7 +185,7 @@ class TestLiteLLMClientExceptionMapping:
         mock_response.choices[0].message.content = ""
         client = _make_client()
         with patch(
-            "qfa.services.llm_client.acompletion",
+            "qfa.adapters.llm_client.acompletion",
             new_callable=AsyncMock,
             return_value=mock_response,
         ):
@@ -198,7 +198,7 @@ class TestLiteLLMClientExceptionMapping:
         mock_response.usage = None
         client = _make_client()
         with patch(
-            "qfa.services.llm_client.acompletion",
+            "qfa.adapters.llm_client.acompletion",
             new_callable=AsyncMock,
             return_value=mock_response,
         ):
