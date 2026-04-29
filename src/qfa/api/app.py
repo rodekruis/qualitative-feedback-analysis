@@ -490,8 +490,72 @@ their own factory to ``create_app`` to inject a fake without monkeypatching.
 
 
 def _make_lifespan(llm_factory: LLMFactory):
+    """Build a FastAPI lifespan context manager that closes over ``llm_factory``.
+
+    FastAPI's ``lifespan=`` parameter accepts a single async context
+    manager whose signature is fixed at ``(app: FastAPI) -> ...``. There
+    is no built-in way to thread extra construction-time dependencies
+    (like which ``LLMPort`` factory to use) through that signature
+    without resorting to module-level globals or monkeypatching.
+
+    This factory closes over ``llm_factory`` and returns the resulting
+    lifespan, so ``create_app`` can pass a fake factory in tests and the
+    lifespan picks it up at startup — wiring the same composition path
+    (``llm_factory(settings.llm)`` → optional ``TrackingLLMAdapter``
+    wrap → ``StandardOrchestrator``) regardless of whether the LLM
+    client is real or stubbed. Production simply omits the override and
+    gets the default ``build_llm_client``.
+
+    Parameters
+    ----------
+    llm_factory : LLMFactory
+        Factory invoked at startup to construct the inner ``LLMPort``.
+
+    Returns
+    -------
+    Callable[[FastAPI], AsyncContextManager[None]]
+        A lifespan suitable for ``FastAPI(lifespan=...)``.
+    """
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+        """Compose the application graph at startup; tear it down on shutdown.
+
+        This is the runtime composition root: it loads settings, builds
+        every dependency that routes consume, and attaches the results
+        to ``app.state`` so request handlers can read them without
+        importing modules directly. Doing this in the lifespan (rather
+        than at import time) ensures settings/env-vars are read once per
+        process boot, the DB engine is created on the running event
+        loop, and Alembic migrations run before the first request is
+        served.
+
+        Startup order is significant:
+
+        1. Load ``AppSettings`` and configure logging — must happen
+           before anything that might log.
+        2. Register custom LiteLLM model prices — required for
+           ``completion_cost()`` to value any model not in LiteLLM's
+           built-in cost map.
+        3. Build the base ``LLMPort`` via the closed-over factory.
+        4. If ``settings.db.track_usage`` is set: create the async DB
+           engine, run migrations to head (advisory-locked, safe under
+           concurrent boots), and wrap the base LLM in
+           ``TrackingLLMAdapter`` so every call attempt is recorded.
+        5. Construct the ``StandardOrchestrator`` over whichever LLM
+           variant was chosen above.
+        6. Publish ``orchestrator``, ``api_keys``, ``settings``, and
+           ``usage_repo`` on ``app.state`` for routes/middleware to read.
+
+        On shutdown the only resource that needs explicit cleanup is the
+        DB engine's connection pool; everything else is plain Python
+        objects that the GC handles.
+
+        Parameters
+        ----------
+        app : FastAPI
+            The application instance whose ``state`` will be populated.
+        """
         settings = AppSettings()
         setup_logging(settings.log)
 
