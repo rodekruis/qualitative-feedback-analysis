@@ -26,6 +26,23 @@ from qfa.domain.ports import UsageRepositoryPort
 
 router = APIRouter()
 
+_FROM_DESCRIPTION = (
+    "Inclusive lower bound for the query window. ISO-8601 timestamp with "
+    "explicit timezone (e.g. `2026-04-01T00:00:00Z`); naive datetimes are "
+    "rejected with 422. Omit to start at the beginning of recorded history. "
+    "Together with `to`, defines a half-open `[from, to)` window so "
+    "consecutive windows can be chained without double-counting boundary rows."
+)
+
+_TO_DESCRIPTION = (
+    "Exclusive upper bound for the query window. ISO-8601 timestamp with "
+    "explicit timezone (e.g. `2026-05-01T00:00:00Z`); naive datetimes are "
+    "rejected with 422. Must be strictly greater than `from` when both are "
+    "supplied. Omit to extend up to the current time."
+)
+
+_TIME_FILTER_EXAMPLES = ["2026-04-01T00:00:00Z", "2026-04-15T12:30:00+02:00"]
+
 
 def _zero_usage_stats(tenant_id: str | None) -> UsageStats:
     """Build a domain ``UsageStats`` representing an empty time window."""
@@ -76,8 +93,17 @@ def _parse_time_window(
 async def usage(
     tenant: TenantApiKey = Depends(authenticate_request),
     usage_repo: UsageRepositoryPort = Depends(get_usage_repo),
-    from_: datetime | None = Query(default=None, alias="from"),
-    to: datetime | None = Query(default=None),
+    from_: datetime | None = Query(
+        default=None,
+        alias="from",
+        description=_FROM_DESCRIPTION,
+        examples=_TIME_FILTER_EXAMPLES,
+    ),
+    to: datetime | None = Query(
+        default=None,
+        description=_TO_DESCRIPTION,
+        examples=_TIME_FILTER_EXAMPLES,
+    ),
 ) -> UsageStatsResponse:
     """Usage statistics for the authenticated tenant within an optional window.
 
@@ -108,8 +134,17 @@ async def usage(
 async def usage_all(
     _tenant: TenantApiKey = Depends(require_superuser),
     usage_repo: UsageRepositoryPort = Depends(get_usage_repo),
-    from_: datetime | None = Query(default=None, alias="from"),
-    to: datetime | None = Query(default=None),
+    from_: datetime | None = Query(
+        default=None,
+        alias="from",
+        description=_FROM_DESCRIPTION,
+        examples=_TIME_FILTER_EXAMPLES,
+    ),
+    to: datetime | None = Query(
+        default=None,
+        description=_TO_DESCRIPTION,
+        examples=_TIME_FILTER_EXAMPLES,
+    ),
 ) -> AllUsageStatsResponse:
     """Per-tenant and grand-total usage statistics. Requires superuser access.
 
