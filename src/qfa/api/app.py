@@ -599,12 +599,12 @@ def _make_lifespan(llm_factory: LLMFactory):
         if settings.db.track_usage:
             from qfa.adapters.db import (
                 SqlAlchemyUsageRepository,
-                create_async_engine_from_url,
+                create_async_engine_from_settings,
                 create_session_factory,
             )
             from qfa.adapters.tracking_llm import TrackingLLMAdapter
 
-            engine = create_async_engine_from_url(settings.db.url)
+            engine = create_async_engine_from_settings(settings.db)
 
             session_factory = create_session_factory(engine)
             usage_repo = SqlAlchemyUsageRepository(session_factory)

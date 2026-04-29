@@ -12,14 +12,17 @@ from decimal import Decimal
 import pytest
 import pytest_asyncio
 import sqlalchemy as sa
+from pydantic import SecretStr
 
 from qfa.adapters.db import (
     SqlAlchemyUsageRepository,
     create_session_factory,
     llm_calls,
     metadata,
+    resolve_database_url,
 )
 from qfa.domain.models import CallStatus, LLMCallRecord, Operation
+from qfa.settings import DatabaseSettings
 
 pytestmark = pytest.mark.asyncio
 
@@ -148,3 +151,43 @@ async def test_translate_db_errors_maps_sqlalchemy_exceptions_to_domain():
     with pytest.raises(ValueError):
         async with _translate_db_errors():
             raise ValueError("not a connectivity issue")
+
+
+async def test_resolve_database_url_uses_explicit_url():
+    settings = DatabaseSettings(
+        track_usage=True,
+        url="postgresql+asyncpg://user:pass@host:5432/qfa",
+    )
+    assert (
+        resolve_database_url(settings) == "postgresql+asyncpg://user:pass@host:5432/qfa"
+    )
+
+
+async def test_resolve_database_url_from_password_parts():
+    settings = DatabaseSettings(
+        track_usage=True,
+        host="db.internal",
+        port=5432,
+        name="qfa",
+        user="qfaadmin",
+        password=SecretStr("secret"),
+    )
+    assert (
+        resolve_database_url(settings)
+        == "postgresql+asyncpg://qfaadmin:secret@db.internal:5432/qfa"
+    )
+
+
+async def test_resolve_database_url_from_entra_parts():
+    settings = DatabaseSettings(
+        track_usage=True,
+        auth_mode="entra",
+        host="db.internal",
+        port=5432,
+        name="qfa",
+        user="app-msi",
+    )
+    assert (
+        resolve_database_url(settings)
+        == "postgresql+asyncpg://app-msi@db.internal:5432/qfa?ssl=require"
+    )
