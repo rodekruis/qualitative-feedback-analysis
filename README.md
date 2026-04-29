@@ -14,6 +14,11 @@ Each request contains dozens to thousands of feedback records.
 The records need to be analysed and, and the result sent back to the CRM system in a
 synchronous API call.
 
+
+## Terms and definitions
+See [Ubiquitous Language](docs/ubiquitous_language.md). That document defines the lanuage
+used throughout the project.
+
 ## Tech stack
 * fastapi
 * uvicorn
@@ -23,9 +28,13 @@ synchronous API call.
 ## Architecture
 * hexagonal architecture.
 * Flow: API call(records) -> Orchestrator -> LLM API -> return result to user.
-* The Orchestrator is an exchangeable service. 
-  * naive version: forward all records to the LLM in one call, together with system prompt and user prompt
-  * possible future versions: apply embedding, chunking, other "smart" techniques, possibly multiple LLM calls.
+* The Orchestrator is a single application service composed of multiple
+  use cases (analyze, summarize, summarize_aggregate, assign_codes).
+  Per-task behaviour is selected by the route handler calling the
+  appropriate method, not by swapping orchestrator implementations
+  (see ADR-011).
+* Driven adapters (LLM provider, anonymization) sit behind ports
+  (`LLMPort`, `AnonymizationPort`) and remain swappable.
 
 ## Requirements
 * only authenticated API calls (via API keys)
