@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import subprocess
 import sys
 
@@ -45,9 +46,12 @@ async def run_migrations(db_url: str) -> None:
             await conn.execute(text("SELECT pg_advisory_lock(:k)"), {"k": LOCK_KEY})
             try:
                 logger.info("Running alembic upgrade head")
+                # Propagate db_url to alembic/env.py via DB_URL; the function
+                # parameter is the single source of truth.
                 subprocess.run(  # noqa: S603 — args are fully controlled, no user input
                     [sys.executable, "-m", "alembic", "upgrade", "head"],
                     check=True,
+                    env={**os.environ, "DB_URL": db_url},
                 )
             finally:
                 await conn.execute(
