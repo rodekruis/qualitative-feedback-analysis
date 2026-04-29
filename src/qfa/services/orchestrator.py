@@ -310,81 +310,75 @@ class StandardOrchestrator(OrchestratorPort):
         async with call_scope(
             tenant_id=request.tenant_id, operation=Operation.SUMMARIZE
         ):
-            return await self._summarize_inner(request, deadline, anonymize)
+            self._check_injection(request.feedback_items)
 
-    async def _summarize_inner(
-        self,
-        request: SummaryRequest,
-        deadline: datetime,
-        anonymize: bool,
-    ) -> SummaryResult:
-        self._check_injection(request.feedback_items)
+            feedback_item_summaries: list[FeedbackItemSummary] = []
+            total_cost = 0.0
 
-        feedback_item_summaries: list[FeedbackItemSummary] = []
-        total_cost = 0.0
+            for feedback_item in request.feedback_items:
+                system_message = _DEFAULT_SUMMARIZATION_PROMPT
+                if request.output_language:
+                    system_message += (
+                        f"\nWrite the title and summary in {request.output_language}."
+                    )
+                if request.prompt:
+                    system_message += f"\nAdditional instructions: {request.prompt}"
 
-        for feedback_item in request.feedback_items:
-            system_message = _DEFAULT_SUMMARIZATION_PROMPT
-            if request.output_language:
-                system_message += (
-                    f"\nWrite the title and summary in {request.output_language}."
+                user_message = feedback_item.text
+
+                self._check_token_limit(system_message, user_message)
+                response = await self._call_with_retries(
+                    system_message=system_message,
+                    user_message=user_message,
+                    tenant_id=request.tenant_id,
+                    deadline=deadline,
+                    anonymize=anonymize,
                 )
-            if request.prompt:
-                system_message += f"\nAdditional instructions: {request.prompt}"
+                total_cost += response.cost
 
-            user_message = feedback_item.text
+                try:
+                    payload = json.loads(response.result)
+                except json.JSONDecodeError as exc:
+                    raise AnalysisError(
+                        "LLM returned invalid JSON for summary output"
+                    ) from exc
+                if not isinstance(payload, dict):
+                    raise AnalysisError("LLM returned invalid summary payload")
+                if not isinstance(payload.get("title"), str) or not isinstance(
+                    payload.get("summary"), str
+                ):
+                    raise AnalysisError(
+                        "LLM returned summary output missing title or summary"
+                    )
 
-            self._check_token_limit(system_message, user_message)
-            response = await self._call_with_retries(
-                system_message=system_message,
-                user_message=user_message,
-                tenant_id=request.tenant_id,
-                deadline=deadline,
-                anonymize=anonymize,
-            )
-            total_cost += response.cost
-
-            try:
-                payload = json.loads(response.result)
-            except json.JSONDecodeError as exc:
-                raise AnalysisError(
-                    "LLM returned invalid JSON for summary output"
-                ) from exc
-            if not isinstance(payload, dict):
-                raise AnalysisError("LLM returned invalid summary payload")
-            if not isinstance(payload.get("title"), str) or not isinstance(
-                payload.get("summary"), str
-            ):
-                raise AnalysisError(
-                    "LLM returned summary output missing title or summary"
+                summary_text = payload["summary"]
+                judge_system = _build_judge_system_message(
+                    feedback_item.text, summary_text
                 )
+                self._check_token_limit(judge_system, _JUDGE_USER_MESSAGE)
 
-            summary_text = payload["summary"]
-            judge_system = _build_judge_system_message(feedback_item.text, summary_text)
-            self._check_token_limit(judge_system, _JUDGE_USER_MESSAGE)
-
-            judge_response = await self._call_with_retries(
-                system_message=judge_system,
-                user_message=_JUDGE_USER_MESSAGE,
-                tenant_id=request.tenant_id,
-                deadline=deadline,
-                anonymize=anonymize,
-            )
-            total_cost += judge_response.cost
-            quality_score = _parse_judge_quality_score(judge_response.result)
-
-            feedback_item_summaries.append(
-                FeedbackItemSummary(
-                    id=feedback_item.id,
-                    title=payload["title"],
-                    summary=summary_text,
-                    quality_score=quality_score,
+                judge_response = await self._call_with_retries(
+                    system_message=judge_system,
+                    user_message=_JUDGE_USER_MESSAGE,
+                    tenant_id=request.tenant_id,
+                    deadline=deadline,
+                    anonymize=anonymize,
                 )
+                total_cost += judge_response.cost
+                quality_score = _parse_judge_quality_score(judge_response.result)
+
+                feedback_item_summaries.append(
+                    FeedbackItemSummary(
+                        id=feedback_item.id,
+                        title=payload["title"],
+                        summary=summary_text,
+                        quality_score=quality_score,
+                    )
+                )
+            return SummaryResult(
+                feedback_item_summaries=tuple(feedback_item_summaries),
+                cost=total_cost,
             )
-        return SummaryResult(
-            feedback_item_summaries=tuple(feedback_item_summaries),
-            cost=total_cost,
-        )
 
     async def summarize_aggregate(
         self,
@@ -409,72 +403,65 @@ class StandardOrchestrator(OrchestratorPort):
             tenant_id=request.tenant_id,
             operation=Operation.SUMMARIZE_AGGREGATE,
         ):
-            return await self._summarize_aggregate_inner(request, deadline)
+            self._check_injection(request.feedback_items)
 
-    async def _summarize_aggregate_inner(
-        self,
-        request: SummaryRequest,
-        deadline: datetime,
-    ) -> AggregateSummaryResult:
-        self._check_injection(request.feedback_items)
+            system_message = _DEFAULT_AGGREGATE_SUMMARIZATION_PROMPT
+            if request.output_language:
+                system_message += (
+                    f"\nWrite the title and summary in {request.output_language}."
+                )
+            if request.prompt:
+                system_message += f"\nAdditional instructions: {request.prompt}"
 
-        system_message = _DEFAULT_AGGREGATE_SUMMARIZATION_PROMPT
-        if request.output_language:
-            system_message += (
-                f"\nWrite the title and summary in {request.output_language}."
-            )
-        if request.prompt:
-            system_message += f"\nAdditional instructions: {request.prompt}"
-
-        user_message = "\n\n".join(
-            f"{idx}. {item.text}"
-            for idx, item in enumerate(request.feedback_items, start=1)
-        )
-
-        self._check_token_limit(system_message, user_message)
-        response = await self._call_with_retries(
-            system_message=system_message,
-            user_message=user_message,
-            tenant_id=request.tenant_id,
-            deadline=deadline,
-        )
-        total_cost = response.cost
-
-        try:
-            payload = json.loads(response.result)
-        except json.JSONDecodeError as exc:
-            raise AnalysisError(
-                "LLM returned invalid JSON for aggregate summary output"
-            ) from exc
-        if not isinstance(payload, dict):
-            raise AnalysisError("LLM returned invalid aggregate summary payload")
-        if not isinstance(payload.get("title"), str) or not isinstance(
-            payload.get("summary"), str
-        ):
-            raise AnalysisError(
-                "LLM returned aggregate summary output missing title or summary"
+            user_message = "\n\n".join(
+                f"{idx}. {item.text}"
+                for idx, item in enumerate(request.feedback_items, start=1)
             )
 
-        summary_text = payload["summary"]
-        judge_system = _build_judge_system_message(user_message, summary_text)
-        self._check_token_limit(judge_system, _JUDGE_USER_MESSAGE)
+            self._check_token_limit(system_message, user_message)
+            response = await self._call_with_retries(
+                system_message=system_message,
+                user_message=user_message,
+                tenant_id=request.tenant_id,
+                deadline=deadline,
+            )
+            total_cost = response.cost
 
-        judge_response = await self._call_with_retries(
-            system_message=judge_system,
-            user_message=_JUDGE_USER_MESSAGE,
-            tenant_id=request.tenant_id,
-            deadline=deadline,
-        )
-        total_cost += judge_response.cost
-        quality_score = _parse_judge_quality_score(judge_response.result)
+            try:
+                payload = json.loads(response.result)
+            except json.JSONDecodeError as exc:
+                raise AnalysisError(
+                    "LLM returned invalid JSON for aggregate summary output"
+                ) from exc
+            if not isinstance(payload, dict):
+                raise AnalysisError("LLM returned invalid aggregate summary payload")
+            if not isinstance(payload.get("title"), str) or not isinstance(
+                payload.get("summary"), str
+            ):
+                raise AnalysisError(
+                    "LLM returned aggregate summary output missing title or summary"
+                )
 
-        return AggregateSummaryResult(
-            ids=tuple(item.id for item in request.feedback_items),
-            title=payload["title"],
-            summary=summary_text,
-            quality_score=quality_score,
-            cost=total_cost,
-        )
+            summary_text = payload["summary"]
+            judge_system = _build_judge_system_message(user_message, summary_text)
+            self._check_token_limit(judge_system, _JUDGE_USER_MESSAGE)
+
+            judge_response = await self._call_with_retries(
+                system_message=judge_system,
+                user_message=_JUDGE_USER_MESSAGE,
+                tenant_id=request.tenant_id,
+                deadline=deadline,
+            )
+            total_cost += judge_response.cost
+            quality_score = _parse_judge_quality_score(judge_response.result)
+
+            return AggregateSummaryResult(
+                ids=tuple(item.id for item in request.feedback_items),
+                title=payload["title"],
+                summary=summary_text,
+                quality_score=quality_score,
+                cost=total_cost,
+            )
 
     async def assign_codes(
         self,
@@ -510,94 +497,87 @@ class StandardOrchestrator(OrchestratorPort):
             tenant_id=request.tenant_id,
             operation=Operation.ASSIGN_CODES,
         ):
-            return await self._assign_codes_inner(request, deadline)
+            self._check_injection(request.feedback_items)
 
-    async def _assign_codes_inner(
-        self,
-        request: CodingAssignmentRequest,
-        deadline: datetime,
-    ) -> CodingAssignmentResult:
-        self._check_injection(request.feedback_items)
+            coded: list[CodedFeedbackItem] = []
+            types = request.coding_framework.get("types") or []
 
-        coded: list[CodedFeedbackItem] = []
-        types = request.coding_framework.get("types") or []
+            for feedback_item in request.feedback_items:
+                self._check_coding_deadline(deadline)
 
-        for feedback_item in request.feedback_items:
-            self._check_coding_deadline(deadline)
+                rows: list[tuple[str, str]] = []
 
-            rows: list[tuple[str, str]] = []
-
-            type_indices = await self._pick_code_indices(
-                feedback_text=feedback_item.text,
-                current_level="Types",
-                entries=types,
-                hierarchy_path=None,
-                tenant_id=request.tenant_id,
-                deadline=deadline,
-            )
-
-            for type_index in type_indices:
-                type_entry = types[type_index]
-                type_name = str(type_entry.get("name", ""))
-                categories = type_entry.get("categories") or []
-
-                category_indices = await self._pick_code_indices(
+                type_indices = await self._pick_code_indices(
                     feedback_text=feedback_item.text,
-                    current_level="Categories",
-                    entries=categories,
-                    hierarchy_path=[("Type", type_name)],
+                    current_level="Types",
+                    entries=types,
+                    hierarchy_path=None,
                     tenant_id=request.tenant_id,
                     deadline=deadline,
                 )
 
-                for category_index in category_indices:
-                    category = categories[category_index]
-                    category_name = str(category.get("name", ""))
-                    codes = category.get("codes") or []
+                for type_index in type_indices:
+                    type_entry = types[type_index]
+                    type_name = str(type_entry.get("name", ""))
+                    categories = type_entry.get("categories") or []
 
-                    code_indices = await self._pick_code_indices(
+                    category_indices = await self._pick_code_indices(
                         feedback_text=feedback_item.text,
-                        current_level="Codes",
-                        entries=codes,
-                        hierarchy_path=[
-                            ("Type", type_name),
-                            ("Category", category_name),
-                        ],
+                        current_level="Categories",
+                        entries=categories,
+                        hierarchy_path=[("Type", type_name)],
                         tenant_id=request.tenant_id,
                         deadline=deadline,
                     )
 
-                    for code_index in code_indices:
-                        code = codes[code_index]
-                        rows.append(
-                            (
-                                str(code.get("code_id", "")),
-                                str(code.get("name", "")),
-                            )
+                    for category_index in category_indices:
+                        category = categories[category_index]
+                        category_name = str(category.get("name", ""))
+                        codes = category.get("codes") or []
+
+                        code_indices = await self._pick_code_indices(
+                            feedback_text=feedback_item.text,
+                            current_level="Codes",
+                            entries=codes,
+                            hierarchy_path=[
+                                ("Type", type_name),
+                                ("Category", category_name),
+                            ],
+                            tenant_id=request.tenant_id,
+                            deadline=deadline,
                         )
+
+                        for code_index in code_indices:
+                            code = codes[code_index]
+                            rows.append(
+                                (
+                                    str(code.get("code_id", "")),
+                                    str(code.get("name", "")),
+                                )
+                            )
+                            if len(rows) >= request.max_codes:
+                                break
+
                         if len(rows) >= request.max_codes:
                             break
 
                     if len(rows) >= request.max_codes:
                         break
 
-                if len(rows) >= request.max_codes:
-                    break
-
-            coded.append(
-                CodedFeedbackItem(
-                    feedback_item_id=feedback_item.id,
-                    assigned_codes=tuple(
-                        AssignedCode(
-                            code_id=code_id,
-                            code_label=code_label,
-                        )
-                        for code_id, code_label in rows
-                    ),
+                coded.append(
+                    CodedFeedbackItem(
+                        feedback_item_id=feedback_item.id,
+                        assigned_codes=tuple(
+                            AssignedCode(
+                                code_id=code_id,
+                                code_label=code_label,
+                            )
+                            for code_id, code_label in rows
+                        ),
+                    )
                 )
-            )
 
-        return CodingAssignmentResult(coded_feedback_items=tuple(coded))
+            return CodingAssignmentResult(coded_feedback_items=tuple(coded))
 
     def _check_coding_deadline(self, deadline: datetime) -> None:
         """Raise when the coding deadline is exceeded."""
