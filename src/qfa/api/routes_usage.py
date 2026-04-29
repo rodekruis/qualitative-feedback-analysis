@@ -2,7 +2,7 @@
 
 Owns its own ``APIRouter``; mounted by ``create_app`` alongside the
 main router. Carved out of ``routes.py`` so the analyze/summarize/coding
-flow isn't interleaved with usage-stat marshalling helpers.
+flow isn't interleaved with usage-stat marshalling.
 """
 
 from datetime import UTC, datetime
@@ -15,13 +15,7 @@ from qfa.api.dependencies import (
     get_usage_repo,
     require_superuser,
 )
-from qfa.api.schemas_usage import (
-    AllUsageStatsResponse,
-    DistributionStatsResponse,
-    OperationStatsResponse,
-    TokenStatsResponse,
-    UsageStatsResponse,
-)
+from qfa.api.schemas_usage import AllUsageStatsResponse, UsageStatsResponse
 from qfa.domain.models import (
     DistributionStats,
     TenantApiKey,
@@ -33,64 +27,16 @@ from qfa.domain.ports import UsageRepositoryPort
 router = APIRouter()
 
 
-def _to_distribution_response(
-    stats: DistributionStats | DistributionStatsResponse,
-) -> DistributionStatsResponse:
-    return DistributionStatsResponse(
-        avg=stats.avg,
-        min=stats.min,
-        max=stats.max,
-        p5=stats.p5,
-        p95=stats.p95,
-    )
-
-
-def _to_token_response(
-    stats: TokenStats | TokenStatsResponse,
-) -> TokenStatsResponse:
-    return TokenStatsResponse(
-        avg=stats.avg,
-        min=stats.min,
-        max=stats.max,
-        p5=stats.p5,
-        p95=stats.p95,
-        total=stats.total,
-    )
-
-
-def _to_usage_response(stats: UsageStats) -> UsageStatsResponse:
-    return UsageStatsResponse(
-        tenant_id=stats.tenant_id,
-        total_calls=stats.total_calls,
-        failed_calls=stats.failed_calls,
-        total_cost_usd=stats.total_cost_usd,
-        call_duration=_to_distribution_response(stats.call_duration),
-        input_tokens=_to_token_response(stats.input_tokens),
-        output_tokens=_to_token_response(stats.output_tokens),
-        by_operation=[
-            OperationStatsResponse(
-                operation=str(op.operation),
-                total_calls=op.total_calls,
-                failed_calls=op.failed_calls,
-                cost_usd=op.cost_usd,
-                input_tokens_total=op.input_tokens_total,
-                output_tokens_total=op.output_tokens_total,
-            )
-            for op in stats.by_operation
-        ],
-    )
-
-
-def _zero_usage(tenant_id: str | None) -> UsageStatsResponse:
-    return UsageStatsResponse(
+def _zero_usage_stats(tenant_id: str | None) -> UsageStats:
+    """Build a domain ``UsageStats`` representing an empty time window."""
+    return UsageStats(
         tenant_id=tenant_id,
         total_calls=0,
         failed_calls=0,
         total_cost_usd=Decimal("0"),
-        call_duration=DistributionStatsResponse(avg=0, min=0, max=0, p5=0, p95=0),
-        input_tokens=TokenStatsResponse(avg=0, min=0, max=0, p5=0, p95=0, total=0),
-        output_tokens=TokenStatsResponse(avg=0, min=0, max=0, p5=0, p95=0, total=0),
-        by_operation=[],
+        call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0),
+        input_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+        output_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
     )
 
 
@@ -153,8 +99,9 @@ async def usage(
     """
     from_, to = _parse_time_window(from_, to)
     stats = await usage_repo.get_usage_stats(tenant.tenant_id, from_=from_, to=to)
-    resp = _zero_usage(tenant.tenant_id) if stats is None else _to_usage_response(stats)
-    return resp.model_copy(update={"from_": from_, "to": to})
+    if stats is None:
+        stats = _zero_usage_stats(tenant.tenant_id)
+    return UsageStatsResponse(**stats.model_dump(), from_=from_, to=to)
 
 
 @router.get("/v1/usage/all", response_model=AllUsageStatsResponse, status_code=200)
@@ -184,12 +131,10 @@ async def usage_all(
     """
     from_, to = _parse_time_window(from_, to)
     all_stats = await usage_repo.get_all_usage_stats(from_=from_, to=to)
-    tenants = [_to_usage_response(s) for s in all_stats if s.tenant_id is not None]
-    total_entry = next((s for s in all_stats if s.tenant_id is None), None)
-    total = (
-        _to_usage_response(total_entry)
-        if total_entry is not None
-        else _zero_usage(None)
+    tenants = [s for s in all_stats if s.tenant_id is not None]
+    total = next(
+        (s for s in all_stats if s.tenant_id is None),
+        _zero_usage_stats(None),
     )
     return AllUsageStatsResponse(
         tenants=tenants,

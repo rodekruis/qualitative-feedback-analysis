@@ -8,7 +8,14 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    field_serializer,
+    model_validator,
+)
 
 
 class FeedbackItem(BaseModel):
@@ -382,6 +389,10 @@ class OperationStats(BaseModel):
     input_tokens_total: int
     output_tokens_total: int
 
+    @field_serializer("cost_usd")
+    def _serialize_cost(self, v: Decimal) -> float:
+        return float(v)
+
 
 class UsageStats(BaseModel):
     """Aggregated usage statistics for a tenant or grand total.
@@ -421,3 +432,7 @@ class UsageStats(BaseModel):
     input_tokens: TokenStats
     output_tokens: TokenStats
     by_operation: tuple[OperationStats, ...] = ()
+
+    @field_serializer("total_cost_usd")
+    def _serialize_total_cost(self, v: Decimal) -> float:
+        return float(v)
