@@ -114,10 +114,11 @@ class TestAssignCodesRecordsMultipleRows:
                 }
             ]
         }
-        # The orchestrator parses the response as a JSON list of selected indices.
-        # Returning "[0]" each time picks index 0 at every level.
+        # The orchestrator parses the response as ``{"selected": [<indices>]}``
+        # (see ``coding_classifier._parse_selected_indices``); returning
+        # ``{"selected": [0]}`` picks index 0 at each of the 3 levels.
         for _ in range(3):
-            e2e_fake_llm.queue_response(_ok(text="[0]"))
+            e2e_fake_llm.queue_response(_ok(text='{"selected": [0]}'))
 
         resp = await e2e_client.post(
             "/v1/assign_codes",
