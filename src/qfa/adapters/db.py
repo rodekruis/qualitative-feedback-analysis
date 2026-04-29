@@ -100,20 +100,28 @@ def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSessi
 def _build_stats_columns(
     col: sa.ColumnElement,
     prefix: str,
+    *,
+    where: sa.ColumnElement | None = None,
 ) -> list[sa.Label]:
     """Build labeled aggregation columns for a numeric column.
 
     Each column is labeled ``{prefix}_{stat}`` so results can be accessed
-    by name instead of fragile positional indices.
+    by name instead of fragile positional indices. When ``where`` is
+    supplied, ``FILTER (WHERE ...)`` is applied to every aggregate so the
+    same SELECT can mix all-row counts with ok-only distributions.
     """
+
+    def _f(agg: sa.ColumnElement) -> sa.ColumnElement:
+        return agg.filter(where) if where is not None else agg
+
     return [
-        sa.func.avg(col).label(f"{prefix}_avg"),
-        sa.func.min(col).label(f"{prefix}_min"),
-        sa.func.max(col).label(f"{prefix}_max"),
-        sa.func.sum(col).label(f"{prefix}_sum"),
-        sa.func.count().label(f"{prefix}_count"),
-        sa.func.percentile_cont(0.05).within_group(col).label(f"{prefix}_p5"),
-        sa.func.percentile_cont(0.95).within_group(col).label(f"{prefix}_p95"),
+        _f(sa.func.avg(col)).label(f"{prefix}_avg"),
+        _f(sa.func.min(col)).label(f"{prefix}_min"),
+        _f(sa.func.max(col)).label(f"{prefix}_max"),
+        _f(sa.func.sum(col)).label(f"{prefix}_sum"),
+        _f(sa.func.count()).label(f"{prefix}_count"),
+        _f(sa.func.percentile_cont(0.05).within_group(col)).label(f"{prefix}_p5"),
+        _f(sa.func.percentile_cont(0.95).within_group(col)).label(f"{prefix}_p95"),
     ]
 
 
@@ -178,6 +186,25 @@ def _build_by_operation(rows) -> tuple[OperationStats, ...]:  # noqa: ANN001
         )
     items.sort(key=lambda s: (-s.cost_usd, str(s.operation)))
     return tuple(items)
+
+
+def _row_to_usage_stats(
+    tenant_id: str | None,
+    row: sa.Row,
+    per_op_rows: list,
+) -> UsageStats:
+    """Assemble a ``UsageStats`` from a totals row + its per-operation rows."""
+    m = row._mapping
+    return UsageStats(
+        tenant_id=tenant_id,
+        total_calls=int(m["total_calls"]),
+        failed_calls=int(m["failed_calls"] or 0),
+        total_cost_usd=Decimal(str(m["total_cost_usd"])),
+        call_duration=_parse_distribution_ok(row, "dur"),
+        input_tokens=_parse_token_stats_ok(row, "inp"),
+        output_tokens=_parse_token_stats_ok(row, "out"),
+        by_operation=_build_by_operation(per_op_rows),
+    )
 
 
 def _by_operation_select(base_pred: list) -> sa.Select:
@@ -322,7 +349,9 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         """Per-tenant stats plus a grand total entry (tenant_id=None).
 
         Tenants are returned alphabetically by tenant_id; the grand-total
-        entry is appended last.
+        entry is appended last. Implemented as two ``GROUPING SETS``
+        queries (Postgres-only) so cost is O(1) round-trips regardless of
+        tenant count.
         """
         base_pred: list = []
         if from_ is not None:
@@ -330,65 +359,74 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         if to is not None:
             base_pred.append(llm_calls.c.timestamp < to)
 
+        ok_filter = llm_calls.c.status == "ok"
+        err_filter = llm_calls.c.status == "error"
+
+        # Query 1: per-tenant totals + distributions, plus grand-total roll-up
+        # via GROUPING SETS ((tenant_id), ()). The roll-up row carries
+        # tenant_id IS NULL, which matches UsageStats(tenant_id=None, ...).
+        totals_q = (
+            sa.select(
+                llm_calls.c.tenant_id,
+                sa.func.count().label("total_calls"),
+                sa.func.coalesce(
+                    sa.func.sum(sa.case((err_filter, 1), else_=0)), 0
+                ).label("failed_calls"),
+                sa.func.coalesce(
+                    sa.func.sum(llm_calls.c.cost_usd).filter(ok_filter), 0
+                ).label("total_cost_usd"),
+                *_build_stats_columns(
+                    llm_calls.c.call_duration_ms, "dur", where=ok_filter
+                ),
+                *_build_stats_columns(llm_calls.c.input_tokens, "inp", where=ok_filter),
+                *_build_stats_columns(
+                    llm_calls.c.output_tokens, "out", where=ok_filter
+                ),
+            )
+            .where(*base_pred)
+            .group_by(sa.text("GROUPING SETS ((tenant_id), ())"))
+            .order_by(llm_calls.c.tenant_id.asc().nulls_last())
+        )
+
+        # Query 2: per-(tenant, operation) and per-(grand-total, operation)
+        # in one pass. Bucketed in Python by tenant_id below.
+        ops_q = (
+            sa.select(
+                llm_calls.c.tenant_id,
+                llm_calls.c.operation,
+                sa.func.count().label("total_calls"),
+                sa.func.coalesce(
+                    sa.func.sum(sa.case((err_filter, 1), else_=0)), 0
+                ).label("failed_calls"),
+                sa.func.coalesce(
+                    sa.func.sum(llm_calls.c.cost_usd).filter(ok_filter), 0
+                ).label("cost_usd"),
+                sa.func.coalesce(
+                    sa.func.sum(llm_calls.c.input_tokens).filter(ok_filter), 0
+                ).label("input_tokens_total"),
+                sa.func.coalesce(
+                    sa.func.sum(llm_calls.c.output_tokens).filter(ok_filter), 0
+                ).label("output_tokens_total"),
+            )
+            .where(*base_pred)
+            .group_by(sa.text("GROUPING SETS ((tenant_id, operation), (operation))"))
+        )
+
         async with self._session_factory() as session:
-            tenants = (
-                await session.execute(
-                    sa.select(llm_calls.c.tenant_id)
-                    .where(*base_pred)
-                    .group_by(llm_calls.c.tenant_id)
-                    .order_by(llm_calls.c.tenant_id.asc())
-                )
-            ).all()
+            totals_rows = (await session.execute(totals_q)).all()
+            ops_rows = (await session.execute(ops_q)).all()
+
+        ops_by_tenant: dict[str | None, list] = {}
+        for r in ops_rows:
+            ops_by_tenant.setdefault(r._mapping["tenant_id"], []).append(r)
 
         results: list[UsageStats] = []
-        for trow in tenants:
-            tid = trow._mapping["tenant_id"]
-            stats = await self.get_usage_stats(tid, from_=from_, to=to)
-            if stats is not None:
-                results.append(stats)
-
-        async with self._session_factory() as session:
-            t_row = (
-                await session.execute(
-                    sa.select(
-                        sa.func.count().label("total_calls"),
-                        sa.func.sum(
-                            sa.case((llm_calls.c.status == "error", 1), else_=0)
-                        ).label("failed_calls"),
-                    ).where(*base_pred)
-                )
-            ).one()
-            total_calls = int(t_row._mapping["total_calls"])
-            if total_calls == 0:
-                return results
-            failed_calls = int(t_row._mapping["failed_calls"] or 0)
-
-            ok_pred = [*base_pred, llm_calls.c.status == "ok"]
-            ok_row = (
-                await session.execute(
-                    sa.select(
-                        sa.func.coalesce(sa.func.sum(llm_calls.c.cost_usd), 0).label(
-                            "total_cost_usd"
-                        ),
-                        *_build_stats_columns(llm_calls.c.call_duration_ms, "dur"),
-                        *_build_stats_columns(llm_calls.c.input_tokens, "inp"),
-                        *_build_stats_columns(llm_calls.c.output_tokens, "out"),
-                    ).where(*ok_pred)
-                )
-            ).one()
-
-            per_op = (await session.execute(_by_operation_select(base_pred))).all()
-
-        results.append(
-            UsageStats(
-                tenant_id=None,
-                total_calls=total_calls,
-                failed_calls=failed_calls,
-                total_cost_usd=Decimal(str(ok_row._mapping["total_cost_usd"])),
-                call_duration=_parse_distribution_ok(ok_row, "dur"),
-                input_tokens=_parse_token_stats_ok(ok_row, "inp"),
-                output_tokens=_parse_token_stats_ok(ok_row, "out"),
-                by_operation=_build_by_operation(per_op),
-            )
-        )
+        for r in totals_rows:
+            # Skip the grand-total row when the window is empty: GROUPING SETS
+            # always emits the () row even with zero source rows, but the prior
+            # contract was to return [] in that case.
+            if int(r._mapping["total_calls"]) == 0:
+                continue
+            tid = r._mapping["tenant_id"]
+            results.append(_row_to_usage_stats(tid, r, ops_by_tenant.get(tid, [])))
         return results
