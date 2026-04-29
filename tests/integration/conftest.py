@@ -33,17 +33,23 @@ def integration_db_url() -> str:
     return os.environ.get("INTEGRATION_DB_URL", DEFAULT_DB_URL)
 
 
-async def _probe_or_skip(url: str) -> None:
-    """Skip the test session if Postgres is unreachable at ``url``."""
+async def _probe_or_fail(url: str) -> None:
+    """Fail the test session if Postgres is unreachable at ``url``.
+
+    Tests under ``-m "integration or e2e"`` are explicitly opted into;
+    if the backing service isn't there, that is a setup error, not an
+    applicability question. Skipping would let CI pass green when the
+    Postgres service failed to start — a silent "tests look fine" trap.
+    """
     engine = create_async_engine(url)
     try:
         async with engine.connect() as conn:
             await conn.execute(sa.text("SELECT 1"))
     except Exception as exc:
-        pytest.skip(
+        pytest.fail(
             f"Integration tests require Postgres at {url} (run `make db-up`). "
             f"Connection failed: {exc!s}",
-            allow_module_level=True,
+            pytrace=False,
         )
     finally:
         await engine.dispose()
@@ -53,7 +59,7 @@ async def _probe_or_skip(url: str) -> None:
 async def pg_url() -> str:
     """Validate Postgres connectivity and return the DB URL."""
     url = integration_db_url()
-    await _probe_or_skip(url)
+    await _probe_or_fail(url)
     return url
 
 
