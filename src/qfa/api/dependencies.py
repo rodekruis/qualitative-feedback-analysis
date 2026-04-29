@@ -6,10 +6,10 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from qfa.auth import validate_api_key
 from qfa.domain.errors import AuthenticationError
 from qfa.domain.models import TenantApiKey
-from qfa.domain.ports import OrchestratorPort
+from qfa.services.orchestrator import Orchestrator
 
 
-def get_orchestrator(request: Request) -> OrchestratorPort:
+def get_orchestrator(request: Request) -> Orchestrator:
     """Return the orchestrator from app state.
 
     Parameters
@@ -19,7 +19,7 @@ def get_orchestrator(request: Request) -> OrchestratorPort:
 
     Returns
     -------
-    OrchestratorPort
+    Orchestrator
         The orchestrator service instance.
     """
     return request.app.state.orchestrator

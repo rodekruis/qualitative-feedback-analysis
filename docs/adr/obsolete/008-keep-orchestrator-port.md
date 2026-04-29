@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Superseded by [ADR-011](../011-drop-orchestrator-port.md)
 
 ## Context
 

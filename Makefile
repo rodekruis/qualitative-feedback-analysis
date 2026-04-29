@@ -34,7 +34,10 @@ ruff:
 
 type_check: ty
 
-lint: ruff type_check
+lint_imports:
+	uv run lint-imports
+
+lint: ruff type_check lint_imports
 
 pre_commit:
 	pre-commit run --all-files
