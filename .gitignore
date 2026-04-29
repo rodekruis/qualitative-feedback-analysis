@@ -158,6 +158,7 @@ poetry.lock
 .claude/commands
 **/.claude/settings.local.json
 .claude/worktrees
+docs/superpowers/
 
 # Sandbox / environment artifacts
 .bash_profile

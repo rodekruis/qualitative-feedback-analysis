@@ -5,10 +5,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter, Depends, Request
 
 import qfa
-from qfa.api.dependencies import (
-    authenticate_request,
-    get_orchestrator,
-)
+from qfa.api.dependencies import authenticate_request, get_orchestrator
 from qfa.api.schemas import (
     AggregateSummary,
     AnalyzeRequest,

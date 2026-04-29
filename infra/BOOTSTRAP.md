@@ -74,6 +74,10 @@ export TF_VAR_acr_name=<globally-unique-acr-name>
 
 # Optional — Azure region for the bootstrapped resources. Defaults to westeurope.
 export LOCATION=westeurope
+
+# PostgreSQL Flexible Server admin username used by Terraform.
+# Terraform generates the admin password and stores it in state.
+export TF_VAR_postgres_admin_username=qfaadmin
 ```
 
 ### 3. Create the chicken-and-egg resources
@@ -143,12 +147,45 @@ echo "$TF_VAR_acr_resource_group_name"      | gh variable set AZ_ACR_RESOURCE_GR
 echo "$TF_VAR_acr_name"                     | gh variable set AZ_ACR_NAME                 --repo "$REPO"
 ```
 
+The `terraform.yaml` workflow can now run autonomously in CI.
+
+### 8. Seed Key Vault secrets
+
+The App Service reads four secrets from Key Vault at runtime via [Key Vault references](https://learn.microsoft.com/en-us/azure/app-service/app-service-key-vault-references) (configured in `app_service.tf`). Terraform creates the vault and grants the App Service read access (`Key Vault Secrets User`), but does **not** manage secret values — those are set out-of-band to keep them out of Terraform state.
+
+The Key Vault uses RBAC authorization, so Azure Contributor/Owner on the resource group alone does **not** grant data-plane access to secrets. You must first assign yourself `Key Vault Secrets Officer` on each vault.
+
+Repeat the block below for each environment (`ENV=dev`, `ENV=staging`, `ENV=prd`):
+
 ## Next: create each environment
 
 > [!NOTE]
 > The steps above create the shared Terraform backend and container registry, and the repo-scoped GitHub variables. They do **not** yet create any App Service, Key Vault, or managed identity — those are per-environment and are provisioned in the next document.
-
+ 
 Run [setup-new-env.md](setup-new-env.md) once for each environment (`dev`, `staging`, `prd`). That doc creates a Terraform workspace, applies the per-environment resources (including the managed identity + federated credential that lets GitHub Actions authenticate without any secrets), configures the per-environment GitHub variables, and seeds Key Vault secrets.
+
+# Grant yourself write access to secrets
+VAULT_ID=$(az keyvault show --name "qfa-${ENV}-keyvault" --query id -o tsv)
+az role assignment create \
+  --role "Key Vault Secrets Officer" \
+  --assignee "$(az ad signed-in-user show --query id -o tsv)" \
+  --scope "$VAULT_ID"
+
+# Set the required secrets
+az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "llm-api-base" --value "<your-azure-openai-endpoint-url>"
+az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "llm-api-key"        --value "<your-llm-api-key>"
+az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "auth-api-keys"      --value "<json-api-key-dicts>"
+az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "db-password"             --value "<your-postgres-admin-password>"
+```
+
+| Secret | Description |
+|--------|-------------|
+| `llm-api-base` | Base URL of your Azure OpenAI deployment (e.g. `https://<resource>.openai.azure.com/`) |
+| `llm-api-key` | API key for the Azure OpenAI deployment |
+| `auth-api-keys` | JSON array of API key objects that authenticate callers to this backend |
+| `db-password` | Password for the PostgreSQL admin user |
+
+Without these secrets the App Service will start and pass health checks, but API calls will fail with a Key Vault reference resolution error.
 
 ## Subsequent infrastructure changes
 

@@ -17,3 +17,19 @@ output "az_client_id" {
   description = "AZ_CLIENT_ID — client ID of the managed identity used by GitHub Actions (OIDC)"
   value       = azurerm_user_assigned_identity.github.client_id
 }
+
+output "postgres_server_fqdn" {
+  description = "Private FQDN of the PostgreSQL Flexible Server"
+  value       = azurerm_postgresql_flexible_server.db.fqdn
+}
+
+output "postgres_database_name" {
+  description = "Application PostgreSQL database name"
+  value       = azurerm_postgresql_flexible_server_database.app.name
+}
+
+output "postgres_admin_password" {
+  description = "Administrator password for the PostgreSQL Flexible Server"
+  value       = random_password.postgres_admin.result
+  sensitive   = true
+}

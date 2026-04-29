@@ -3,14 +3,14 @@
 import importlib.resources
 import logging
 import secrets
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
 
 import litellm
 import yaml
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -19,6 +19,7 @@ import qfa
 from qfa.adapters.llm_client import LiteLLMClient
 from qfa.adapters.presidio_anonymizer import PresidioAnonymizer
 from qfa.api.routes import router
+from qfa.api.routes_usage import router as usage_router
 from qfa.api.schemas import (
     ErrorDetail,
     ErrorFieldDetail,
@@ -29,8 +30,11 @@ from qfa.domain.errors import (
     AnalysisError,
     AnalysisTimeoutError,
     AuthenticationError,
+    AuthorizationError,
     DocumentsTooLargeError,
+    UsageRepositoryUnavailableError,
 )
+from qfa.domain.ports import LLMPort
 from qfa.services.orchestrator import Orchestrator
 from qfa.settings import AppSettings, LLMSettings
 from qfa.utils import setup_logging
@@ -231,6 +235,33 @@ async def _handle_authentication_error(
     return JSONResponse(status_code=401, content=body.model_dump())
 
 
+async def _handle_authorization_error(
+    request: Request, exc: AuthorizationError
+) -> JSONResponse:
+    """Handle AuthorizationError exceptions.
+
+    Parameters
+    ----------
+    request : Request
+        The incoming HTTP request.
+    exc : AuthorizationError
+        The authorization error.
+
+    Returns
+    -------
+    JSONResponse
+        A 403 JSON response.
+    """
+    body = ErrorResponse(
+        error=ErrorDetail(
+            code="forbidden",
+            message=str(exc),
+            request_id=_get_request_id(request),
+        )
+    )
+    return JSONResponse(status_code=403, content=body.model_dump())
+
+
 async def _handle_validation_error(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
@@ -359,6 +390,55 @@ async def _handle_analysis_error(request: Request, exc: AnalysisError) -> JSONRe
     return JSONResponse(status_code=502, content=body.model_dump())
 
 
+async def _handle_usage_repository_unavailable(
+    request: Request, exc: UsageRepositoryUnavailableError
+) -> JSONResponse:
+    """Map a usage-repository unavailability to 503 with a machine-readable code.
+
+    Distinct from ``usage_tracking_disabled`` (raised by ``get_usage_repo``
+    when the feature flag is off): this signals that the feature is on but
+    the backing store is transiently unreachable. Consumers can use the
+    code to drive retry/backoff decisions instead of treating both as the
+    same opaque 503.
+    """
+    logger.warning("Usage repository unavailable: %s", exc)
+    body = ErrorResponse(
+        error=ErrorDetail(
+            code="usage_backend_unavailable",
+            message="Usage backend is temporarily unavailable",
+            request_id=_get_request_id(request),
+        )
+    )
+    return JSONResponse(status_code=503, content=body.model_dump())
+
+
+async def _handle_http_exception(request: Request, exc: HTTPException) -> JSONResponse:
+    """Wrap HTTPException with the standard error envelope.
+
+    When ``detail`` is a dict with ``code``/``message`` keys, those are
+    surfaced. Otherwise the detail string becomes the message and a
+    generic ``http_error`` code is used.
+    """
+    detail = exc.detail
+    if isinstance(detail, dict):
+        body = ErrorResponse(
+            error=ErrorDetail(
+                code=str(detail.get("code", "http_error")),
+                message=str(detail.get("message", "")),
+                request_id=_get_request_id(request),
+            )
+        )
+    else:
+        body = ErrorResponse(
+            error=ErrorDetail(
+                code="http_error",
+                message=str(detail) if detail is not None else "",
+                request_id=_get_request_id(request),
+            )
+        )
+    return JSONResponse(status_code=exc.status_code, content=body.model_dump())
+
+
 async def _handle_unhandled_exception(request: Request, exc: Exception) -> JSONResponse:
     """Handle unexpected exceptions.
 
@@ -426,40 +506,132 @@ def _register_custom_model_prices() -> None:
         )
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Application lifespan: compose and inject all dependencies.
+LLMFactory = Callable[[LLMSettings], LLMPort]
+"""Factory that builds an ``LLMPort`` from settings.
+
+The default is ``build_llm_client`` (real LiteLLM client). Tests can pass
+their own factory to ``create_app`` to inject a fake without monkeypatching.
+"""
+
+
+def _make_lifespan(llm_factory: LLMFactory):
+    """Build a FastAPI lifespan context manager that closes over ``llm_factory``.
+
+    FastAPI's ``lifespan=`` parameter accepts a single async context
+    manager whose signature is fixed at ``(app: FastAPI) -> ...``. There
+    is no built-in way to thread extra construction-time dependencies
+    (like which ``LLMPort`` factory to use) through that signature
+    without resorting to module-level globals or monkeypatching.
+
+    This factory closes over ``llm_factory`` and returns the resulting
+    lifespan, so ``create_app`` can pass a fake factory in tests and the
+    lifespan picks it up at startup — wiring the same composition path
+    (``llm_factory(settings.llm)`` → optional ``TrackingLLMAdapter``
+    wrap → ``StandardOrchestrator``) regardless of whether the LLM
+    client is real or stubbed. Production simply omits the override and
+    gets the default ``build_llm_client``.
 
     Parameters
     ----------
-    app : FastAPI
-        The FastAPI application instance.
+    llm_factory : LLMFactory
+        Factory invoked at startup to construct the inner ``LLMPort``.
 
-    Yields
-    ------
-    None
+    Returns
+    -------
+    Callable[[FastAPI], AsyncContextManager[None]]
+        A lifespan suitable for ``FastAPI(lifespan=...)``.
     """
-    settings = AppSettings()
-    setup_logging(settings.log)
 
-    _register_custom_model_prices()
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+        """Compose the application graph at startup; tear it down on shutdown.
 
-    llm_client = build_llm_client(settings.llm)
-    anonymizer = PresidioAnonymizer()
-    orchestrator = Orchestrator(
-        llm=llm_client,
-        anonymizer=anonymizer,
-        settings=settings.orchestrator,
-        llm_timeout_seconds=settings.llm.timeout_seconds,
-        max_total_tokens=settings.llm.max_total_tokens,
-    )
-    api_keys = settings.auth.api_keys
+        This is the runtime composition root: it loads settings, builds
+        every dependency that routes consume, and attaches the results
+        to ``app.state`` so request handlers can read them without
+        importing modules directly. Doing this in the lifespan (rather
+        than at import time) ensures settings/env-vars are read once per
+        process boot and the DB engine is created on the running event
+        loop.
 
-    app.state.orchestrator = orchestrator
-    app.state.api_keys = api_keys
-    app.state.settings = settings
+        Schema migrations are NOT run from the lifespan. They run as a
+        pre-start step in ``entrypoint.sh`` (``python -m
+        qfa.cli.migrate``) before this process binds the port, so the
+        app boots against an already-current schema.
 
-    yield
+        Startup order is significant:
+
+        1. Load ``AppSettings`` and configure logging — must happen
+           before anything that might log.
+        2. Register custom LiteLLM model prices — required for
+           ``completion_cost()`` to value any model not in LiteLLM's
+           built-in cost map.
+        3. Build the base ``LLMPort`` via the closed-over factory.
+        4. If ``settings.db.track_usage`` is set: create the async DB
+           engine and wrap the base LLM in ``TrackingLLMAdapter`` so
+           every call attempt is recorded.
+        5. Construct the ``StandardOrchestrator`` over whichever LLM
+           variant was chosen above.
+        6. Publish ``orchestrator``, ``api_keys``, ``settings``, and
+           ``usage_repo`` on ``app.state`` for routes/middleware to read.
+
+        On shutdown the only resource that needs explicit cleanup is the
+        DB engine's connection pool; everything else is plain Python
+        objects that the GC handles.
+
+        Parameters
+        ----------
+        app : FastAPI
+            The application instance whose ``state`` will be populated.
+        """
+        settings = AppSettings()
+        setup_logging(settings.log)
+
+        _register_custom_model_prices()
+
+        anonymizer = PresidioAnonymizer()
+        api_keys = settings.auth.api_keys
+
+        engine = None
+        usage_repo = None
+
+        base_llm = llm_factory(settings.llm)
+        llm_for_orch: LLMPort = base_llm
+
+        if settings.db.track_usage:
+            from qfa.adapters.db import (
+                SqlAlchemyUsageRepository,
+                create_async_engine_from_settings,
+                create_session_factory,
+            )
+            from qfa.adapters.tracking_llm import TrackingLLMAdapter
+
+            engine = create_async_engine_from_settings(settings.db)
+
+            session_factory = create_session_factory(engine)
+            usage_repo = SqlAlchemyUsageRepository(session_factory)
+            llm_for_orch = TrackingLLMAdapter(inner=base_llm, usage_repo=usage_repo)
+            logger.info("Usage tracking enabled (per-attempt, per-operation)")
+
+        orchestrator = Orchestrator(
+            llm=llm_for_orch,
+            anonymizer=anonymizer,
+            settings=settings.orchestrator,
+            llm_timeout_seconds=settings.llm.timeout_seconds,
+            max_total_tokens=settings.llm.max_total_tokens,
+        )
+
+        app.state.orchestrator = orchestrator
+        app.state.api_keys = api_keys
+        app.state.settings = settings
+        app.state.usage_repo = usage_repo
+
+        yield
+
+        if engine is not None:
+            await engine.dispose()
+
+    return lifespan
 
 
 def register_exception_handlers(app: FastAPI) -> None:
@@ -470,29 +642,46 @@ def register_exception_handlers(app: FastAPI) -> None:
     app : FastAPI
         The FastAPI application instance.
     """
+    app.add_exception_handler(AuthorizationError, _handle_authorization_error)  # type: ignore[arg-type]
     app.add_exception_handler(AuthenticationError, _handle_authentication_error)  # type: ignore[arg-type]
     app.add_exception_handler(RequestValidationError, _handle_validation_error)  # type: ignore[arg-type]
     app.add_exception_handler(DocumentsTooLargeError, _handle_documents_too_large)  # type: ignore[arg-type]
     app.add_exception_handler(AnalysisTimeoutError, _handle_analysis_timeout)  # type: ignore[arg-type]
     app.add_exception_handler(AnalysisError, _handle_analysis_error)  # type: ignore[arg-type]
+    app.add_exception_handler(
+        UsageRepositoryUnavailableError,
+        _handle_usage_repository_unavailable,  # type: ignore[arg-type]
+    )
+    app.add_exception_handler(HTTPException, _handle_http_exception)  # type: ignore[arg-type]
     app.add_exception_handler(Exception, _handle_unhandled_exception)
 
 
-def create_app() -> FastAPI:
+def create_app(*, llm_factory: LLMFactory | None = None) -> FastAPI:
     """Create and configure the FastAPI application.
+
+    Parameters
+    ----------
+    llm_factory : LLMFactory | None
+        Optional override for the LLM-port factory. Defaults to
+        ``build_llm_client`` (the real LiteLLM client). Tests pass a fake
+        factory here to inject a stubbed ``LLMPort`` without monkeypatching
+        — the lifespan still wraps it in ``TrackingLLMAdapter`` exactly as
+        it would the real client.
 
     Returns
     -------
     FastAPI
         The fully configured application instance.
     """
+    factory: LLMFactory = llm_factory if llm_factory is not None else build_llm_client
     app = FastAPI(
         title="Feedback Analysis Backend",
-        lifespan=lifespan,
+        lifespan=_make_lifespan(factory),
         version=qfa.__version__,
     )
     app.add_middleware(RequestLoggingMiddleware)  # type: ignore[arg-type]
     app.add_middleware(RequestIdMiddleware)  # type: ignore[arg-type]
     app.include_router(router)
+    app.include_router(usage_router)
     register_exception_handlers(app)
     return app

@@ -59,3 +59,67 @@ variable "llm_api_version" {
   type        = string
   default     = "2025-04-01-preview"
 }
+
+# --- PostgreSQL configuration ---
+
+variable "postgres_admin_username" {
+  description = "Administrator username for PostgreSQL Flexible Server"
+  type        = string
+  default     = "qfaadmin"
+}
+
+variable "postgres_db_name" {
+  description = "Application database name"
+  type        = string
+  default     = "qfa"
+}
+
+variable "postgres_sku_name" {
+  description = "SKU for PostgreSQL Flexible Server"
+  type        = string
+  default     = "B_Standard_B1ms"
+}
+
+variable "postgres_storage_mb" {
+  description = "Storage size in MB for PostgreSQL Flexible Server"
+  type        = number
+  default     = 32768
+}
+
+variable "db_aad_scope" {
+  description = "AAD scope used by the application to get PostgreSQL access tokens"
+  type        = string
+  default     = "https://ossrdbms-aad.database.windows.net/.default"
+}
+
+variable "db_aad_principal_name" {
+  description = "Principal name used by the app when DB auth mode is entra"
+  type        = string
+  nullable    = false
+}
+
+variable "postgres_entra_admin_object_id" {
+  description = "Object ID for the PostgreSQL Entra admin principal"
+  type        = string
+  nullable    = false
+}
+
+variable "postgres_entra_admin_principal_name" {
+  description = "Display name for the PostgreSQL Entra admin principal"
+  type        = string
+  nullable    = false
+}
+
+variable "postgres_entra_admin_principal_type" {
+  description = "Principal type for PostgreSQL Entra admin"
+  type        = string
+  default     = "ServicePrincipal"
+
+  validation {
+    condition = contains(
+      ["Group", "ServicePrincipal", "User"],
+      var.postgres_entra_admin_principal_type,
+    )
+    error_message = "postgres_entra_admin_principal_type must be Group, ServicePrincipal, or User."
+  }
+}

@@ -21,6 +21,10 @@ classifiers = [
 ]
 
 dependencies = [
+    "alembic>=1.15",
+    "asyncpg>=0.31.0",
+    "azure-identity~=1.25",
+    "sqlalchemy[asyncio]>=2.0",
     "fastapi~=0.135.0",
     "gunicorn~=25.3",
     "litellm~=1.83.7",
@@ -43,6 +47,17 @@ packages = ["src/qfa"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "integration: requires a real Postgres instance (excluded by default)",
+    "e2e: end-to-end test with respx-mocked LiteLLM (excluded by default)",
+]
+addopts = "-m 'not integration and not e2e'"
+# Session-scoped loops so session-scoped async fixtures (pg_engine, app)
+# and the function-scoped tests that consume them share one event loop.
+# asyncpg connections are loop-bound; a mismatch surfaces as the misleading
+# "another operation is in progress" error.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 
 [tool.ruff]
 lint.select = [
@@ -110,7 +125,8 @@ type = "github"
 
 [dependency-groups]
 dev = [
-    "azure-identity~=1.25",
+    "aiosqlite~=0.20",
+    "asgi-lifespan~=2.1",
     "azure-keyvault-secrets~=4.10",
     "httpx~=0.28",
     "import-linter>=2.11",
@@ -150,6 +166,8 @@ containers = [
 ignore_imports = [
     "qfa.api.app -> qfa.adapters.llm_client",
     "qfa.api.app -> qfa.adapters.presidio_anonymizer",
+    "qfa.api.app -> qfa.adapters.tracking_llm",
+    "qfa.api.app -> qfa.adapters.db",
 ]
 
 [[tool.importlinter.contracts]]
