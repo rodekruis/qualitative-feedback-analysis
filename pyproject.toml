@@ -51,6 +51,12 @@ markers = [
     "e2e: end-to-end test with respx-mocked LiteLLM (excluded by default)",
 ]
 addopts = "-m 'not integration and not e2e'"
+# Session-scoped loops so session-scoped async fixtures (pg_engine, app)
+# and the function-scoped tests that consume them share one event loop.
+# asyncpg connections are loop-bound; a mismatch surfaces as the misleading
+# "another operation is in progress" error.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 
 [tool.ruff]
 lint.select = [
