@@ -12,7 +12,6 @@ from datetime import UTC, datetime
 
 from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_exponential
 
-from qfa.adapters.call_context import call_scope
 from qfa.domain.errors import (
     AnalysisError,
     AnalysisTimeoutError,
@@ -36,6 +35,7 @@ from qfa.domain.models import (
     SummaryResult,
 )
 from qfa.domain.ports import AnonymizationPort, LLMPort
+from qfa.services.call_context import call_scope
 from qfa.services.coding_classifier import build_pick_messages, parse_selected_indices
 from qfa.settings import OrchestratorSettings
 

@@ -13,10 +13,10 @@ from tenacity import (
     wait_exponential,
 )
 
-from qfa.adapters.call_context import current_call_context
 from qfa.domain.errors import MissingCallScopeError
 from qfa.domain.models import CallStatus, LLMCallRecord, LLMResponse
 from qfa.domain.ports import LLMPort, UsageRepositoryPort
+from qfa.services.call_context import current_call_context
 
 logger = logging.getLogger(__name__)
 

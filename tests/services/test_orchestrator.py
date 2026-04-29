@@ -429,8 +429,8 @@ class TestInjectionErrorNoMatchedText:
 
 @pytest.mark.asyncio
 async def test_analyze_enters_call_scope_with_analyze_operation():
-    from qfa.adapters.call_context import current_call_context
     from qfa.domain.models import Operation
+    from qfa.services.call_context import current_call_context
 
     captured: list = []
 
@@ -439,12 +439,7 @@ async def test_analyze_enters_call_scope_with_analyze_operation():
             captured.append(current_call_context.get())
             return _make_llm_response()
 
-    orch = Orchestrator(
-        llm=CapturingLLM(),
-        settings=OrchestratorSettings(),
-        llm_timeout_seconds=LLM_TIMEOUT,
-        max_total_tokens=MAX_TOKENS,
-    )
+    orch = _make_orchestrator(CapturingLLM(), OrchestratorSettings())
 
     await orch.analyze(_make_request(), _future_deadline(), anonymize=False)
 

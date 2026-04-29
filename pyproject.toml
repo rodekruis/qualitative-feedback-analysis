@@ -160,6 +160,8 @@ containers = [
 ignore_imports = [
     "qfa.api.app -> qfa.adapters.llm_client",
     "qfa.api.app -> qfa.adapters.presidio_anonymizer",
+    "qfa.api.app -> qfa.adapters.tracking_llm",
+    "qfa.api.app -> qfa.adapters.db",
 ]
 
 [[tool.importlinter.contracts]]

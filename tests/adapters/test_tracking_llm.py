@@ -4,7 +4,6 @@ from decimal import Decimal
 
 import pytest
 
-from qfa.adapters.call_context import call_scope
 from qfa.adapters.tracking_llm import TrackingLLMAdapter
 from qfa.domain.errors import LLMError, MissingCallScopeError
 from qfa.domain.models import (
@@ -13,6 +12,7 @@ from qfa.domain.models import (
     LLMResponse,
     Operation,
 )
+from qfa.services.call_context import call_scope
 
 pytestmark = pytest.mark.asyncio
 

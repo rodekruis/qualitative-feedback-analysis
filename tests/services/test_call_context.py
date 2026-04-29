@@ -4,8 +4,8 @@ import asyncio
 
 import pytest
 
-from qfa.adapters.call_context import call_scope, current_call_context
 from qfa.domain.models import Operation
+from qfa.services.call_context import call_scope, current_call_context
 
 pytestmark = pytest.mark.asyncio
 
