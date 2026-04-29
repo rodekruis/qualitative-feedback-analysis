@@ -5,6 +5,14 @@ import time
 from datetime import UTC, datetime
 from decimal import Decimal
 
+from sqlalchemy.exc import InterfaceError, OperationalError
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
+
 from qfa.adapters.call_context import current_call_context
 from qfa.domain.errors import MissingCallScopeError
 from qfa.domain.models import CallStatus, LLMCallRecord, LLMResponse
@@ -19,7 +27,13 @@ class TrackingLLMAdapter(LLMPort):
     Reads tenant + operation from ``current_call_context``. Persists one
     ``LLMCallRecord`` per attempt (success or failure). Recording errors
     are logged but never raised, so a misbehaving usage repository never
-    breaks an analysis.
+    breaks an analysis. Connection-class transient errors
+    (``OperationalError``, ``InterfaceError``) are retried up to 3 times
+    with exponential backoff capped at 0.5s per wait — worst-case added
+    latency under a sustained DB outage is ~0.3s of waits plus 3
+    fast-failing connection attempts (typically <1s total). Non-transient
+    errors (``IntegrityError``, ``ProgrammingError``, etc.) skip the
+    retry path and are logged immediately.
 
     Parameters
     ----------
@@ -100,9 +114,19 @@ class TrackingLLMAdapter(LLMPort):
         )
         return response
 
+    @retry(
+        retry=retry_if_exception_type((OperationalError, InterfaceError)),
+        wait=wait_exponential(multiplier=0.05, min=0.05, max=0.5),
+        stop=stop_after_attempt(3),
+        reraise=True,
+    )
+    async def _record_with_retry(self, record: LLMCallRecord) -> None:
+        """Persist with bounded retries on connection-class transient errors."""
+        await self._usage_repo.record_call(record)
+
     async def _record_safely(self, record: LLMCallRecord) -> None:
         try:
-            await self._usage_repo.record_call(record)
+            await self._record_with_retry(record)
         except Exception:
             logger.exception(
                 "Failed to record LLM call for tenant=%s operation=%s",

@@ -179,3 +179,71 @@ async def test_recording_failure_during_error_path_still_propagates_original():
                 timeout=10.0,
                 tenant_id="t1",
             )
+
+
+class _FlakyRepo:
+    """Fails with ``exc`` for the first ``fail_times`` attempts, then succeeds."""
+
+    def __init__(self, exc: Exception, fail_times: int) -> None:
+        self._exc = exc
+        self._remaining = fail_times
+        self.attempts = 0
+        self.records: list[LLMCallRecord] = []
+
+    async def record_call(self, record: LLMCallRecord) -> None:
+        self.attempts += 1
+        if self._remaining > 0:
+            self._remaining -= 1
+            raise self._exc
+        self.records.append(record)
+
+    async def get_usage_stats(self, tenant_id, from_=None, to=None):
+        raise NotImplementedError
+
+    async def get_all_usage_stats(self, from_=None, to=None):
+        raise NotImplementedError
+
+
+def _operational_error() -> Exception:
+    from sqlalchemy.exc import OperationalError
+
+    return OperationalError("INSERT", {}, Exception("connection reset"))
+
+
+async def test_record_retries_transient_operational_error_and_eventually_persists():
+    inner = FakeLLMPort()
+    inner.queue_response(_ok_response())
+    # Fail twice with a connection-class error, then succeed on attempt 3.
+    repo = _FlakyRepo(exc=_operational_error(), fail_times=2)
+    adapter = TrackingLLMAdapter(inner=inner, usage_repo=repo)
+
+    async with call_scope(tenant_id="t1", operation=Operation.ANALYZE):
+        await adapter.complete(
+            system_message="sys",
+            user_message="usr",
+            timeout=10.0,
+            tenant_id="t1",
+        )
+
+    assert repo.attempts == 3
+    assert len(repo.records) == 1
+
+
+async def test_record_does_not_retry_non_transient_runtime_error():
+    inner = FakeLLMPort()
+    inner.queue_response(_ok_response())
+    # RuntimeError is not in the retry-eligible set; should be swallowed once.
+    repo = _FlakyRepo(exc=RuntimeError("schema mismatch"), fail_times=10)
+    adapter = TrackingLLMAdapter(inner=inner, usage_repo=repo)
+
+    async with call_scope(tenant_id="t1", operation=Operation.ANALYZE):
+        result = await adapter.complete(
+            system_message="sys",
+            user_message="usr",
+            timeout=10.0,
+            tenant_id="t1",
+        )
+
+    assert result.text == "hello"
+    assert repo.attempts == 1
+    assert repo.records == []
