@@ -527,9 +527,13 @@ def _make_lifespan(llm_factory: LLMFactory):
         to ``app.state`` so request handlers can read them without
         importing modules directly. Doing this in the lifespan (rather
         than at import time) ensures settings/env-vars are read once per
-        process boot, the DB engine is created on the running event
-        loop, and Alembic migrations run before the first request is
-        served.
+        process boot and the DB engine is created on the running event
+        loop.
+
+        Schema migrations are NOT run from the lifespan. They run as a
+        pre-start step in ``entrypoint.sh`` (``python -m
+        qfa.cli.migrate``) before this process binds the port, so the
+        app boots against an already-current schema.
 
         Startup order is significant:
 
@@ -540,9 +544,8 @@ def _make_lifespan(llm_factory: LLMFactory):
            built-in cost map.
         3. Build the base ``LLMPort`` via the closed-over factory.
         4. If ``settings.db.track_usage`` is set: create the async DB
-           engine, run migrations to head (advisory-locked, safe under
-           concurrent boots), and wrap the base LLM in
-           ``TrackingLLMAdapter`` so every call attempt is recorded.
+           engine and wrap the base LLM in ``TrackingLLMAdapter`` so
+           every call attempt is recorded.
         5. Construct the ``StandardOrchestrator`` over whichever LLM
            variant was chosen above.
         6. Publish ``orchestrator``, ``api_keys``, ``settings``, and
@@ -576,11 +579,9 @@ def _make_lifespan(llm_factory: LLMFactory):
                 create_async_engine_from_url,
                 create_session_factory,
             )
-            from qfa.adapters.migrations import upgrade_to_head
             from qfa.adapters.tracking_llm import TrackingLLMAdapter
 
             engine = create_async_engine_from_url(settings.db.url)
-            await upgrade_to_head(engine, settings.db.url)
 
             session_factory = create_session_factory(engine)
             usage_repo = SqlAlchemyUsageRepository(session_factory)

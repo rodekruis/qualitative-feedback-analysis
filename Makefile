@@ -56,7 +56,7 @@ db-reset:
 	docker compose up -d postgres
 
 migrate:
-	uv run alembic upgrade head
+	uv run python -m qfa.cli.migrate
 
 test-integration:
 	uv run pytest -m "integration or e2e"

@@ -1,10 +1,14 @@
 """Shared fixtures for Tier-3 end-to-end API tests.
 
 These tests boot the real FastAPI stack via ``LifespanManager`` so the
-startup-time advisory-lock migration and ``TrackingLLMAdapter`` wiring run
-exactly as in production. The LLM port is injected via ``create_app``'s
-``llm_factory`` parameter — no monkeypatching, no respx; ``TrackingLLMAdapter``
-still wraps the fake exactly as it would wrap the real client.
+``TrackingLLMAdapter`` wiring runs exactly as in production. Schema
+migrations are run once by the session-scoped ``pg_engine`` fixture
+(``qfa.cli.migrate.run_migrations``) — production runs the same code via
+``entrypoint.sh`` before the app starts, so the lifespan itself does not
+touch Alembic. The LLM port is injected via ``create_app``'s
+``llm_factory`` parameter — no monkeypatching, no respx;
+``TrackingLLMAdapter`` still wraps the fake exactly as it would wrap the
+real client.
 
 Gated by ``@pytest.mark.e2e`` and excluded from the default test run.
 Run with ``make db-up && make test-integration``.
@@ -113,8 +117,23 @@ async def e2e_db_url() -> str:
     return url
 
 
+@pytest_asyncio.fixture(scope="session")
+async def e2e_migrated(e2e_db_url: str) -> str:
+    """Run ``alembic upgrade head`` once per e2e session.
+
+    The app lifespan no longer runs migrations (those moved to
+    ``entrypoint.sh`` in production), so e2e tests must bring the schema
+    up themselves before booting the app.
+    """
+    from qfa.cli.migrate import run_migrations
+
+    await run_migrations(e2e_db_url)
+    return e2e_db_url
+
+
 @pytest_asyncio.fixture
-async def e2e_app(e2e_db_url: str, monkeypatch):
+async def e2e_app(e2e_migrated: str, monkeypatch):
+    e2e_db_url = e2e_migrated
     """Boot the FastAPI app with a FakeLLMPort wired via ``create_app``."""
     monkeypatch.setenv("DB_TRACK_USAGE", "true")
     monkeypatch.setenv("DB_URL", e2e_db_url)

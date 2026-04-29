@@ -4,19 +4,28 @@ These verify the alembic upgrade/downgrade cycle and the advisory-lock
 serialisation that protects multi-replica startup. Each test resets the
 ``public`` schema so they don't depend on test ordering.
 
+The concurrent-migrator test spawns real OS subprocesses (one per
+simulated replica) rather than coroutines, because the production
+contention happens between separate Python processes, and a single
+``asyncio`` loop running ``subprocess.run`` would serialise them
+trivially without ever exercising the lock.
+
 Gated by ``@pytest.mark.integration``.
 """
 
 from __future__ import annotations
 
 import asyncio
+import os
+import subprocess
+import sys
 
 import pytest
 import pytest_asyncio
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from qfa.adapters.migrations import upgrade_to_head
+from qfa.cli.migrate import run_migrations
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -38,7 +47,7 @@ async def fresh_pg(pg_url: str):
 class TestUpgradeFromEmpty:
     async def test_upgrades_to_head(self, fresh_pg):
         engine, url = fresh_pg
-        await upgrade_to_head(engine, url)
+        await run_migrations(url)
 
         async with engine.connect() as conn:
             tables = (
@@ -81,20 +90,16 @@ class TestUpgradeFromEmpty:
 
 class TestDowngradeUpgradeIdempotence:
     async def test_downgrade_to_base_then_upgrade_head_succeeds(self, fresh_pg):
-        from alembic import command as alembic_command
-        from qfa.adapters.migrations import _build_alembic_config
-
         engine, url = fresh_pg
-        cfg = _build_alembic_config(url)
 
-        await upgrade_to_head(engine, url)
+        await run_migrations(url)
 
-        async with engine.connect() as conn:
-            await conn.run_sync(
-                lambda sync_conn: alembic_command.downgrade(
-                    _set_conn(cfg, sync_conn), "base"
-                )
-            )
+        env = {**os.environ, "DB_URL": url}
+        subprocess.run(
+            [sys.executable, "-m", "alembic", "downgrade", "base"],
+            env=env,
+            check=True,
+        )
 
         async with engine.connect() as conn:
             tables = (
@@ -108,7 +113,7 @@ class TestDowngradeUpgradeIdempotence:
         # After full downgrade, only alembic_version remains.
         assert {row[0] for row in tables} <= {"alembic_version"}
 
-        await upgrade_to_head(engine, url)
+        await run_migrations(url)
 
         async with engine.connect() as conn:
             tables = (
@@ -126,27 +131,22 @@ class TestAdvisoryLockSerialises:
     async def test_two_concurrent_migrators_both_finish_at_head(self, fresh_pg):
         engine, url = fresh_pg
 
-        # Each call must use its own engine — the lock is connection-scoped
-        # within ``upgrade_to_head``, so concurrent calls need separate
-        # connections to actually contend.
-        engine_a = create_async_engine(url)
-        engine_b = create_async_engine(url)
-        try:
-            await asyncio.gather(
-                upgrade_to_head(engine_a, url),
-                upgrade_to_head(engine_b, url),
-            )
-        finally:
-            await engine_a.dispose()
-            await engine_b.dispose()
+        # Spawn two real OS subprocesses to simulate two replicas booting
+        # in parallel. The session-scoped advisory lock should serialise
+        # them so both end with a single alembic_version row at head.
+        env = {**os.environ, "DB_TRACK_USAGE": "true", "DB_URL": url}
+        proc_a = await asyncio.create_subprocess_exec(
+            sys.executable, "-m", "qfa.cli.migrate", env=env
+        )
+        proc_b = await asyncio.create_subprocess_exec(
+            sys.executable, "-m", "qfa.cli.migrate", env=env
+        )
+        rc_a, rc_b = await asyncio.gather(proc_a.wait(), proc_b.wait())
+        assert rc_a == 0, "first migrator did not exit cleanly"
+        assert rc_b == 0, "second migrator did not exit cleanly"
 
         async with engine.connect() as conn:
             rows = (
                 await conn.execute(sa.text("SELECT version_num FROM alembic_version"))
             ).fetchall()
         assert len(rows) == 1
-
-
-def _set_conn(cfg, sync_conn):
-    cfg.attributes["connection"] = sync_conn
-    return cfg

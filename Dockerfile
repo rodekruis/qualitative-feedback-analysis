@@ -4,6 +4,9 @@ WORKDIR /app
 COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --no-editable --no-dev --frozen
 COPY src/ src/
-RUN uv sync --no-editable --no-dev --frozen
+COPY alembic.ini ./
+COPY alembic/ alembic/
+COPY entrypoint.sh ./
+RUN chmod +x entrypoint.sh && uv sync --no-editable --no-dev --frozen
 EXPOSE 8000
-CMD [".venv/bin/gunicorn", "qfa.main:app", "--worker-class", "asgi", "--bind", "0.0.0.0:8000"]
+ENTRYPOINT ["./entrypoint.sh"]
