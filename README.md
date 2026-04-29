@@ -274,8 +274,42 @@ uv run pre-commit install
 
 ## Running Tests
 
+The suite is split into three tiers. The default `make test` runs only the
+fast unit tier; integration and e2e are gated behind pytest markers and a
+running Postgres.
+
+| Tier | Marker | Needs | Command |
+|------|--------|-------|---------|
+| Unit | (none) | — | `make test` |
+| Integration | `integration` | Postgres | `make db-up && make test-integration` |
+| E2E | `e2e` | Postgres | `make db-up && make test-integration` |
+
+`make test-integration` runs both `integration` and `e2e` markers in one
+pass. The first invocation also runs `alembic upgrade head` once via the
+session-scoped `pg_engine` fixture.
+
+### Postgres for tier 2 / 3
+
 ```bash
-make test
+make db-up        # start docker-compose Postgres on localhost:5432
+make db-down      # stop the container, keep the volume (fast restart)
+make db-reset     # nuke the volume and start fresh (~5s)
+make migrate      # apply migrations manually (rarely needed; tests do this)
+```
+
+The default URL is `postgresql+asyncpg://qfa:qfa@localhost:5432/qfa`.
+Point at a different host with the `INTEGRATION_DB_URL` env var:
+
+```bash
+INTEGRATION_DB_URL=postgresql+asyncpg://user:pw@host:5432/db make test-integration
+```
+
+### Running a specific tier or test
+
+```bash
+uv run pytest -m integration                       # tier 2 only
+uv run pytest -m e2e                               # tier 3 only
+uv run pytest tests/integration/test_db_postgres.py  # specific file
 ```
 
 ## Linting
