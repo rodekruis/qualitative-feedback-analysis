@@ -17,6 +17,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 import qfa
 from qfa.api.routes import router
+from qfa.api.routes_usage import router as usage_router
 from qfa.api.schemas import (
     ErrorDetail,
     ErrorFieldDetail,
@@ -650,5 +651,6 @@ def create_app(*, llm_factory: LLMFactory | None = None) -> FastAPI:
     app.add_middleware(RequestLoggingMiddleware)  # type: ignore[arg-type]
     app.add_middleware(RequestIdMiddleware)  # type: ignore[arg-type]
     app.include_router(router)
+    app.include_router(usage_router)
     register_exception_handlers(app)
     return app

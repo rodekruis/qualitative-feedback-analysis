@@ -12,6 +12,7 @@ from qfa.api.app import (
     register_exception_handlers,
 )
 from qfa.api.routes import router
+from qfa.api.routes_usage import router as usage_router
 from qfa.domain.models import (
     AnalysisRequest,
     AnalysisResult,
@@ -121,6 +122,7 @@ def test_app(fake_orchestrator, fake_api_keys):
     app = FastAPI(title="Test App")
     app.add_middleware(RequestIdMiddleware)
     app.include_router(router)
+    app.include_router(usage_router)
     register_exception_handlers(app)
 
     app.state.orchestrator = fake_orchestrator
