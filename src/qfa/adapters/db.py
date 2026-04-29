@@ -1,10 +1,12 @@
 """SQLAlchemy-based usage repository for LLM call tracking."""
 
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from datetime import datetime
 from decimal import Decimal
 
 import sqlalchemy as sa
+from sqlalchemy.exc import InterfaceError, OperationalError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -12,6 +14,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from qfa.domain.errors import UsageRepositoryUnavailableError
 from qfa.domain.models import (
     DistributionStats,
     LLMCallRecord,
@@ -21,6 +24,24 @@ from qfa.domain.models import (
     UsageStats,
 )
 from qfa.domain.ports import UsageRepositoryPort
+
+
+@asynccontextmanager
+async def _translate_db_errors() -> AsyncIterator[None]:
+    """Translate SQLAlchemy connectivity errors into a domain-level error.
+
+    Wraps the read paths so the API layer can map a single domain
+    exception (``UsageRepositoryUnavailableError``) to ``503 {"code":
+    "usage_backend_unavailable"}`` without importing SQLAlchemy. Write
+    paths (``record_call``) are intentionally not wrapped: the
+    ``TrackingLLMAdapter`` already swallows recording failures so the
+    LLM response still flows back to the user.
+    """
+    try:
+        yield
+    except (OperationalError, InterfaceError) as exc:
+        raise UsageRepositoryUnavailableError(str(exc)) from exc
+
 
 metadata = sa.MetaData()
 
@@ -281,7 +302,7 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
 
         ok_pred = [*base_pred, llm_calls.c.status == "ok"]
 
-        async with self._session_factory() as session:
+        async with _translate_db_errors(), self._session_factory() as session:
             t_row = (
                 await session.execute(
                     sa.select(
@@ -390,7 +411,7 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
             .group_by(sa.text("GROUPING SETS ((tenant_id, operation), (operation))"))
         )
 
-        async with self._session_factory() as session:
+        async with _translate_db_errors(), self._session_factory() as session:
             totals_rows = (await session.execute(totals_q)).all()
             ops_rows = (await session.execute(ops_q)).all()
 

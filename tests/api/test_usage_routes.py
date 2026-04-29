@@ -7,6 +7,7 @@ import httpx
 import pytest
 import pytest_asyncio
 
+from qfa.domain.errors import UsageRepositoryUnavailableError
 from qfa.domain.models import (
     DistributionStats,
     Operation,
@@ -225,3 +226,60 @@ class TestUsageAllEndpoint:
             headers={"Authorization": f"Bearer {FAKE_API_KEY}"},
         )
         assert resp.status_code == 403
+
+
+class _UnavailableUsageRepository:
+    """Fake repo whose reads raise ``UsageRepositoryUnavailableError``.
+
+    Models the wired-but-unreachable case that ``usage_tracking_disabled``
+    cannot describe.
+    """
+
+    async def record_call(self, record):
+        pass
+
+    async def get_usage_stats(self, tenant_id, from_=None, to=None):
+        raise UsageRepositoryUnavailableError("connection refused")
+
+    async def get_all_usage_stats(self, from_=None, to=None):
+        raise UsageRepositoryUnavailableError("connection refused")
+
+
+class TestUsageBackendUnavailable:
+    async def test_usage_503_with_backend_unavailable_code(self, test_app):
+        test_app.state.usage_repo = _UnavailableUsageRepository()
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=test_app),
+            base_url="http://test",
+        ) as client:
+            resp = await client.get(
+                "/v1/usage",
+                headers={"Authorization": f"Bearer {FAKE_API_KEY}"},
+            )
+        assert resp.status_code == 503
+        body = resp.json()
+        assert body["error"]["code"] == "usage_backend_unavailable"
+        # Disambiguation: the disabled-feature code must NOT be reused.
+        assert body["error"]["code"] != "usage_tracking_disabled"
+
+    async def test_usage_all_503_with_backend_unavailable_code(self, test_app):
+        test_app.state.api_keys.append(
+            TenantApiKey(
+                name="superuser",
+                key=FAKE_SUPERUSER_KEY,
+                tenant_id="admin",
+                is_superuser=True,
+                key_id="admin-0",
+            )
+        )
+        test_app.state.usage_repo = _UnavailableUsageRepository()
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=test_app),
+            base_url="http://test",
+        ) as client:
+            resp = await client.get(
+                "/v1/usage/all",
+                headers={"Authorization": f"Bearer {FAKE_SUPERUSER_KEY}"},
+            )
+        assert resp.status_code == 503
+        assert resp.json()["error"]["code"] == "usage_backend_unavailable"

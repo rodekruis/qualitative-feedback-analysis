@@ -122,3 +122,29 @@ async def test_record_call_failure_path_persists_error_class(sqlite_repo):
 
     assert row.status == "error"
     assert row.error_class == "LLMTimeoutError"
+
+
+async def test_translate_db_errors_maps_sqlalchemy_exceptions_to_domain():
+    """SQLAlchemy connectivity errors must surface as the domain error.
+
+    The API layer maps the domain error to ``503 usage_backend_unavailable``;
+    if SQLAlchemy exceptions ever leak past this boundary the response
+    becomes a generic 500 and consumers lose the ability to retry.
+    """
+    from sqlalchemy.exc import InterfaceError, OperationalError
+
+    from qfa.adapters.db import _translate_db_errors
+    from qfa.domain.errors import UsageRepositoryUnavailableError
+
+    with pytest.raises(UsageRepositoryUnavailableError):
+        async with _translate_db_errors():
+            raise OperationalError("conn", {}, Exception("connection refused"))
+
+    with pytest.raises(UsageRepositoryUnavailableError):
+        async with _translate_db_errors():
+            raise InterfaceError("conn", {}, Exception("interface gone"))
+
+    # Non-connectivity exceptions must pass through untouched.
+    with pytest.raises(ValueError):
+        async with _translate_db_errors():
+            raise ValueError("not a connectivity issue")

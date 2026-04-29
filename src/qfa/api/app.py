@@ -30,6 +30,7 @@ from qfa.domain.errors import (
     AuthenticationError,
     AuthorizationError,
     DocumentsTooLargeError,
+    UsageRepositoryUnavailableError,
 )
 from qfa.domain.ports import LLMPort, OrchestratorPort
 from qfa.services.llm_client import LiteLLMClient
@@ -388,6 +389,28 @@ async def _handle_analysis_error(request: Request, exc: AnalysisError) -> JSONRe
     return JSONResponse(status_code=502, content=body.model_dump())
 
 
+async def _handle_usage_repository_unavailable(
+    request: Request, exc: UsageRepositoryUnavailableError
+) -> JSONResponse:
+    """Map a usage-repository unavailability to 503 with a machine-readable code.
+
+    Distinct from ``usage_tracking_disabled`` (raised by ``get_usage_repo``
+    when the feature flag is off): this signals that the feature is on but
+    the backing store is transiently unreachable. Consumers can use the
+    code to drive retry/backoff decisions instead of treating both as the
+    same opaque 503.
+    """
+    logger.warning("Usage repository unavailable: %s", exc)
+    body = ErrorResponse(
+        error=ErrorDetail(
+            code="usage_backend_unavailable",
+            message="Usage backend is temporarily unavailable",
+            request_id=_get_request_id(request),
+        )
+    )
+    return JSONResponse(status_code=503, content=body.model_dump())
+
+
 async def _handle_http_exception(request: Request, exc: HTTPException) -> JSONResponse:
     """Wrap HTTPException with the standard error envelope.
 
@@ -622,6 +645,10 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(DocumentsTooLargeError, _handle_documents_too_large)  # type: ignore[arg-type]
     app.add_exception_handler(AnalysisTimeoutError, _handle_analysis_timeout)  # type: ignore[arg-type]
     app.add_exception_handler(AnalysisError, _handle_analysis_error)  # type: ignore[arg-type]
+    app.add_exception_handler(
+        UsageRepositoryUnavailableError,
+        _handle_usage_repository_unavailable,  # type: ignore[arg-type]
+    )
     app.add_exception_handler(HTTPException, _handle_http_exception)  # type: ignore[arg-type]
     app.add_exception_handler(Exception, _handle_unhandled_exception)
 
