@@ -14,6 +14,11 @@ Each request contains dozens to thousands of feedback documents.
 The documents need to be analysed and, and the result sent back to the CRM system in a
 synchronous API call.
 
+
+## Terms and definitions
+See [Ubiquitous Language](docs/ubiquitous_language.md). That document defines the lanuage
+used throughout the project.
+
 ## Tech stack
 * fastapi
 * uvicorn
