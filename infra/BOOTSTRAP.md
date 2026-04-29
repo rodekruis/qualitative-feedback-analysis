@@ -62,10 +62,9 @@ export TF_VAR_acr_name=<globally-unique-acr-name>
 # Optional — Azure region for the bootstrapped resources. Defaults to westeurope.
 export LOCATION=westeurope
 
-# Required — PostgreSQL Flexible Server admin credentials used by Terraform.
-# Keep the password in a secure secret manager and inject it in CI/local shell.
+# PostgreSQL Flexible Server admin username used by Terraform.
+# Terraform generates the admin password and stores it in state.
 export TF_VAR_postgres_admin_username=qfaadmin
-export TF_VAR_postgres_admin_password=<strong-random-password>
 ```
 
 ### 3. Create the chicken-and-egg resources
@@ -199,7 +198,7 @@ az role assignment create \
 az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "llm-api-base" --value "<your-azure-openai-endpoint-url>"
 az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "llm-api-key"        --value "<your-llm-api-key>"
 az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "auth-api-keys"      --value "<json-api-key-dicts>"
-az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "db-url"             --value "postgresql+asyncpg://<admin-username>:<admin-password>@qfa-${ENV}-db.postgres.database.azure.com:5432/qfa?sslmode=require"
+az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "db-url"             --value "postgresql+asyncpg://${TF_VAR_postgres_admin_username}:$(terraform output -raw postgres_admin_password)@qfa-${ENV}-db.postgres.database.azure.com:5432/qfa?sslmode=require"
 ```
 
 | Secret | Description |
