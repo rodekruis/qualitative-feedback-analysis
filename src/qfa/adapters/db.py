@@ -209,39 +209,21 @@ def _row_to_usage_stats(
 
 def _by_operation_select(base_pred: list) -> sa.Select:
     """Build the per-operation aggregation SELECT for the given base predicates."""
+    ok_filter = llm_calls.c.status == "ok"
+    err_filter = llm_calls.c.status == "error"
     return (
         sa.select(
             llm_calls.c.operation,
             sa.func.count().label("total_calls"),
-            sa.func.sum(sa.case((llm_calls.c.status == "error", 1), else_=0)).label(
-                "failed_calls"
-            ),
+            sa.func.count().filter(err_filter).label("failed_calls"),
             sa.func.coalesce(
-                sa.func.sum(
-                    sa.case(
-                        (llm_calls.c.status == "ok", llm_calls.c.cost_usd),
-                        else_=0,
-                    )
-                ),
-                0,
+                sa.func.sum(llm_calls.c.cost_usd).filter(ok_filter), 0
             ).label("cost_usd"),
             sa.func.coalesce(
-                sa.func.sum(
-                    sa.case(
-                        (llm_calls.c.status == "ok", llm_calls.c.input_tokens),
-                        else_=0,
-                    )
-                ),
-                0,
+                sa.func.sum(llm_calls.c.input_tokens).filter(ok_filter), 0
             ).label("input_tokens_total"),
             sa.func.coalesce(
-                sa.func.sum(
-                    sa.case(
-                        (llm_calls.c.status == "ok", llm_calls.c.output_tokens),
-                        else_=0,
-                    )
-                ),
-                0,
+                sa.func.sum(llm_calls.c.output_tokens).filter(ok_filter), 0
             ).label("output_tokens_total"),
         )
         .where(*base_pred)
@@ -304,9 +286,9 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
                 await session.execute(
                     sa.select(
                         sa.func.count().label("total_calls"),
-                        sa.func.sum(
-                            sa.case((llm_calls.c.status == "error", 1), else_=0)
-                        ).label("failed_calls"),
+                        sa.func.count()
+                        .filter(llm_calls.c.status == "error")
+                        .label("failed_calls"),
                     ).where(*base_pred)
                 )
             ).one()
@@ -369,9 +351,7 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
             sa.select(
                 llm_calls.c.tenant_id,
                 sa.func.count().label("total_calls"),
-                sa.func.coalesce(
-                    sa.func.sum(sa.case((err_filter, 1), else_=0)), 0
-                ).label("failed_calls"),
+                sa.func.count().filter(err_filter).label("failed_calls"),
                 sa.func.coalesce(
                     sa.func.sum(llm_calls.c.cost_usd).filter(ok_filter), 0
                 ).label("total_cost_usd"),
@@ -395,9 +375,7 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
                 llm_calls.c.tenant_id,
                 llm_calls.c.operation,
                 sa.func.count().label("total_calls"),
-                sa.func.coalesce(
-                    sa.func.sum(sa.case((err_filter, 1), else_=0)), 0
-                ).label("failed_calls"),
+                sa.func.count().filter(err_filter).label("failed_calls"),
                 sa.func.coalesce(
                     sa.func.sum(llm_calls.c.cost_usd).filter(ok_filter), 0
                 ).label("cost_usd"),
