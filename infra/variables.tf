@@ -49,7 +49,7 @@ variable "llm_model" {
 }
 
 variable "llm_api_version" {
-  description = "Azure OpenAI API version"
+  description = "API version for Azure OpenAI and/or Azure AI serverless endpoints"
   type        = string
   default     = "2025-05-01-preview"
 }
