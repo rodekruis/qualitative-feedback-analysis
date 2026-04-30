@@ -125,6 +125,32 @@ class TestLiteLLMClientCallParameters:
         assert call_kwargs["api_base"] is None
         assert call_kwargs["api_version"] is None
 
+    @pytest.mark.asyncio
+    async def test_structured_response_model_sent_and_parsed(self):
+        mock_response = _make_mock_response()
+        mock_response.choices[0].message.content = '{"summary":"Structured summary."}'
+        client = _make_client()
+        with (
+            patch(
+                "qfa.adapters.llm_client.acompletion",
+                new_callable=AsyncMock,
+                return_value=mock_response,
+            ) as mock_ac,
+            patch("qfa.adapters.llm_client.completion_cost", return_value=0.0),
+        ):
+            result = await client.complete(
+                SYSTEM_MSG,
+                USER_MSG,
+                TENANT_ID,
+                _StructuredResponse,
+                timeout=TIMEOUT,
+            )
+
+        call_kwargs = mock_ac.call_args.kwargs
+        assert call_kwargs["response_format"] is _StructuredResponse
+        assert isinstance(result.structured, _StructuredResponse)
+        assert result.structured.summary == "Structured summary."
+
 
 class TestLiteLLMClientCostFallback:
     @pytest.mark.asyncio
