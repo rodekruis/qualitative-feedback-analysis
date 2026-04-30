@@ -183,7 +183,9 @@ async def assign_codes(
         tenant_id=tenant.tenant_id,
     )
 
-    result = await orchestrator.assign_codes(domain_request, deadline)
+    result = await orchestrator.assign_codes(
+        domain_request, deadline, anonymize=not body.deactivate_anonymization
+    )
 
     return AssignCodesResponseApi(
         coded_feedback_items=[
@@ -248,7 +250,9 @@ async def summarize_aggregate(
         tenant_id=tenant.tenant_id,
     )
 
-    result = await orchestrator.summarize_aggregate(domain_request, deadline)
+    result = await orchestrator.summarize_aggregate(
+        domain_request, deadline, anonymize=not body.deactivate_anonymization
+    )
 
     return SummarizeAggregateResponseApi(
         summary=AggregateSummaryApi(

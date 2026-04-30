@@ -344,6 +344,10 @@ class AssignCodesRequestApi(BaseModel):
     feedback_items: list[FeedbackItemApi] = Field(min_length=1)
     max_codes: int = Field(default=1, ge=1, le=50)
     confidence_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    deactivate_anonymization: bool = Field(
+        default=False,
+        description="If true, the service will not apply anonymization to the feedback text. Use with caution and only if you are sure that no personally identifiable information (PII) is present in the input.",
+    )
 
 
 class CodeItemApi(BaseModel):
