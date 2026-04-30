@@ -97,7 +97,10 @@ class SummaryResultModel(BaseModel):
 
 
 class AggregateSummaryResultModel(BaseModel):
-    """The result of summarizing multiple feedback items as a single aggregate."""
+    """The result of summarizing multiple feedback items as a single aggregate.
+
+    # TODO come up with nice solution for non-mutable quality-score, so this can be a frozen class.
+    """
 
     ids: tuple[str, ...] = Field(
         description="Identifiers of all source feedback items."
