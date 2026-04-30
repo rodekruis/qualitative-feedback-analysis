@@ -4,7 +4,6 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from qfa.adapters.llm_client import LiteLLMClient
 from qfa.domain.errors import (
     AnalysisError,
     LLMError,
@@ -41,7 +40,15 @@ def _make_request(documents=None, prompt="Summarize feedback.", tenant_id=TENANT
     )
 
 
-def _make_llm_response(structured="Analysis result.", model="gpt-4", cost=0.001):
+def _make_llm_response(structured=None, model="gpt-4", cost=0.001):
+    if structured is None:
+        structured = AnalysisResultModel(
+            result="Analysis result.",
+            model=model,
+            prompt_tokens=100,
+            completion_tokens=50,
+            cost=cost,
+        )
     return LLMResponse(
         structured=structured,
         model=model,
@@ -570,44 +577,6 @@ class TestInjectionNullBytes:
         await orch.analyze(request, _future_deadline())
 
         assert len(fake_llm.calls) == 1
-
-
-class TestAnonymization:
-    @pytest.mark.parametrize(
-        "input_text, output_must_contain, sensitive_bit",
-        [
-            ("Hi my name is Dick Schoof", "<PERSON", "Dick Schoof"),
-            ("My number is 212-555-5555", "<PHONE_NUMBER", "212-555-5555"),
-            ("I live in The Netherlands", "<LOCATION", "The Netherlands"),
-        ],
-    )
-    def test_anonymize_text(
-        self,
-        settings,
-        input_text: str,
-        output_must_contain: str,
-        sensitive_bit: str,
-    ):
-        fake_llm = LiteLLMClient(
-            model=None, api_key=None, api_base=None, api_version=None
-        )
-
-        anonymized_text, mapping = fake_llm._anonymize(input_text)
-        assert output_must_contain in anonymized_text
-        assert sensitive_bit not in anonymized_text
-
-        deanonimized_text = fake_llm._deanonymize(anonymized_text, mapping)
-        assert sensitive_bit in deanonimized_text
-
-    def test_date_not_anonymized(self, settings):
-        input_text = "I have a meeting on September 1st."
-        fake_llm = LiteLLMClient(
-            model=None, api_key=None, api_base=None, api_version=None
-        )
-
-        anonymized_text, mapping = fake_llm._anonymize(input_text)
-        assert "September 1st" in anonymized_text
-        assert len(mapping) == 0
 
 
 class TestInjectionRepeatedChars:

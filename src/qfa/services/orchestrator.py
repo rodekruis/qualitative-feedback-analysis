@@ -171,7 +171,7 @@ class Orchestrator:
         max_total_tokens: int,
     ) -> None:
         self._llm = llm
-        self._anonymizer = anonymizer
+        self._anonymizer: AnonymizationPort = anonymizer
         self._settings = settings
         self._llm_timeout_seconds = llm_timeout_seconds
         self._max_total_tokens = max_total_tokens
@@ -208,13 +208,28 @@ class Orchestrator:
         system_message = _SYSTEM_MESSAGE_TEMPLATE.format(prompt=request.prompt)
         user_message = self._assemble_documents(request.documents)
 
+        anonymized_user_message = user_message
+        if anonymize:
+            anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
+                user_message
+            )
+
         response = await self._llm.complete(
             system_message=system_message,
-            user_message=user_message,
+            user_message=anonymized_user_message,
             tenant_id=request.tenant_id,
             response_model=AnalysisResultModel,
             anonymize=anonymize,
         )
+
+        if anonymize:
+            return_model_as_string = response.structured.model_dump_json()
+            unanonymized_return_model_as_string = self._anonymizer.deanonymize(
+                return_model_as_string, anonymization_mapping
+            )
+            return AnalysisResultModel.model_validate_json(
+                unanonymized_return_model_as_string
+            )
 
         return response.structured
 
@@ -252,12 +267,29 @@ class Orchestrator:
         if request.prompt:
             system_message += f"\nAdditional instructions: {request.prompt}"
 
+        user_message = str(request.feedback_items)
+        anonymized_user_message = user_message
+        if anonymize:
+            anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
+                user_message
+            )
+
         llm_completion = await self._llm.complete(
             system_message=system_message,
-            user_message=str(request.feedback_items),
+            user_message=anonymized_user_message,
             tenant_id=request.tenant_id,
             response_model=SummaryResultModel,
+            anonymize=anonymize,
         )
+
+        if anonymize:
+            return_model_as_string = llm_completion.structured.model_dump_json()
+            unanonymized_return_model_as_string = self._anonymizer.deanonymize(
+                return_model_as_string, anonymization_mapping
+            )
+            return SummaryResultModel.model_validate_json(
+                unanonymized_return_model_as_string
+            )
 
         return llm_completion.structured
 
@@ -265,6 +297,7 @@ class Orchestrator:
         self,
         request: SummaryRequestModel,
         deadline: datetime,
+        anonymize: bool = True,
     ) -> AggregateSummaryResultModel:
         """Summarize multiple feedback items as a single aggregate summary.
 
@@ -293,16 +326,24 @@ class Orchestrator:
             for idx, item in enumerate(request.feedback_items, start=1)
         )
 
+        anonymized_user_message = user_message
+        if anonymize:
+            anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
+                user_message
+            )
+
         response = await self._llm.complete(
             system_message=system_message,
-            user_message=user_message,
+            user_message=anonymized_user_message,
             tenant_id=request.tenant_id,
             response_model=AggregateSummaryResultModel,
+            anonymize=anonymize,
         )
         total_cost = response.cost
 
+        judge_user_message = anonymized_user_message if anonymize else user_message
         judge_system = _build_judge_system_message(
-            user_message, response.structured.summary
+            judge_user_message, response.structured.summary
         )
 
         judge_response = await self._llm.complete(
@@ -315,12 +356,23 @@ class Orchestrator:
         quality_score = _parse_judge_quality_score(judge_response.structured)
 
         response.structured.quality_score = quality_score
+
+        if anonymize:
+            return_model_as_string = response.structured.model_dump_json()
+            unanonymized_return_model_as_string = self._anonymizer.deanonymize(
+                return_model_as_string, anonymization_mapping
+            )
+            return AggregateSummaryResultModel.model_validate_json(
+                unanonymized_return_model_as_string
+            )
+
         return response.structured
 
     async def assign_codes(
         self,
         request: CodingAssignmentRequestModel,
         deadline: datetime,
+        anonymize: bool = True,
     ) -> CodingAssignmentResultModel:
         """Assign hierarchical codes to each feedback item.
 
@@ -362,6 +414,7 @@ class Orchestrator:
                 hierarchy_path=None,
                 tenant_id=request.tenant_id,
                 deadline=deadline,
+                anonymize=anonymize,
             )
 
             for type_index in type_indices:
@@ -376,6 +429,7 @@ class Orchestrator:
                     hierarchy_path=[("Type", type_name)],
                     tenant_id=request.tenant_id,
                     deadline=deadline,
+                    anonymize=anonymize,
                 )
 
                 for category_index in category_indices:
@@ -393,6 +447,7 @@ class Orchestrator:
                         ],
                         tenant_id=request.tenant_id,
                         deadline=deadline,
+                        anonymize=anonymize,
                     )
 
                     for code_index in code_indices:
@@ -443,6 +498,7 @@ class Orchestrator:
         hierarchy_path: list[tuple[str, str]] | None,
         tenant_id: str,
         deadline: datetime,
+        anonymize: bool = True,
     ) -> list[int]:
         """Build one coding prompt, call the LLM, and parse selected indices."""
         labels = [str(entry.get("name", "")) for entry in entries]
@@ -457,11 +513,17 @@ class Orchestrator:
 
         self._check_coding_deadline(deadline)
         self._check_token_limit(system_message, user_message)
+
+        anonymized_user_message = user_message
+        if anonymize:
+            anonymized_user_message, _ = self._anonymizer.anonymize(user_message)
+
         response = await self._llm.complete(
             system_message=system_message,
-            user_message=user_message,
+            user_message=anonymized_user_message,
             tenant_id=tenant_id,
             response_model=str,
+            anonymize=anonymize,
         )
         return parse_selected_indices(response.structured, len(labels))
 

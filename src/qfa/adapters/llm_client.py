@@ -6,8 +6,6 @@ from typing import cast
 
 import openai
 from litellm import acompletion, completion_cost
-from presidio_analyzer import AnalyzerEngine
-from presidio_anonymizer import AnonymizerEngine, OperatorConfig
 from pydantic import BaseModel
 from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_exponential
 
@@ -46,58 +44,6 @@ class LiteLLMClient(LLMPort):
         self._api_key = api_key
         self._api_base = api_base
         self._api_version = api_version
-        self._analyzer: AnalyzerEngine = AnalyzerEngine()
-        self._anonymizer: AnonymizerEngine = AnonymizerEngine()
-
-    def _get_unique_id(
-        self, original_value: str, entity_type: str, mapping: dict[str, str]
-    ) -> str:
-        """Helper to create unique IDs and store them in our map."""
-        if original_value == "PII":
-            return "<PII>"
-
-        for placeholder, value in mapping.items():
-            if value == original_value and placeholder.startswith(f"<{entity_type}_"):
-                return placeholder
-
-        placeholder = f"<{entity_type}_{len(mapping.keys())}>"
-        mapping[placeholder] = original_value
-        return placeholder
-
-    def _anonymize(self, text: str) -> tuple[str, dict[str, str]]:
-        """Anonimize text with placeholders."""
-        mapping: dict[str, str] = {}
-        self.count = 0
-
-        results = self._analyzer.analyze(text=text, language="en")
-        unique_entities = {res.entity_type for res in results}
-
-        # We use a custom lambda as the operator
-        operators = {}
-        for entity in unique_entities:
-            operators[entity] = OperatorConfig(
-                "custom",
-                {
-                    # Capture 'entity' as a default argument 'ent' to avoid closure issues
-                    "lambda": lambda x, ent=entity: self._get_unique_id(x, ent, mapping)
-                },
-            )
-
-        # Preserve DATE_TIME entities without anonymization
-        operators["DATE_TIME"] = OperatorConfig("keep")
-
-        anonymized = self._anonymizer.anonymize(
-            text=text,
-            analyzer_results=results,  # type: ignore
-            operators=operators,
-        )
-        return anonymized.text, mapping
-
-    def _deanonymize(self, text: str, mapping: dict) -> str:
-        """Restore original values in text by replacing anonymized placeholders."""
-        for placeholder, original in mapping.items():
-            text = text.replace(placeholder, original)
-        return text
 
     def _check_injection(self, user_message: str) -> None:
         """Scan user_message for known prompt injection strings.
@@ -206,9 +152,6 @@ class LiteLLMClient(LLMPort):
 
         self._check_token_limit(system_message, user_message)
 
-        if anonymize:
-            user_message, anonymization_mapping = self._anonymize(user_message)
-
         try:
             response = await acompletion(
                 model=self._model,
@@ -246,9 +189,6 @@ class LiteLLMClient(LLMPort):
         except Exception:
             logger.error("No pricing data for model %s", self._model)
             cost = float("nan")
-
-        if anonymize:
-            content = self._deanonymize(content, anonymization_mapping)
 
         if issubclass(response_model, BaseModel):
             parsed_data: T_Response = cast(
