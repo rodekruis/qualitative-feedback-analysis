@@ -45,6 +45,10 @@ used throughout the project.
   * implemented via one `LLMPort` implementation using LiteLLM.
 * hardened security.
 
+## Security guidance
+
+High-level security posture, hardening guidance, and prioritized recommendations are documented in [SECURITY.md](SECURITY.md).
+
 # Deployment
 
 Deployed to Azure App Service via Terraform (infrastructure) and GitHub Actions (app code).
