@@ -15,3 +15,9 @@ models:
     max_tokens: 131072
     litellm_provider: azure_ai
     mode: chat
+  azure_ai/mistral-medium-2505:
+    input_cost_per_token: 0.0000004
+    output_cost_per_token: 0.000002
+    max_tokens: 131072
+    litellm_provider: azure_ai
+    mode: chat
