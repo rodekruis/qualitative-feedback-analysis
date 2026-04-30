@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import openai
 import pytest
+from pydantic import BaseModel
 
 from qfa.adapters.llm_client import LiteLLMClient
 from qfa.domain.errors import LLMError, LLMRateLimitError, LLMTimeoutError
@@ -15,6 +16,10 @@ SYSTEM_MSG = "You are a helpful assistant."
 USER_MSG = "Summarize the feedback."
 TIMEOUT = 2.0
 TENANT_ID = "tenant-42"
+
+
+class _StructuredResponse(BaseModel):
+    summary: str
 
 
 def _make_mock_response():
@@ -232,4 +237,53 @@ class TestLiteLLMClientExceptionMapping:
             with pytest.raises(LLMError, match="missing usage"):
                 await client.complete(
                     SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT
+                )
+
+    @pytest.mark.asyncio
+    async def test_missing_content_raises_llm_error(self):
+        mock_response = _make_mock_response()
+        mock_response.choices[0].message.content = None
+        client = _make_client()
+        with patch(
+            "qfa.adapters.llm_client.acompletion",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ):
+            with pytest.raises(LLMError, match="missing content"):
+                await client.complete(
+                    SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT
+                )
+
+    @pytest.mark.asyncio
+    async def test_non_string_content_raises_llm_error(self):
+        mock_response = _make_mock_response()
+        mock_response.choices[0].message.content = {"summary": "hello"}
+        client = _make_client()
+        with patch(
+            "qfa.adapters.llm_client.acompletion",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ):
+            with pytest.raises(LLMError, match="content must be a string"):
+                await client.complete(
+                    SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT
+                )
+
+    @pytest.mark.asyncio
+    async def test_structured_validation_error_mapped_to_llm_error(self):
+        mock_response = _make_mock_response()
+        mock_response.choices[0].message.content = '{"invalid": true}'
+        client = _make_client()
+        with patch(
+            "qfa.adapters.llm_client.acompletion",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ):
+            with pytest.raises(LLMError, match="validation failed"):
+                await client.complete(
+                    SYSTEM_MSG,
+                    USER_MSG,
+                    TENANT_ID,
+                    _StructuredResponse,
+                    timeout=TIMEOUT,
                 )

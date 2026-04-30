@@ -6,7 +6,7 @@ from typing import cast
 
 import openai
 from litellm import acompletion, completion_cost
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_exponential
 
 from qfa.domain import AnalysisError, DocumentsTooLargeError
@@ -184,6 +184,11 @@ class LiteLLMClient(LLMPort):
             raise LLMError(str(exc)) from exc
 
         content = response.choices[0].message.content
+        if content is None:
+            raise LLMError("LLM response missing content")
+        if not isinstance(content, str):
+            msg = f"LLM response content must be a string, got {type(content).__name__}"
+            raise LLMError(msg)
 
         usage = response.usage
         if usage is None:
@@ -196,9 +201,14 @@ class LiteLLMClient(LLMPort):
             cost = float("nan")
 
         if issubclass(response_model, BaseModel):
-            parsed_data: T_Response = cast(
-                T_Response, response_model.model_validate_json(content)
-            )
+            try:
+                parsed_data: T_Response = cast(
+                    T_Response, response_model.model_validate_json(content)
+                )
+            except ValidationError as exc:
+                raise LLMError(
+                    f"LLM response validation failed for {response_model.__name__}: {exc}"
+                ) from exc
         else:
             parsed_data = cast(T_Response, content)
 
