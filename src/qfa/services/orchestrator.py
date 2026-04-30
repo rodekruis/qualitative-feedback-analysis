@@ -47,9 +47,6 @@ _DEFAULT_SUMMARIZATION_PROMPT = (
     "Strict Constraint: The summary must be extremely concise, using no more than 3-5 brief bullet points.\n"
     "Constraint: Each bullet point should be a single sentence fragment focusing only on the core sentiment or issue.\n"
     "Also create a short, 3-5 word descriptive title.\n"
-    "Do not output a quality score; evaluation is done separately.\n"
-    "Return valid JSON with exactly these fields: "
-    '{"title": "...", "summary": "- point 1\\n- point 2"}.\n'
     "Do not include markdown code fences.\n"
     "Use the same language as the input feedback item unless a target language is specified."
 )
@@ -62,9 +59,6 @@ _DEFAULT_AGGREGATE_SUMMARIZATION_PROMPT = (
     "Each bullet point should name the theme and describe it as a concise sentence fragment.\n"
     "Scale the number of bullet points to the size and diversity of the input — use judgement.\n"
     "Also create a short, 3-5 word descriptive title reflecting the dominant theme.\n"
-    "Do not output a quality score; evaluation is done separately.\n"
-    "Return valid JSON with exactly these fields: "
-    '{"title": "...", "summary": "- point 1\\n- point 2"}.\n'
     "Do not include markdown code fences.\n"
     "Use the same language as the input feedback items unless a target language is specified."
 )
