@@ -8,7 +8,7 @@ from qfa.domain.errors import (
     AnalysisTimeoutError,
     DocumentsTooLargeError,
 )
-from qfa.domain.models import FeedbackItemSummary, SummaryResult
+from qfa.domain.models import FeedbackItemSummaryModel, SummaryResultModel
 
 from .conftest import FAKE_API_KEY, FakeOrchestrator
 
@@ -398,9 +398,9 @@ class TestErrorMapping:
     @pytest.mark.asyncio
     async def test_summary_returns_configured_result(self, test_app):
         test_app.state.orchestrator = FakeOrchestrator(
-            summarize_result=SummaryResult(
+            summarize_result=SummaryResultModel(
                 feedback_item_summaries=(
-                    FeedbackItemSummary(
+                    FeedbackItemSummaryModel(
                         id="custom-1",
                         title="Custom title",
                         summary="- Custom point",

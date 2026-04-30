@@ -1,12 +1,17 @@
 """LLM client adapter using LiteLLM for unified provider access."""
 
 import logging
+import re
+from typing import cast
 
 import openai
 from litellm import acompletion, completion_cost
+from pydantic import BaseModel, ValidationError
+from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_exponential
 
+from qfa.domain import AnalysisError, DocumentsTooLargeError
 from qfa.domain.errors import LLMError, LLMRateLimitError, LLMTimeoutError
-from qfa.domain.models import LLMResponse
+from qfa.domain.models import LLMResponse, T_Response
 from qfa.domain.ports import LLMPort
 
 logger = logging.getLogger(__name__)
@@ -33,20 +38,94 @@ class LiteLLMClient(LLMPort):
     """
 
     def __init__(
-        self, model: str, api_key: str, api_base: str, api_version: str
+        self,
+        model: str,
+        api_key: str,
+        api_base: str,
+        api_version: str,
+        chars_per_token: int,
+        max_total_tokens: int,
     ) -> None:
         self._model = model
         self._api_key = api_key
         self._api_base = api_base
         self._api_version = api_version
+        self._chars_per_token = chars_per_token
+        self._max_total_tokens = max_total_tokens
 
+    def _check_injection(self, user_message: str) -> None:
+        """Scan user_message for known prompt injection strings.
+
+        Parameters
+        ----------
+        user_message : str
+            The prompt.
+
+        Raises
+        ------
+        AnalysisError
+            When a document matches an injection pattern.
+        """
+        _INJECTION_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+            (
+                "role_prefix",
+                re.compile(r"^\s*(SYSTEM|ASSISTANT|USER)\s*:", re.IGNORECASE),
+            ),
+            ("null_byte", re.compile(r"\x00")),
+            ("repeated_chars", re.compile(r"(.)\1{199,}")),
+        ]
+
+        for pattern_name, pattern in _INJECTION_PATTERNS:
+            if pattern.search(user_message):
+                logger.warning(
+                    "Prompt injection detected: pattern=%s",
+                    pattern_name,
+                )
+                msg = f"Prompt injection detected pattern={pattern_name}"
+                raise AnalysisError(msg)
+
+    def _check_token_limit(self, system_message: str, user_message: str) -> None:
+        """Estimate total tokens and raise if over the limit.
+
+        Parameters
+        ----------
+        system_message : str
+            The assembled system message.
+        user_message : str
+            The assembled user message (documents block).
+
+        Raises
+        ------
+        DocumentsTooLargeError
+            When estimated tokens exceed the configured limit.
+        """
+        assembled_text = system_message + user_message
+        estimated_tokens = len(assembled_text) // self._chars_per_token
+        if estimated_tokens > self._max_total_tokens:
+            msg = (
+                f"Estimated tokens ({estimated_tokens}) exceed limit "
+                f"({self._max_total_tokens})"
+            )
+            raise DocumentsTooLargeError(
+                msg,
+                estimated_tokens=estimated_tokens,
+                limit=self._max_total_tokens,
+            )
+
+    @retry(
+        wait=wait_exponential(multiplier=1, max=10),
+        stop=stop_after_delay(60),
+        retry=retry_if_exception_type((LLMTimeoutError, LLMRateLimitError)),
+    )
     async def complete(
         self,
         system_message: str,
         user_message: str,
-        timeout: float,
         tenant_id: str,
-    ) -> LLMResponse:
+        response_model: type[T_Response],
+        anonymize: bool = True,
+        timeout: float = 20.0,
+    ) -> LLMResponse[T_Response]:
         """Send a completion request via LiteLLM.
 
         Parameters
@@ -74,6 +153,10 @@ class LiteLLMClient(LLMPort):
         LLMError
             For any other provider error or empty response.
         """
+        self._check_injection(user_message)
+
+        self._check_token_limit(system_message, user_message)
+
         try:
             response = await acompletion(
                 model=self._model,
@@ -86,6 +169,9 @@ class LiteLLMClient(LLMPort):
                 api_version=self._api_version or None,
                 user=tenant_id,
                 timeout=timeout,
+                response_format=response_model
+                if issubclass(response_model, BaseModel)
+                else None,
             )
         except openai.APITimeoutError as exc:
             logger.error(exc)
@@ -98,8 +184,11 @@ class LiteLLMClient(LLMPort):
             raise LLMError(str(exc)) from exc
 
         content = response.choices[0].message.content
-        if not content:
-            raise LLMError("LLM returned empty content")
+        if content is None:
+            raise LLMError("LLM response missing content")
+        if not isinstance(content, str):
+            msg = f"LLM response content must be a string, got {type(content).__name__}"
+            raise LLMError(msg)
 
         usage = response.usage
         if usage is None:
@@ -111,8 +200,20 @@ class LiteLLMClient(LLMPort):
             logger.error("No pricing data for model %s", self._model)
             cost = float("nan")
 
-        return LLMResponse(
-            text=content,
+        if issubclass(response_model, BaseModel):
+            try:
+                parsed_data: T_Response = cast(
+                    T_Response, response_model.model_validate_json(content)
+                )
+            except ValidationError as exc:
+                raise LLMError(
+                    f"LLM response validation failed for {response_model.__name__}: {exc}"
+                ) from exc
+        else:
+            parsed_data = cast(T_Response, content)
+
+        return LLMResponse[T_Response](
+            structured=parsed_data,
             model=response.model,
             prompt_tokens=usage.prompt_tokens,
             completion_tokens=usage.completion_tokens,

@@ -62,6 +62,7 @@ class LLMSettings(BaseSettings):
     api_version: str = ""
     timeout_seconds: float = 115.0
     max_total_tokens: int = 100_000
+    chars_per_token: int = 4
 
 
 class OrchestratorSettings(BaseSettings):

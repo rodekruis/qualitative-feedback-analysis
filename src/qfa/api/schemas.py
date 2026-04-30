@@ -54,7 +54,7 @@ def _assign_codes_request_examples() -> list[dict[str, Any]]:
     ]
 
 
-class FeedbackItemInput(BaseModel):
+class FeedbackItemInputApi(BaseModel):
     """A single feedback item in an analysis request."""
 
     id: str = Field(description="Unique identifier for the feedback item.")
@@ -69,7 +69,7 @@ class FeedbackItemInput(BaseModel):
     )
 
 
-class AnalyzeRequest(BaseModel):
+class AnalyzeRequestApi(BaseModel):
     """Request body for the ``POST /v1/analyze`` endpoint."""
 
     model_config = {
@@ -94,7 +94,7 @@ class AnalyzeRequest(BaseModel):
         },
     }
 
-    documents: list[FeedbackItemInput] = Field(
+    documents: list[FeedbackItemInputApi] = Field(
         min_length=1,
         description="Non-empty list of feedback items to analyze.",
     )
@@ -109,7 +109,7 @@ class AnalyzeRequest(BaseModel):
     )
 
 
-class AnalyzeResponse(BaseModel):
+class AnalyzeResponseApi(BaseModel):
     """Response body for the ``POST /v1/analyze`` endpoint."""
 
     analysis: str = Field(description="Analysis output text.")
@@ -120,7 +120,7 @@ class AnalyzeResponse(BaseModel):
     )
 
 
-class SummarizeFeedbackMetadata(BaseModel):
+class SummarizeFeedbackMetadataApi(BaseModel):
     """Metadata for a feedback item in a summarize request."""
 
     created: datetime = Field(
@@ -132,7 +132,7 @@ class SummarizeFeedbackMetadata(BaseModel):
     coding_level_3: str = Field(description="Level 3 coding label.")
 
 
-class SummarizeFeedbackItem(BaseModel):
+class SummarizeFeedbackItemApi(BaseModel):
     """A single feedback item for ``POST /v1/summarize``."""
 
     id: str = Field(description="Unique identifier for the feedback item.")
@@ -141,12 +141,12 @@ class SummarizeFeedbackItem(BaseModel):
         max_length=100_000,
         description="Feedback content to summarize.",
     )
-    metadata: SummarizeFeedbackMetadata = Field(
+    metadata: SummarizeFeedbackMetadataApi = Field(
         description="Structured metadata for the feedback item.",
     )
 
 
-class SummarizeRequest(BaseModel):
+class SummarizeRequestApi(BaseModel):
     """Request body for the ``POST /v1/summarize`` endpoint."""
 
     model_config = {
@@ -211,7 +211,7 @@ class SummarizeRequest(BaseModel):
         },
     }
 
-    feedback_items: list[SummarizeFeedbackItem] = Field(
+    feedback_items: list[SummarizeFeedbackItemApi] = Field(
         min_length=1,
         description="Non-empty list of feedback items to summarize individually.",
     )
@@ -230,7 +230,7 @@ class SummarizeRequest(BaseModel):
     )
 
 
-class FeedbackItemSummary(BaseModel):
+class FeedbackItemSummaryApi(BaseModel):
     """Summary response item for a single feedback item."""
 
     id: str = Field(description="Identifier of the source feedback item.")
@@ -245,10 +245,10 @@ class FeedbackItemSummary(BaseModel):
     )
 
 
-class SummarizeResponse(BaseModel):
+class SummarizeResponseApi(BaseModel):
     """Response body for the ``POST /v1/summarize`` endpoint."""
 
-    summaries: list[FeedbackItemSummary] = Field(
+    summaries: list[FeedbackItemSummaryApi] = Field(
         description="Title and summary for each submitted feedback item.",
     )
     used_anonymization: bool = Field(
@@ -256,7 +256,7 @@ class SummarizeResponse(BaseModel):
     )
 
 
-class AggregateSummary(BaseModel):
+class AggregateSummaryApi(BaseModel):
     """Aggregate summary covering all submitted feedback items."""
 
     ids: list[str] = Field(description="Identifiers of all source feedback items.")
@@ -271,19 +271,19 @@ class AggregateSummary(BaseModel):
     )
 
 
-class SummarizeAggregateResponse(BaseModel):
+class SummarizeAggregateResponseApi(BaseModel):
     """Response body for the ``POST /v1/summarize-aggregate`` endpoint."""
 
-    summary: AggregateSummary = Field(
+    summary: AggregateSummaryApi = Field(
         description="Aggregate summary of all submitted feedback items."
     )
 
 
-class CodingNode(BaseModel):
+class CodingNodeApi(BaseModel):
     """Contains the node of a singular coding and its' children."""
 
     name: str = Field(description="Name of this coding")
-    children: list["CodingNode"] = Field(
+    children: list["CodingNodeApi"] = Field(
         default_factory=list,
         description="Child coding nodes nested under this coding.",
     )
@@ -306,15 +306,15 @@ class CodingNode(BaseModel):
         return min([child.min_child_depth() for child in self.children]) + 1
 
 
-class CodingLevels(BaseModel):
+class CodingLevelsApi(BaseModel):
     """Contains the hierarchical codings used for classification."""
 
-    root_codes: list[CodingNode] = Field(
+    root_codes: list[CodingNodeApi] = Field(
         description="The root (level 1) codes of your classification.", min_length=1
     )
 
     @model_validator(mode="after")
-    def verify_all_codes_have_same_depth(self) -> "CodingLevels":
+    def verify_all_codes_have_same_depth(self) -> "CodingLevelsApi":
         """Checks if all codes have the same depth."""
         max_lengths = set(code.max_child_depth() for code in self.root_codes)
         min_lengths = set(code.min_child_depth() for code in self.root_codes)
@@ -326,14 +326,14 @@ class CodingLevels(BaseModel):
         return self
 
 
-class FeedbackItem(BaseModel):
+class FeedbackItemApi(BaseModel):
     """Feedback item: ``id`` plus body text (reusable across endpoints)."""
 
     id: str
     content: str = Field(min_length=1, max_length=100_000)
 
 
-class AssignCodesRequest(BaseModel):
+class AssignCodesRequestApi(BaseModel):
     """Request body for ``POST /v1/assign_codes``."""
 
     model_config = {
@@ -341,46 +341,50 @@ class AssignCodesRequest(BaseModel):
     }
 
     coding_framework: dict[str, Any]
-    feedback_items: list[FeedbackItem] = Field(min_length=1)
+    feedback_items: list[FeedbackItemApi] = Field(min_length=1)
     max_codes: int = Field(default=1, ge=1, le=50)
     confidence_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    deactivate_anonymization: bool = Field(
+        default=False,
+        description="If true, the service will not apply anonymization to the feedback text. Use with caution and only if you are sure that no personally identifiable information (PII) is present in the input.",
+    )
 
 
-class CodeItem(BaseModel):
+class CodeItemApi(BaseModel):
     """A single code item."""
 
     code_id: str
     code_label: str
 
 
-class CodeItems(BaseModel):
+class CodeItemsApi(BaseModel):
     """List of code items assigned to one feedback item."""
 
     feedback_item_id: str
-    code_items: list[CodeItem]
+    code_items: list[CodeItemApi]
 
 
-class AssignCodesResponse(BaseModel):
+class AssignCodesResponseApi(BaseModel):
     """Response body for ``POST /v1/assign_codes``."""
 
-    coded_feedback_items: list[CodeItems]
+    coded_feedback_items: list[CodeItemsApi]
 
 
-class HealthResponse(BaseModel):
+class HealthResponseApi(BaseModel):
     """Response body for the ``GET /v1/health`` endpoint."""
 
     status: str = Field(description="Service health status.")
     version: str = Field(description="Package version string.")
 
 
-class ErrorFieldDetail(BaseModel):
+class ErrorFieldDetailApi(BaseModel):
     """Per-field validation error detail."""
 
     field: str = Field(description="Field that failed validation.")
     issue: str = Field(description="Description of the validation issue.")
 
 
-class ErrorDetail(BaseModel):
+class ErrorDetailApi(BaseModel):
     """Structured error information."""
 
     code: str = Field(description="Stable string error code.")
@@ -388,13 +392,13 @@ class ErrorDetail(BaseModel):
     request_id: str = Field(
         description="Unique identifier of the request that caused the error.",
     )
-    fields: list[ErrorFieldDetail] | None = Field(
+    fields: list[ErrorFieldDetailApi] | None = Field(
         default=None,
         description="Per-field validation details, present only for 422 responses.",
     )
 
 
-class ErrorResponse(BaseModel):
+class ErrorResponseApi(BaseModel):
     """Envelope for all error responses."""
 
-    error: ErrorDetail = Field(description="Error detail payload.")
+    error: ErrorDetailApi = Field(description="Error detail payload.")

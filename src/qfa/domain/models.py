@@ -3,12 +3,12 @@
 All models are immutable (frozen) Pydantic models per ADR-001.
 """
 
-from typing import Any
+from typing import Any, Generic, TypeVar, Union
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 
-class FeedbackItem(BaseModel):
+class FeedbackItemModel(BaseModel):
     """A single feedback item submitted for analysis."""
 
     model_config = ConfigDict(frozen=True)
@@ -25,12 +25,12 @@ class FeedbackItem(BaseModel):
     )
 
 
-class AnalysisRequest(BaseModel):
+class AnalysisRequestModel(BaseModel):
     """A request to analyze one or more feedback items."""
 
     model_config = ConfigDict(frozen=True)
 
-    documents: tuple[FeedbackItem, ...] = Field(
+    documents: tuple[FeedbackItemModel, ...] = Field(
         min_length=1,
         description="Non-empty tuple of feedback items to analyze.",
     )
@@ -42,24 +42,20 @@ class AnalysisRequest(BaseModel):
     tenant_id: str = Field(description="Tenant identifier injected by the auth layer.")
 
 
-class AnalysisResult(BaseModel):
+class AnalysisResultModel(BaseModel):
     """The result of a feedback analysis."""
 
     model_config = ConfigDict(frozen=True)
 
     result: str = Field(description="Analysis output text.")
-    model: str = Field(description="LLM model used for analysis.")
-    prompt_tokens: int = Field(description="Number of tokens in the prompt.")
-    completion_tokens: int = Field(description="Number of tokens in the completion.")
-    cost: float = Field(description="Estimated analysis cost in USD.")
 
 
-class SummaryRequest(BaseModel):
+class SummaryRequestModel(BaseModel):
     """A request to summarize one or more feedback items individually."""
 
     model_config = ConfigDict(frozen=True)
 
-    feedback_items: tuple[FeedbackItem, ...] = Field(
+    feedback_items: tuple[FeedbackItemModel, ...] = Field(
         min_length=1,
         description="Non-empty tuple of feedback items to summarize.",
     )
@@ -75,7 +71,7 @@ class SummaryRequest(BaseModel):
     tenant_id: str = Field(description="Tenant identifier injected by the auth layer.")
 
 
-class FeedbackItemSummary(BaseModel):
+class FeedbackItemSummaryModel(BaseModel):
     """Summary output for a single feedback item."""
 
     model_config = ConfigDict(frozen=True)
@@ -85,28 +81,26 @@ class FeedbackItemSummary(BaseModel):
     summary: str = Field(
         description="Generated bullet-point summary for the feedback item."
     )
-    quality_score: float = Field(
-        ge=0.0,
-        le=1.0,
+    quality_score: float = Field(  # TODO implement actual llm-as-a-judge for this field
         description="Judge model score for summary quality in the range 0.0-1.0.",
     )
 
 
-class SummaryResult(BaseModel):
+class SummaryResultModel(BaseModel):
     """The result of summarizing multiple feedback items individually."""
 
     model_config = ConfigDict(frozen=True)
 
-    feedback_item_summaries: tuple[FeedbackItemSummary, ...] = Field(
+    feedback_item_summaries: tuple[FeedbackItemSummaryModel, ...] = Field(
         description="Per-feedback-item summaries returned by the summarize flow.",
     )
-    cost: float = Field(description="Estimated summarization cost in USD.")
 
 
-class AggregateSummaryResult(BaseModel):
-    """The result of summarizing multiple feedback items as a single aggregate."""
+class AggregateSummaryResultModel(BaseModel):
+    """The result of summarizing multiple feedback items as a single aggregate.
 
-    model_config = ConfigDict(frozen=True)
+    # TODO come up with nice solution for non-mutable quality-score, so this can be a frozen class.
+    """
 
     ids: tuple[str, ...] = Field(
         description="Identifiers of all source feedback items."
@@ -116,94 +110,81 @@ class AggregateSummaryResult(BaseModel):
         description="Generated bullet-point summary ordered by theme frequency."
     )
     quality_score: float = Field(
-        ge=0.0,
-        le=1.0,
         description="Judge model score for summary quality in the range 0.0-1.0.",
     )
-    cost: float = Field(description="Estimated summarization cost in USD.")
 
 
-class CodingAssignmentRequest(BaseModel):
-    """A request to assign hierarchical codes to feedback items.
-
-    Attributes
-    ----------
-    feedback_items : tuple[FeedbackItem, ...]
-        Non-empty tuple of feedback items to code (``text`` is the body to classify).
-    coding_framework : dict[str, Any]
-        Hierarchical framework payload with top-level ``types`` and nested
-        ``categories`` and ``codes``.
-    max_codes : int
-        Maximum number of leaf codes to retain per feedback item.
-    tenant_id : str
-        Tenant identifier, injected by the auth layer.
-    """
+class CodingAssignmentRequestModel(BaseModel):
+    """A request to assign hierarchical codes to feedback items."""
 
     model_config = ConfigDict(frozen=True)
 
-    feedback_items: tuple[FeedbackItem, ...] = Field(min_length=1)
-    coding_framework: dict[str, Any]
-    max_codes: int = Field(ge=1, le=50)
-    tenant_id: str
+    feedback_items: tuple[FeedbackItemModel, ...] = Field(
+        min_length=1,
+        description="Non-empty tuple of feedback items to code.",
+    )
+    coding_framework: dict[str, Any] = Field(
+        description="Hierarchical coding framework with types, categories, and codes.",
+    )
+    max_codes: int = Field(
+        ge=1,
+        le=50,
+        description="Maximum number of leaf codes to retain per feedback item.",
+    )
+    tenant_id: str = Field(description="Tenant identifier injected by the auth layer.")
 
 
-class AssignedCode(BaseModel):
-    """A single leaf code assigned to a feedback item.
-
-    Attributes
-    ----------
-    code_id : str
-        Stable identifier from the framework (e.g. slug path).
-    code_label : str
-        Human-readable code name.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    code_id: str
-    code_label: str
-
-
-class CodedFeedbackItem(BaseModel):
-    """Coding output for one feedback item.
-
-    Attributes
-    ----------
-    feedback_item_id : str
-        Identifier of the source feedback item.
-    assigned_codes : tuple[AssignedCode, ...]
-        Leaf codes selected for this item.
-    """
+class AssignedCodeModel(BaseModel):
+    """A single leaf code assigned to a feedback item."""
 
     model_config = ConfigDict(frozen=True)
 
-    feedback_item_id: str
-    assigned_codes: tuple[AssignedCode, ...]
+    code_id: str = Field(
+        description="Stable identifier from the coding framework.",
+    )
+    code_label: str = Field(description="Human-readable code name.")
 
 
-class CodingAssignmentResult(BaseModel):
-    """The result of assigning codes to multiple feedback items.
-
-    Attributes
-    ----------
-    coded_feedback_items : tuple[CodedFeedbackItem, ...]
-        Per-item coding results, aligned with the request order.
-    """
+class CodedFeedbackItemModel(BaseModel):
+    """Coding output for one feedback item."""
 
     model_config = ConfigDict(frozen=True)
 
-    coded_feedback_items: tuple[CodedFeedbackItem, ...]
+    feedback_item_id: str = Field(
+        description="Identifier of the source feedback item.",
+    )
+    assigned_codes: tuple[AssignedCodeModel, ...] = Field(
+        description="Leaf codes selected for this feedback item.",
+    )
 
 
-class LLMResponse(BaseModel):
+class CodingAssignmentResultModel(BaseModel):
+    """The result of assigning codes to multiple feedback items."""
+
+    model_config = ConfigDict(frozen=True)
+
+    coded_feedback_items: tuple[CodedFeedbackItemModel, ...] = Field(
+        description="Per-item coding results aligned with the request order.",
+    )
+
+
+# Define a TypeVar that must be a Pydantic BaseModel
+T_Response = TypeVar("T_Response", bound=Union[BaseModel, str])
+
+
+class LLMResponse(BaseModel, Generic[T_Response]):
     """Raw response from an LLM provider."""
 
     model_config = ConfigDict(frozen=True)
 
-    text: str = Field(description="Generated text.")
-    model: str = Field(description="Model that produced the response.")
+    structured: T_Response = Field(
+        description="Parsed response conforming to the expected schema, either a string or Pydantic model.",
+    )
+    model: str = Field(description="LLM model that produced the response.")
     prompt_tokens: int = Field(description="Number of tokens in the prompt.")
-    completion_tokens: int = Field(description="Number of tokens in the completion.")
+    completion_tokens: int = Field(
+        description="Number of tokens in the completion.",
+    )
     cost: float = Field(description="Estimated request cost in USD.")
 
 
