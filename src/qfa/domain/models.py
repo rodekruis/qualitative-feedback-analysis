@@ -86,8 +86,6 @@ class FeedbackItemSummaryModel(BaseModel):
         description="Generated bullet-point summary for the feedback item."
     )
     quality_score: float = Field(
-        # ge=0.0,
-        # le=1.0,
         description="Judge model score for summary quality in the range 0.0-1.0.",
     )
 
