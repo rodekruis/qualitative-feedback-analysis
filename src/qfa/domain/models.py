@@ -85,7 +85,7 @@ class FeedbackItemSummaryModel(BaseModel):
     summary: str = Field(
         description="Generated bullet-point summary for the feedback item."
     )
-    quality_score: float = Field(
+    quality_score: float = Field(  # TODO implement actual llm-as-a-judge for this field
         description="Judge model score for summary quality in the range 0.0-1.0.",
     )
 
