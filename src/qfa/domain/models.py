@@ -48,10 +48,6 @@ class AnalysisResultModel(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     result: str = Field(description="Analysis output text.")
-    model: str = Field(description="LLM model used for analysis.")
-    prompt_tokens: int = Field(description="Number of tokens in the prompt.")
-    completion_tokens: int = Field(description="Number of tokens in the completion.")
-    cost: float = Field(description="Estimated analysis cost in USD.")
 
 
 class SummaryRequestModel(BaseModel):

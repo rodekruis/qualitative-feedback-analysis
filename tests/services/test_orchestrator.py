@@ -216,9 +216,6 @@ class TestHappyPath:
 
         assert isinstance(result, AnalysisResultModel)
         assert result.result == "Good analysis"
-        assert result.model == "gpt-4o"
-        assert result.prompt_tokens == 100
-        assert result.completion_tokens == 50
 
 
 class TestTokenLimit:

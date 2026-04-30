@@ -109,23 +109,12 @@ class TestAnalysisResultModel:
     def test_construct_with_valid_data(self):
         result = AnalysisResultModel(
             result="Summary text",
-            model="gpt-4",
-            prompt_tokens=100,
-            completion_tokens=50,
-            cost=0.001,
         )
         assert result.result == "Summary text"
-        assert result.model == "gpt-4"
-        assert result.prompt_tokens == 100
-        assert result.completion_tokens == 50
 
     def test_frozen_raises_on_assignment(self):
         result = AnalysisResultModel(
             result="Summary",
-            model="gpt-4",
-            prompt_tokens=10,
-            completion_tokens=5,
-            cost=0.001,
         )
         with pytest.raises(ValidationError):
             result.result = "changed"
