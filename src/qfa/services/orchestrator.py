@@ -205,6 +205,7 @@ class Orchestrator:
         AnalysisError
             For non-recoverable LLM failures or prompt injection.
         """
+        timeout = self._check_deadline_and_get_timeout(deadline)
         system_message = _SYSTEM_MESSAGE_TEMPLATE.format(prompt=request.prompt)
         user_message = self._assemble_documents(request.documents)
 
@@ -220,6 +221,7 @@ class Orchestrator:
             tenant_id=request.tenant_id,
             response_model=AnalysisResultModel,
             anonymize=anonymize,
+            timeout=timeout,
         )
 
         if anonymize:
@@ -259,6 +261,7 @@ class Orchestrator:
             When the LLM returns invalid output or another non-recoverable
             error occurs.
         """
+        timeout = self._check_deadline_and_get_timeout(deadline)
         system_message = _DEFAULT_SUMMARIZATION_PROMPT
         if request.output_language:
             system_message += (
@@ -280,6 +283,7 @@ class Orchestrator:
             tenant_id=request.tenant_id,
             response_model=SummaryResultModel,
             anonymize=anonymize,
+            timeout=timeout,
         )
 
         if anonymize:
@@ -332,12 +336,14 @@ class Orchestrator:
                 user_message
             )
 
+        timeout = self._check_deadline_and_get_timeout(deadline)
         response = await self._llm.complete(
             system_message=system_message,
             user_message=anonymized_user_message,
             tenant_id=request.tenant_id,
             response_model=AggregateSummaryResultModel,
             anonymize=anonymize,
+            timeout=timeout,
         )
         total_cost = response.cost
 
@@ -346,11 +352,13 @@ class Orchestrator:
             judge_user_message, response.structured.summary
         )
 
+        judge_timeout = self._check_deadline_and_get_timeout(deadline)
         judge_response = await self._llm.complete(
             system_message=judge_system,
             user_message=_JUDGE_USER_MESSAGE,
             tenant_id=request.tenant_id,
             response_model=str,
+            timeout=judge_timeout,
         )
         total_cost += judge_response.cost
         quality_score = _parse_judge_quality_score(judge_response.structured)
@@ -481,6 +489,22 @@ class Orchestrator:
             )
 
         return CodingAssignmentResultModel(coded_feedback_items=tuple(coded))
+
+    def _check_deadline_and_get_timeout(self, deadline: datetime) -> float:
+        """
+        Raise if the deadline has passed or too little time remains.
+
+        Return a timeout (seconds) bounded by the deadline and the
+        configured per-call limit.
+        """
+        remaining = (deadline - datetime.now(UTC)).total_seconds()
+        if remaining <= 0:
+            raise AnalysisTimeoutError("Deadline exceeded")
+        if remaining < _MINIMUM_ATTEMPT_WINDOW:
+            raise AnalysisTimeoutError(
+                f"Insufficient time remaining ({remaining:.1f}s) for an LLM attempt"
+            )
+        return min(self._llm_timeout_seconds, remaining)
 
     def _check_coding_deadline(self, deadline: datetime) -> None:
         """Raise when the coding deadline is exceeded."""
