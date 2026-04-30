@@ -403,6 +403,8 @@ def build_llm_client(settings: LLMSettings) -> LiteLLMClient:
         api_key=settings.api_key.get_secret_value(),
         api_base=settings.api_base,
         api_version=settings.api_version,
+        chars_per_token=settings.chars_per_token,
+        max_total_tokens=settings.max_total_tokens,
     )
 
 

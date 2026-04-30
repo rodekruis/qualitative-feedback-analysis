@@ -38,12 +38,20 @@ class LiteLLMClient(LLMPort):
     """
 
     def __init__(
-        self, model: str, api_key: str, api_base: str, api_version: str
+        self,
+        model: str,
+        api_key: str,
+        api_base: str,
+        api_version: str,
+        chars_per_token: int,
+        max_total_tokens: int,
     ) -> None:
         self._model = model
         self._api_key = api_key
         self._api_base = api_base
         self._api_version = api_version
+        self._chars_per_token = chars_per_token
+        self._max_total_tokens = max_total_tokens
 
     def _check_injection(self, user_message: str) -> None:
         """Scan user_message for known prompt injection strings.
@@ -91,20 +99,17 @@ class LiteLLMClient(LLMPort):
         DocumentsTooLargeError
             When estimated tokens exceed the configured limit.
         """
-        CHARS_PER_TOKEN = 4  # TODO use LLMSettings
-        MAX_TOTAL_TOKENS = 100_000  # TODO use LLMSettings
-
         assembled_text = system_message + user_message
-        estimated_tokens = len(assembled_text) // CHARS_PER_TOKEN
-        if estimated_tokens > MAX_TOTAL_TOKENS:
+        estimated_tokens = len(assembled_text) // self._chars_per_token
+        if estimated_tokens > self._max_total_tokens:
             msg = (
                 f"Estimated tokens ({estimated_tokens}) exceed limit "
-                f"({MAX_TOTAL_TOKENS})"
+                f"({self._max_total_tokens})"
             )
             raise DocumentsTooLargeError(
                 msg,
                 estimated_tokens=estimated_tokens,
-                limit=MAX_TOTAL_TOKENS,
+                limit=self._max_total_tokens,
             )
 
     @retry(

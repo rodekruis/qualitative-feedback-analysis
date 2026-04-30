@@ -38,6 +38,8 @@ def _make_client(**overrides):
         "api_key": "sk-test",
         "api_base": "",
         "api_version": "",
+        "chars_per_token": 4,
+        "max_total_tokens": 100_000,
     }
     defaults.update(overrides)
     return LiteLLMClient(**defaults)
