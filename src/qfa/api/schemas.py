@@ -351,6 +351,11 @@ class CodeItem(BaseModel):
 
     code_id: str
     code_label: str
+    confidence_type: float | None = None
+    confidence_category: float | None = None
+    confidence_code: float | None = None
+    confidence_aggregate: float | None = None
+    explanation: str | None = None
 
 
 class CodeItems(BaseModel):

@@ -156,12 +156,27 @@ class AssignedCode(BaseModel):
         Stable identifier from the framework (e.g. slug path).
     code_label : str
         Human-readable code name.
+    confidence_type : float | None
+        Judge confidence that the Type level fits the feedback item (0-1).
+    confidence_category : float | None
+        Judge confidence that the Category level fits the feedback item (0-1).
+    confidence_code : float | None
+        Judge confidence that the Code level fits the feedback item (0-1).
+    confidence_aggregate : float | None
+        Overall confidence, computed as min of the three level confidences.
+    explanation : str | None
+        Judge explanation for the code-level assignment.
     """
 
     model_config = ConfigDict(frozen=True)
 
     code_id: str
     code_label: str
+    confidence_type: float | None = None
+    confidence_category: float | None = None
+    confidence_code: float | None = None
+    confidence_aggregate: float | None = None
+    explanation: str | None = None
 
 
 class CodedFeedbackItem(BaseModel):
