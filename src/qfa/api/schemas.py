@@ -54,7 +54,7 @@ def _assign_codes_request_examples() -> list[dict[str, Any]]:
     ]
 
 
-class FeedbackItemInputApi(BaseModel):
+class ApiFeedbackItemInput(BaseModel):
     """A single feedback item in an analysis request."""
 
     id: str = Field(description="Unique identifier for the feedback item.")
@@ -69,7 +69,7 @@ class FeedbackItemInputApi(BaseModel):
     )
 
 
-class AnalyzeRequestApi(BaseModel):
+class ApiAnalyzeRequest(BaseModel):
     """Request body for the ``POST /v1/analyze`` endpoint."""
 
     model_config = {
@@ -94,7 +94,7 @@ class AnalyzeRequestApi(BaseModel):
         },
     }
 
-    documents: list[FeedbackItemInputApi] = Field(
+    documents: list[ApiFeedbackItemInput] = Field(
         min_length=1,
         description="Non-empty list of feedback items to analyze.",
     )
@@ -109,7 +109,7 @@ class AnalyzeRequestApi(BaseModel):
     )
 
 
-class AnalyzeResponseApi(BaseModel):
+class ApiAnalyzeResponse(BaseModel):
     """Response body for the ``POST /v1/analyze`` endpoint."""
 
     analysis: str = Field(description="Analysis output text.")
@@ -120,7 +120,7 @@ class AnalyzeResponseApi(BaseModel):
     )
 
 
-class SummarizeFeedbackMetadataApi(BaseModel):
+class ApiSummarizeFeedbackMetadata(BaseModel):
     """Metadata for a feedback item in a summarize request."""
 
     created: datetime = Field(
@@ -132,7 +132,7 @@ class SummarizeFeedbackMetadataApi(BaseModel):
     coding_level_3: str = Field(description="Level 3 coding label.")
 
 
-class SummarizeFeedbackItemApi(BaseModel):
+class ApiSummarizeFeedbackItem(BaseModel):
     """A single feedback item for ``POST /v1/summarize``."""
 
     id: str = Field(description="Unique identifier for the feedback item.")
@@ -141,12 +141,12 @@ class SummarizeFeedbackItemApi(BaseModel):
         max_length=100_000,
         description="Feedback content to summarize.",
     )
-    metadata: SummarizeFeedbackMetadataApi = Field(
+    metadata: ApiSummarizeFeedbackMetadata = Field(
         description="Structured metadata for the feedback item.",
     )
 
 
-class SummarizeRequestApi(BaseModel):
+class ApiSummarizeRequest(BaseModel):
     """Request body for the ``POST /v1/summarize`` endpoint."""
 
     model_config = {
@@ -211,7 +211,7 @@ class SummarizeRequestApi(BaseModel):
         },
     }
 
-    feedback_items: list[SummarizeFeedbackItemApi] = Field(
+    feedback_items: list[ApiSummarizeFeedbackItem] = Field(
         min_length=1,
         description="Non-empty list of feedback items to summarize individually.",
     )
@@ -230,7 +230,7 @@ class SummarizeRequestApi(BaseModel):
     )
 
 
-class FeedbackItemSummaryApi(BaseModel):
+class ApiFeedbackItemSummary(BaseModel):
     """Summary response item for a single feedback item."""
 
     id: str = Field(description="Identifier of the source feedback item.")
@@ -245,10 +245,10 @@ class FeedbackItemSummaryApi(BaseModel):
     )
 
 
-class SummarizeResponseApi(BaseModel):
+class ApiSummarizeResponse(BaseModel):
     """Response body for the ``POST /v1/summarize`` endpoint."""
 
-    summaries: list[FeedbackItemSummaryApi] = Field(
+    summaries: list[ApiFeedbackItemSummary] = Field(
         description="Title and summary for each submitted feedback item.",
     )
     used_anonymization: bool = Field(
@@ -256,7 +256,7 @@ class SummarizeResponseApi(BaseModel):
     )
 
 
-class AggregateSummaryApi(BaseModel):
+class ApiAggregateSummary(BaseModel):
     """Aggregate summary covering all submitted feedback items."""
 
     ids: list[str] = Field(description="Identifiers of all source feedback items.")
@@ -271,19 +271,19 @@ class AggregateSummaryApi(BaseModel):
     )
 
 
-class SummarizeAggregateResponseApi(BaseModel):
+class ApiSummarizeAggregateResponse(BaseModel):
     """Response body for the ``POST /v1/summarize-aggregate`` endpoint."""
 
-    summary: AggregateSummaryApi = Field(
+    summary: ApiAggregateSummary = Field(
         description="Aggregate summary of all submitted feedback items."
     )
 
 
-class CodingNodeApi(BaseModel):
+class ApiCodingNode(BaseModel):
     """Contains the node of a singular coding and its' children."""
 
     name: str = Field(description="Name of this coding")
-    children: list["CodingNodeApi"] = Field(
+    children: list["ApiCodingNode"] = Field(
         default_factory=list,
         description="Child coding nodes nested under this coding.",
     )
@@ -306,15 +306,15 @@ class CodingNodeApi(BaseModel):
         return min([child.min_child_depth() for child in self.children]) + 1
 
 
-class CodingLevelsApi(BaseModel):
+class ApiCodingLevels(BaseModel):
     """Contains the hierarchical codings used for classification."""
 
-    root_codes: list[CodingNodeApi] = Field(
+    root_codes: list[ApiCodingNode] = Field(
         description="The root (level 1) codes of your classification.", min_length=1
     )
 
     @model_validator(mode="after")
-    def verify_all_codes_have_same_depth(self) -> "CodingLevelsApi":
+    def verify_all_codes_have_same_depth(self) -> "ApiCodingLevels":
         """Checks if all codes have the same depth."""
         max_lengths = set(code.max_child_depth() for code in self.root_codes)
         min_lengths = set(code.min_child_depth() for code in self.root_codes)
@@ -326,14 +326,14 @@ class CodingLevelsApi(BaseModel):
         return self
 
 
-class FeedbackItemApi(BaseModel):
+class ApiFeedbackItem(BaseModel):
     """Feedback item: ``id`` plus body text (reusable across endpoints)."""
 
     id: str
     content: str = Field(min_length=1, max_length=100_000)
 
 
-class AssignCodesRequestApi(BaseModel):
+class ApiAssignCodesRequest(BaseModel):
     """Request body for ``POST /v1/assign_codes``."""
 
     model_config = {
@@ -341,7 +341,7 @@ class AssignCodesRequestApi(BaseModel):
     }
 
     coding_framework: dict[str, Any]
-    feedback_items: list[FeedbackItemApi] = Field(min_length=1)
+    feedback_items: list[ApiFeedbackItem] = Field(min_length=1)
     max_codes: int = Field(default=1, ge=1, le=50)
     confidence_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     deactivate_anonymization: bool = Field(
@@ -350,41 +350,41 @@ class AssignCodesRequestApi(BaseModel):
     )
 
 
-class CodeItemApi(BaseModel):
+class ApiCodeItem(BaseModel):
     """A single code item."""
 
     code_id: str
     code_label: str
 
 
-class CodeItemsApi(BaseModel):
+class ApiCodeItems(BaseModel):
     """List of code items assigned to one feedback item."""
 
     feedback_item_id: str
-    code_items: list[CodeItemApi]
+    code_items: list[ApiCodeItem]
 
 
-class AssignCodesResponseApi(BaseModel):
+class ApiAssignCodesResponse(BaseModel):
     """Response body for ``POST /v1/assign_codes``."""
 
-    coded_feedback_items: list[CodeItemsApi]
+    coded_feedback_items: list[ApiCodeItems]
 
 
-class HealthResponseApi(BaseModel):
+class ApiHealthResponse(BaseModel):
     """Response body for the ``GET /v1/health`` endpoint."""
 
     status: str = Field(description="Service health status.")
     version: str = Field(description="Package version string.")
 
 
-class ErrorFieldDetailApi(BaseModel):
+class ApiErrorFieldDetail(BaseModel):
     """Per-field validation error detail."""
 
     field: str = Field(description="Field that failed validation.")
     issue: str = Field(description="Description of the validation issue.")
 
 
-class ErrorDetailApi(BaseModel):
+class ApiErrorDetail(BaseModel):
     """Structured error information."""
 
     code: str = Field(description="Stable string error code.")
@@ -392,13 +392,13 @@ class ErrorDetailApi(BaseModel):
     request_id: str = Field(
         description="Unique identifier of the request that caused the error.",
     )
-    fields: list[ErrorFieldDetailApi] | None = Field(
+    fields: list[ApiErrorFieldDetail] | None = Field(
         default=None,
         description="Per-field validation details, present only for 422 responses.",
     )
 
 
-class ErrorResponseApi(BaseModel):
+class ApiErrorResponse(BaseModel):
     """Envelope for all error responses."""
 
-    error: ErrorDetailApi = Field(description="Error detail payload.")
+    error: ApiErrorDetail = Field(description="Error detail payload.")
