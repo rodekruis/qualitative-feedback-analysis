@@ -43,7 +43,8 @@ async def run_migrations(db_url: str) -> None:
     """
     engine = create_async_engine(db_url)
     try:
-        async with engine.begin() as conn:
+        autocommit_engine = engine.execution_options(isolation_level="AUTOCOMMIT")
+        async with autocommit_engine.connect() as conn:
             await conn.execute(text("SELECT pg_advisory_lock(:k)"), {"k": LOCK_KEY})
             try:
                 logger.info("Running alembic upgrade head")
