@@ -5,22 +5,22 @@ Invoked from ``entrypoint.sh`` before uvicorn binds the port, and from
 lock serialises concurrent migrators so non-winners wait for the winner
 to finish before proceeding.
 
-Run from the project root: the Alembic CLI resolves ``./alembic.ini``
-from the current working directory.
+Run from the project root: Alembic resolves ``./alembic.ini`` from the
+current working directory.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-import os
-import subprocess
 import sys
 
+from alembic.config import Config
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from qfa.adapters.db import resolve_database_url
+from alembic import command
+from qfa.adapters.db import create_async_engine_from_settings
 from qfa.settings import DatabaseSettings
 
 logger = logging.getLogger(__name__)
@@ -29,32 +29,38 @@ LOCK_KEY: int = 7424901234567890
 """Stable 64-bit integer key for the migration advisory lock."""
 
 
-async def run_migrations(db_url: str) -> None:
-    """Run ``alembic upgrade head`` against ``db_url`` under an advisory lock.
+def _alembic_upgrade_head(sync_connection):  # noqa: ANN001
+    """Run Alembic upgrade using an existing SQLAlchemy sync connection."""
+    config = Config("alembic.ini")
+    config.attributes["connection"] = sync_connection
+    command.upgrade(config, "head")
+
+
+async def run_migrations(db: DatabaseSettings | str) -> None:
+    """Run ``alembic upgrade head`` under an advisory lock.
 
     The lock is session-scoped: it is released automatically when the
     holding connection closes, so a crashed migrator cannot leave the
     keyspace permanently held.
 
-    The Alembic CLI is invoked as a subprocess of the current Python
-    interpreter (``sys.executable -m alembic``); this inherits the active
-    venv without depending on ``PATH`` or ``uv``. The CLI resolves
-    ``alembic.ini`` from the current working directory.
+    Parameters
+    ----------
+    db : DatabaseSettings | str
+        Either full DB settings (preferred, supports Entra token auth)
+        or an explicit SQLAlchemy URL (used by integration tests).
     """
-    engine = create_async_engine(db_url)
+    if isinstance(db, DatabaseSettings):
+        engine = create_async_engine_from_settings(db)
+    else:
+        engine = create_async_engine(db)
+
     try:
         autocommit_engine = engine.execution_options(isolation_level="AUTOCOMMIT")
         async with autocommit_engine.connect() as conn:
             await conn.execute(text("SELECT pg_advisory_lock(:k)"), {"k": LOCK_KEY})
             try:
                 logger.info("Running alembic upgrade head")
-                # Propagate db_url to alembic/env.py via DB_URL; the function
-                # parameter is the single source of truth.
-                subprocess.run(  # noqa: S603 — args are fully controlled, no user input
-                    [sys.executable, "-m", "alembic", "upgrade", "head"],
-                    check=True,
-                    env={**os.environ, "DB_URL": db_url},
-                )
+                await conn.run_sync(_alembic_upgrade_head)
             finally:
                 await conn.execute(
                     text("SELECT pg_advisory_unlock(:k)"), {"k": LOCK_KEY}
@@ -67,14 +73,13 @@ def main() -> int:
     """CLI entry point.
 
     Returns 0 on success (including the no-op case when usage tracking is
-    disabled), or the alembic exit code on migration failure.
+    disabled).
     """
     settings = DatabaseSettings()
     if not settings.track_usage:
         logger.info("DB_TRACK_USAGE is false; skipping migrations")
         return 0
-    url = resolve_database_url(settings)
-    asyncio.run(run_migrations(url))
+    asyncio.run(run_migrations(settings))
     return 0
 
 
@@ -84,6 +89,6 @@ if __name__ == "__main__":
     )
     try:
         sys.exit(main())
-    except subprocess.CalledProcessError as exc:
-        logger.error("alembic exited with code %d", exc.returncode)
-        sys.exit(exc.returncode)
+    except Exception:
+        logger.exception("Migration run failed")
+        sys.exit(1)

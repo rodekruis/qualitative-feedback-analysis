@@ -68,9 +68,8 @@ async def pg_engine(pg_url: str) -> AsyncEngine:
     """Session-scoped engine; runs ``alembic upgrade head`` once.
 
     Invokes the same lock-guarded migration entry point that production
-    uses (``qfa.cli.migrate.run_migrations``), so the test path exercises
-    the real subprocess-to-Alembic call shape rather than a parallel
-    Python-API path.
+    uses (``qfa.cli.migrate.run_migrations``), including the in-process
+    Alembic ``command.upgrade`` call on a lock-held DB connection.
     """
     from qfa.cli.migrate import run_migrations
 
