@@ -2,6 +2,8 @@
 
 import json
 
+from qfa.domain.errors import AnalysisError
+
 _SYSTEM = """You are a classification agent for beneficiary feedback items.
 
 Your task is to classify the feedback item using only the options provided at the current hierarchy level.
@@ -109,3 +111,89 @@ def build_pick_messages(
 def parse_selected_indices(raw: str, num_options: int) -> list[int]:
     """Parse the model JSON response for one hierarchy-level pick."""
     return _parse_selected_indices(raw, num_options)
+
+
+_JUDGE_SYSTEM = """You are evaluating whether a code assignment fits a feedback record.
+
+Context:
+These feedback records are collected from community members by Red Cross / Red Crescent National Societies as part of humanitarian programs. Feedback is qualitative and unstructured. It may be:
+- Short or incomplete (a few words or one sentence)
+- Indirect or emotionally expressed rather than explicit
+- Originally written in a local language and translated
+- About services, access, staff behaviour, health, safety, or community concerns
+
+Your task:
+Assess how well the assigned code label at the requested level fits the feedback record, given the full code path (Type > Category > Code) as context.
+
+Important:
+- Do not penalise feedback for being brief or colloquial — short feedback is normal in this domain.
+- Do not require exact keyword matches. Assess meaning and intent.
+- A reasonable interpretation of ambiguous feedback can still warrant a high confidence score, as long as it is grounded in the text.
+- Do not assign high confidence based on superficial similarity alone — the code must genuinely capture what the community member is expressing.
+
+Confidence scale:
+1.0 = the feedback clearly and directly supports this assignment
+0.7 = the feedback reasonably supports this assignment, good fit
+0.5 = the assignment is plausible but uncertain
+0.3 = the fit is weak or speculative
+0.0 = the feedback does not support this assignment or the assignment is clearly wrong
+
+Output rules:
+- Output JSON only
+- Do not output markdown
+- Do not output any text other than the JSON object
+- Return exactly this format: {"confidence": <float 0.0-1.0>, "explanation": "<one concise sentence>"}"""
+
+
+def build_judge_messages(
+    *,
+    feedback_text: str,
+    level: str,
+    path: list[tuple[str, str]],
+) -> tuple[str, str]:
+    """Build system and user messages for a single-level judge call.
+
+    Parameters
+    ----------
+    feedback_text:
+        Raw text of the feedback item being coded.
+    level:
+        The hierarchy level being evaluated: ``"Type"``, ``"Category"``, or ``"Code"``.
+    path:
+        Full code path up to and including the current level, as
+        ``[(level_name, label), ...]``. E.g. for the Category judge:
+        ``[("Type", "Service Delivery"), ("Category", "Staff Behavior")]``.
+    """
+    path_lines = "\n".join(f"{name}: {label}" for name, label in path)
+    user = (
+        f"Feedback:\n---\n{feedback_text}\n---\n\n"
+        f"Code path:\n{path_lines}\n\n"
+        f"Evaluate the {level} assignment."
+    )
+    return _JUDGE_SYSTEM, user
+
+
+def parse_judge_response(raw: str) -> tuple[float, str]:
+    """Parse ``{"confidence": float, "explanation": str}`` from judge output.
+
+    Returns
+    -------
+    tuple[float, str]
+        ``(confidence, explanation)`` where confidence is in ``[0.0, 1.0]``.
+
+    Raises
+    ------
+    AnalysisError
+        If the response cannot be parsed or the confidence is out of range.
+    """
+    try:
+        data = json.loads(raw.strip())
+        confidence = float(data["confidence"])
+        explanation = str(data["explanation"])
+    except Exception as exc:
+        raise AnalysisError(
+            "LLM judge returned invalid coding confidence response"
+        ) from exc
+    if not 0.0 <= confidence <= 1.0:
+        raise AnalysisError("LLM judge returned confidence outside 0.0-1.0")
+    return confidence, explanation
