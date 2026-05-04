@@ -214,7 +214,6 @@ class Orchestrator:
             user_message=anonymized_user_message,
             tenant_id=request.tenant_id,
             response_model=AnalysisResultModel,
-            anonymize=anonymize,
             timeout=timeout,
         )
 
@@ -276,7 +275,6 @@ class Orchestrator:
             user_message=anonymized_user_message,
             tenant_id=request.tenant_id,
             response_model=SummaryResultModel,
-            anonymize=anonymize,
             timeout=timeout,
         )
 
@@ -336,7 +334,6 @@ class Orchestrator:
             user_message=anonymized_user_message,
             tenant_id=request.tenant_id,
             response_model=AggregateSummaryResultModel,
-            anonymize=anonymize,
             timeout=timeout,
         )
         total_cost = response.cost
@@ -541,7 +538,6 @@ class Orchestrator:
             user_message=anonymized_user_message,
             tenant_id=tenant_id,
             response_model=str,
-            anonymize=anonymize,
         )
         return parse_selected_indices(response.structured, len(labels))
 

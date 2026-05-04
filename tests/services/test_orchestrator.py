@@ -142,7 +142,6 @@ class FakeLLMPort:
         user_message,
         tenant_id,
         response_model=str,
-        anonymize=True,
         timeout=20.0,
     ):
         self.calls.append(
@@ -151,7 +150,6 @@ class FakeLLMPort:
                 "user_message": user_message,
                 "tenant_id": tenant_id,
                 "response_model": response_model,
-                "anonymize": anonymize,
                 "timeout": timeout,
             }
         )
