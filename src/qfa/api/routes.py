@@ -90,14 +90,14 @@ async def analyze(
     )
 
     result = await orchestrator.analyze(
-        domain_request, deadline, anonymize=not body.deactivate_anonymization
+        domain_request, deadline, anonymize=body.anonymize
     )
 
     return ApiAnalyzeResponse(
         analysis=result.result,
         document_count=len(body.documents),
         request_id=request.state.request_id,
-        used_anonymization=not body.deactivate_anonymization,
+        used_anonymization=body.anonymize,
     )
 
 
@@ -146,7 +146,7 @@ async def summarize(
     result = await orchestrator.summarize(
         domain_request,
         deadline,
-        anonymize=not body.deactivate_anonymization,
+        anonymize=body.anonymize,
     )
 
     return ApiSummarizeResponse(
@@ -159,7 +159,7 @@ async def summarize(
             )
             for item in result.feedback_item_summaries
         ],
-        used_anonymization=not body.deactivate_anonymization,
+        used_anonymization=body.anonymize,
     )
 
 
@@ -184,7 +184,7 @@ async def assign_codes(
     )
 
     result = await orchestrator.assign_codes(
-        domain_request, deadline, anonymize=not body.deactivate_anonymization
+        domain_request, deadline, anonymize=body.anonymize
     )
 
     return ApiAssignCodesResponse(
@@ -251,7 +251,7 @@ async def summarize_aggregate(
     )
 
     result = await orchestrator.summarize_aggregate(
-        domain_request, deadline, anonymize=not body.deactivate_anonymization
+        domain_request, deadline, anonymize=body.anonymize
     )
 
     return ApiSummarizeAggregateResponse(

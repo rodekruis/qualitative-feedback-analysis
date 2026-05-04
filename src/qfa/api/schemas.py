@@ -103,9 +103,9 @@ class ApiAnalyzeRequest(BaseModel):
         max_length=4_000,
         description="Analysis instruction for the model.",
     )
-    deactivate_anonymization: bool = Field(
-        default=False,
-        description="If true, the service will not apply anonymization to the feedback text. Use with caution and only if you are sure that no personally identifiable information (PII) is present in the input.",
+    anonymize: bool = Field(
+        default=True,
+        description="If true, the service will anonymize feedback text before sending it to the LLM. Disable only if you are sure that no personally identifiable information (PII) is present in the input.",
     )
 
 
@@ -224,9 +224,9 @@ class ApiSummarizeRequest(BaseModel):
         max_length=4_000,
         description="Optional extra instruction appended to the default summarize prompt.",
     )
-    deactivate_anonymization: bool = Field(
-        default=False,
-        description="If true, the service will not apply anonymization to the feedback text. Use with caution and only if you are sure that no personally identifiable information (PII) is present in the input.",
+    anonymize: bool = Field(
+        default=True,
+        description="If true, the service will anonymize feedback text before sending it to the LLM. Disable only if you are sure that no personally identifiable information (PII) is present in the input.",
     )
 
 
@@ -344,9 +344,9 @@ class ApiAssignCodesRequest(BaseModel):
     feedback_items: list[ApiFeedbackItem] = Field(min_length=1)
     max_codes: int = Field(default=1, ge=1, le=50)
     confidence_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
-    deactivate_anonymization: bool = Field(
-        default=False,
-        description="If true, the service will not apply anonymization to the feedback text. Use with caution and only if you are sure that no personally identifiable information (PII) is present in the input.",
+    anonymize: bool = Field(
+        default=True,
+        description="If true, the service will anonymize feedback text before sending it to the LLM. Disable only if you are sure that no personally identifiable information (PII) is present in the input.",
     )
 
 
