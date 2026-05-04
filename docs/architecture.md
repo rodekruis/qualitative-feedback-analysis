@@ -328,8 +328,7 @@ class AppSettings(BaseSettings):
 
 | Variable | Required | Default |
 |----------|----------|---------|
-| `LLM_PROVIDER` | no | `openai` |
-| `LLM_MODEL` | no | `gpt-4o` |
+| `LLM_MODEL` | no | `azure_ai/mistral-medium-2505` |
 | `LLM_API_KEY` | yes | — |
 | `LLM_AZURE_ENDPOINT` | only for Azure | `""` |
 | `LLM_API_VERSION` | only for Azure | `""` |

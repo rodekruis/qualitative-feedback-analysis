@@ -42,22 +42,16 @@ variable "github_repo" {
 
 # --- App configuration (non-secret) ---
 
-variable "llm_provider" {
-  description = "LLM provider identifier"
-  type        = string
-  default     = "azure_openai"
-}
-
 variable "llm_model" {
   description = "LLM model name"
   type        = string
-  default     = "azure_ai/gpt-4.1-mini"
+  default     = "azure_ai/mistral-medium-2505"
 }
 
 variable "llm_api_version" {
-  description = "Azure OpenAI API version"
+  description = "API version for Azure OpenAI and/or Azure AI serverless endpoints"
   type        = string
-  default     = "2025-04-01-preview"
+  default     = "2024-05-01-preview"
 }
 
 # --- PostgreSQL configuration ---
