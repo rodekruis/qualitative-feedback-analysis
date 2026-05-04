@@ -141,35 +141,27 @@ class CodingAssignmentRequestModel(BaseModel):
 
 
 class AssignedCodeModel(BaseModel):
-    """A single leaf code assigned to a feedback item.
-
-    Attributes
-    ----------
-    code_id : str
-        Stable identifier from the framework (e.g. slug path).
-    code_label : str
-        Human-readable code name.
-    confidence_type : float
-        Judge confidence that the Type level fits the feedback item (0-1).
-    confidence_category : float
-        Judge confidence that the Category level fits the feedback item (0-1).
-    confidence_code : float
-        Judge confidence that the Code level fits the feedback item (0-1).
-    confidence_aggregate : float
-        Overall confidence, computed as min of the three level confidences.
-    explanation : str
-        Judge explanation combining all three hierarchy levels.
-    """
+    """A single leaf code assigned to a feedback item."""
 
     model_config = ConfigDict(frozen=True)
 
-    code_id: str
-    code_label: str
-    confidence_type: float
-    confidence_category: float
-    confidence_code: float
-    confidence_aggregate: float
-    explanation: str
+    code_id: str = Field(description="Stable identifier from the coding framework.")
+    code_label: str = Field(description="Human-readable code name.")
+    confidence_type: float = Field(
+        description="Judge confidence that the Type level fits the feedback item (0-1)."
+    )
+    confidence_category: float = Field(
+        description="Judge confidence that the Category level fits the feedback item (0-1)."
+    )
+    confidence_code: float = Field(
+        description="Judge confidence that the Code level fits the feedback item (0-1)."
+    )
+    confidence_aggregate: float = Field(
+        description="Overall confidence, computed as min of the three level confidences."
+    )
+    explanation: str = Field(
+        description="Judge explanation combining scores from all three hierarchy levels."
+    )
 
 
 class CodedFeedbackItemModel(BaseModel):
