@@ -191,7 +191,6 @@ class TestLiteLLMClientExceptionMapping:
                     USER_MSG,
                     TENANT_ID,
                     str,
-                    anonymize=False,
                     timeout=TIMEOUT,
                 )
 
@@ -215,7 +214,6 @@ class TestLiteLLMClientExceptionMapping:
                     USER_MSG,
                     TENANT_ID,
                     str,
-                    anonymize=False,
                     timeout=TIMEOUT,
                 )
 

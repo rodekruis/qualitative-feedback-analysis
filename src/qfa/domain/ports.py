@@ -23,7 +23,6 @@ class LLMPort(Protocol):
         user_message: str,
         tenant_id: str,
         response_model: type[T_Response],
-        anonymize: bool = True,
         timeout: float = 20.0,
     ) -> LLMResponse[T_Response]:
         """Send a completion request to the LLM provider.
@@ -38,8 +37,6 @@ class LLMPort(Protocol):
             Tenant identifier for tracking and billing.
         response_model : type[T_Response]
             The Pydantic model to parse the response into.
-        anonymize : bool
-            Whether to anonymize the user message before sending.
         timeout : float
             Maximum time in seconds to wait for a response.
 

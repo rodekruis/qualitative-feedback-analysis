@@ -123,7 +123,6 @@ class LiteLLMClient(LLMPort):
         user_message: str,
         tenant_id: str,
         response_model: type[T_Response],
-        anonymize: bool = True,
         timeout: float = 20.0,
     ) -> LLMResponse[T_Response]:
         """Send a completion request via LiteLLM.
