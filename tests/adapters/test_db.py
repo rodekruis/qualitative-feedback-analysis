@@ -53,12 +53,11 @@ def _make_record(
 
 
 @pytest_asyncio.fixture
-async def sqlite_repo(tmp_path):
-    """Repo backed by an in-memory SQLite database (sync engine wrapper)."""
+async def sqlite_repo():
+    """Repo backed by a true in-memory SQLite database."""
     from sqlalchemy.ext.asyncio import create_async_engine
 
-    url = f"sqlite+aiosqlite:///{tmp_path}/test.db"
-    engine = create_async_engine(url)
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
         await conn.run_sync(metadata.create_all)
     session_factory = create_session_factory(engine)
