@@ -92,12 +92,6 @@ variable "db_aad_scope" {
   default     = "https://ossrdbms-aad.database.windows.net/.default"
 }
 
-variable "db_aad_principal_name" {
-  description = "Principal name used by the app when DB auth mode is entra"
-  type        = string
-  nullable    = false
-}
-
 variable "postgres_entra_admin_object_id" {
   description = "Object ID for the PostgreSQL Entra admin principal"
   type        = string

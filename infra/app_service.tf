@@ -65,7 +65,7 @@ resource "azurerm_linux_web_app" "backend" {
     DB_NAME        = var.postgres_db_name
     DB_AUTH_MODE   = "entra"
     DB_AAD_SCOPE   = var.db_aad_scope
-    DB_USER        = var.db_aad_principal_name
+    DB_USER        = local.db_aad_principal_name
     DB_PASSWORD    = ""
     DB_TRACK_USAGE = "true"
 
