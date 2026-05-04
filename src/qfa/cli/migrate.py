@@ -20,6 +20,7 @@ import sys
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from qfa.adapters.db import resolve_database_url
 from qfa.settings import DatabaseSettings
 
 logger = logging.getLogger(__name__)
@@ -71,7 +72,8 @@ def main() -> int:
     if not settings.track_usage:
         logger.info("DB_TRACK_USAGE is false; skipping migrations")
         return 0
-    asyncio.run(run_migrations(settings.url))
+    url = resolve_database_url(settings)
+    asyncio.run(run_migrations(url))
     return 0
 
 
