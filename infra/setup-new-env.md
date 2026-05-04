@@ -50,6 +50,9 @@ This manual step is especially required because GitHub Actions need the federate
 to modify the resource group in subsequent CI/CD runs. This is a chicken-and-egg problem
 -- without this manual run CI/CD does not have access to Azure.
 
+At runtime, database migrations are executed by the container via `python -m qfa.cli.migrate`.
+That path is the supported production migration flow for Entra-authenticated database access.
+
 ### 5. Configure the environment's GitHub variables
 
 `terraform output -raw az_client_id` reads from the current workspace's state, so this step must follow the `terraform apply` above.

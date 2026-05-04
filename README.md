@@ -117,6 +117,7 @@ Contrast with the release flow above: applies fan out from a single manual-dispa
 
 Infrastructure (Azure App Service, Key Vault, managed identities, etc.) is managed by Terraform and deployed **independently** of application code. Unlike the app release flow above, there is no automatic promotion chain — each environment must be applied manually from the Actions tab.
 For deployed environments, PostgreSQL application authentication is Entra-only via managed identity token flow (password auth is disabled on the server).
+Database migrations in production run via `python -m qfa.cli.migrate` (invoked by `entrypoint.sh`) so Alembic uses the lock-managed connection and Entra-capable auth path.
 
 The `terraform.yaml` workflow (`.github/workflows/terraform.yaml`) runs `plan` automatically on PRs and pushes touching `infra/`, but **never runs `apply` automatically** — `apply` only executes when dispatched manually with `command: apply`.
 

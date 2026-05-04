@@ -66,7 +66,6 @@ resource "azurerm_linux_web_app" "backend" {
     DB_AUTH_MODE   = "entra"
     DB_AAD_SCOPE   = var.db_aad_scope
     DB_USER        = local.db_aad_principal_name
-    DB_PASSWORD    = ""
     DB_TRACK_USAGE = "true"
 
     WEBSITES_ENABLE_APP_SERVICE_STORAGE = "false"

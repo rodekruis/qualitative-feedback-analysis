@@ -1,6 +1,7 @@
 """Alembic environment configuration for async PostgreSQL migrations."""
 
 import asyncio
+import logging
 import os
 from logging.config import fileConfig
 
@@ -11,6 +12,7 @@ from alembic import context
 from qfa.adapters.db import metadata as target_metadata
 
 config = context.config
+logger = logging.getLogger(__name__)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -69,6 +71,11 @@ def run_migrations_online() -> None:
     if sync_conn is not None:
         do_run_migrations(sync_conn)
     else:
+        if os.environ.get("DB_AUTH_MODE", "").lower() == "entra":
+            logger.warning(
+                "Running Alembic without an injected connection while DB_AUTH_MODE=entra. "
+                "Use `python -m qfa.cli.migrate` for production to ensure Entra token auth."
+            )
         asyncio.run(run_async_migrations())
 
 
