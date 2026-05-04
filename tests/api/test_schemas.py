@@ -3,90 +3,90 @@
 import pytest
 from pydantic import ValidationError
 
-from qfa.api.schemas import CodingLevelsApi, CodingNodeApi
+from qfa.api.schemas import ApiCodingLevels, ApiCodingNode
 
 
 def test_max_child_depth_leaf_returns_zero():
-    assert CodingNodeApi(name="a").max_child_depth() == 0
+    assert ApiCodingNode(name="a").max_child_depth() == 0
 
 
 def test_max_child_depth_single_level():
-    node = CodingNodeApi(name="root", children=[CodingNodeApi(name="child")])
+    node = ApiCodingNode(name="root", children=[ApiCodingNode(name="child")])
     assert node.max_child_depth() == 1
 
 
 def test_max_child_depth_two_levels():
-    node = CodingNodeApi(
+    node = ApiCodingNode(
         name="root",
-        children=[CodingNodeApi(name="mid", children=[CodingNodeApi(name="leaf")])],
+        children=[ApiCodingNode(name="mid", children=[ApiCodingNode(name="leaf")])],
     )
     assert node.max_child_depth() == 2
 
 
 def test_max_child_depth_returns_deepest_branch():
-    node = CodingNodeApi(
+    node = ApiCodingNode(
         name="root",
         children=[
-            CodingNodeApi(name="shallow"),
-            CodingNodeApi(name="deep", children=[CodingNodeApi(name="deeper")]),
+            ApiCodingNode(name="shallow"),
+            ApiCodingNode(name="deep", children=[ApiCodingNode(name="deeper")]),
         ],
     )
     assert node.max_child_depth() == 2
 
 
 def test_min_child_depth_leaf_returns_zero():
-    assert CodingNodeApi(name="a").min_child_depth() == 0
+    assert ApiCodingNode(name="a").min_child_depth() == 0
 
 
 def test_min_child_depth_single_level():
-    node = CodingNodeApi(name="root", children=[CodingNodeApi(name="child")])
+    node = ApiCodingNode(name="root", children=[ApiCodingNode(name="child")])
     assert node.min_child_depth() == 1
 
 
 def test_min_child_depth_two_levels():
-    node = CodingNodeApi(
+    node = ApiCodingNode(
         name="root",
-        children=[CodingNodeApi(name="mid", children=[CodingNodeApi(name="leaf")])],
+        children=[ApiCodingNode(name="mid", children=[ApiCodingNode(name="leaf")])],
     )
     assert node.min_child_depth() == 2
 
 
 def test_min_child_depth_returns_shallowest_branch():
-    node = CodingNodeApi(
+    node = ApiCodingNode(
         name="root",
         children=[
-            CodingNodeApi(name="shallow"),
-            CodingNodeApi(name="deep", children=[CodingNodeApi(name="deeper")]),
+            ApiCodingNode(name="shallow"),
+            ApiCodingNode(name="deep", children=[ApiCodingNode(name="deeper")]),
         ],
     )
     assert node.min_child_depth() == 1
 
 
 def test_coding_levels_valid_flat_tree():
-    levels = CodingLevelsApi(
-        root_codes=[CodingNodeApi(name="a"), CodingNodeApi(name="b")]
+    levels = ApiCodingLevels(
+        root_codes=[ApiCodingNode(name="a"), ApiCodingNode(name="b")]
     )
     assert len(levels.root_codes) == 2
 
 
 def test_coding_levels_valid_uniform_depth():
-    levels = CodingLevelsApi(
+    levels = ApiCodingLevels(
         root_codes=[
-            CodingNodeApi(
+            ApiCodingNode(
                 name="Water",
                 children=[
-                    CodingNodeApi(
+                    ApiCodingNode(
                         name="Distribution",
-                        children=[CodingNodeApi(name="Waiting times")],
+                        children=[ApiCodingNode(name="Waiting times")],
                     )
                 ],
             ),
-            CodingNodeApi(
+            ApiCodingNode(
                 name="Health",
                 children=[
-                    CodingNodeApi(
+                    ApiCodingNode(
                         name="Staff",
-                        children=[CodingNodeApi(name="Supplies")],
+                        children=[ApiCodingNode(name="Supplies")],
                     )
                 ],
             ),
@@ -97,25 +97,25 @@ def test_coding_levels_valid_uniform_depth():
 
 def test_coding_levels_unequal_depth_raises():
     with pytest.raises(ValueError, match="same depth"):
-        CodingLevelsApi(
+        ApiCodingLevels(
             root_codes=[
-                CodingNodeApi(name="flat"),
-                CodingNodeApi(name="deep", children=[CodingNodeApi(name="child")]),
+                ApiCodingNode(name="flat"),
+                ApiCodingNode(name="deep", children=[ApiCodingNode(name="child")]),
             ]
         )
 
 
 def test_coding_levels_unequal_depth_within_subtree_raises():
     with pytest.raises(ValueError, match="same depth"):
-        CodingLevelsApi(
+        ApiCodingLevels(
             root_codes=[
-                CodingNodeApi(
+                ApiCodingNode(
                     name="root",
                     children=[
-                        CodingNodeApi(name="shallow"),
-                        CodingNodeApi(
+                        ApiCodingNode(name="shallow"),
+                        ApiCodingNode(
                             name="deep",
-                            children=[CodingNodeApi(name="deeper")],
+                            children=[ApiCodingNode(name="deeper")],
                         ),
                     ],
                 ),
@@ -125,4 +125,4 @@ def test_coding_levels_unequal_depth_within_subtree_raises():
 
 def test_coding_levels_with_no_children_fail():
     with pytest.raises(ValidationError, match="should have at least 1"):
-        CodingLevelsApi(root_codes=[])
+        ApiCodingLevels(root_codes=[])
