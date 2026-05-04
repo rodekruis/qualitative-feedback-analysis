@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import openai
 import pytest
+from pydantic import BaseModel
 
 from qfa.adapters.llm_client import LiteLLMClient
 from qfa.domain.errors import LLMError, LLMRateLimitError, LLMTimeoutError
@@ -13,8 +14,12 @@ from qfa.domain.models import LLMResponse
 MODEL = "azure_ai/mistral-large-2411"
 SYSTEM_MSG = "You are a helpful assistant."
 USER_MSG = "Summarize the feedback."
-TIMEOUT = 30.0
+TIMEOUT = 2.0
 TENANT_ID = "tenant-42"
+
+
+class _StructuredResponse(BaseModel):
+    summary: str
 
 
 def _make_mock_response():
@@ -38,6 +43,8 @@ def _make_client(**overrides):
         "api_key": "sk-test",
         "api_base": "",
         "api_version": "",
+        "chars_per_token": 4,
+        "max_total_tokens": 100_000,
     }
     defaults.update(overrides)
     return LiteLLMClient(**defaults)
@@ -59,10 +66,12 @@ class TestLiteLLMClientHappyPath:
                 return_value=0.001,
             ),
         ):
-            result = await client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
+            result = await client.complete(
+                SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT
+            )
 
         assert isinstance(result, LLMResponse)
-        assert result.text == "This is the summary."
+        assert result.structured == "This is the summary."
         assert result.model == MODEL
         assert result.prompt_tokens == 100
         assert result.completion_tokens == 50
@@ -85,7 +94,7 @@ class TestLiteLLMClientCallParameters:
             ) as mock_ac,
             patch("qfa.adapters.llm_client.completion_cost", return_value=0.0),
         ):
-            await client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
+            await client.complete(SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT)
 
         call_kwargs = mock_ac.call_args.kwargs
         assert call_kwargs["model"] == MODEL
@@ -110,11 +119,37 @@ class TestLiteLLMClientCallParameters:
             ) as mock_ac,
             patch("qfa.adapters.llm_client.completion_cost", return_value=0.0),
         ):
-            await client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
+            await client.complete(SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT)
 
         call_kwargs = mock_ac.call_args.kwargs
         assert call_kwargs["api_base"] is None
         assert call_kwargs["api_version"] is None
+
+    @pytest.mark.asyncio
+    async def test_structured_response_model_sent_and_parsed(self):
+        mock_response = _make_mock_response()
+        mock_response.choices[0].message.content = '{"summary":"Structured summary."}'
+        client = _make_client()
+        with (
+            patch(
+                "qfa.adapters.llm_client.acompletion",
+                new_callable=AsyncMock,
+                return_value=mock_response,
+            ) as mock_ac,
+            patch("qfa.adapters.llm_client.completion_cost", return_value=0.0),
+        ):
+            result = await client.complete(
+                SYSTEM_MSG,
+                USER_MSG,
+                TENANT_ID,
+                _StructuredResponse,
+                timeout=TIMEOUT,
+            )
+
+        call_kwargs = mock_ac.call_args.kwargs
+        assert call_kwargs["response_format"] is _StructuredResponse
+        assert isinstance(result.structured, _StructuredResponse)
+        assert result.structured.summary == "Structured summary."
 
 
 class TestLiteLLMClientCostFallback:
@@ -133,7 +168,9 @@ class TestLiteLLMClientCostFallback:
                 side_effect=Exception("not found"),
             ),
         ):
-            result = await client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
+            result = await client.complete(
+                SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT
+            )
 
         assert isnan(result.cost)
 
@@ -148,7 +185,14 @@ class TestLiteLLMClientExceptionMapping:
             side_effect=openai.APITimeoutError(request=MagicMock()),
         ):
             with pytest.raises(LLMTimeoutError):
-                await client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
+                await client.complete.__wrapped__(
+                    client,
+                    SYSTEM_MSG,
+                    USER_MSG,
+                    TENANT_ID,
+                    str,
+                    timeout=TIMEOUT,
+                )
 
     @pytest.mark.asyncio
     async def test_rate_limit_error_mapped(self):
@@ -164,7 +208,14 @@ class TestLiteLLMClientExceptionMapping:
             ),
         ):
             with pytest.raises(LLMRateLimitError):
-                await client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
+                await client.complete.__wrapped__(
+                    client,
+                    SYSTEM_MSG,
+                    USER_MSG,
+                    TENANT_ID,
+                    str,
+                    timeout=TIMEOUT,
+                )
 
     @pytest.mark.asyncio
     async def test_generic_api_error_mapped(self):
@@ -177,7 +228,9 @@ class TestLiteLLMClientExceptionMapping:
             ),
         ):
             with pytest.raises(LLMError):
-                await client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
+                await client.complete(
+                    SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT
+                )
 
     @pytest.mark.asyncio
     async def test_empty_content_raises(self):
@@ -189,8 +242,11 @@ class TestLiteLLMClientExceptionMapping:
             new_callable=AsyncMock,
             return_value=mock_response,
         ):
-            with pytest.raises(LLMError, match="empty content"):
-                await client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
+            result = await client.complete(
+                SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT
+            )
+
+        assert result.structured == ""
 
     @pytest.mark.asyncio
     async def test_missing_usage_raises(self):
@@ -203,4 +259,55 @@ class TestLiteLLMClientExceptionMapping:
             return_value=mock_response,
         ):
             with pytest.raises(LLMError, match="missing usage"):
-                await client.complete(SYSTEM_MSG, USER_MSG, TIMEOUT, TENANT_ID)
+                await client.complete(
+                    SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT
+                )
+
+    @pytest.mark.asyncio
+    async def test_missing_content_raises_llm_error(self):
+        mock_response = _make_mock_response()
+        mock_response.choices[0].message.content = None
+        client = _make_client()
+        with patch(
+            "qfa.adapters.llm_client.acompletion",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ):
+            with pytest.raises(LLMError, match="missing content"):
+                await client.complete(
+                    SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT
+                )
+
+    @pytest.mark.asyncio
+    async def test_non_string_content_raises_llm_error(self):
+        mock_response = _make_mock_response()
+        mock_response.choices[0].message.content = {"summary": "hello"}
+        client = _make_client()
+        with patch(
+            "qfa.adapters.llm_client.acompletion",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ):
+            with pytest.raises(LLMError, match="content must be a string"):
+                await client.complete(
+                    SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT
+                )
+
+    @pytest.mark.asyncio
+    async def test_structured_validation_error_mapped_to_llm_error(self):
+        mock_response = _make_mock_response()
+        mock_response.choices[0].message.content = '{"invalid": true}'
+        client = _make_client()
+        with patch(
+            "qfa.adapters.llm_client.acompletion",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ):
+            with pytest.raises(LLMError, match="validation failed"):
+                await client.complete(
+                    SYSTEM_MSG,
+                    USER_MSG,
+                    TENANT_ID,
+                    _StructuredResponse,
+                    timeout=TIMEOUT,
+                )
