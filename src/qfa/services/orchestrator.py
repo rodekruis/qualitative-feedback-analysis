@@ -162,11 +162,21 @@ class _ScoredCode:
     confidence_type: float
     confidence_category: float
     confidence_code: float
-    explanation: str
+    explanation_type: str
+    explanation_category: str
+    explanation_code: str
 
     @property
     def confidence_aggregate(self) -> float:
         return min(self.confidence_type, self.confidence_category, self.confidence_code)
+
+    @property
+    def explanation(self) -> str:
+        return (
+            f"Type ({self.confidence_type:.2f}): {self.explanation_type} "
+            f"Category ({self.confidence_category:.2f}): {self.explanation_category} "
+            f"Code ({self.confidence_code:.2f}): {self.explanation_code}"
+        )
 
 
 class Orchestrator:
@@ -475,7 +485,7 @@ class Orchestrator:
                 type_entry = types[type_index]
                 type_name = str(type_entry.get("name", ""))
 
-                confidence_type, _ = await self._judge_code_level(
+                confidence_type, explanation_type = await self._judge_code_level(
                     feedback_text=feedback_item.text,
                     level="Type",
                     path=[("Type", type_name)],
@@ -499,7 +509,10 @@ class Orchestrator:
                     category = categories[category_index]
                     category_name = str(category.get("name", ""))
 
-                    confidence_category, _ = await self._judge_code_level(
+                    (
+                        confidence_category,
+                        explanation_category,
+                    ) = await self._judge_code_level(
                         feedback_text=feedback_item.text,
                         level="Category",
                         path=[("Type", type_name), ("Category", category_name)],
@@ -547,7 +560,9 @@ class Orchestrator:
                                 confidence_type=confidence_type,
                                 confidence_category=confidence_category,
                                 confidence_code=confidence_code,
-                                explanation=explanation,
+                                explanation_type=explanation_type,
+                                explanation_category=explanation_category,
+                                explanation_code=explanation,
                             )
                         )
 
