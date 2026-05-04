@@ -20,8 +20,6 @@ from qfa.domain.errors import UsageRepositoryUnavailableError
 from qfa.domain.models import (
     DistributionStats,
     LLMCallRecord,
-    Operation,
-    OperationStats,
     TokenStats,
     UsageStats,
 )
@@ -247,41 +245,8 @@ def _parse_token_stats_ok(row: sa.Row, prefix: str) -> TokenStats:
     )
 
 
-def _build_by_operation(rows) -> tuple[OperationStats, ...]:  # noqa: ANN001
-    """Build sorted by-operation entries.
-
-    Sort: ``cost_usd`` desc, ties broken by ``operation`` asc. Unknown
-    operation strings (rows that predate per-op tracking) coerce to
-    ``Operation.UNKNOWN``.
-    """
-    items: list[OperationStats] = []
-    for r in rows:
-        m = r._mapping
-        op_raw = str(m["operation"])
-        try:
-            op_enum = Operation(op_raw)
-        except ValueError:
-            op_enum = Operation.UNKNOWN
-        items.append(
-            OperationStats(
-                operation=op_enum,
-                total_calls=int(m["total_calls"]),
-                failed_calls=int(m["failed_calls"] or 0),
-                cost_usd=Decimal(str(m["cost_usd"])),
-                input_tokens_total=int(m["input_tokens_total"] or 0),
-                output_tokens_total=int(m["output_tokens_total"] or 0),
-            )
-        )
-    items.sort(key=lambda s: (-s.cost_usd, str(s.operation)))
-    return tuple(items)
-
-
-def _row_to_usage_stats(
-    tenant_id: str | None,
-    row: sa.Row,
-    per_op_rows: list,
-) -> UsageStats:
-    """Assemble a ``UsageStats`` from a totals row + its per-operation rows."""
+def _row_to_usage_stats(tenant_id: str | None, row: sa.Row) -> UsageStats:
+    """Assemble a ``UsageStats`` from a totals row."""
     m = row._mapping
     return UsageStats(
         tenant_id=tenant_id,
@@ -291,31 +256,6 @@ def _row_to_usage_stats(
         call_duration=_parse_distribution_ok(row, "dur"),
         input_tokens=_parse_token_stats_ok(row, "inp"),
         output_tokens=_parse_token_stats_ok(row, "out"),
-        by_operation=_build_by_operation(per_op_rows),
-    )
-
-
-def _by_operation_select(base_pred: list) -> sa.Select:
-    """Build the per-operation aggregation SELECT for the given base predicates."""
-    ok_filter = llm_calls.c.status == "ok"
-    err_filter = llm_calls.c.status == "error"
-    return (
-        sa.select(
-            llm_calls.c.operation,
-            sa.func.count().label("total_calls"),
-            sa.func.count().filter(err_filter).label("failed_calls"),
-            sa.func.coalesce(
-                sa.func.sum(llm_calls.c.cost_usd).filter(ok_filter), 0
-            ).label("cost_usd"),
-            sa.func.coalesce(
-                sa.func.sum(llm_calls.c.input_tokens).filter(ok_filter), 0
-            ).label("input_tokens_total"),
-            sa.func.coalesce(
-                sa.func.sum(llm_calls.c.output_tokens).filter(ok_filter), 0
-            ).label("output_tokens_total"),
-        )
-        .where(*base_pred)
-        .group_by(llm_calls.c.operation)
     )
 
 
@@ -398,8 +338,6 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
                 )
             ).one()
 
-            per_op = (await session.execute(_by_operation_select(base_pred))).all()
-
         return UsageStats(
             tenant_id=tenant_id,
             total_calls=total_calls,
@@ -408,7 +346,6 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
             call_duration=_parse_distribution_ok(ok_row, "dur"),
             input_tokens=_parse_token_stats_ok(ok_row, "inp"),
             output_tokens=_parse_token_stats_ok(ok_row, "out"),
-            by_operation=_build_by_operation(per_op),
         )
 
     async def get_all_usage_stats(
@@ -419,8 +356,8 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         """Per-tenant stats plus a grand total entry (tenant_id=None).
 
         Tenants are returned alphabetically by tenant_id; the grand-total
-        entry is appended last. Implemented as two ``GROUPING SETS``
-        queries (Postgres-only) so cost is O(1) round-trips regardless of
+        entry is appended last. Implemented as a single ``GROUPING SETS``
+        query (Postgres-only) so cost is O(1) round-trips regardless of
         tenant count.
         """
         base_pred: list = []
@@ -432,8 +369,8 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         ok_filter = llm_calls.c.status == "ok"
         err_filter = llm_calls.c.status == "error"
 
-        # Query 1: per-tenant totals + distributions, plus grand-total roll-up
-        # via GROUPING SETS ((tenant_id), ()). The roll-up row carries
+        # Per-tenant totals + distributions, plus grand-total roll-up via
+        # GROUPING SETS ((tenant_id), ()). The roll-up row carries
         # tenant_id IS NULL, which matches UsageStats(tenant_id=None, ...).
         totals_q = (
             sa.select(
@@ -456,35 +393,8 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
             .order_by(llm_calls.c.tenant_id.asc().nulls_last())
         )
 
-        # Query 2: per-(tenant, operation) and per-(grand-total, operation)
-        # in one pass. Bucketed in Python by tenant_id below.
-        ops_q = (
-            sa.select(
-                llm_calls.c.tenant_id,
-                llm_calls.c.operation,
-                sa.func.count().label("total_calls"),
-                sa.func.count().filter(err_filter).label("failed_calls"),
-                sa.func.coalesce(
-                    sa.func.sum(llm_calls.c.cost_usd).filter(ok_filter), 0
-                ).label("cost_usd"),
-                sa.func.coalesce(
-                    sa.func.sum(llm_calls.c.input_tokens).filter(ok_filter), 0
-                ).label("input_tokens_total"),
-                sa.func.coalesce(
-                    sa.func.sum(llm_calls.c.output_tokens).filter(ok_filter), 0
-                ).label("output_tokens_total"),
-            )
-            .where(*base_pred)
-            .group_by(sa.text("GROUPING SETS ((tenant_id, operation), (operation))"))
-        )
-
         async with _translate_db_errors(), self._session_factory() as session:
             totals_rows = (await session.execute(totals_q)).all()
-            ops_rows = (await session.execute(ops_q)).all()
-
-        ops_by_tenant: dict[str | None, list] = {}
-        for r in ops_rows:
-            ops_by_tenant.setdefault(r._mapping["tenant_id"], []).append(r)
 
         results: list[UsageStats] = []
         for r in totals_rows:
@@ -493,6 +403,5 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
             # contract was to return [] in that case.
             if int(r._mapping["total_calls"]) == 0:
                 continue
-            tid = r._mapping["tenant_id"]
-            results.append(_row_to_usage_stats(tid, r, ops_by_tenant.get(tid, [])))
+            results.append(_row_to_usage_stats(r._mapping["tenant_id"], r))
         return results

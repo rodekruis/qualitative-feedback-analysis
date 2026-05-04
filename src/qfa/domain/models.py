@@ -361,39 +361,6 @@ class TokenStats(DistributionStats):
     total: int
 
 
-class OperationStats(BaseModel):
-    """Per-operation aggregated stats for a tenant or grand total.
-
-    Attributes
-    ----------
-    operation : Operation
-        The orchestrator operation.
-    total_calls : int
-        Total attempts (successful + failed).
-    failed_calls : int
-        Attempts with ``status='error'``.
-    cost_usd : Decimal
-        Sum of ``cost_usd`` for successful attempts only.
-    input_tokens_total : int
-        Sum of ``input_tokens`` for successful attempts only.
-    output_tokens_total : int
-        Sum of ``output_tokens`` for successful attempts only.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    operation: Operation
-    total_calls: int
-    failed_calls: int
-    cost_usd: Decimal
-    input_tokens_total: int
-    output_tokens_total: int
-
-    @field_serializer("cost_usd")
-    def _serialize_cost(self, v: Decimal) -> float:
-        return float(v)
-
-
 class UsageStats(BaseModel):
     """Aggregated usage statistics for a tenant or grand total.
 
@@ -417,9 +384,6 @@ class UsageStats(BaseModel):
         Input token distribution (successful attempts only).
     output_tokens : TokenStats
         Output token distribution (successful attempts only).
-    by_operation : tuple[OperationStats, ...]
-        Per-operation breakdown, sorted ``cost_usd`` desc with ties broken
-        by ``operation`` asc.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -431,7 +395,6 @@ class UsageStats(BaseModel):
     call_duration: DistributionStats
     input_tokens: TokenStats
     output_tokens: TokenStats
-    by_operation: tuple[OperationStats, ...] = ()
 
     @field_serializer("total_cost_usd")
     def _serialize_total_cost(self, v: Decimal) -> float:

@@ -16,7 +16,6 @@ from qfa.domain.models import (
     LLMCallRecord,
     LLMResponse,
     Operation,
-    OperationStats,
     TenantApiKey,
     TokenStats,
     UsageStats,
@@ -272,25 +271,11 @@ class TestLLMCallRecord:
             )
 
 
-# --- OperationStats / UsageStats new fields ---
-
-
-class TestOperationStats:
-    def test_construct(self):
-        stats = OperationStats(
-            operation=Operation.ANALYZE,
-            total_calls=10,
-            failed_calls=1,
-            cost_usd=Decimal("0.5"),
-            input_tokens_total=1000,
-            output_tokens_total=200,
-        )
-        assert stats.operation == Operation.ANALYZE
-        assert stats.failed_calls == 1
+# --- UsageStats new fields ---
 
 
 class TestUsageStatsExtensions:
-    def test_has_failed_calls_total_cost_and_by_operation(self):
+    def test_has_failed_calls_and_total_cost(self):
         stats = UsageStats(
             tenant_id="t1",
             total_calls=10,
@@ -299,17 +284,6 @@ class TestUsageStatsExtensions:
             call_duration=DistributionStats(avg=1, min=0, max=2, p5=0, p95=2),
             input_tokens=TokenStats(avg=1, min=0, max=2, p5=0, p95=2, total=10),
             output_tokens=TokenStats(avg=1, min=0, max=2, p5=0, p95=2, total=10),
-            by_operation=(
-                OperationStats(
-                    operation=Operation.ANALYZE,
-                    total_calls=10,
-                    failed_calls=1,
-                    cost_usd=Decimal("0.5"),
-                    input_tokens_total=1000,
-                    output_tokens_total=200,
-                ),
-            ),
         )
         assert stats.total_cost_usd == Decimal("0.5")
         assert stats.failed_calls == 1
-        assert len(stats.by_operation) == 1

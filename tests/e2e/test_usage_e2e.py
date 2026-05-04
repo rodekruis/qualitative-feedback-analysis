@@ -53,9 +53,7 @@ async def _seed(e2e_engine, records: list[LLMCallRecord]) -> None:
 
 
 class TestUsageHappyPath:
-    async def test_returns_aggregated_stats_with_by_operation(
-        self, e2e_client, e2e_engine
-    ):
+    async def test_returns_aggregated_stats(self, e2e_client, e2e_engine):
         await _seed(
             e2e_engine,
             [
@@ -73,8 +71,6 @@ class TestUsageHappyPath:
         assert data["total_calls"] == 3
         assert data["failed_calls"] == 0
         assert data["total_cost_usd"] == pytest.approx(0.9)
-        ops = [op["operation"] for op in data["by_operation"]]
-        assert ops == ["analyze", "summarize"]
 
 
 class TestUsageTimeFilter:
@@ -116,7 +112,6 @@ class TestUsageEdgeCases:
         assert resp.status_code == 200
         data = resp.json()
         assert data["total_calls"] == 0
-        assert data["by_operation"] == []
 
     async def test_naive_datetime_rejected(self, e2e_client):
         resp = await e2e_client.get(

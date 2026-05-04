@@ -76,7 +76,7 @@ Domain models in `domain/models.py` serve the internal layers.
 
 After observing this ADR being applied uniformly to *every* API response
 — including the usage-tracking endpoints, where the domain aggregates
-(`UsageStats`, `OperationStats`, `DistributionStats`, `TokenStats`) are
+(`UsageStats`, `DistributionStats`, `TokenStats`) are
 already the correct external shape with no internal fields to hide —
 the rule is being narrowed to the cases where its justification actually
 applies.
@@ -117,17 +117,16 @@ the two models will track each other in lockstep anyway.
 
 ### What changed in the codebase under this clarification
 
-- `DistributionStatsResponse`, `TokenStatsResponse`,
-  `OperationStatsResponse` — pure mirrors, deleted.
+- `DistributionStatsResponse`, `TokenStatsResponse` — pure mirrors,
+  deleted.
 - `UsageStatsResponse` — was a pure mirror plus two echo fields
   (`from`, `to`); now a thin subclass of `UsageStats` adding only
   those two fields.
 - `AllUsageStatsResponse` — was composed of mirror types; now
   composed of domain `UsageStats` directly, plus the same echo fields.
 - `Decimal → float` JSON serialization moved from the response models
-  onto `UsageStats.total_cost_usd` and `OperationStats.cost_usd` — JSON
-  serialization is a generic concern of any external boundary, not
-  HTTP-specific.
+  onto `UsageStats.total_cost_usd` — JSON serialization is a generic
+  concern of any external boundary, not HTTP-specific.
 
 `AnalyzeResponse`, `SummarizeResponse`, `SummarizeAggregateResponse`,
 `AssignCodesResponse`, `FeedbackItemSummary`, `AggregateSummary` are

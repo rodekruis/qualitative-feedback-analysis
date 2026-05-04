@@ -19,7 +19,6 @@ from qfa.domain.models import (
     FeedbackItem,
     LLMResponse,
     Operation,
-    OperationStats,
     TenantApiKey,
 )
 from qfa.domain.ports import AnonymizationPort, LLMPort
@@ -43,7 +42,6 @@ __all__ = [
     "LLMTimeoutError",
     "MissingCallScopeError",
     "Operation",
-    "OperationStats",
     "OrchestratorPort",
     "TenantApiKey",
 ]

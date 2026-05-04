@@ -10,8 +10,6 @@ import pytest_asyncio
 from qfa.domain.errors import UsageRepositoryUnavailableError
 from qfa.domain.models import (
     DistributionStats,
-    Operation,
-    OperationStats,
     TenantApiKey,
     TokenStats,
     UsageStats,
@@ -34,24 +32,6 @@ def _make_usage_stats(tenant_id: str | None = "tenant-test", total_calls: int = 
             avg=500, min=100, max=1000, p5=120, p95=950, total=2500
         ),
         output_tokens=TokenStats(avg=200, min=50, max=400, p5=60, p95=380, total=1000),
-        by_operation=(
-            OperationStats(
-                operation=Operation.ANALYZE,
-                total_calls=4,
-                failed_calls=1,
-                cost_usd=Decimal("0.4"),
-                input_tokens_total=2000,
-                output_tokens_total=800,
-            ),
-            OperationStats(
-                operation=Operation.SUMMARIZE,
-                total_calls=1,
-                failed_calls=0,
-                cost_usd=Decimal("0.1"),
-                input_tokens_total=500,
-                output_tokens_total=200,
-            ),
-        ),
     )
 
 
@@ -123,8 +103,6 @@ class TestUsageEndpoint:
         assert data["failed_calls"] == 1
         assert data["total_cost_usd"] == 0.5
         assert data["tenant_id"] == "tenant-test"
-        assert len(data["by_operation"]) == 2
-        assert data["by_operation"][0]["operation"] == "analyze"
 
     async def test_passes_time_filter_to_repo(self, client_with_repo):
         client, repo = client_with_repo
@@ -174,7 +152,6 @@ class TestUsageEndpoint:
         assert data["total_calls"] == 0
         assert data["failed_calls"] == 0
         assert data["total_cost_usd"] == 0
-        assert data["by_operation"] == []
 
     async def test_requires_authentication(self, client_with_repo):
         client, _ = client_with_repo

@@ -176,29 +176,6 @@ class TestAlphaPolicy:
         assert stats.output_tokens.total == 50
 
 
-class TestByOperationSort:
-    async def test_sorted_by_cost_desc_ties_by_operation_asc(self, pg_repo):
-        await pg_repo.record_call(
-            _record(operation=Operation.SUMMARIZE, cost_usd=Decimal("0.5"))
-        )
-        await pg_repo.record_call(
-            _record(operation=Operation.ANALYZE, cost_usd=Decimal("0.5"))
-        )
-        await pg_repo.record_call(
-            _record(operation=Operation.ASSIGN_CODES, cost_usd=Decimal("1.0"))
-        )
-
-        stats = await pg_repo.get_usage_stats("t1")
-        assert stats is not None
-        ops = [op.operation for op in stats.by_operation]
-        # 1.0 first (assign_codes), then 0.5 ties — analyze before summarize alphabetically.
-        assert ops == [
-            Operation.ASSIGN_CODES,
-            Operation.ANALYZE,
-            Operation.SUMMARIZE,
-        ]
-
-
 class TestGetAllUsageStats:
     async def test_per_tenant_alphabetical_with_grand_total(self, pg_repo):
         await pg_repo.record_call(_record(tenant_id="b-tenant"))
