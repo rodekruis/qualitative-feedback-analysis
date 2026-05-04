@@ -131,12 +131,17 @@ Important:
 - A reasonable interpretation of ambiguous feedback can still warrant a high confidence score, as long as it is grounded in the text.
 - Do not assign high confidence based on superficial similarity alone — the code must genuinely capture what the community member is expressing.
 
-Confidence scale:
-1.0 = the feedback clearly and directly supports this assignment
-0.7 = the feedback reasonably supports this assignment, good fit
-0.5 = the assignment is plausible but uncertain
-0.3 = the fit is weak or speculative
-0.0 = the feedback does not support this assignment or the assignment is clearly wrong
+Scoring:
+Assign a score from 0.0 to 1.0. Use the full continuous range — do not round to fixed values.
+
+Reference anchors:
+- 1.0: the feedback clearly and directly supports this assignment
+- 0.75: the feedback reasonably supports this assignment
+- 0.5: the assignment is plausible but uncertain
+- 0.25: the fit is weak or speculative
+- 0.0: the feedback does not support this assignment or the assignment is clearly wrong
+
+Scores between anchors are expected and encouraged. For example, a strong but not perfect match might be 0.85.
 
 Output rules:
 - Output JSON only
