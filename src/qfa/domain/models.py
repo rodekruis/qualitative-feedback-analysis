@@ -119,11 +119,25 @@ class CodingAssignmentRequestModel(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    feedback_items: tuple[FeedbackItemModel, ...] = Field(min_length=1)
-    coding_framework: dict[str, Any]
-    max_codes: int = Field(ge=1, le=50)
-    confidence_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
-    tenant_id: str
+    feedback_items: tuple[FeedbackItemModel, ...] = Field(
+        min_length=1,
+        description="Non-empty tuple of feedback items to code.",
+    )
+    coding_framework: dict[str, Any] = Field(
+        description="Hierarchical coding framework with types, categories, and codes.",
+    )
+    max_codes: int = Field(
+        ge=1,
+        le=50,
+        description="Maximum number of leaf codes to retain per feedback item.",
+    )
+    confidence_threshold: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Minimum confidence required at each hierarchy level to retain an assignment.",
+    )
+    tenant_id: str = Field(description="Tenant identifier injected by the auth layer.")
 
 
 class AssignedCodeModel(BaseModel):
