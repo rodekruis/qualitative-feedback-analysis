@@ -37,10 +37,11 @@ class FakeLLMPort:
         self,
         system_message: str,
         user_message: str,
-        timeout: float,
         tenant_id: str,
+        response_model=str,
+        timeout: float = 20.0,
     ) -> LLMResponse:
-        self.calls.append((system_message, user_message, timeout, tenant_id))
+        self.calls.append((system_message, user_message, tenant_id, response_model, timeout))
         if self._next_error is not None:
             raise self._next_error
         assert self._next_response is not None, "queue_response not called"
@@ -68,7 +69,7 @@ class FakeUsageRepository:
 
 def _ok_response() -> LLMResponse:
     return LLMResponse(
-        text="hello",
+        structured="hello",
         model="gpt-4-test",
         prompt_tokens=10,
         completion_tokens=20,
@@ -86,11 +87,12 @@ async def test_records_successful_call_with_operation_and_cost():
         result = await adapter.complete(
             system_message="sys",
             user_message="usr",
-            timeout=10.0,
             tenant_id="t1",
+            response_model=str,
+            timeout=10.0,
         )
 
-    assert result.text == "hello"
+    assert result.structured == "hello"
     assert len(repo.records) == 1
     rec = repo.records[0]
     assert rec.tenant_id == "t1"
@@ -115,8 +117,9 @@ async def test_records_failed_call_with_error_class():
             await adapter.complete(
                 system_message="sys",
                 user_message="usr",
-                timeout=10.0,
                 tenant_id="t1",
+                response_model=str,
+                timeout=10.0,
             )
 
     assert len(repo.records) == 1
@@ -139,8 +142,9 @@ async def test_raises_when_call_scope_unset():
         await adapter.complete(
             system_message="sys",
             user_message="usr",
-            timeout=10.0,
             tenant_id="t1",
+            response_model=str,
+            timeout=10.0,
         )
 
     assert inner.calls == []
@@ -157,11 +161,12 @@ async def test_recording_failure_does_not_break_completion():
         result = await adapter.complete(
             system_message="sys",
             user_message="usr",
-            timeout=10.0,
             tenant_id="t1",
+            response_model=str,
+            timeout=10.0,
         )
 
-    assert result.text == "hello"
+    assert result.structured == "hello"
 
 
 async def test_recording_failure_during_error_path_still_propagates_original():
@@ -176,8 +181,9 @@ async def test_recording_failure_during_error_path_still_propagates_original():
             await adapter.complete(
                 system_message="sys",
                 user_message="usr",
-                timeout=10.0,
                 tenant_id="t1",
+                response_model=str,
+                timeout=10.0,
             )
 
 
@@ -221,8 +227,9 @@ async def test_record_retries_transient_operational_error_and_eventually_persist
         await adapter.complete(
             system_message="sys",
             user_message="usr",
-            timeout=10.0,
             tenant_id="t1",
+            response_model=str,
+            timeout=10.0,
         )
 
     assert repo.attempts == 3
@@ -240,10 +247,11 @@ async def test_record_does_not_retry_non_transient_runtime_error():
         result = await adapter.complete(
             system_message="sys",
             user_message="usr",
-            timeout=10.0,
             tenant_id="t1",
+            response_model=str,
+            timeout=10.0,
         )
 
-    assert result.text == "hello"
+    assert result.structured == "hello"
     assert repo.attempts == 1
     assert repo.records == []

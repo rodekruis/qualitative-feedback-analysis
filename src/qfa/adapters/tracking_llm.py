@@ -14,7 +14,7 @@ from tenacity import (
 )
 
 from qfa.domain.errors import MissingCallScopeError
-from qfa.domain.models import CallStatus, LLMCallRecord, LLMResponse
+from qfa.domain.models import CallStatus, LLMCallRecord, LLMResponse, T_Response
 from qfa.domain.ports import LLMPort, UsageRepositoryPort
 from qfa.services.call_context import current_call_context
 
@@ -51,9 +51,10 @@ class TrackingLLMAdapter(LLMPort):
         self,
         system_message: str,
         user_message: str,
-        timeout: float,
         tenant_id: str,
-    ) -> LLMResponse:
+        response_model: type[T_Response],
+        timeout: float = 20.0,
+    ) -> LLMResponse[T_Response]:
         """Run the inner ``complete`` and record the attempt.
 
         Raises
@@ -76,8 +77,9 @@ class TrackingLLMAdapter(LLMPort):
             response = await self._inner.complete(
                 system_message=system_message,
                 user_message=user_message,
-                timeout=timeout,
                 tenant_id=tenant_id,
+                response_model=response_model,
+                timeout=timeout,
             )
         except Exception as exc:
             duration_ms = int((time.monotonic() - start_monotonic) * 1000)

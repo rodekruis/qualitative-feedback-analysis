@@ -7,28 +7,28 @@ from fastapi import APIRouter, Depends, Request
 import qfa
 from qfa.api.dependencies import authenticate_request, get_orchestrator
 from qfa.api.schemas import (
-    AggregateSummary,
-    AnalyzeRequest,
-    AnalyzeResponse,
-    AssignCodesRequest,
-    AssignCodesResponse,
-    CodeItem,
-    CodeItems,
-    FeedbackItemSummary,
-    HealthResponse,
-    SummarizeAggregateResponse,
-    SummarizeFeedbackMetadata,
-    SummarizeRequest,
-    SummarizeResponse,
+    ApiAggregateSummary,
+    ApiAnalyzeRequest,
+    ApiAnalyzeResponse,
+    ApiAssignCodesRequest,
+    ApiAssignCodesResponse,
+    ApiCodeItem,
+    ApiCodeItems,
+    ApiFeedbackItemSummary,
+    ApiHealthResponse,
+    ApiSummarizeAggregateResponse,
+    ApiSummarizeFeedbackMetadata,
+    ApiSummarizeRequest,
+    ApiSummarizeResponse,
 )
 from qfa.domain.models import (
-    AnalysisRequest,
-    CodingAssignmentRequest,
-    FeedbackItem,
+    AnalysisRequestModel,
+    CodingAssignmentRequestModel,
+    FeedbackItemModel,
     TenantApiKey,
 )
 from qfa.domain.models import (
-    SummaryRequest as DomainSummaryRequest,
+    SummaryRequestModel as DomainSummaryRequest,
 )
 from qfa.services.orchestrator import Orchestrator
 
@@ -36,7 +36,7 @@ router = APIRouter()
 
 
 def _summarize_metadata_to_domain(
-    meta: SummarizeFeedbackMetadata,
+    meta: ApiSummarizeFeedbackMetadata,
 ) -> dict[str, str | int | float | bool]:
     """Flatten summarize metadata into the domain feedback metadata dict."""
     return {
@@ -48,13 +48,13 @@ def _summarize_metadata_to_domain(
     }
 
 
-@router.post("/v1/analyze", response_model=AnalyzeResponse, status_code=200)
+@router.post("/v1/analyze", response_model=ApiAnalyzeResponse, status_code=200)
 async def analyze(
-    body: AnalyzeRequest,
+    body: ApiAnalyzeRequest,
     request: Request,
     tenant: TenantApiKey = Depends(authenticate_request),
     orchestrator: Orchestrator = Depends(get_orchestrator),
-) -> AnalyzeResponse:
+) -> ApiAnalyzeResponse:
     """Analyze a batch of feedback documents.
 
     Parameters
@@ -76,35 +76,35 @@ async def analyze(
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
     domain_documents = tuple(
-        FeedbackItem(id=doc.id, text=doc.text, metadata=doc.metadata)
+        FeedbackItemModel(id=doc.id, text=doc.text, metadata=doc.metadata)
         for doc in body.documents
     )
 
-    domain_request = AnalysisRequest(
+    domain_request = AnalysisRequestModel(
         documents=domain_documents,
         prompt=body.prompt,
         tenant_id=tenant.tenant_id,
     )
 
     result = await orchestrator.analyze(
-        domain_request, deadline, anonymize=not body.deactivate_anonymization
+        domain_request, deadline, anonymize=body.anonymize
     )
 
-    return AnalyzeResponse(
+    return ApiAnalyzeResponse(
         analysis=result.result,
         document_count=len(body.documents),
         request_id=request.state.request_id,
-        used_anonymization=not body.deactivate_anonymization,
+        used_anonymization=body.anonymize,
     )
 
 
-@router.post("/v1/summarize", response_model=SummarizeResponse, status_code=200)
+@router.post("/v1/summarize", response_model=ApiSummarizeResponse, status_code=200)
 async def summarize(
-    body: SummarizeRequest,
+    body: ApiSummarizeRequest,
     request: Request,
     tenant: TenantApiKey = Depends(authenticate_request),
     orchestrator: Orchestrator = Depends(get_orchestrator),
-) -> SummarizeResponse:
+) -> ApiSummarizeResponse:
     """Summarize each submitted feedback item individually.
 
     Parameters
@@ -126,7 +126,7 @@ async def summarize(
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
     feedback_items = tuple(
-        FeedbackItem(
+        FeedbackItemModel(
             id=item.id,
             text=item.content,
             metadata=_summarize_metadata_to_domain(item.metadata),
@@ -143,12 +143,12 @@ async def summarize(
     result = await orchestrator.summarize(
         domain_request,
         deadline,
-        anonymize=not body.deactivate_anonymization,
+        anonymize=body.anonymize,
     )
 
-    return SummarizeResponse(
+    return ApiSummarizeResponse(
         summaries=[
-            FeedbackItemSummary(
+            ApiFeedbackItemSummary(
                 id=item.id,
                 title=item.title,
                 summary=item.summary,
@@ -156,38 +156,40 @@ async def summarize(
             )
             for item in result.feedback_item_summaries
         ],
-        used_anonymization=not body.deactivate_anonymization,
+        used_anonymization=body.anonymize,
     )
 
 
-@router.post("/v1/assign_codes", response_model=AssignCodesResponse, status_code=200)
+@router.post("/v1/assign_codes", response_model=ApiAssignCodesResponse, status_code=200)
 async def assign_codes(
-    body: AssignCodesRequest,
+    body: ApiAssignCodesRequest,
     tenant: TenantApiKey = Depends(authenticate_request),
     orchestrator: Orchestrator = Depends(get_orchestrator),
-) -> AssignCodesResponse:
+) -> ApiAssignCodesResponse:
     """Assign codes via iterative LLM picks at each level of the framework."""
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
     domain_items = tuple(
-        FeedbackItem(id=item.id, text=item.content, metadata={})
+        FeedbackItemModel(id=item.id, text=item.content, metadata={})
         for item in body.feedback_items
     )
-    domain_request = CodingAssignmentRequest(
+    domain_request = CodingAssignmentRequestModel(
         feedback_items=domain_items,
         coding_framework=body.coding_framework,
         max_codes=body.max_codes,
         tenant_id=tenant.tenant_id,
     )
 
-    result = await orchestrator.assign_codes(domain_request, deadline)
+    result = await orchestrator.assign_codes(
+        domain_request, deadline, anonymize=body.anonymize
+    )
 
-    return AssignCodesResponse(
+    return ApiAssignCodesResponse(
         coded_feedback_items=[
-            CodeItems(
+            ApiCodeItems(
                 feedback_item_id=coded.feedback_item_id,
                 code_items=[
-                    CodeItem(
+                    ApiCodeItem(
                         code_id=assigned.code_id,
                         code_label=assigned.code_label,
                     )
@@ -201,15 +203,15 @@ async def assign_codes(
 
 @router.post(
     "/v1/summarize-aggregate",
-    response_model=SummarizeAggregateResponse,
+    response_model=ApiSummarizeAggregateResponse,
     status_code=200,
 )
 async def summarize_aggregate(
-    body: SummarizeRequest,
+    body: ApiSummarizeRequest,
     request: Request,
     tenant: TenantApiKey = Depends(authenticate_request),
     orchestrator: Orchestrator = Depends(get_orchestrator),
-) -> SummarizeAggregateResponse:
+) -> ApiSummarizeAggregateResponse:
     """Summarize all submitted feedback items as a single aggregate summary.
 
     Parameters
@@ -231,7 +233,7 @@ async def summarize_aggregate(
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
     feedback_items = tuple(
-        FeedbackItem(
+        FeedbackItemModel(
             id=item.id,
             text=item.content,
             metadata=_summarize_metadata_to_domain(item.metadata),
@@ -245,10 +247,12 @@ async def summarize_aggregate(
         tenant_id=tenant.tenant_id,
     )
 
-    result = await orchestrator.summarize_aggregate(domain_request, deadline)
+    result = await orchestrator.summarize_aggregate(
+        domain_request, deadline, anonymize=body.anonymize
+    )
 
-    return SummarizeAggregateResponse(
-        summary=AggregateSummary(
+    return ApiSummarizeAggregateResponse(
+        summary=ApiAggregateSummary(
             ids=list(result.ids),
             title=result.title,
             summary=result.summary,
@@ -257,8 +261,8 @@ async def summarize_aggregate(
     )
 
 
-@router.get("/v1/health", response_model=HealthResponse, status_code=200)
-async def health() -> HealthResponse:
+@router.get("/v1/health", response_model=ApiHealthResponse, status_code=200)
+async def health() -> ApiHealthResponse:
     """Return service health status.
 
     Returns
@@ -266,7 +270,7 @@ async def health() -> HealthResponse:
     HealthResponse
         Health status and package version.
     """
-    return HealthResponse(
+    return ApiHealthResponse(
         status="ok",
         version=qfa.__version__,
     )

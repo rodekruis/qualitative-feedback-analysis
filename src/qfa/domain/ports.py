@@ -2,7 +2,7 @@
 
 Driven ports declared here use ``typing.Protocol`` for structural
 subtyping per ADR-002. The orchestrator is exposed as the concrete
-``StandardOrchestrator`` class per ADR-011 (no driving port).
+``Orchestrator`` class per ADR-011 (no driving port).
 """
 
 import datetime as dt
@@ -11,6 +11,7 @@ from typing import Protocol
 from qfa.domain.models import (
     LLMCallRecord,
     LLMResponse,
+    T_Response,
     UsageStats,
 )
 
@@ -26,9 +27,10 @@ class LLMPort(Protocol):
         self,
         system_message: str,
         user_message: str,
-        timeout: float,
         tenant_id: str,
-    ) -> LLMResponse:
+        response_model: type[T_Response],
+        timeout: float = 20.0,
+    ) -> LLMResponse[T_Response]:
         """Send a completion request to the LLM provider.
 
         Parameters
@@ -37,10 +39,12 @@ class LLMPort(Protocol):
             The system-level instruction for the model.
         user_message : str
             The user-level message to complete.
-        timeout : float
-            Maximum time in seconds to wait for a response.
         tenant_id : str
             Tenant identifier for tracking and billing.
+        response_model : type[T_Response]
+            The Pydantic model to parse the response into.
+        timeout : float
+            Maximum time in seconds to wait for a response.
 
         Returns
         -------
