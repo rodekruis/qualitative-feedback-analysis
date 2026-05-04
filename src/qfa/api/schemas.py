@@ -355,11 +355,11 @@ class ApiCodeItem(BaseModel):
 
     code_id: str
     code_label: str
-    confidence_type: float | None = None
-    confidence_category: float | None = None
-    confidence_code: float | None = None
-    confidence_aggregate: float | None = None
-    explanation: str | None = None
+    confidence_type: float
+    confidence_category: float
+    confidence_code: float
+    confidence_aggregate: float
+    explanation: str
 
 
 class ApiCodeItems(BaseModel):
