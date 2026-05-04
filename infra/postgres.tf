@@ -46,12 +46,13 @@ resource "azurerm_postgresql_flexible_server" "db" {
   public_network_access_enabled = false
   zone                          = "1"
 
+  # Local admin credentials are provisioning-only; runtime app auth is Entra.
   administrator_login    = var.postgres_admin_username
   administrator_password = ephemeral.random_password.postgres_admin.result
 
   authentication {
     active_directory_auth_enabled = true
-    password_auth_enabled         = true
+    password_auth_enabled         = false
     tenant_id                     = var.tenant_id
   }
 
@@ -70,9 +71,9 @@ resource "azurerm_postgresql_flexible_server_active_directory_administrator" "db
   server_name         = azurerm_postgresql_flexible_server.db.name
   resource_group_name = data.azurerm_resource_group.main.name
   tenant_id           = var.tenant_id
-  object_id           = var.postgres_entra_admin_object_id
-  principal_name      = var.postgres_entra_admin_principal_name
-  principal_type      = var.postgres_entra_admin_principal_type
+  object_id           = azurerm_linux_web_app.backend.identity[0].principal_id
+  principal_name      = local.db_aad_principal_name
+  principal_type      = "ServicePrincipal"
 }
 
 resource "azurerm_postgresql_flexible_server_database" "app" {

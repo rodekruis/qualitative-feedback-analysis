@@ -116,6 +116,7 @@ flowchart LR
 Contrast with the release flow above: applies fan out from a single manual-dispatch hub to three independent environments — there is no promotion chain and no enforced ordering between them. `plan` runs automatically on PRs and on `main`, but `apply` is manual-only.
 
 Infrastructure (Azure App Service, Key Vault, managed identities, etc.) is managed by Terraform and deployed **independently** of application code. Unlike the app release flow above, there is no automatic promotion chain — each environment must be applied manually from the Actions tab.
+For deployed environments, PostgreSQL application authentication is Entra-only via managed identity token flow (password auth is disabled on the server).
 
 The `terraform.yaml` workflow (`.github/workflows/terraform.yaml`) runs `plan` automatically on PRs and pushes touching `infra/`, but **never runs `apply` automatically** — `apply` only executes when dispatched manually with `command: apply`.
 

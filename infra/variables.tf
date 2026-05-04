@@ -57,7 +57,7 @@ variable "llm_api_version" {
 # --- PostgreSQL configuration ---
 
 variable "postgres_admin_username" {
-  description = "Administrator username for PostgreSQL Flexible Server"
+  description = "Provisioning-only local administrator username for PostgreSQL Flexible Server (runtime app auth uses Entra tokens)"
   type        = string
   default     = "qfaadmin"
 }
@@ -84,30 +84,4 @@ variable "db_aad_scope" {
   description = "AAD scope used by the application to get PostgreSQL access tokens"
   type        = string
   default     = "https://ossrdbms-aad.database.windows.net/.default"
-}
-
-variable "postgres_entra_admin_object_id" {
-  description = "Object ID for the PostgreSQL Entra admin principal"
-  type        = string
-  nullable    = false
-}
-
-variable "postgres_entra_admin_principal_name" {
-  description = "Display name for the PostgreSQL Entra admin principal"
-  type        = string
-  nullable    = false
-}
-
-variable "postgres_entra_admin_principal_type" {
-  description = "Principal type for PostgreSQL Entra admin"
-  type        = string
-  default     = "ServicePrincipal"
-
-  validation {
-    condition = contains(
-      ["Group", "ServicePrincipal", "User"],
-      var.postgres_entra_admin_principal_type,
-    )
-    error_message = "postgres_entra_admin_principal_type must be Group, ServicePrincipal, or User."
-  }
 }

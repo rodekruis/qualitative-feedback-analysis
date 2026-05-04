@@ -22,6 +22,7 @@ cd infra
 ### 2. Export the environment's resource group
 
 `TF_VAR_resource_group_name` is the only per-environment Terraform variable. Re-export it each time you switch environments.
+PostgreSQL Entra admin is configured automatically from the App Service system-assigned managed identity.
 
 ```bash
 export ENV=dev  # or staging, prd, ...
