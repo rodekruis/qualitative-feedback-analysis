@@ -643,37 +643,6 @@ class Orchestrator:
         return parse_judge_response(response.structured)
 
     # ------------------------------------------------------------------
-    # Prompt injection filtering
-    # ------------------------------------------------------------------
-
-    def _check_injection(self, documents: tuple[FeedbackItemModel, ...]) -> None:
-        """Scan documents for known prompt injection patterns.
-
-        Parameters
-        ----------
-        documents : tuple[FeedbackItem, ...]
-            The documents to scan.
-
-        Raises
-        ------
-        AnalysisError
-            When a document matches an injection pattern.
-        """
-        for idx, doc in enumerate(documents, start=1):
-            for pattern_name, pattern in _INJECTION_PATTERNS:
-                if pattern.search(doc.text):
-                    logger.warning(
-                        "Prompt injection detected: document_index=%d pattern=%s",
-                        idx,
-                        pattern_name,
-                    )
-                    msg = (
-                        f"Prompt injection detected in document {idx}: "
-                        f"pattern={pattern_name}"
-                    )
-                    raise AnalysisError(msg)
-
-    # ------------------------------------------------------------------
     # Prompt assembly
     # ------------------------------------------------------------------
 
