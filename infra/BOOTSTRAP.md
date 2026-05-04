@@ -76,7 +76,7 @@ export TF_VAR_acr_name=<globally-unique-acr-name>
 export LOCATION=westeurope
 
 # PostgreSQL Flexible Server admin username used by Terraform.
-# Terraform generates the admin password and stores it in state.
+# Terraform generates an ephemeral admin password on each run (not stored in state).
 export TF_VAR_postgres_admin_username=qfaadmin
 ```
 
