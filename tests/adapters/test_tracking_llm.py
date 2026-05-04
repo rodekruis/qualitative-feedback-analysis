@@ -41,7 +41,9 @@ class FakeLLMPort:
         response_model=str,
         timeout: float = 20.0,
     ) -> LLMResponse:
-        self.calls.append((system_message, user_message, tenant_id, response_model, timeout))
+        self.calls.append(
+            (system_message, user_message, tenant_id, response_model, timeout)
+        )
         if self._next_error is not None:
             raise self._next_error
         assert self._next_response is not None, "queue_response not called"
