@@ -4,35 +4,27 @@ Assembles prompts, enforces token limits, filters prompt injection,
 manages retries with exponential backoff, and enforces deadlines.
 """
 
-import json
 import logging
-import random
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
-
-from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_exponential
 
 from qfa.domain.errors import (
     AnalysisError,
     AnalysisTimeoutError,
     DocumentsTooLargeError,
-    LLMError,
-    LLMRateLimitError,
-    LLMTimeoutError,
 )
 from qfa.domain.models import (
-    AggregateSummaryResult,
-    AnalysisRequest,
-    AnalysisResult,
-    AssignedCode,
-    CodedFeedbackItem,
-    CodingAssignmentRequest,
-    CodingAssignmentResult,
-    FeedbackItem,
-    FeedbackItemSummary,
-    SummaryRequest,
-    SummaryResult,
+    AggregateSummaryResultModel,
+    AnalysisRequestModel,
+    AnalysisResultModel,
+    AssignedCodeModel,
+    CodedFeedbackItemModel,
+    CodingAssignmentRequestModel,
+    CodingAssignmentResultModel,
+    FeedbackItemModel,
+    SummaryRequestModel,
+    SummaryResultModel,
 )
 from qfa.domain.ports import AnonymizationPort, LLMPort
 from qfa.services.coding_classifier import (
@@ -61,9 +53,6 @@ _DEFAULT_SUMMARIZATION_PROMPT = (
     "Strict Constraint: The summary must be extremely concise, using no more than 3-5 brief bullet points.\n"
     "Constraint: Each bullet point should be a single sentence fragment focusing only on the core sentiment or issue.\n"
     "Also create a short, 3-5 word descriptive title.\n"
-    "Do not output a quality score; evaluation is done separately.\n"
-    "Return valid JSON with exactly these fields: "
-    '{"title": "...", "summary": "- point 1\\n- point 2"}.\n'
     "Do not include markdown code fences.\n"
     "Use the same language as the input feedback item unless a target language is specified."
 )
@@ -76,9 +65,6 @@ _DEFAULT_AGGREGATE_SUMMARIZATION_PROMPT = (
     "Each bullet point should name the theme and describe it as a concise sentence fragment.\n"
     "Scale the number of bullet points to the size and diversity of the input — use judgement.\n"
     "Also create a short, 3-5 word descriptive title reflecting the dominant theme.\n"
-    "Do not output a quality score; evaluation is done separately.\n"
-    "Return valid JSON with exactly these fields: "
-    '{"title": "...", "summary": "- point 1\\n- point 2"}.\n'
     "Do not include markdown code fences.\n"
     "Use the same language as the input feedback items unless a target language is specified."
 )
@@ -209,17 +195,17 @@ class Orchestrator:
         max_total_tokens: int,
     ) -> None:
         self._llm = llm
-        self._anonymizer = anonymizer
+        self._anonymizer: AnonymizationPort = anonymizer
         self._settings = settings
         self._llm_timeout_seconds = llm_timeout_seconds
         self._max_total_tokens = max_total_tokens
 
     async def analyze(
         self,
-        request: AnalysisRequest,
+        request: AnalysisRequestModel,
         deadline: datetime,
         anonymize: bool = True,
-    ) -> AnalysisResult:
+    ) -> AnalysisResultModel:
         """Analyze a batch of feedback documents.
 
         Parameters
@@ -243,27 +229,41 @@ class Orchestrator:
         AnalysisError
             For non-recoverable LLM failures or prompt injection.
         """
-        self._check_injection(request.documents)
-
+        timeout = self._check_deadline_and_get_timeout(deadline)
         system_message = _SYSTEM_MESSAGE_TEMPLATE.format(prompt=request.prompt)
         user_message = self._assemble_documents(request.documents)
 
-        self._check_token_limit(system_message, user_message)
+        anonymized_user_message = user_message
+        if anonymize:
+            anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
+                user_message
+            )
 
-        return await self._call_with_retries(
+        response = await self._llm.complete(
             system_message=system_message,
-            user_message=user_message,
+            user_message=anonymized_user_message,
             tenant_id=request.tenant_id,
-            deadline=deadline,
-            anonymize=anonymize,
+            response_model=AnalysisResultModel,
+            timeout=timeout,
         )
+
+        if anonymize:
+            return_model_as_string = response.structured.model_dump_json()
+            unanonymized_return_model_as_string = self._anonymizer.deanonymize(
+                return_model_as_string, anonymization_mapping
+            )
+            return AnalysisResultModel.model_validate_json(
+                unanonymized_return_model_as_string
+            )
+
+        return response.structured
 
     async def summarize(
         self,
-        request: SummaryRequest,
+        request: SummaryRequestModel,
         deadline: datetime,
         anonymize: bool = True,
-    ) -> SummaryResult:
+    ) -> SummaryResultModel:
         """Summarize each submitted feedback item individually.
 
         Parameters
@@ -284,79 +284,47 @@ class Orchestrator:
             When the LLM returns invalid output or another non-recoverable
             error occurs.
         """
-        self._check_injection(request.feedback_items)
-
-        feedback_item_summaries: list[FeedbackItemSummary] = []
-        total_cost = 0.0
-
-        for feedback_item in request.feedback_items:
-            system_message = _DEFAULT_SUMMARIZATION_PROMPT
-            if request.output_language:
-                system_message += (
-                    f"\nWrite the title and summary in {request.output_language}."
-                )
-            if request.prompt:
-                system_message += f"\nAdditional instructions: {request.prompt}"
-
-            user_message = feedback_item.text
-
-            self._check_token_limit(system_message, user_message)
-            response = await self._call_with_retries(
-                system_message=system_message,
-                user_message=user_message,
-                tenant_id=request.tenant_id,
-                deadline=deadline,
-                anonymize=anonymize,
+        timeout = self._check_deadline_and_get_timeout(deadline)
+        system_message = _DEFAULT_SUMMARIZATION_PROMPT
+        if request.output_language:
+            system_message += (
+                f"\nWrite the title and summary in {request.output_language}."
             )
-            total_cost += response.cost
+        if request.prompt:
+            system_message += f"\nAdditional instructions: {request.prompt}"
 
-            try:
-                payload = json.loads(response.result)
-            except json.JSONDecodeError as exc:
-                raise AnalysisError(
-                    "LLM returned invalid JSON for summary output"
-                ) from exc
-            if not isinstance(payload, dict):
-                raise AnalysisError("LLM returned invalid summary payload")
-            if not isinstance(payload.get("title"), str) or not isinstance(
-                payload.get("summary"), str
-            ):
-                raise AnalysisError(
-                    "LLM returned summary output missing title or summary"
-                )
-
-            summary_text = payload["summary"]
-            judge_system = _build_judge_system_message(feedback_item.text, summary_text)
-            self._check_token_limit(judge_system, _JUDGE_USER_MESSAGE)
-
-            judge_response = await self._call_with_retries(
-                system_message=judge_system,
-                user_message=_JUDGE_USER_MESSAGE,
-                tenant_id=request.tenant_id,
-                deadline=deadline,
-                anonymize=anonymize,
+        user_message = str(request.feedback_items)
+        anonymized_user_message = user_message
+        if anonymize:
+            anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
+                user_message
             )
-            total_cost += judge_response.cost
-            quality_score = _parse_judge_quality_score(judge_response.result)
 
-            feedback_item_summaries.append(
-                FeedbackItemSummary(
-                    id=feedback_item.id,
-                    title=payload["title"],
-                    summary=summary_text,
-                    quality_score=quality_score,
-                )
-            )
-        return SummaryResult(
-            feedback_item_summaries=tuple(feedback_item_summaries),
-            cost=total_cost,
+        llm_completion = await self._llm.complete(
+            system_message=system_message,
+            user_message=anonymized_user_message,
+            tenant_id=request.tenant_id,
+            response_model=SummaryResultModel,
+            timeout=timeout,
         )
+
+        if anonymize:
+            return_model_as_string = llm_completion.structured.model_dump_json()
+            unanonymized_return_model_as_string = self._anonymizer.deanonymize(
+                return_model_as_string, anonymization_mapping
+            )
+            return SummaryResultModel.model_validate_json(
+                unanonymized_return_model_as_string
+            )
+
+        return llm_completion.structured
 
     async def summarize_aggregate(
         self,
-        request: SummaryRequest,
+        request: SummaryRequestModel,
         deadline: datetime,
-    ) -> AggregateSummaryResult:
+        anonymize: bool = True,
+    ) -> AggregateSummaryResultModel:
         """Summarize multiple feedback items as a single aggregate summary.
 
         Parameters
@@ -371,8 +339,6 @@ class Orchestrator:
         AggregateSummaryResult
             A single aggregate summary with themes ordered by frequency.
         """
-        self._check_injection(request.feedback_items)
-
         system_message = _DEFAULT_AGGREGATE_SUMMARIZATION_PROMPT
         if request.output_language:
             system_message += (
@@ -386,56 +352,57 @@ class Orchestrator:
             for idx, item in enumerate(request.feedback_items, start=1)
         )
 
-        self._check_token_limit(system_message, user_message)
-        response = await self._call_with_retries(
+        anonymized_user_message = user_message
+        if anonymize:
+            anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
+                user_message
+            )
+
+        timeout = self._check_deadline_and_get_timeout(deadline)
+        response = await self._llm.complete(
             system_message=system_message,
-            user_message=user_message,
+            user_message=anonymized_user_message,
             tenant_id=request.tenant_id,
-            deadline=deadline,
+            response_model=AggregateSummaryResultModel,
+            timeout=timeout,
         )
         total_cost = response.cost
 
-        try:
-            payload = json.loads(response.result)
-        except json.JSONDecodeError as exc:
-            raise AnalysisError(
-                "LLM returned invalid JSON for aggregate summary output"
-            ) from exc
-        if not isinstance(payload, dict):
-            raise AnalysisError("LLM returned invalid aggregate summary payload")
-        if not isinstance(payload.get("title"), str) or not isinstance(
-            payload.get("summary"), str
-        ):
-            raise AnalysisError(
-                "LLM returned aggregate summary output missing title or summary"
-            )
+        judge_user_message = anonymized_user_message if anonymize else user_message
+        judge_system = _build_judge_system_message(
+            judge_user_message, response.structured.summary
+        )
 
-        summary_text = payload["summary"]
-        judge_system = _build_judge_system_message(user_message, summary_text)
-        self._check_token_limit(judge_system, _JUDGE_USER_MESSAGE)
-
-        judge_response = await self._call_with_retries(
+        judge_timeout = self._check_deadline_and_get_timeout(deadline)
+        judge_response = await self._llm.complete(
             system_message=judge_system,
             user_message=_JUDGE_USER_MESSAGE,
             tenant_id=request.tenant_id,
-            deadline=deadline,
+            response_model=str,
+            timeout=judge_timeout,
         )
         total_cost += judge_response.cost
-        quality_score = _parse_judge_quality_score(judge_response.result)
+        quality_score = _parse_judge_quality_score(judge_response.structured)
 
-        return AggregateSummaryResult(
-            ids=tuple(item.id for item in request.feedback_items),
-            title=payload["title"],
-            summary=summary_text,
-            quality_score=quality_score,
-            cost=total_cost,
-        )
+        response.structured.quality_score = quality_score
+
+        if anonymize:
+            return_model_as_string = response.structured.model_dump_json()
+            unanonymized_return_model_as_string = self._anonymizer.deanonymize(
+                return_model_as_string, anonymization_mapping
+            )
+            return AggregateSummaryResultModel.model_validate_json(
+                unanonymized_return_model_as_string
+            )
+
+        return response.structured
 
     async def assign_codes(
         self,
-        request: CodingAssignmentRequest,
+        request: CodingAssignmentRequestModel,
         deadline: datetime,
-    ) -> CodingAssignmentResult:
+        anonymize: bool = True,
+    ) -> CodingAssignmentResultModel:
         """Assign hierarchical codes to each feedback item.
 
         Parameters
@@ -461,9 +428,7 @@ class Orchestrator:
         LLMError
             For other LLM provider failures.
         """
-        self._check_injection(request.feedback_items)
-
-        coded: list[CodedFeedbackItem] = []
+        coded: list[CodedFeedbackItemModel] = []
         types = request.coding_framework.get("types") or []
         threshold = request.confidence_threshold
 
@@ -479,6 +444,7 @@ class Orchestrator:
                 hierarchy_path=None,
                 tenant_id=request.tenant_id,
                 deadline=deadline,
+                anonymize=anonymize,
             )
 
             for type_index in type_indices:
@@ -503,6 +469,7 @@ class Orchestrator:
                     hierarchy_path=[("Type", type_name)],
                     tenant_id=request.tenant_id,
                     deadline=deadline,
+                    anonymize=anonymize,
                 )
 
                 for category_index in category_indices:
@@ -533,6 +500,7 @@ class Orchestrator:
                         ],
                         tenant_id=request.tenant_id,
                         deadline=deadline,
+                        anonymize=anonymize,
                     )
 
                     for code_index in code_indices:
@@ -570,10 +538,10 @@ class Orchestrator:
             top = candidates[: request.max_codes]
 
             coded.append(
-                CodedFeedbackItem(
+                CodedFeedbackItemModel(
                     feedback_item_id=feedback_item.id,
                     assigned_codes=tuple(
-                        AssignedCode(
+                        AssignedCodeModel(
                             code_id=c.code_id,
                             code_label=c.code_label,
                             confidence_type=c.confidence_type,
@@ -587,7 +555,23 @@ class Orchestrator:
                 )
             )
 
-        return CodingAssignmentResult(coded_feedback_items=tuple(coded))
+        return CodingAssignmentResultModel(coded_feedback_items=tuple(coded))
+
+    def _check_deadline_and_get_timeout(self, deadline: datetime) -> float:
+        """
+        Raise if the deadline has passed or too little time remains.
+
+        Return a timeout (seconds) bounded by the deadline and the
+        configured per-call limit.
+        """
+        remaining = (deadline - datetime.now(UTC)).total_seconds()
+        if remaining <= 0:
+            raise AnalysisTimeoutError("Deadline exceeded")
+        if remaining < _MINIMUM_ATTEMPT_WINDOW:
+            raise AnalysisTimeoutError(
+                f"Insufficient time remaining ({remaining:.1f}s) for an LLM attempt"
+            )
+        return min(self._llm_timeout_seconds, remaining)
 
     def _check_coding_deadline(self, deadline: datetime) -> None:
         """Raise when the coding deadline is exceeded."""
@@ -605,6 +589,7 @@ class Orchestrator:
         hierarchy_path: list[tuple[str, str]] | None,
         tenant_id: str,
         deadline: datetime,
+        anonymize: bool = True,
     ) -> list[int]:
         """Build one coding prompt, call the LLM, and parse selected indices."""
         labels = [str(entry.get("name", "")) for entry in entries]
@@ -619,13 +604,18 @@ class Orchestrator:
 
         self._check_coding_deadline(deadline)
         self._check_token_limit(system_message, user_message)
-        response = await self._call_with_retries(
+
+        anonymized_user_message = user_message
+        if anonymize:
+            anonymized_user_message, _ = self._anonymizer.anonymize(user_message)
+
+        response = await self._llm.complete(
             system_message=system_message,
-            user_message=user_message,
+            user_message=anonymized_user_message,
             tenant_id=tenant_id,
-            deadline=deadline,
+            response_model=str,
         )
-        return parse_selected_indices(response.result, len(labels))
+        return parse_selected_indices(response.structured, len(labels))
 
     async def _judge_code_level(
         self,
@@ -644,19 +634,19 @@ class Orchestrator:
         )
         self._check_coding_deadline(deadline)
         self._check_token_limit(system_message, user_message)
-        response = await self._call_with_retries(
+        response = await self._llm.complete(
             system_message=system_message,
             user_message=user_message,
             tenant_id=tenant_id,
-            deadline=deadline,
+            response_model=str,
         )
-        return parse_judge_response(response.result)
+        return parse_judge_response(response.structured)
 
     # ------------------------------------------------------------------
     # Prompt injection filtering
     # ------------------------------------------------------------------
 
-    def _check_injection(self, documents: tuple[FeedbackItem, ...]) -> None:
+    def _check_injection(self, documents: tuple[FeedbackItemModel, ...]) -> None:
         """Scan documents for known prompt injection patterns.
 
         Parameters
@@ -687,7 +677,7 @@ class Orchestrator:
     # Prompt assembly
     # ------------------------------------------------------------------
 
-    def _assemble_documents(self, documents: tuple[FeedbackItem, ...]) -> str:
+    def _assemble_documents(self, documents: tuple[FeedbackItemModel, ...]) -> str:
         """Assemble documents into the user-message XML block.
 
         Parameters
@@ -743,110 +733,3 @@ class Orchestrator:
                 estimated_tokens=estimated_tokens,
                 limit=self._max_total_tokens,
             )
-
-    # ------------------------------------------------------------------
-    # Retry logic with exponential backoff
-    # ------------------------------------------------------------------
-
-    def _compute_backoff(self, attempt: int) -> float:
-        """Compute the backoff delay for the given attempt number.
-
-        Parameters
-        ----------
-        attempt : int
-            Zero-based attempt index (0 for first retry, etc.).
-
-        Returns
-        -------
-        float
-            The jittered delay in seconds.
-        """
-        s = self._settings
-        delay = min(
-            s.retry_base_seconds * (s.retry_multiplier**attempt),
-            s.retry_cap_seconds,
-        )
-        return random.uniform(0, delay * s.retry_jitter_factor)  # noqa: S311
-
-    @retry(
-        wait=wait_exponential(multiplier=1, max=10),
-        stop=stop_after_delay(60),
-        retry=retry_if_exception_type((LLMTimeoutError, LLMRateLimitError)),
-    )
-    async def _call_with_retries(
-        self,
-        system_message: str,
-        user_message: str,
-        tenant_id: str,
-        deadline: datetime,
-        anonymize: bool = True,
-    ) -> AnalysisResult:
-        """Call the LLM with retry logic and deadline enforcement.
-
-        Parameters
-        ----------
-        system_message : str
-            The system message for the LLM.
-        user_message : str
-            The user message for the LLM.
-        tenant_id : str
-            Tenant identifier for the LLM call.
-        deadline : datetime
-            Absolute UTC deadline.
-        anonymize: bool
-            Whether the user_message should ben anonymized.
-
-        Returns
-        -------
-        AnalysisResult
-            The analysis result from the LLM.
-
-        Raises
-        ------
-        AnalysisTimeoutError
-            When the deadline is exceeded or insufficient time remains.
-        AnalysisError
-            For non-recoverable LLM errors or persistent empty responses.
-        """
-        if anonymize:
-            user_message, anonymization_mapping = self._anonymizer.anonymize(
-                user_message
-            )
-
-        try:
-            response = await self._llm.complete(
-                system_message=system_message,
-                user_message=user_message,
-                timeout=120,
-                tenant_id=tenant_id,
-            )
-            cost_str = f"${response.cost:.6f}" if response.cost is not None else "N/A"
-            logger.info(
-                "LLM response received for tenant %s: %s. "
-                "Tokens: %d prompt; %d completion. Cost: %s",
-                tenant_id,
-                response.model,
-                response.prompt_tokens,
-                response.completion_tokens,
-                cost_str,
-            )
-        except (LLMTimeoutError, LLMRateLimitError):
-            # raise timeout and rate limit errors (tenacity will retry)
-            raise
-        except LLMError as exc:
-            # convert LLMError to AnalysisError and raise
-            raise AnalysisError(str(exc)) from exc
-
-        # Handle empty response
-        if not response.text.strip():
-            raise AnalysisError("LLM returned empty response after retry")
-
-        return AnalysisResult(
-            result=self._anonymizer.deanonymize(response.text, anonymization_mapping)
-            if anonymize
-            else response.text,
-            model=response.model,
-            prompt_tokens=response.prompt_tokens,
-            completion_tokens=response.completion_tokens,
-            cost=response.cost,
-        )

@@ -11,9 +11,9 @@ from qfa.domain.errors import (
     LLMTimeoutError,
 )
 from qfa.domain.models import (
-    AnalysisRequest,
-    AnalysisResult,
-    FeedbackItem,
+    AnalysisRequestModel,
+    AnalysisResultModel,
+    FeedbackItemModel,
     LLMResponse,
     TenantApiKey,
 )

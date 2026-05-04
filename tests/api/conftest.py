@@ -13,14 +13,14 @@ from qfa.api.app import (
 )
 from qfa.api.routes import router
 from qfa.domain.models import (
-    AnalysisRequest,
-    AnalysisResult,
-    CodedFeedbackItem,
-    CodingAssignmentRequest,
-    CodingAssignmentResult,
-    FeedbackItemSummary,
-    SummaryRequest,
-    SummaryResult,
+    AnalysisRequestModel,
+    AnalysisResultModel,
+    CodedFeedbackItemModel,
+    CodingAssignmentRequestModel,
+    CodingAssignmentResultModel,
+    FeedbackItemSummaryModel,
+    SummaryRequestModel,
+    SummaryResultModel,
     TenantApiKey,
 )
 
@@ -42,16 +42,16 @@ class FakeOrchestrator:
         summarize_result=None,
         error=None,
     ):
-        self._analyze_result = analyze_result or AnalysisResult(
+        self._analyze_result = analyze_result or AnalysisResultModel(
             result="Fake analysis result",
             model="gpt-4-test",
             prompt_tokens=10,
             completion_tokens=20,
             cost=0.001,
         )
-        self._summarize_result = summarize_result or SummaryResult(
+        self._summarize_result = summarize_result or SummaryResultModel(
             feedback_item_summaries=(
-                FeedbackItemSummary(
+                FeedbackItemSummaryModel(
                     id="doc-1",
                     title="Fake summary title",
                     summary="- Fake summary point",
@@ -64,34 +64,34 @@ class FakeOrchestrator:
 
     async def analyze(
         self,
-        request: AnalysisRequest,
+        request: AnalysisRequestModel,
         deadline: datetime,
         anonymize: bool = True,
-    ) -> AnalysisResult:
+    ) -> AnalysisResultModel:
         if self._error is not None:
             raise self._error
         return self._analyze_result
 
     async def summarize(
         self,
-        request: SummaryRequest,
+        request: SummaryRequestModel,
         deadline: datetime,
         anonymize: bool = True,
-    ) -> SummaryResult:
+    ) -> SummaryResultModel:
         if self._error is not None:
             raise self._error
         return self._summarize_result
 
     async def assign_codes(
         self,
-        request: CodingAssignmentRequest,
+        request: CodingAssignmentRequestModel,
         deadline: datetime,
-    ) -> CodingAssignmentResult:
+    ) -> CodingAssignmentResultModel:
         if self._error is not None:
             raise self._error
-        return CodingAssignmentResult(
+        return CodingAssignmentResultModel(
             coded_feedback_items=tuple(
-                CodedFeedbackItem(feedback_item_id=item.id, assigned_codes=())
+                CodedFeedbackItemModel(feedback_item_id=item.id, assigned_codes=())
                 for item in request.feedback_items
             )
         )
