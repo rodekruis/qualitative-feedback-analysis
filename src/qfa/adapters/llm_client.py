@@ -208,7 +208,7 @@ class LiteLLMClient(LLMPort):
                 raise LLMError(
                     f"LLM response validation failed for {response_model.__name__}: {exc}"
                 ) from exc
-        elif response_model is str:
+        elif issubclass(response_model, str):
             parsed_data = content
         else:
             raise ValueError(
