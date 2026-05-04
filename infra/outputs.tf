@@ -27,9 +27,3 @@ output "postgres_database_name" {
   description = "Application PostgreSQL database name"
   value       = azurerm_postgresql_flexible_server_database.app.name
 }
-
-output "postgres_admin_password" {
-  description = "Administrator password for the PostgreSQL Flexible Server"
-  value       = random_password.postgres_admin.result
-  sensitive   = true
-}
