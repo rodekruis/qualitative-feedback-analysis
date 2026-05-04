@@ -8,6 +8,7 @@ import json
 import logging
 import random
 import re
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_exponential
@@ -34,7 +35,12 @@ from qfa.domain.models import (
     SummaryResult,
 )
 from qfa.domain.ports import AnonymizationPort, LLMPort
-from qfa.services.coding_classifier import build_pick_messages, parse_selected_indices
+from qfa.services.coding_classifier import (
+    build_judge_messages,
+    build_pick_messages,
+    parse_judge_response,
+    parse_selected_indices,
+)
 from qfa.settings import OrchestratorSettings
 
 logger = logging.getLogger(__name__)
@@ -147,6 +153,20 @@ def _parse_judge_quality_score(raw: str) -> float:
 def _build_judge_system_message(source_text: str, summary: str) -> str:
     """Fill the judge prompt with the provided source text and summary."""
     return _JUDGE_PROMPT.format(source_text=source_text, summary=summary)
+
+
+@dataclass
+class _ScoredCode:
+    code_id: str
+    code_label: str
+    confidence_type: float
+    confidence_category: float
+    confidence_code: float
+    explanation: str
+
+    @property
+    def confidence_aggregate(self) -> float:
+        return min(self.confidence_type, self.confidence_category, self.confidence_code)
 
 
 class Orchestrator:
@@ -435,11 +455,12 @@ class Orchestrator:
 
         coded: list[CodedFeedbackItem] = []
         types = request.coding_framework.get("types") or []
+        threshold = request.confidence_threshold
 
         for feedback_item in request.feedback_items:
             self._check_coding_deadline(deadline)
 
-            rows: list[tuple[str, str]] = []
+            candidates: list[_ScoredCode] = []
 
             type_indices = await self._pick_code_indices(
                 feedback_text=feedback_item.text,
@@ -453,8 +474,18 @@ class Orchestrator:
             for type_index in type_indices:
                 type_entry = types[type_index]
                 type_name = str(type_entry.get("name", ""))
-                categories = type_entry.get("categories") or []
 
+                confidence_type, _ = await self._judge_code_level(
+                    feedback_text=feedback_item.text,
+                    level="Type",
+                    path=[("Type", type_name)],
+                    tenant_id=request.tenant_id,
+                    deadline=deadline,
+                )
+                if threshold is not None and confidence_type < threshold:
+                    continue
+
+                categories = type_entry.get("categories") or []
                 category_indices = await self._pick_code_indices(
                     feedback_text=feedback_item.text,
                     current_level="Categories",
@@ -467,8 +498,18 @@ class Orchestrator:
                 for category_index in category_indices:
                     category = categories[category_index]
                     category_name = str(category.get("name", ""))
-                    codes = category.get("codes") or []
 
+                    confidence_category, _ = await self._judge_code_level(
+                        feedback_text=feedback_item.text,
+                        level="Category",
+                        path=[("Type", type_name), ("Category", category_name)],
+                        tenant_id=request.tenant_id,
+                        deadline=deadline,
+                    )
+                    if threshold is not None and confidence_category < threshold:
+                        continue
+
+                    codes = category.get("codes") or []
                     code_indices = await self._pick_code_indices(
                         feedback_text=feedback_item.text,
                         current_level="Codes",
@@ -483,30 +524,50 @@ class Orchestrator:
 
                     for code_index in code_indices:
                         code = codes[code_index]
-                        rows.append(
-                            (
-                                str(code.get("code_id", "")),
-                                str(code.get("name", "")),
+                        code_name = str(code.get("name", ""))
+
+                        confidence_code, explanation = await self._judge_code_level(
+                            feedback_text=feedback_item.text,
+                            level="Code",
+                            path=[
+                                ("Type", type_name),
+                                ("Category", category_name),
+                                ("Code", code_name),
+                            ],
+                            tenant_id=request.tenant_id,
+                            deadline=deadline,
+                        )
+                        if threshold is not None and confidence_code < threshold:
+                            continue
+
+                        candidates.append(
+                            _ScoredCode(
+                                code_id=str(code.get("code_id", "")),
+                                code_label=code_name,
+                                confidence_type=confidence_type,
+                                confidence_category=confidence_category,
+                                confidence_code=confidence_code,
+                                explanation=explanation,
                             )
                         )
-                        if len(rows) >= request.max_codes:
-                            break
 
-                    if len(rows) >= request.max_codes:
-                        break
-
-                if len(rows) >= request.max_codes:
-                    break
+            candidates.sort(key=lambda c: c.confidence_aggregate, reverse=True)
+            top = candidates[: request.max_codes]
 
             coded.append(
                 CodedFeedbackItem(
                     feedback_item_id=feedback_item.id,
                     assigned_codes=tuple(
                         AssignedCode(
-                            code_id=code_id,
-                            code_label=code_label,
+                            code_id=c.code_id,
+                            code_label=c.code_label,
+                            confidence_type=c.confidence_type,
+                            confidence_category=c.confidence_category,
+                            confidence_code=c.confidence_code,
+                            confidence_aggregate=c.confidence_aggregate,
+                            explanation=c.explanation,
                         )
-                        for code_id, code_label in rows
+                        for c in top
                     ),
                 )
             )
@@ -550,6 +611,31 @@ class Orchestrator:
             deadline=deadline,
         )
         return parse_selected_indices(response.result, len(labels))
+
+    async def _judge_code_level(
+        self,
+        *,
+        feedback_text: str,
+        level: str,
+        path: list[tuple[str, str]],
+        tenant_id: str,
+        deadline: datetime,
+    ) -> tuple[float, str]:
+        """Call the judge LLM for one hierarchy level; return (confidence, explanation)."""
+        system_message, user_message = build_judge_messages(
+            feedback_text=feedback_text,
+            level=level,
+            path=path,
+        )
+        self._check_coding_deadline(deadline)
+        self._check_token_limit(system_message, user_message)
+        response = await self._call_with_retries(
+            system_message=system_message,
+            user_message=user_message,
+            tenant_id=tenant_id,
+            deadline=deadline,
+        )
+        return parse_judge_response(response.result)
 
     # ------------------------------------------------------------------
     # Prompt injection filtering
