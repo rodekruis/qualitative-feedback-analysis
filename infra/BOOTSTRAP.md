@@ -75,11 +75,6 @@ export TF_VAR_acr_name=<globally-unique-acr-name>
 # Optional — Azure region for the bootstrapped resources. Defaults to westeurope.
 export LOCATION=westeurope
 
-# PostgreSQL Flexible Server admin username used by Terraform at provision time.
-# Runtime connections are Entra-only (password auth is disabled), and Terraform
-# generates an ephemeral admin password on each run (not stored in state).
-export TF_VAR_postgres_admin_username=qfaadmin
-
 # PostgreSQL Entra admin is configured automatically by Terraform to the
 # App Service system-assigned managed identity for each environment.
 ```

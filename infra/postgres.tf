@@ -30,11 +30,6 @@ resource "azurerm_private_dns_zone_virtual_network_link" "postgres_vnet_link" {
   resource_group_name   = data.azurerm_resource_group.main.name
 }
 
-ephemeral "random_password" "postgres_admin" {
-  length           = 32
-  special          = true
-  override_special = "!#$%&*()-_=+[]{}<>:?"
-}
 
 resource "azurerm_postgresql_flexible_server" "db" {
   location                      = data.azurerm_resource_group.main.location
@@ -45,10 +40,6 @@ resource "azurerm_postgresql_flexible_server" "db" {
   private_dns_zone_id           = azurerm_private_dns_zone.postgres.id
   public_network_access_enabled = false
   zone                          = "1"
-
-  # Local admin credentials are provisioning-only; runtime app auth is Entra.
-  administrator_login    = var.postgres_admin_username
-  administrator_password = ephemeral.random_password.postgres_admin.result
 
   authentication {
     active_directory_auth_enabled = true

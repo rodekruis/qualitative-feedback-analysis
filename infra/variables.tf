@@ -56,12 +56,6 @@ variable "llm_api_version" {
 
 # --- PostgreSQL configuration ---
 
-variable "postgres_admin_username" {
-  description = "Provisioning-only local administrator username for PostgreSQL Flexible Server (runtime app auth uses Entra tokens)"
-  type        = string
-  default     = "qfaadmin"
-}
-
 variable "postgres_db_name" {
   description = "Application database name"
   type        = string
