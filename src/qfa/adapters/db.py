@@ -131,7 +131,13 @@ def create_async_engine_from_settings(settings: DatabaseSettings) -> AsyncEngine
     physical connection via SQLAlchemy's ``do_connect`` hook.
     """
     url = resolve_database_url(settings)
-    engine = create_async_engine_from_url(url)
+    engine = create_async_engine(
+        url,
+        pool_size=5,
+        max_overflow=10,
+        pool_pre_ping=True,
+        pool_recycle=1800,
+    )
 
     if settings.auth_mode != "entra":
         return engine
@@ -143,28 +149,6 @@ def create_async_engine_from_settings(settings: DatabaseSettings) -> AsyncEngine
         cparams["password"] = token_provider.get_token()
 
     return engine
-
-
-def create_async_engine_from_url(url: str) -> AsyncEngine:
-    """Create a tuned async engine with pre-ping + recycle for managed PG.
-
-    Parameters
-    ----------
-    url : str
-        The database connection URL.
-
-    Returns
-    -------
-    AsyncEngine
-        The configured async engine.
-    """
-    return create_async_engine(
-        url,
-        pool_size=5,
-        max_overflow=10,
-        pool_pre_ping=True,
-        pool_recycle=1800,
-    )
 
 
 def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
