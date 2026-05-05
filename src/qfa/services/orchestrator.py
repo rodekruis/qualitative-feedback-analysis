@@ -457,6 +457,7 @@ class Orchestrator:
                     path=[("Type", type_name)],
                     tenant_id=request.tenant_id,
                     deadline=deadline,
+                    anonymize=anonymize,
                 )
                 if threshold is not None and confidence_type < threshold:
                     continue
@@ -485,6 +486,7 @@ class Orchestrator:
                         path=[("Type", type_name), ("Category", category_name)],
                         tenant_id=request.tenant_id,
                         deadline=deadline,
+                        anonymize=anonymize,
                     )
                     if threshold is not None and confidence_category < threshold:
                         continue
@@ -517,6 +519,7 @@ class Orchestrator:
                             ],
                             tenant_id=request.tenant_id,
                             deadline=deadline,
+                            anonymize=anonymize,
                         )
                         if threshold is not None and confidence_code < threshold:
                             continue
@@ -625,6 +628,7 @@ class Orchestrator:
         path: list[tuple[str, str]],
         tenant_id: str,
         deadline: datetime,
+        anonymize: bool,
     ) -> tuple[float, str]:
         """Call the judge LLM for one hierarchy level; return (confidence, explanation)."""
         system_message, user_message = build_judge_messages(
@@ -634,6 +638,8 @@ class Orchestrator:
         )
         self._check_coding_deadline(deadline)
         self._check_token_limit(system_message, user_message)
+        if anonymize:
+            user_message, _ = self._anonymizer.anonymize(user_message)
         response = await self._llm.complete(
             system_message=system_message,
             user_message=user_message,
