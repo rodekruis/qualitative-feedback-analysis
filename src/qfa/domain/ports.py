@@ -1,21 +1,13 @@
 """Port interfaces (protocols) for the feedback analysis backend.
 
-Both ports use ``typing.Protocol`` for structural subtyping per ADR-002.
+Driven ports declared here use ``typing.Protocol`` for structural
+subtyping per ADR-002. The orchestrator is exposed as the concrete
+``Orchestrator`` class per ADR-011 (no driving port).
 """
 
-from datetime import datetime
 from typing import Protocol
 
-from qfa.domain.models import (
-    AggregateSummaryResult,
-    AnalysisRequest,
-    AnalysisResult,
-    CodingAssignmentRequest,
-    CodingAssignmentResult,
-    LLMResponse,
-    SummaryRequest,
-    SummaryResult,
-)
+from qfa.domain.models import LLMResponse, T_Response
 
 
 class LLMPort(Protocol):
@@ -29,9 +21,10 @@ class LLMPort(Protocol):
         self,
         system_message: str,
         user_message: str,
-        timeout: float,
         tenant_id: str,
-    ) -> LLMResponse:
+        response_model: type[T_Response],
+        timeout: float = 20.0,
+    ) -> LLMResponse[T_Response]:
         """Send a completion request to the LLM provider.
 
         Parameters
@@ -40,10 +33,12 @@ class LLMPort(Protocol):
             The system-level instruction for the model.
         user_message : str
             The user-level message to complete.
-        timeout : float
-            Maximum time in seconds to wait for a response.
         tenant_id : str
             Tenant identifier for tracking and billing.
+        response_model : type[T_Response]
+            The Pydantic model to parse the response into.
+        timeout : float
+            Maximum time in seconds to wait for a response.
 
         Returns
         -------
@@ -53,126 +48,47 @@ class LLMPort(Protocol):
         ...
 
 
-class OrchestratorPort(Protocol):
-    """Port for the analysis orchestration service.
+class AnonymizationPort(Protocol):
+    """Port for anonymising and de-anonymising user-supplied text.
 
-    Even with a single implementation this port is kept explicit per ADR-008
-    so that the API layer depends only on the abstraction.
+    Implementations replace named entities (people, locations, phone
+    numbers, etc.) in ``text`` with stable placeholders, returning the
+    redacted text together with a mapping that can be used to restore
+    the original values via ``deanonymize``.
 
-    Contract
-    --------
-    - Raises ``AnalysisTimeoutError`` when *deadline* is exceeded.
-    - Raises ``DocumentsTooLargeError`` when estimated tokens exceed the limit.
-    - Raises ``AnalysisError`` for non-recoverable LLM failures.
-    - Never returns partial results.
+    Implementations must be deterministic for a given input within a
+    single call (same entity replaced by the same placeholder).
     """
 
-    async def analyze(
-        self,
-        request: AnalysisRequest,
-        deadline: datetime,
-        anonymize: bool = True,
-    ) -> AnalysisResult:
-        """Analyze a batch of feedback documents.
+    def anonymize(self, text: str) -> tuple[str, dict[str, str]]:
+        """Replace sensitive entities in ``text`` with placeholders.
 
         Parameters
         ----------
-        request : AnalysisRequest
-            The analysis request containing documents and prompt.
-        deadline : datetime
-            Absolute deadline by which the analysis must complete.
-        anonymize : bool
-            Whether to apply anonymization to the feedback text before analysis.
+        text : str
+            The text to anonymise.
 
         Returns
         -------
-        AnalysisResult
-            The complete analysis result.
-
-        Raises
-        ------
-        AnalysisTimeoutError
-            When the deadline is exceeded.
-        DocumentsTooLargeError
-            When estimated tokens for documents exceed the configured limit.
-        AnalysisError
-            For non-recoverable LLM failures.
+        tuple[str, dict[str, str]]
+            The anonymised text and a mapping from placeholder to
+            original value, suitable for passing to ``deanonymize``.
         """
         ...
 
-    async def summarize(
-        self,
-        request: SummaryRequest,
-        deadline: datetime,
-        anonymize: bool = True,
-    ) -> SummaryResult:
-        """Summarize each submitted feedback item individually.
+    def deanonymize(self, text: str, mapping: dict[str, str]) -> str:
+        """Restore original values in ``text`` using ``mapping``.
 
         Parameters
         ----------
-        request : SummaryRequest
-            The summarization request containing feedback items and options.
-        deadline : datetime
-            Absolute deadline by which summarization must complete.
-        anonymize : bool
-            Whether to apply anonymization to the feedback text before summarization.
+        text : str
+            The anonymised text, possibly containing placeholders.
+        mapping : dict[str, str]
+            Placeholder-to-original mapping returned by ``anonymize``.
 
         Returns
         -------
-        SummaryResult
-            Per-feedback-item summaries and titles.
-        """
-        ...
-
-    async def summarize_aggregate(
-        self,
-        request: SummaryRequest,
-        deadline: datetime,
-    ) -> AggregateSummaryResult:
-        """Summarize multiple feedback items as a single aggregate summary.
-
-        Parameters
-        ----------
-        request : SummaryRequest
-            The summarization request containing feedback items and options.
-        deadline : datetime
-            Absolute deadline by which summarization must complete.
-
-        Returns
-        -------
-        AggregateSummaryResult
-            A single aggregate summary with themes ordered by frequency.
-        """
-        ...
-
-    async def assign_codes(
-        self,
-        request: CodingAssignmentRequest,
-        deadline: datetime,
-    ) -> CodingAssignmentResult:
-        """Assign hierarchical codes to each feedback item using the LLM.
-
-        Parameters
-        ----------
-        request : CodingAssignmentRequest
-            Items to code, framework payload, limits, and tenant id.
-        deadline : datetime
-            Absolute UTC deadline by which coding must complete.
-
-        Returns
-        -------
-        CodingAssignmentResult
-            Per-feedback-item assigned leaf codes.
-
-        Raises
-        ------
-        AnalysisTimeoutError
-            When the deadline is exceeded before finishing all items.
-        LLMTimeoutError
-            When an LLM call exceeds its per-request timeout.
-        LLMRateLimitError
-            When the LLM provider rate-limits a call.
-        LLMError
-            For other LLM provider failures.
+        str
+            The text with placeholders replaced by original values.
         """
         ...

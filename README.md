@@ -9,23 +9,32 @@ The feedback analysis tool receives feedback items and analyses trends, topics a
 
 The feedback is collected in a CRM system and sent to this backend for analysis.
 
-Each request contains dozens to thousands of feedback documents.
+Each request contains dozens to thousands of feedback records.
 
-The documents need to be analysed and, and the result sent back to the CRM system in a
+The records need to be analysed and, and the result sent back to the CRM system in a
 synchronous API call.
+
+
+## Terms and definitions
+See [Ubiquitous Language](docs/ubiquitous_language.md). That document defines the lanuage
+used throughout the project.
 
 ## Tech stack
 * fastapi
 * uvicorn
 * pydantic for settings manangement and environment loading
-* OpenAI API for document analysis
+* LLMs on Azure Foundry for feedback analysis
 
 ## Architecture
 * hexagonal architecture.
-* Flow: API call(documents) -> Orchestrator -> LLM API -> return result to user.
-* The Orcehstrator is an exchangeable service. 
-  * naive version: forward all documents to the LLM in one call, together with system prompt and user prompt
-  * possible future versions: apply embedding, chunking, other "smart" techniques, possibly multiple LLM calls.
+* Flow: API call(records) -> Orchestrator -> LLM API -> return result to user.
+* The Orchestrator is a single application service composed of multiple
+  use cases (analyze, summarize, summarize_aggregate, assign_codes).
+  Per-task behaviour is selected by the route handler calling the
+  appropriate method, not by swapping orchestrator implementations
+  (see ADR-011).
+* Driven adapters (LLM provider, anonymization) sit behind ports
+  (`LLMPort`, `AnonymizationPort`) and remain swappable.
 
 ## Requirements
 * only authenticated API calls (via API keys)
@@ -33,8 +42,7 @@ synchronous API call.
 
 ## Non-functional requirements:
 * LLM provider must be exchangeable: declared via an `LLMPort`, so that implementation can be swapped
-* Orchestrator must be swappable depending on task.
-  TBD: either via different API end points, API request parameters or automatically depending on task
+  * implemented via one `LLMPort` implementation using LiteLLM.
 * hardened security.
 
 # Deployment
@@ -43,22 +51,41 @@ Deployed to Azure App Service via Terraform (infrastructure) and GitHub Actions 
 
 ## First-time setup
 
-Before the CI/CD pipeline can run, the Azure infrastructure and GitHub environments must be bootstrapped locally. See [infra/BOOTSTRAP.md](infra/BOOTSTRAP.md).
+Before the CI/CD pipeline can run, the Azure infrastructure and GitHub environments must be bootstrapped locally:
+
+1. [infra/BOOTSTRAP.md](infra/BOOTSTRAP.md) — one-time per deployment: Terraform state backend, shared container registry, and repo-scoped GitHub variables.
+2. [infra/setup-new-env.md](infra/setup-new-env.md) — run once per environment (`dev`, `staging`, `prd`, or any added later): Terraform workspace, App Service, Key Vault, managed identity, env-scoped GitHub variables, and Key Vault secrets.
 
 ## CI/CD pipeline
 
+The release-promotion flow at a glance:
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    state "GitHub draft release created<br/>Auto-deployed to dev" as Dev
+    state "Release published<br/>Auto-deployed to staging" as Published
+    state "Deployed to prd" as Prd
+
+    [*] --> Dev: Run Release workflow
+    Dev --> Published: Click Publish on draft release
+    Published --> Prd: Run Promote to prd + reviewer approval
+```
+
+Three human actions drive the whole flow: run the Release workflow, click Publish on the draft release, and run Promote to prd (with reviewer approval). Publishing is both the sign-off that dev validation passed *and* the staging-deploy trigger — the click fires `auto-staging-on-publish.yaml`, which deploys the same digest to staging with no extra workflow run. The same image digest flows through all three states — no rebuilds between environments.
+
 ### For a normal release of, e.g., v0.4.0:
 
-  1. Human runs Release from the Actions tab. CI runs, version bumps to v0.4.0, image builds, gets pushed to ACR as qfa-backend:v0.4.0, registry digest captured, draft
+  1. Human runs Release from the Actions tab. CI runs, version bumps to v0.4.0, image builds, gets pushed to Azure Container Regisrty (ACR) as qfa-backend:v0.4.0, registry digest captured, draft
   release v0.4.0 created with the digest in its body, dev App Service updated to run that digest. Total: one click.
   2. Human pokes around in dev. Finds nothing wrong.
-  3. Human goes to Releases page, clicks Publish on the v0.4.0 draft. The release is now in published state. Nothing else happens automatically — this is just a metadata
-  flip.
-  4. Human runs Promote to staging from the Actions tab, types v0.4.0 as input. The verify job checks that v0.4.0 is published (it is), then deploys the same digest to
-  staging.
-  5. Final smoke testing in staging.
-  6. Human runs Promote to prd with input v0.4.0. Verify job checks published-and-not-prerelease, then enters the prd environment, which triggers GitHub's
+  3. Human goes to Releases page, clicks Publish on the v0.4.0 draft. Publishing the release automatically fires `auto-staging-on-publish.yaml`, which deploys the same digest to staging — the click is both the sign-off that dev validation passed *and* the trigger for the staging deploy.
+  4. Final smoke testing in staging.
+  5. Human runs Promote to prd with input v0.4.0. Verify job checks published-and-not-prerelease, then enters the prd environment, which triggers GitHub's
   required-reviewers prompt. Reviewer approves. Same digest deploys to prd.
+
+> [!NOTE]
+> The manual `Promote to dev` and `Promote to staging` workflows exist as **secondary** paths — used to restore an environment to a specific released tag outside the normal forward flow. Typical uses: re-point dev back to a release after an ephemeral feature-branch build (see below), roll staging back to a prior release, or re-stage an older release for re-validation. They are not part of the normal forward flow.
 
  ### For a rollback, e.g., from v0.4.0 to v0.3.7:
 
@@ -71,14 +98,34 @@ Before the CI/CD pipeline can run, the Azure infrastructure and GitHub environme
   qfa-backend:ephemeral-feat-some-experiment-abc1234, dev gets updated to that digest. No release is created — so the image cannot enter the promotion pipeline. To get
   back to a real release, run Promote to dev with the latest released tag.
 
+### For an infrastructure change:
 
-**Infrastructure**:
+The infra flow at a glance:
 
-infrastructure (Azure App Service and other resources) and github environments are
-managed by terraform.
+```mermaid
+flowchart LR
+    PR["PR touches infra/"] -->|auto| Plan1[Plan on dev]
+    Plan1 --> Merge[Merge to main]
+    Merge -->|auto| Plan2[Plan on dev]
+    Plan2 --> Dispatch["Manual workflow_dispatch<br/>one run per environment"]
+    Dispatch --> Dev[Apply to dev]
+    Dispatch --> Staging[Apply to staging]
+    Dispatch --> Prd[Apply to prd]
+```
 
-Terraform is applied via the `terraform.yaml`. It runs automatically when any commits
-with changes to any file in the `infra` folder are pushed to the main branch.
+Contrast with the release flow above: applies fan out from a single manual-dispatch hub to three independent environments — there is no promotion chain and no enforced ordering between them. `plan` runs automatically on PRs and on `main`, but `apply` is manual-only.
+
+Infrastructure (Azure App Service, Key Vault, managed identities, etc.) is managed by Terraform and deployed **independently** of application code. Unlike the app release flow above, there is no automatic promotion chain — each environment must be applied manually from the Actions tab.
+
+The `terraform.yaml` workflow (`.github/workflows/terraform.yaml`) runs `plan` automatically on PRs and pushes touching `infra/`, but **never runs `apply` automatically** — `apply` only executes when dispatched manually with `command: apply`.
+
+  1. Human opens a PR touching `infra/`. CI runs `terraform plan` automatically so reviewers can see the proposed diff. Note that the automated plan runs against the `dev` workspace only — diffs against `staging` / `prd` require a manual `workflow_dispatch` run.
+  2. Human merges the PR to `main`. Plan runs again on `main` as a sanity check. Nothing is applied.
+  3. Human runs the `Terraform` workflow from the Actions tab with `environment: dev`, `command: apply`. Verifies dev.
+  4. Human repeats step 3 for `staging`, then for `prd`.
+
+> [!IMPORTANT]
+> If an infrastructure change is a prerequisite for an app version (e.g. a new Key Vault reference, a new environment variable binding), apply the infra change to a given environment **before** promoting the app release that depends on it — otherwise the App Service will start but fail at runtime when the missing reference resolves.
 
 ## GitHub Configuration
 
@@ -108,9 +155,8 @@ Create a `.env` file in the project root (or export the variables in your shell)
 |----------|----------|---------|-------------|
 | `LLM_API_KEY` | **yes** | — | API key for OpenAI or Azure OpenAI |
 | `AUTH_API_KEYS` | **yes** | — | JSON array of API key objects (see below) |
-| `LLM_PROVIDER` | no | `openai` | LLM backend: `openai` or `azure_openai` |
-| `LLM_MODEL` | no | `gpt-4.1-mini` | Model name |
-| `LLM_AZURE_ENDPOINT` | no | `""` | Azure OpenAI endpoint URL (required when provider is `azure_openai`) |
+| `LLM_MODEL` | no | `azure_ai/mistral-medium-2505` | Model name |
+| `LLM_API_BASE` | no | `""` | Base URL for LLM API (e.g. Azure Foundry endpoint) |
 | `LLM_API_VERSION` | no | `""` | Azure OpenAI API version (required when provider is `azure_openai`) |
 | `LLM_TIMEOUT_SECONDS` | no | `115.0` | Timeout for LLM calls in seconds |
 | `LLM_MAX_RETRIES` | no | `3` | Max retry attempts for LLM calls |
@@ -159,7 +205,7 @@ export AUTH_API_KEYS='[
 
 ### Managing keys in production (Azure Key Vault)
 
-In production, API keys are stored as a JSON secret (`AUTH-API-KEYS`) in Azure Key Vault and loaded by the app at startup. Use `scripts/update_auth_api_keys.py` to add, replace, or remove keys without touching the vault manually.
+In production, API keys are stored as a JSON secret (`AUTH-API-KEYS`) in Azure Key Vault and loaded by the app at startup. Use [`scripts/update_auth_api_keys.py`](scripts/update_auth_api_keys.py) to add, replace, or remove keys without touching the vault manually — see the module docstring at the top of the script for the full CLI reference.
 
 **Prerequisites**
 

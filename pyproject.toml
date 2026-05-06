@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "qualitative-feedback-analysis"
-version = "0.11.0"
+version = "0.12.0"
 description = "The feedback analysis tool receives feedback items and analyses trends, topics and their evolution over time."
 readme = "README.md"
 license = "LicenseRef-Proprietary"
@@ -113,6 +113,7 @@ dev = [
     "azure-identity~=1.25",
     "azure-keyvault-secrets~=4.10",
     "httpx~=0.28",
+    "import-linter>=2.11",
     "pre-commit>=4.6.0",
     "pytest~=9.0",
     "pytest-asyncio~=1.3.0",
@@ -122,4 +123,67 @@ dev = [
     # ty is under development and adds new rules frequently.
     # Use pinned version so we don't get unexpected lint errors when ty gets updated
     "ty==0.0.18",
+]
+
+[tool.importlinter]
+root_packages = ["qfa"]
+include_external_packages = true
+exclude_type_checking_imports = true
+
+[[tool.importlinter.contracts]]
+name = "Enforce hexagonal layers"
+type = "layers"
+layers = [
+    # Sibling layers at the outer ring: driving (api) and driven (adapters)
+    # adapters must not import each other; they meet only via services + domain.
+    "api | adapters",
+    "services",
+    "domain",
+]
+containers = [
+    "qfa",
+]
+# qfa.api.app is the FastAPI composition root: its lifespan instantiates
+# the driven adapters (LiteLLMClient, PresidioAnonymizer) and injects
+# them into StandardOrchestrator. This is the single allowed exception
+# to the api / adapters sibling rule. If composition moves out of
+# qfa.api.app into a dedicated module, drop these allowlist entries.
+ignore_imports = [
+    "qfa.api.app -> qfa.adapters.llm_client",
+    "qfa.api.app -> qfa.adapters.presidio_anonymizer",
+]
+
+[[tool.importlinter.contracts]]
+name = "Domain stays free of infrastructure"
+type = "forbidden"
+source_modules = [
+    "qfa.domain",
+]
+forbidden_modules = [
+    "openai",
+    "litellm",
+    "presidio_analyzer",
+    "presidio_anonymizer",
+    "fastapi",
+    "starlette",
+    "tenacity",
+]
+
+[[tool.importlinter.contracts]]
+name = "Application services depend only on ports, not infrastructure"
+type = "forbidden"
+source_modules = [
+    "qfa.services",
+]
+# TODO: tenacity is still imported in qfa.services.orchestrator for retry
+# decoration. Once retry policy moves behind a port (or to a wrapper in
+# qfa.adapters), drop "tenacity" from allow_indirect_imports below and
+# add it to forbidden_modules above.
+forbidden_modules = [
+    "openai",
+    "litellm",
+    "presidio_analyzer",
+    "presidio_anonymizer",
+    "fastapi",
+    "starlette",
 ]

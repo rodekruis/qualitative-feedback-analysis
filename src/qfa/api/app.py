@@ -16,11 +16,13 @@ from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 import qfa
+from qfa.adapters.llm_client import LiteLLMClient
+from qfa.adapters.presidio_anonymizer import PresidioAnonymizer
 from qfa.api.routes import router
 from qfa.api.schemas import (
-    ErrorDetail,
-    ErrorFieldDetail,
-    ErrorResponse,
+    ApiErrorDetail,
+    ApiErrorFieldDetail,
+    ApiErrorResponse,
 )
 from qfa.auth import validate_api_key
 from qfa.domain.errors import (
@@ -29,8 +31,7 @@ from qfa.domain.errors import (
     AuthenticationError,
     DocumentsTooLargeError,
 )
-from qfa.services.llm_client import LiteLLMClient
-from qfa.services.orchestrator import StandardOrchestrator
+from qfa.services.orchestrator import Orchestrator
 from qfa.settings import AppSettings, LLMSettings
 from qfa.utils import setup_logging
 
@@ -93,8 +94,8 @@ class RequestIdMiddleware:
             if response_started:
                 raise
             logger.exception("Unhandled exception for request %s", request_id)
-            body = ErrorResponse(
-                error=ErrorDetail(
+            body = ApiErrorResponse(
+                error=ApiErrorDetail(
                     code="internal_error",
                     message="An unexpected error occurred",
                     request_id=request_id,
@@ -220,8 +221,8 @@ async def _handle_authentication_error(
     JSONResponse
         A 401 JSON response.
     """
-    body = ErrorResponse(
-        error=ErrorDetail(
+    body = ApiErrorResponse(
+        error=ApiErrorDetail(
             code="authentication_required",
             message=str(exc),
             request_id=_get_request_id(request),
@@ -251,10 +252,10 @@ async def _handle_validation_error(
     for err in exc.errors():
         loc_parts = [str(part) for part in err.get("loc", [])]
         field_name = ".".join(loc_parts) if loc_parts else "unknown"
-        fields.append(ErrorFieldDetail(field=field_name, issue=err.get("msg", "")))
+        fields.append(ApiErrorFieldDetail(field=field_name, issue=err.get("msg", "")))
 
-    body = ErrorResponse(
-        error=ErrorDetail(
+    body = ApiErrorResponse(
+        error=ApiErrorDetail(
             code="validation_error",
             message="Request validation failed",
             request_id=_get_request_id(request),
@@ -281,8 +282,8 @@ async def _handle_documents_too_large(
     JSONResponse
         A 413 JSON response.
     """
-    body = ErrorResponse(
-        error=ErrorDetail(
+    body = ApiErrorResponse(
+        error=ApiErrorDetail(
             code="payload_too_large",
             message=str(exc),
             request_id=_get_request_id(request),
@@ -308,8 +309,8 @@ async def _handle_analysis_timeout(
     JSONResponse
         A 504 JSON response.
     """
-    body = ErrorResponse(
-        error=ErrorDetail(
+    body = ApiErrorResponse(
+        error=ApiErrorDetail(
             code="analysis_timeout",
             message=str(exc),
             request_id=_get_request_id(request),
@@ -339,8 +340,8 @@ async def _handle_analysis_error(request: Request, exc: AnalysisError) -> JSONRe
     logger.debug("Analysis error: %s", exc, exc_info=True)
 
     if "injection" in str(exc).lower():
-        body = ErrorResponse(
-            error=ErrorDetail(
+        body = ApiErrorResponse(
+            error=ApiErrorDetail(
                 code="validation_error",
                 message=str(exc),
                 request_id=_get_request_id(request),
@@ -348,8 +349,8 @@ async def _handle_analysis_error(request: Request, exc: AnalysisError) -> JSONRe
         )
         return JSONResponse(status_code=422, content=body.model_dump())
 
-    body = ErrorResponse(
-        error=ErrorDetail(
+    body = ApiErrorResponse(
+        error=ApiErrorDetail(
             code="analysis_unavailable",
             message=str(exc),
             request_id=_get_request_id(request),
@@ -374,8 +375,8 @@ async def _handle_unhandled_exception(request: Request, exc: Exception) -> JSONR
         A 500 JSON response.
     """
     logger.exception("Unhandled exception: %s", exc)
-    body = ErrorResponse(
-        error=ErrorDetail(
+    body = ApiErrorResponse(
+        error=ApiErrorDetail(
             code="internal_error",
             message="An unexpected error occurred",
             request_id=_get_request_id(request),
@@ -402,6 +403,8 @@ def build_llm_client(settings: LLMSettings) -> LiteLLMClient:
         api_key=settings.api_key.get_secret_value(),
         api_base=settings.api_base,
         api_version=settings.api_version,
+        chars_per_token=settings.chars_per_token,
+        max_total_tokens=settings.max_total_tokens,
     )
 
 
@@ -444,8 +447,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     _register_custom_model_prices()
 
     llm_client = build_llm_client(settings.llm)
-    orchestrator = StandardOrchestrator(
+    anonymizer = PresidioAnonymizer()
+    orchestrator = Orchestrator(
         llm=llm_client,
+        anonymizer=anonymizer,
         settings=settings.orchestrator,
         llm_timeout_seconds=settings.llm.timeout_seconds,
         max_total_tokens=settings.llm.max_total_tokens,

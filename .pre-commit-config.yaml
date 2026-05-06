@@ -27,3 +27,8 @@ repos:
     language: system
     files: ^src/.*\.py$
     exclude: ^src/legacy/.*\.py$
+  - id: lint_imports
+    name: "Lint imports"
+    entry: "uv run lint-imports"  # Adapt with custom arguments, if need be.
+    language: system
+    pass_filenames: false
