@@ -149,13 +149,7 @@ Reference anchors:
 - 0.25: the fit is weak or speculative
 - 0.0: the feedback does not support this assignment or the assignment is clearly wrong
 
-Scores between anchors are expected and encouraged. For example, a strong but not perfect match might be 0.85.
-
-Output rules:
-- Output JSON only
-- Do not output markdown
-- Do not output any text other than the JSON object
-- Return exactly this format: {"confidence": <float 0.0-1.0>, "explanation": "<one concise sentence>"}"""
+Scores between anchors are expected and encouraged. For example, a strong but not perfect match might be 0.85."""
 
 
 def build_judge_messages(
