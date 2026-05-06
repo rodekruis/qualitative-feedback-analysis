@@ -438,6 +438,42 @@ class TestErrorMapping:
 
 
 # ------------------------------------------------------------------ #
+# Assign-codes endpoint
+# ------------------------------------------------------------------ #
+
+
+_CODING_BODY = {
+    "feedback_items": [{"id": "custom-1", "content": "Long waiting times"}],
+    "coding_framework": {"types": []},
+}
+
+
+class TestAssignCodesSuccess:
+    @pytest.mark.asyncio
+    async def test_response_includes_confidence_fields_and_explanation(self, client):
+        resp = await client.post(
+            "/v1/assign_codes", json=_CODING_BODY, headers=_auth_header()
+        )
+        assert resp.status_code == 200
+        code_item = resp.json()["coded_feedback_items"][0]["code_items"][0]
+        assert code_item["confidence_type"] == 0.9
+        assert code_item["confidence_category"] == 0.85
+        assert code_item["confidence_code"] == 0.8
+        assert code_item["confidence_aggregate"] == 0.8
+        assert "explanation" in code_item
+
+    @pytest.mark.asyncio
+    async def test_422_on_invalid_confidence_threshold(self, client):
+        resp = await client.post(
+            "/v1/assign_codes",
+            json={**_CODING_BODY, "confidence_threshold": 1.5},
+            headers=_auth_header(),
+        )
+        assert resp.status_code == 422
+        assert resp.json()["error"]["code"] == "validation_error"
+
+
+# ------------------------------------------------------------------ #
 # Health endpoint
 # ------------------------------------------------------------------ #
 
