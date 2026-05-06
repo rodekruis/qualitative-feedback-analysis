@@ -180,6 +180,7 @@ async def assign_codes(
         feedback_items=domain_items,
         coding_framework=body.coding_framework,
         max_codes=body.max_codes,
+        confidence_threshold=body.confidence_threshold,
         tenant_id=tenant.tenant_id,
     )
 
@@ -195,6 +196,11 @@ async def assign_codes(
                     ApiCodeItem(
                         code_id=assigned.code_id,
                         code_label=assigned.code_label,
+                        confidence_type=assigned.confidence_type,
+                        confidence_category=assigned.confidence_category,
+                        confidence_code=assigned.confidence_code,
+                        confidence_aggregate=assigned.confidence_aggregate,
+                        explanation=assigned.explanation,
                     )
                     for assigned in coded.assigned_codes
                 ],

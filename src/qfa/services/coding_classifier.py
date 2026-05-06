@@ -2,6 +2,16 @@
 
 import json
 
+from pydantic import BaseModel, Field
+
+
+class JudgeResponse(BaseModel):
+    """Structured output returned by the LLM judge for one hierarchy level."""
+
+    score: float = Field(description="Confidence score between 0 and 1.")
+    explanation: str = Field(description="Reason for this score.")
+
+
 _SYSTEM = """You are a classification agent for beneficiary feedback items.
 
 Your task is to classify the feedback item using only the options provided at the current hierarchy level.
@@ -109,3 +119,62 @@ def build_pick_messages(
 def parse_selected_indices(raw: str, num_options: int) -> list[int]:
     """Parse the model JSON response for one hierarchy-level pick."""
     return _parse_selected_indices(raw, num_options)
+
+
+_JUDGE_SYSTEM = """You are evaluating whether a code assignment fits a feedback record.
+
+Context:
+These feedback records are collected from community members by Red Cross / Red Crescent National Societies as part of humanitarian programs. Feedback is qualitative and unstructured. It may be:
+- Short or incomplete (a few words or one sentence)
+- Indirect or emotionally expressed rather than explicit
+- Originally written in a local language and translated
+- About services, access, staff behaviour, health, safety, or community concerns
+
+Your task:
+Assess how well the assigned code label at the requested level fits the feedback record, given the full code path (Type > Category > Code) as context.
+
+Important:
+- Do not penalise feedback for being brief or colloquial — short feedback is normal in this domain.
+- Do not require exact keyword matches. Assess meaning and intent.
+- A reasonable interpretation of ambiguous feedback can still warrant a high confidence score, as long as it is grounded in the text.
+- Do not assign high confidence based on superficial similarity alone — the code must genuinely capture what the community member is expressing.
+
+Scoring:
+Assign a score from 0.0 to 1.0. Use the full continuous range — do not round to fixed values.
+
+Reference anchors:
+- 1.0: the feedback clearly and directly supports this assignment
+- 0.75: the feedback reasonably supports this assignment
+- 0.5: the assignment is plausible but uncertain
+- 0.25: the fit is weak or speculative
+- 0.0: the feedback does not support this assignment or the assignment is clearly wrong
+
+Scores between anchors are expected and encouraged. For example, a strong but not perfect match might be 0.85."""
+
+
+def build_judge_messages(
+    *,
+    feedback_text: str,
+    level: str,
+    path: list[tuple[str, str]],
+) -> tuple[str, str]:
+    """Build system and user messages for a single-level judge call.
+
+    Parameters
+    ----------
+    feedback_text:
+        Raw text of the feedback item being coded.
+    level:
+        The hierarchy level being evaluated: ``"Type"``, ``"Category"``, or ``"Code"``.
+    path:
+        Full code path up to and including the current level, as
+        ``[(level_name, label), ...]``. E.g. for the Category judge:
+        ``[("Type", "Service Delivery"), ("Category", "Staff Behavior")]``.
+    """
+    path_lines = "\n".join(f"{name}: {label}" for name, label in path)
+    user = (
+        f"Feedback:\n---\n{feedback_text}\n---\n\n"
+        f"Code path:\n{path_lines}\n\n"
+        f"Evaluate the {level} assignment."
+    )
+    return _JUDGE_SYSTEM, user
