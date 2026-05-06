@@ -2,7 +2,15 @@
 
 import json
 
-from qfa.domain.errors import AnalysisError
+from pydantic import BaseModel, Field
+
+
+class JudgeResponse(BaseModel):
+    """Structured output returned by the LLM judge for one hierarchy level."""
+
+    score: float = Field(description="Confidence score between 0 and 1.")
+    explanation: str = Field(description="Reason for this score.")
+
 
 _SYSTEM = """You are a classification agent for beneficiary feedback items.
 
@@ -176,29 +184,3 @@ def build_judge_messages(
         f"Evaluate the {level} assignment."
     )
     return _JUDGE_SYSTEM, user
-
-
-def parse_judge_response(raw: str) -> tuple[float, str]:
-    """Parse ``{"confidence": float, "explanation": str}`` from judge output.
-
-    Returns
-    -------
-    tuple[float, str]
-        ``(confidence, explanation)`` where confidence is in ``[0.0, 1.0]``.
-
-    Raises
-    ------
-    AnalysisError
-        If the response cannot be parsed or the confidence is out of range.
-    """
-    try:
-        data = json.loads(raw.strip())
-        confidence = float(data["confidence"])
-        explanation = str(data["explanation"])
-    except Exception as exc:
-        raise AnalysisError(
-            "LLM judge returned invalid coding confidence response"
-        ) from exc
-    if not 0.0 <= confidence <= 1.0:
-        raise AnalysisError("LLM judge returned confidence outside 0.0-1.0")
-    return confidence, explanation

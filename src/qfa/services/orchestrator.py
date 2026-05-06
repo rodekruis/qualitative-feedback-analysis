@@ -28,9 +28,9 @@ from qfa.domain.models import (
 )
 from qfa.domain.ports import AnonymizationPort, LLMPort
 from qfa.services.coding_classifier import (
+    JudgeResponse,
     build_judge_messages,
     build_pick_messages,
-    parse_judge_response,
     parse_selected_indices,
 )
 from qfa.settings import OrchestratorSettings
@@ -451,7 +451,7 @@ class Orchestrator:
                 type_entry = types[type_index]
                 type_name = str(type_entry.get("name", ""))
 
-                confidence_type, explanation_type = await self._judge_code_level(
+                judge_type = await self._judge_code_level(
                     feedback_text=feedback_item.text,
                     level="Type",
                     path=[("Type", type_name)],
@@ -459,7 +459,7 @@ class Orchestrator:
                     deadline=deadline,
                     anonymize=anonymize,
                 )
-                if threshold is not None and confidence_type < threshold:
+                if threshold is not None and judge_type.score < threshold:
                     continue
 
                 categories = type_entry.get("categories") or []
@@ -477,10 +477,7 @@ class Orchestrator:
                     category = categories[category_index]
                     category_name = str(category.get("name", ""))
 
-                    (
-                        confidence_category,
-                        explanation_category,
-                    ) = await self._judge_code_level(
+                    judge_category = await self._judge_code_level(
                         feedback_text=feedback_item.text,
                         level="Category",
                         path=[("Type", type_name), ("Category", category_name)],
@@ -488,7 +485,7 @@ class Orchestrator:
                         deadline=deadline,
                         anonymize=anonymize,
                     )
-                    if threshold is not None and confidence_category < threshold:
+                    if threshold is not None and judge_category.score < threshold:
                         continue
 
                     codes = category.get("codes") or []
@@ -509,7 +506,7 @@ class Orchestrator:
                         code = codes[code_index]
                         code_name = str(code.get("name", ""))
 
-                        confidence_code, explanation = await self._judge_code_level(
+                        judge_code = await self._judge_code_level(
                             feedback_text=feedback_item.text,
                             level="Code",
                             path=[
@@ -521,19 +518,19 @@ class Orchestrator:
                             deadline=deadline,
                             anonymize=anonymize,
                         )
-                        if threshold is not None and confidence_code < threshold:
+                        if threshold is not None and judge_code.score < threshold:
                             continue
 
                         candidates.append(
                             _ScoredCode(
                                 code_id=str(code.get("code_id", "")),
                                 code_label=code_name,
-                                confidence_type=confidence_type,
-                                confidence_category=confidence_category,
-                                confidence_code=confidence_code,
-                                explanation_type=explanation_type,
-                                explanation_category=explanation_category,
-                                explanation_code=explanation,
+                                confidence_type=judge_type.score,
+                                confidence_category=judge_category.score,
+                                confidence_code=judge_code.score,
+                                explanation_type=judge_type.explanation,
+                                explanation_category=judge_category.explanation,
+                                explanation_code=judge_code.explanation,
                             )
                         )
 
@@ -629,8 +626,8 @@ class Orchestrator:
         tenant_id: str,
         deadline: datetime,
         anonymize: bool,
-    ) -> tuple[float, str]:
-        """Call the judge LLM for one hierarchy level; return (confidence, explanation)."""
+    ) -> JudgeResponse:
+        """Call the judge LLM for one hierarchy level; return structured score and explanation."""
         system_message, user_message = build_judge_messages(
             feedback_text=feedback_text,
             level=level,
@@ -644,9 +641,11 @@ class Orchestrator:
             system_message=system_message,
             user_message=user_message,
             tenant_id=tenant_id,
-            response_model=str,
+            response_model=JudgeResponse,
         )
-        return parse_judge_response(response.structured)
+        if not 0.0 <= response.structured.score <= 1.0:
+            raise AnalysisError("LLM judge returned score outside 0.0-1.0")
+        return response.structured
 
     # ------------------------------------------------------------------
     # Prompt assembly
