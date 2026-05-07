@@ -243,6 +243,50 @@ def _row_to_usage_stats(tenant_id: str | None, row: sa.Row) -> UsageStats:
     )
 
 
+def _select_totals(
+    base_pred: list,
+    *,
+    group_by_tenant: bool,
+) -> sa.Select:
+    """Build the totals + ok-only distributions SELECT shared by both stats paths.
+
+    All-row aggregates (``total_calls``, ``failed_calls``) are unfiltered,
+    while cost, duration, and token aggregates use ``FILTER (WHERE
+    status='ok')`` so a single SELECT mixes both scopes.
+
+    When ``group_by_tenant`` is True, the SELECT includes ``tenant_id``
+    and groups via ``GROUPING SETS ((tenant_id), ())`` so a single
+    round-trip returns per-tenant rows plus a grand-total roll-up
+    (``tenant_id IS NULL``), ordered alphabetically with the roll-up
+    last. Postgres-only.
+    """
+    ok_filter = llm_calls.c.status == "ok"
+    err_filter = llm_calls.c.status == "error"
+
+    cols: list[sa.ColumnElement] = []
+    if group_by_tenant:
+        cols.append(llm_calls.c.tenant_id)
+    cols.extend(
+        [
+            sa.func.count().label("total_calls"),
+            sa.func.count().filter(err_filter).label("failed_calls"),
+            sa.func.coalesce(
+                sa.func.sum(llm_calls.c.cost_usd).filter(ok_filter), 0
+            ).label("total_cost_usd"),
+            *_build_stats_columns(llm_calls.c.call_duration_ms, "dur", where=ok_filter),
+            *_build_stats_columns(llm_calls.c.input_tokens, "inp", where=ok_filter),
+            *_build_stats_columns(llm_calls.c.output_tokens, "out", where=ok_filter),
+        ]
+    )
+
+    stmt = sa.select(*cols).where(*base_pred)
+    if group_by_tenant:
+        stmt = stmt.group_by(sa.text("GROUPING SETS ((tenant_id), ())")).order_by(
+            llm_calls.c.tenant_id.asc().nulls_last()
+        )
+    return stmt
+
+
 class SqlAlchemyUsageRepository(UsageRepositoryPort):
     """Usage repository backed by SQLAlchemy and PostgreSQL.
 
@@ -291,46 +335,14 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         if to is not None:
             base_pred.append(llm_calls.c.timestamp < to)
 
-        ok_pred = [*base_pred, llm_calls.c.status == "ok"]
-
         async with _translate_db_errors(), self._session_factory() as session:
-            t_row = (
-                await session.execute(
-                    sa.select(
-                        sa.func.count().label("total_calls"),
-                        sa.func.count()
-                        .filter(llm_calls.c.status == "error")
-                        .label("failed_calls"),
-                    ).where(*base_pred)
-                )
-            ).one()
-            total_calls = int(t_row._mapping["total_calls"])
-            if total_calls == 0:
-                return None
-            failed_calls = int(t_row._mapping["failed_calls"] or 0)
-
-            ok_row = (
-                await session.execute(
-                    sa.select(
-                        sa.func.coalesce(sa.func.sum(llm_calls.c.cost_usd), 0).label(
-                            "total_cost_usd"
-                        ),
-                        *_build_stats_columns(llm_calls.c.call_duration_ms, "dur"),
-                        *_build_stats_columns(llm_calls.c.input_tokens, "inp"),
-                        *_build_stats_columns(llm_calls.c.output_tokens, "out"),
-                    ).where(*ok_pred)
-                )
+            row = (
+                await session.execute(_select_totals(base_pred, group_by_tenant=False))
             ).one()
 
-        return UsageStats(
-            tenant_id=tenant_id,
-            total_calls=total_calls,
-            failed_calls=failed_calls,
-            total_cost_usd=Decimal(str(ok_row._mapping["total_cost_usd"])),
-            call_duration=_parse_distribution_ok(ok_row, "dur"),
-            input_tokens=_parse_token_stats_ok(ok_row, "inp"),
-            output_tokens=_parse_token_stats_ok(ok_row, "out"),
-        )
+        if int(row._mapping["total_calls"]) == 0:
+            return None
+        return _row_to_usage_stats(tenant_id, row)
 
     async def get_all_usage_stats(
         self,
@@ -350,42 +362,16 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         if to is not None:
             base_pred.append(llm_calls.c.timestamp < to)
 
-        ok_filter = llm_calls.c.status == "ok"
-        err_filter = llm_calls.c.status == "error"
-
-        # Per-tenant totals + distributions, plus grand-total roll-up via
-        # GROUPING SETS ((tenant_id), ()). The roll-up row carries
-        # tenant_id IS NULL, which matches UsageStats(tenant_id=None, ...).
-        totals_q = (
-            sa.select(
-                llm_calls.c.tenant_id,
-                sa.func.count().label("total_calls"),
-                sa.func.count().filter(err_filter).label("failed_calls"),
-                sa.func.coalesce(
-                    sa.func.sum(llm_calls.c.cost_usd).filter(ok_filter), 0
-                ).label("total_cost_usd"),
-                *_build_stats_columns(
-                    llm_calls.c.call_duration_ms, "dur", where=ok_filter
-                ),
-                *_build_stats_columns(llm_calls.c.input_tokens, "inp", where=ok_filter),
-                *_build_stats_columns(
-                    llm_calls.c.output_tokens, "out", where=ok_filter
-                ),
-            )
-            .where(*base_pred)
-            .group_by(sa.text("GROUPING SETS ((tenant_id), ())"))
-            .order_by(llm_calls.c.tenant_id.asc().nulls_last())
-        )
-
         async with _translate_db_errors(), self._session_factory() as session:
-            totals_rows = (await session.execute(totals_q)).all()
+            rows = (
+                await session.execute(_select_totals(base_pred, group_by_tenant=True))
+            ).all()
 
-        results: list[UsageStats] = []
-        for r in totals_rows:
-            # Skip the grand-total row when the window is empty: GROUPING SETS
-            # always emits the () row even with zero source rows, but the prior
-            # contract was to return [] in that case.
-            if int(r._mapping["total_calls"]) == 0:
-                continue
-            results.append(_row_to_usage_stats(r._mapping["tenant_id"], r))
-        return results
+        # GROUPING SETS always emits the () roll-up row even with zero source
+        # rows; the prior contract was to return [] in that case, so skip rows
+        # whose total_calls is 0.
+        return [
+            _row_to_usage_stats(r._mapping["tenant_id"], r)
+            for r in rows
+            if int(r._mapping["total_calls"]) != 0
+        ]
