@@ -212,7 +212,7 @@ class LiteLLMClient(LLMPort):
             parsed_data = content
         else:
             raise ValueError(
-                "The `response_type` is not a string or BaseModel subclass."
+                "The `response_model` is not a string or BaseModel subclass."
             )
 
         return LLMResponse[T_Response](

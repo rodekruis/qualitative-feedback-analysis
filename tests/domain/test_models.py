@@ -1,14 +1,24 @@
 """Tests for domain models."""
 
+from datetime import UTC, datetime
+from decimal import Decimal
+
 import pytest
 from pydantic import ValidationError
 
 from qfa.domain.models import (
     AnalysisRequestModel,
     AnalysisResultModel,
+    CallContext,
+    CallStatus,
+    DistributionStats,
     FeedbackItemModel,
+    LLMCallRecord,
     LLMResponse,
+    Operation,
     TenantApiKey,
+    TokenStats,
+    UsageStats,
 )
 
 # --- FeedbackItemModel ---
@@ -168,3 +178,105 @@ class TestTenantApiKey:
         )
         with pytest.raises(ValidationError):
             key.name = "changed"
+
+
+# --- Operation / CallStatus / CallContext ---
+
+
+class TestOperationEnum:
+    def test_string_values(self):
+        assert Operation.ANALYZE == "analyze"
+        assert Operation.SUMMARIZE == "summarize"
+        assert Operation.SUMMARIZE_AGGREGATE == "summarize_aggregate"
+        assert Operation.ASSIGN_CODES == "assign_codes"
+        assert Operation.UNKNOWN == "unknown"
+
+
+class TestCallStatusEnum:
+    def test_string_values(self):
+        assert CallStatus.OK == "ok"
+        assert CallStatus.ERROR == "error"
+
+
+class TestCallContext:
+    def test_construct(self):
+        ctx = CallContext(tenant_id="t1", operation=Operation.ANALYZE)
+        assert ctx.tenant_id == "t1"
+        assert ctx.operation == Operation.ANALYZE
+
+    def test_frozen(self):
+        ctx = CallContext(tenant_id="t1", operation=Operation.ANALYZE)
+        with pytest.raises(ValidationError):
+            ctx.tenant_id = "t2"
+
+
+# --- LLMCallRecord ---
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+class TestLLMCallRecord:
+    def test_ok_status(self):
+        rec = LLMCallRecord(
+            tenant_id="t1",
+            operation=Operation.ANALYZE,
+            timestamp=_now(),
+            call_duration_ms=100,
+            model="gpt-4",
+            input_tokens=10,
+            output_tokens=20,
+            cost_usd=Decimal("0.0001"),
+            status=CallStatus.OK,
+        )
+        assert rec.status == CallStatus.OK
+        assert rec.error_class is None
+
+    def test_error_status_requires_error_class(self):
+        with pytest.raises(ValidationError):
+            LLMCallRecord(
+                tenant_id="t1",
+                operation=Operation.ANALYZE,
+                timestamp=_now(),
+                call_duration_ms=100,
+                model="",
+                input_tokens=0,
+                output_tokens=0,
+                cost_usd=Decimal("0"),
+                status=CallStatus.ERROR,
+                error_class=None,
+            )
+
+    def test_ok_status_rejects_error_class(self):
+        with pytest.raises(ValidationError):
+            LLMCallRecord(
+                tenant_id="t1",
+                operation=Operation.ANALYZE,
+                timestamp=_now(),
+                call_duration_ms=100,
+                model="gpt-4",
+                input_tokens=10,
+                output_tokens=20,
+                cost_usd=Decimal("0.0001"),
+                status=CallStatus.OK,
+                error_class="LLMTimeoutError",
+            )
+
+
+# --- UsageStats new fields ---
+
+
+class TestUsageStatsExtensions:
+    def test_has_failed_calls_and_total_cost(self):
+        stats = UsageStats(
+            tenant_id="t1",
+            total_calls=10,
+            failed_calls=1,
+            total_cost_usd=Decimal("0.5"),
+            call_duration=DistributionStats(avg=1, min=0, max=2, p5=0, p95=2),
+            input_tokens=TokenStats(avg=1, min=0, max=2, p5=0, p95=2, total=10),
+            output_tokens=TokenStats(avg=1, min=0, max=2, p5=0, p95=2, total=10),
+        )
+        assert stats.total_cost_usd == Decimal("0.5")
+        assert stats.failed_calls == 1

@@ -1,7 +1,7 @@
 import logging
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from qfa.domain.models import TenantApiKey
@@ -86,6 +86,53 @@ class AuthSettings(BaseSettings):
     api_keys: list[TenantApiKey]  # required, no default
 
 
+class DatabaseSettings(BaseSettings):
+    """Configuration for the PostgreSQL database connection.
+
+    Attributes
+    ----------
+    url : str
+        Database connection URL (asyncpg dialect).
+    track_usage : bool
+        Feature flag to enable/disable usage tracking.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="DB_")
+
+    url: str = ""
+    host: str = ""
+    port: int = 5432
+    name: str = ""
+    user: str = ""
+    password: SecretStr | None = None
+    auth_mode: Literal["password", "entra"] = "password"
+    aad_scope: str = "https://ossrdbms-aad.database.windows.net/.default"
+    track_usage: bool = False
+
+    @model_validator(mode="after")
+    def _require_url_when_track_usage(self) -> "DatabaseSettings":
+        if not self.track_usage:
+            return self
+
+        if self.url:
+            return self
+
+        if not self.host:
+            raise ValueError("DB_HOST must be set when DB_TRACK_USAGE=true")
+        if not self.user:
+            raise ValueError("DB_USER must be set when DB_TRACK_USAGE=true")
+        if not self.name:
+            raise ValueError("DB_NAME must be set when DB_TRACK_USAGE=true")
+        if self.port <= 0:
+            raise ValueError("DB_PORT must be greater than 0")
+        if self.auth_mode == "password" and self.password is None:
+            raise ValueError(
+                "DB_PASSWORD must be set when DB_AUTH_MODE=password "
+                "and DB_URL is not provided"
+            )
+        return self
+
+
 class NetworkSettings(BaseSettings):
     """Configuration for network settings."""
 
@@ -101,6 +148,7 @@ class AppSettings(BaseSettings):
     orchestrator: OrchestratorSettings = Field(default_factory=OrchestratorSettings)
     auth: AuthSettings = Field(default_factory=AuthSettings)
     log: LogSettings = Field(default_factory=LogSettings)
+    db: DatabaseSettings = Field(default_factory=DatabaseSettings)
     network: NetworkSettings = Field(default_factory=NetworkSettings)
     debug: bool = False
     """Whether to enable debug mode.

@@ -9,30 +9,38 @@ from qfa.domain.errors import (
     LLMError,
     LLMRateLimitError,
     LLMTimeoutError,
+    MissingCallScopeError,
 )
 from qfa.domain.models import (
     AnalysisRequestModel,
     AnalysisResultModel,
+    CallContext,
+    CallStatus,
     FeedbackItemModel,
     LLMResponse,
+    Operation,
     TenantApiKey,
 )
 from qfa.domain.ports import AnonymizationPort, LLMPort
 
 __all__ = [
     "AnalysisError",
-    "AnalysisRequest",
-    "AnalysisResult",
+    "AnalysisRequestModel",
+    "AnalysisResultModel",
     "AnalysisTimeoutError",
     "AnonymizationPort",
     "AuthenticationError",
+    "CallContext",
+    "CallStatus",
     "DocumentsTooLargeError",
     "DomainError",
-    "FeedbackItem",
+    "FeedbackItemModel",
     "LLMError",
     "LLMPort",
     "LLMRateLimitError",
     "LLMResponse",
     "LLMTimeoutError",
+    "MissingCallScopeError",
+    "Operation",
     "TenantApiKey",
 ]

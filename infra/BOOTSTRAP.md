@@ -74,6 +74,9 @@ export TF_VAR_acr_name=<globally-unique-acr-name>
 
 # Optional — Azure region for the bootstrapped resources. Defaults to westeurope.
 export LOCATION=westeurope
+
+# PostgreSQL Entra admin is configured automatically by Terraform to the
+# App Service system-assigned managed identity for each environment.
 ```
 
 ### 3. Create the chicken-and-egg resources
@@ -142,6 +145,12 @@ echo "$TF_VAR_tf_state_storage_account"     | gh variable set AZ_TF_STATE_STORAG
 echo "$TF_VAR_acr_resource_group_name"      | gh variable set AZ_ACR_RESOURCE_GROUP       --repo "$REPO"
 echo "$TF_VAR_acr_name"                     | gh variable set AZ_ACR_NAME                 --repo "$REPO"
 ```
+
+The `terraform.yaml` workflow can now run autonomously in CI.
+
+### 7. Seed Key Vault secrets
+
+Seeding secrets is a per-environment step. See [setup-new-env.md § Seed Key Vault secrets](setup-new-env.md#6-seed-key-vault-secrets).
 
 ## Next: create each environment
 

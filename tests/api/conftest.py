@@ -12,6 +12,7 @@ from qfa.api.app import (
     register_exception_handlers,
 )
 from qfa.api.routes import router
+from qfa.api.routes_usage import router as usage_router
 from qfa.domain.models import (
     AnalysisRequestModel,
     AnalysisResultModel,
@@ -26,6 +27,7 @@ from qfa.domain.models import (
 )
 
 FAKE_API_KEY = "test-key-abc123"
+FAKE_SUPERUSER_KEY = "superuser-key-xyz789"
 FAKE_TENANT_ID = "tenant-test"
 FAKE_API_KEY_NAME = "test-key"
 
@@ -134,10 +136,12 @@ def test_app(fake_orchestrator, fake_api_keys):
     app = FastAPI(title="Test App")
     app.add_middleware(RequestIdMiddleware)
     app.include_router(router)
+    app.include_router(usage_router)
     register_exception_handlers(app)
 
     app.state.orchestrator = fake_orchestrator
     app.state.api_keys = fake_api_keys
+    app.state.usage_repo = None
 
     return app
 

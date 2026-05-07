@@ -53,3 +53,29 @@ variable "llm_api_version" {
   type        = string
   default     = "2024-05-01-preview"
 }
+
+# --- PostgreSQL configuration ---
+
+variable "postgres_db_name" {
+  description = "Application database name"
+  type        = string
+  default     = "qfa"
+}
+
+variable "postgres_sku_name" {
+  description = "SKU for PostgreSQL Flexible Server"
+  type        = string
+  default     = "B_Standard_B1ms"
+}
+
+variable "postgres_storage_mb" {
+  description = "Storage size in MB for PostgreSQL Flexible Server"
+  type        = number
+  default     = 32768
+}
+
+variable "db_aad_scope" {
+  description = "AAD scope used by the application to get PostgreSQL access tokens"
+  type        = string
+  default     = "https://ossrdbms-aad.database.windows.net/.default"
+}

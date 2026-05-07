@@ -617,3 +617,45 @@ class TestInjectionErrorNoMatchedText:
         await orch.analyze(request, _future_deadline())
 
         assert len(fake_llm.calls) == 1
+
+
+# --- call_scope wiring ---
+
+
+def _make_orchestrator(llm, settings):
+    return Orchestrator(
+        llm=llm,
+        anonymizer=FakeAnonymizer(),
+        settings=settings,
+        llm_timeout_seconds=LLM_TIMEOUT,
+        max_total_tokens=MAX_TOKENS,
+    )
+
+
+@pytest.mark.asyncio
+async def test_analyze_enters_call_scope_with_analyze_operation():
+    from qfa.domain.models import Operation
+    from qfa.services.call_context import current_call_context
+
+    captured: list = []
+
+    class CapturingLLM:
+        async def complete(
+            self,
+            system_message,
+            user_message,
+            tenant_id,
+            response_model=str,
+            timeout=20.0,
+        ):
+            captured.append(current_call_context.get())
+            return _make_llm_response(structured=_make_analysis_result())
+
+    orch = _make_orchestrator(CapturingLLM(), OrchestratorSettings())
+
+    await orch.analyze(_make_request(), _future_deadline(), anonymize=False)
+
+    assert len(captured) >= 1
+    assert captured[0] is not None
+    assert captured[0].operation == Operation.ANALYZE
+    assert captured[0].tenant_id == TENANT_ID

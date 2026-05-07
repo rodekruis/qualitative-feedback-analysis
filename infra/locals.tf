@@ -6,6 +6,7 @@ locals {
   keyvault_name         = "qfa-${local.env}-keyvault"
   managed_identity_name = "qfa-${local.env}-github"
   github_environment    = local.env
+  db_aad_principal_name = local.app_name # system-assigned MI name matches the App Service name
 
   # Resource IDs for shared infra. Constructed deterministically from variables
   # rather than looked up via `data` sources so the CI identity does not need
