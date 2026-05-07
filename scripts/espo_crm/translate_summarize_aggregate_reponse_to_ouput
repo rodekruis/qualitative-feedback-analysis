@@ -1,0 +1,44 @@
+// Script for translating reponse to output string for summarize aggregate feature in EspoCRM
+
+$response = $_lastHttpResponseBody;
+
+// Extract aggregate summary fields                                                 
+$title = json\retrieve($response, 'summary.title');                                 
+$summary = json\retrieve($response, 'summary.summary');                             
+$score = json\retrieve($response, 'summary.quality_score');
+
+// Build IDs string from the ids array       
+$idsList = json\retrieve($response, 'summary.ids');
+$idsCount = array\length($idsList);             
+$idsString = '';
+$j = 0;
+while ($j < $idsCount) {                                                       
+  $id = array\at($idsList, $j);
+  if ($j > 0) { $idsString = string\concatenate($idsString, ', '); }
+  $idsString = string\concatenate($idsString, $id);                  
+  $j = $j + 1;
+}  
+  
+// Determine the Visual Dot Rating                                                     
+$dots = '○○○○○';
+if ($score >= 0.9) { $dots = '●●●●●'; }                                                 
+else if ($score >= 0.7) { $dots = '●●●●○'; }
+else if ($score >= 0.5) { $dots = '●●●○○'; }                                            
+else if ($score >= 0.3) { $dots = '●●○○○'; }
+else if ($score >= 0.1) { $dots = '●○○○○'; }                                                                                                            
+// Format the Percentage
+$numericScore = $score + 0; // Type casting trick                                       
+$percentageValue = $numericScore * 100;
+$percent = string\concatenate(number\format($percentageValue, 0, '.', ''), '%');
+
+// Build the aggregate block
+$finalString = string\concatenate( 
+    "IDs:            ", $idsString, "\n",
+    "QUALITY:        ", $dots, " ", $percent, "\n",
+    "TITLE:          ", $title, "\n",
+    "SUMMARY:        \n", $summary, "\n",                                               
+    "------------------------------------------------------------\n\n"
+);                                                                                      
+                
+// Output the result to your field
+modelResponse = $finalString;

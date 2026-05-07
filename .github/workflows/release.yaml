@@ -67,8 +67,20 @@ jobs:
       tag: ${{ steps.semrel.outputs.tag }}
       is_prerelease: ${{ steps.semrel.outputs.is_prerelease }}
     steps:
+      # Requires org/repo admin setup: create RELEASE_APP_CLIENT_ID,
+      # create RELEASE_APP_PRIVATE_KEY, install the GitHub App on this repo,
+      # and allow the app to bypass the main branch ruleset.
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          token: ${{ steps.app-token.outputs.token }}
           ref: ${{ github.ref_name }}
           fetch-depth: 0
 
@@ -76,7 +88,7 @@ jobs:
         id: semrel
         uses: python-semantic-release/python-semantic-release@350c48fcb3ffcdfd2e0a235206bc2ecea6b69df0 # v10.5.3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ steps.app-token.outputs.token }}
           force: ${{ github.event.inputs.force }}
           prerelease: ${{ github.event.inputs.prerelease }}
           prerelease_token: ${{ github.event.inputs.prerelease_token }}
@@ -151,7 +163,7 @@ jobs:
       - name: Create draft GitHub Release
         if: steps.semrel.outputs.released == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           PRERELEASE_FLAG=""
           if [ "${{ steps.semrel.outputs.is_prerelease }}" = "true" ]; then

@@ -77,7 +77,7 @@ jobs:
 
       - name: Terraform plan
         if: ${{ inputs.command != 'apply' }}
-        run: terraform plan
+        run: terraform plan -input=false
         env:
           ARM_USE_OIDC: true
           ARM_USE_AZUREAD: true

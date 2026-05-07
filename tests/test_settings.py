@@ -30,7 +30,7 @@ class TestLLMSettings:
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
         monkeypatch.delenv("LLM_MODEL", raising=False)
         settings = LLMSettings()
-        assert settings.model == "azure_ai/gpt-4.1-mini"
+        assert settings.model == "azure_ai/mistral-medium-2505"
 
     def test_default_timeout_seconds(self, monkeypatch):
         monkeypatch.setenv("LLM_API_KEY", "sk-test")

@@ -1,0 +1,97 @@
+// Script for settings summarize per item feature payload in EspoCRM
+
+// Find the related feedback records
+$$backendIDs = record\findRelatedMany('CInsight', id, 'feedbackDatas', 9999,'createdAt', 'desc');
+
+// TODO: Add fields to UI
+$additionalPrompt = "";
+$outputLanguage = "English";
+
+// Initialize loop variables
+$i = 0;
+$itemsString = '';
+$count = array\length($$backendIDs);
+
+// Loop through real records
+while($i < $count) {
+  $$backendID = array\at($$backendIDs, $i);
+
+  // Fetch real attributes
+  $feedbackDescription = record\attribute('CFeedbackData', $$backendID, 'feedbackDescription');
+  $feedbackID = record\attribute('CFeedbackData', $$backendID, 'feedbackFormID');
+  $codingLevel1 = "Placeholder";    // TODO
+  $codingLevel2 = "Placeholder";    // TODO
+  $codingLevel3 = "Placeholder";    // TODO
+  $createdAt = record\attribute('CFeedbackData', $$backendID, 'createdAt');
+
+  // Clean the feedback description string
+  $feedbackDescription = string\replace($feedbackDescription, "\n", " ");
+  $feedbackDescription = string\replace($feedbackDescription, "\r", "");
+  
+  // Fill metadata JSON string
+  $metadata = string\concatenate(
+    '{',
+      '"coding_level_1": "', $codingLevel1, '", ',
+      '"coding_level_2": "', $codingLevel2, '", ',
+      '"coding_level_3": "', $codingLevel3, '", ',
+      '"created": "', $createdAt, '", ',
+      '"feedback_item_id": "', $feedbackID, '"',
+    '}'
+  );
+  
+  // Fill item-level JSON string
+  $item = string\concatenate(
+      '{"content": "', $feedbackDescription, '", "id": "', $feedbackID, '", ', 
+      '"metadata": ', $metadata, '}'
+  );
+
+  // Add a comma between items, except first one
+  if ($i == 0) {
+      $itemsString = $item;
+  } else {
+      $itemsString = string\concatenate($itemsString, ',', $item);
+  }
+
+  $i = $i + 1;
+}
+
+// Build the payload JSON string
+$$payload = string\concatenate(
+    '{',
+    '"feedback_items": [', $itemsString, '],',
+    '"output_language": "'$outputLanguage'",',
+    '"prompt": "', $additionalPrompt, '"',
+    '}'
+);
+
+
+
+// // Test payload: uncomment to succesfully run rest of workflow
+// $$payload = '{
+//     "feedback_items": [
+//         {
+//             "content": "I ate some delicious roti at a suraam place, this is a test message",
+//             "id": "doc-001",
+//             "metadata": {
+//                 "coding_level_1": "Water",
+//                 "coding_level_2": "Distribution",
+//                 "coding_level_3": "Waiting times",
+//                 "created": "2024-06-01T12:00:00Z",
+//                 "feedback_item_id": "fi-001"
+//             }
+//         },
+//         {
+//             "content": "During the mobile clinic in the settlement after the floods, the medical",
+//             "id": "doc-002",
+//             "metadata": {
+//                 "coding_level_1": "Health",
+//                 "coding_level_2": "Staff",
+//                 "coding_level_3": "Supplies",
+//                 "created": "2024-06-02T09:30:00Z",
+//                 "feedback_item_id": "fi-002"
+//             }
+//         }
+//     ],
+//     "output_language": "English",
+//     "prompt": "Focus on operational issues and beneficiary experience."
+// }';

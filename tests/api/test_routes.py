@@ -8,7 +8,7 @@ from qfa.domain.errors import (
     AnalysisTimeoutError,
     DocumentsTooLargeError,
 )
-from qfa.domain.models import FeedbackItemSummary, SummaryResult
+from qfa.domain.models import FeedbackItemSummaryModel, SummaryResultModel
 
 from .conftest import FAKE_API_KEY, FakeOrchestrator
 
@@ -398,9 +398,9 @@ class TestErrorMapping:
     @pytest.mark.asyncio
     async def test_summary_returns_configured_result(self, test_app):
         test_app.state.orchestrator = FakeOrchestrator(
-            summarize_result=SummaryResult(
+            summarize_result=SummaryResultModel(
                 feedback_item_summaries=(
-                    FeedbackItemSummary(
+                    FeedbackItemSummaryModel(
                         id="custom-1",
                         title="Custom title",
                         summary="- Custom point",
@@ -435,6 +435,42 @@ class TestErrorMapping:
                 "quality_score": 0.75,
             }
         ]
+
+
+# ------------------------------------------------------------------ #
+# Assign-codes endpoint
+# ------------------------------------------------------------------ #
+
+
+_CODING_BODY = {
+    "feedback_items": [{"id": "custom-1", "content": "Long waiting times"}],
+    "coding_framework": {"types": []},
+}
+
+
+class TestAssignCodesSuccess:
+    @pytest.mark.asyncio
+    async def test_response_includes_confidence_fields_and_explanation(self, client):
+        resp = await client.post(
+            "/v1/assign_codes", json=_CODING_BODY, headers=_auth_header()
+        )
+        assert resp.status_code == 200
+        code_item = resp.json()["coded_feedback_items"][0]["code_items"][0]
+        assert code_item["confidence_type"] == 0.9
+        assert code_item["confidence_category"] == 0.85
+        assert code_item["confidence_code"] == 0.8
+        assert code_item["confidence_aggregate"] == 0.8
+        assert "explanation" in code_item
+
+    @pytest.mark.asyncio
+    async def test_422_on_invalid_confidence_threshold(self, client):
+        resp = await client.post(
+            "/v1/assign_codes",
+            json={**_CODING_BODY, "confidence_threshold": 1.5},
+            headers=_auth_header(),
+        )
+        assert resp.status_code == 422
+        assert resp.json()["error"]["code"] == "validation_error"
 
 
 # ------------------------------------------------------------------ #
