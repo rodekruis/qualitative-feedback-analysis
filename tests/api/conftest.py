@@ -16,6 +16,7 @@ from qfa.api.routes_usage import router as usage_router
 from qfa.domain.models import (
     AnalysisRequestModel,
     AnalysisResultModel,
+    AssignedCodeModel,
     CodedFeedbackItemModel,
     CodingAssignmentRequestModel,
     CodingAssignmentResultModel,
@@ -88,12 +89,26 @@ class FakeOrchestrator:
         self,
         request: CodingAssignmentRequestModel,
         deadline: datetime,
+        anonymize: bool = True,
     ) -> CodingAssignmentResultModel:
         if self._error is not None:
             raise self._error
         return CodingAssignmentResultModel(
             coded_feedback_items=tuple(
-                CodedFeedbackItemModel(feedback_item_id=item.id, assigned_codes=())
+                CodedFeedbackItemModel(
+                    feedback_item_id=item.id,
+                    assigned_codes=(
+                        AssignedCodeModel(
+                            code_id="code-1",
+                            code_label="Test code",
+                            confidence_type=0.9,
+                            confidence_category=0.85,
+                            confidence_code=0.8,
+                            confidence_aggregate=0.8,
+                            explanation="Type: high. Category: good. Code: good.",
+                        ),
+                    ),
+                )
                 for item in request.feedback_items
             )
         )

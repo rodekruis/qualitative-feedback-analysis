@@ -6,6 +6,7 @@ manages retries with exponential backoff, and enforces deadlines.
 
 import logging
 import re
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from qfa.domain.errors import (
@@ -28,7 +29,12 @@ from qfa.domain.models import (
 )
 from qfa.domain.ports import AnonymizationPort, LLMPort
 from qfa.services.call_context import call_scope
-from qfa.services.coding_classifier import build_pick_messages, parse_selected_indices
+from qfa.services.coding_classifier import (
+    JudgeResponse,
+    build_judge_messages,
+    build_pick_messages,
+    parse_selected_indices,
+)
 from qfa.settings import OrchestratorSettings
 
 logger = logging.getLogger(__name__)
@@ -135,6 +141,30 @@ def _parse_judge_quality_score(raw: str) -> float:
 def _build_judge_system_message(source_text: str, summary: str) -> str:
     """Fill the judge prompt with the provided source text and summary."""
     return _JUDGE_PROMPT.format(source_text=source_text, summary=summary)
+
+
+@dataclass
+class _ScoredCode:
+    code_id: str
+    code_label: str
+    confidence_type: float
+    confidence_category: float
+    confidence_code: float
+    explanation_type: str
+    explanation_category: str
+    explanation_code: str
+
+    @property
+    def confidence_aggregate(self) -> float:
+        return min(self.confidence_type, self.confidence_category, self.confidence_code)
+
+    @property
+    def explanation(self) -> str:
+        return (
+            f"Type ({self.confidence_type:.2f}): {self.explanation_type} "
+            f"Category ({self.confidence_category:.2f}): {self.explanation_category} "
+            f"Code ({self.confidence_code:.2f}): {self.explanation_code}"
+        )
 
 
 class Orchestrator:
@@ -414,11 +444,12 @@ class Orchestrator:
         ):
             coded: list[CodedFeedbackItemModel] = []
             types = request.coding_framework.get("types") or []
+            threshold = request.confidence_threshold
 
             for feedback_item in request.feedback_items:
                 self._check_coding_deadline(deadline)
 
-                rows: list[tuple[str, str]] = []
+                candidates: list[_ScoredCode] = []
 
                 type_indices = await self._pick_code_indices(
                     feedback_text=feedback_item.text,
@@ -433,8 +464,19 @@ class Orchestrator:
                 for type_index in type_indices:
                     type_entry = types[type_index]
                     type_name = str(type_entry.get("name", ""))
-                    categories = type_entry.get("categories") or []
 
+                    judge_type = await self._judge_code_level(
+                        feedback_text=feedback_item.text,
+                        level="Type",
+                        path=[("Type", type_name)],
+                        tenant_id=request.tenant_id,
+                        deadline=deadline,
+                        anonymize=anonymize,
+                    )
+                    if threshold is not None and judge_type.score < threshold:
+                        continue
+
+                    categories = type_entry.get("categories") or []
                     category_indices = await self._pick_code_indices(
                         feedback_text=feedback_item.text,
                         current_level="Categories",
@@ -448,8 +490,19 @@ class Orchestrator:
                     for category_index in category_indices:
                         category = categories[category_index]
                         category_name = str(category.get("name", ""))
-                        codes = category.get("codes") or []
 
+                        judge_category = await self._judge_code_level(
+                            feedback_text=feedback_item.text,
+                            level="Category",
+                            path=[("Type", type_name), ("Category", category_name)],
+                            tenant_id=request.tenant_id,
+                            deadline=deadline,
+                            anonymize=anonymize,
+                        )
+                        if threshold is not None and judge_category.score < threshold:
+                            continue
+
+                        codes = category.get("codes") or []
                         code_indices = await self._pick_code_indices(
                             feedback_text=feedback_item.text,
                             current_level="Codes",
@@ -460,37 +513,58 @@ class Orchestrator:
                             ],
                             tenant_id=request.tenant_id,
                             deadline=deadline,
+                            anonymize=anonymize,
                         )
 
                         for code_index in code_indices:
                             code = codes[code_index]
-                            rows.append(
-                                (
-                                    str(code.get("code_id", "")),
-                                    str(code.get("name", "")),
+                            code_name = str(code.get("name", ""))
+
+                            judge_code = await self._judge_code_level(
+                                feedback_text=feedback_item.text,
+                                level="Code",
+                                path=[
+                                    ("Type", type_name),
+                                    ("Category", category_name),
+                                    ("Code", code_name),
+                                ],
+                                tenant_id=request.tenant_id,
+                                deadline=deadline,
+                                anonymize=anonymize,
+                            )
+                            if threshold is not None and judge_code.score < threshold:
+                                continue
+
+                            candidates.append(
+                                _ScoredCode(
+                                    code_id=str(code.get("code_id", "")),
+                                    code_label=code_name,
+                                    confidence_type=judge_type.score,
+                                    confidence_category=judge_category.score,
+                                    confidence_code=judge_code.score,
+                                    explanation_type=judge_type.explanation,
+                                    explanation_category=judge_category.explanation,
+                                    explanation_code=judge_code.explanation,
                                 )
                             )
-                            if len(rows) >= request.max_codes:
-                                break
 
-                        if len(rows) >= request.max_codes:
-                            break
-
-                    if len(rows) >= request.max_codes:
-                        break
-
-                if len(rows) >= request.max_codes:
-                    break
+                candidates.sort(key=lambda c: c.confidence_aggregate, reverse=True)
+                top = candidates[: request.max_codes]
 
                 coded.append(
                     CodedFeedbackItemModel(
                         feedback_item_id=feedback_item.id,
                         assigned_codes=tuple(
                             AssignedCodeModel(
-                                code_id=code_id,
-                                code_label=code_label,
+                                code_id=c.code_id,
+                                code_label=c.code_label,
+                                confidence_type=c.confidence_type,
+                                confidence_category=c.confidence_category,
+                                confidence_code=c.confidence_code,
+                                confidence_aggregate=c.confidence_aggregate,
+                                explanation=c.explanation,
                             )
-                            for code_id, code_label in rows
+                            for c in top
                         ),
                     )
                 )
@@ -556,6 +630,36 @@ class Orchestrator:
             response_model=str,
         )
         return parse_selected_indices(response.structured, len(labels))
+
+    async def _judge_code_level(
+        self,
+        *,
+        feedback_text: str,
+        level: str,
+        path: list[tuple[str, str]],
+        tenant_id: str,
+        deadline: datetime,
+        anonymize: bool,
+    ) -> JudgeResponse:
+        """Call the judge LLM for one hierarchy level; return structured score and explanation."""
+        system_message, user_message = build_judge_messages(
+            feedback_text=feedback_text,
+            level=level,
+            path=path,
+        )
+        self._check_coding_deadline(deadline)
+        self._check_token_limit(system_message, user_message)
+        if anonymize:
+            user_message, _ = self._anonymizer.anonymize(user_message)
+        response = await self._llm.complete(
+            system_message=system_message,
+            user_message=user_message,
+            tenant_id=tenant_id,
+            response_model=JudgeResponse,
+        )
+        if not 0.0 <= response.structured.score <= 1.0:
+            raise AnalysisError("LLM judge returned score outside 0.0-1.0")
+        return response.structured
 
     # ------------------------------------------------------------------
     # Prompt assembly

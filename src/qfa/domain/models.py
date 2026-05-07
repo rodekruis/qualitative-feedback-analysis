@@ -141,6 +141,12 @@ class CodingAssignmentRequestModel(BaseModel):
         le=50,
         description="Maximum number of leaf codes to retain per feedback item.",
     )
+    confidence_threshold: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Minimum confidence required at each hierarchy level to retain an assignment.",
+    )
     tenant_id: str = Field(description="Tenant identifier injected by the auth layer.")
 
 
@@ -149,10 +155,23 @@ class AssignedCodeModel(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    code_id: str = Field(
-        description="Stable identifier from the coding framework.",
-    )
+    code_id: str = Field(description="Stable identifier from the coding framework.")
     code_label: str = Field(description="Human-readable code name.")
+    confidence_type: float = Field(
+        description="Judge confidence that the Type level fits the feedback item (0-1)."
+    )
+    confidence_category: float = Field(
+        description="Judge confidence that the Category level fits the feedback item (0-1)."
+    )
+    confidence_code: float = Field(
+        description="Judge confidence that the Code level fits the feedback item (0-1)."
+    )
+    confidence_aggregate: float = Field(
+        description="Overall confidence, computed as min of the three level confidences."
+    )
+    explanation: str = Field(
+        description="Judge explanation combining scores from all three hierarchy levels."
+    )
 
 
 class CodedFeedbackItemModel(BaseModel):
