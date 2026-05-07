@@ -1,0 +1,56 @@
+// Script for translating reponse to output string for summarize per item feature in EspoCRM
+
+$response = $_lastHttpResponseBody;
+
+// Get the full list of summaries
+$summariesList = json\retrieve($response, 'summaries');
+
+// Initialize loop variables
+$finalString = '';
+$i = 0;
+$count = array\length($summariesList);
+
+// Loop through every summary item
+while ($i < $count) {
+    // Extract fields for the current index
+    $backendID = array\at($$backendIDs, $i);
+    $feedbackID = json\retrieve($response, string\concatenate('summaries.', $i, '.id'));
+    $title = json\retrieve($response, string\concatenate('summaries.', $i, '.title'));
+    $summary = json\retrieve($response, string\concatenate('summaries.', $i, '.summary'));
+    $score = json\retrieve($response, string\concatenate('summaries.', $i, '.quality_score'));
+
+    // Determine the Visual Dot Rating
+    $dots = '○○○○○';
+    if ($score >= 0.9) { $dots = '●●●●●'; }
+    else if ($score >= 0.7) { $dots = '●●●●○'; }
+    else if ($score >= 0.5) { $dots = '●●●○○'; }
+    else if ($score >= 0.3) { $dots = '●●○○○'; }
+    else if ($score >= 0.1) { $dots = '●○○○○'; }
+
+    // Format the Percentage
+    $numericScore = $score + 0; // Type casting trick
+    $percentageValue = $numericScore * 100;
+    $percent = string\concatenate(number\format($percentageValue, 0, '.', ''), '%');
+    
+    // Build the "Executive" Block
+    $itemBlock = string\concatenate(
+        "Feedback-ID:             ", $feedbackID, "\n",
+        "Backend-ID:             ", $backendID, "\n",
+        "QUALITY:        ", $dots, " ", $percent, "\n",
+        "TITLE:          ", $title, "\n",
+        "SUMMARY:        \n", $summary, "\n",
+        "------------------------------------------------------------\n\n"
+    );
+
+    // Append to the master string
+    $finalString = string\concatenate($finalString, $itemBlock);
+    
+    // Set feedback item summary description attribute
+    record\update("CFeedbackData", $backendID, "descriptionSummary", $itemBlock);
+
+    // Update counter
+    $i = $i + 1;
+}
+
+// Output the result to your field
+modelResponse = $finalString;
