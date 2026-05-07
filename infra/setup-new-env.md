@@ -107,3 +107,20 @@ Without these secrets the App Service will start and pass health checks, but API
 ## Re-running after `terraform destroy`
 
 If the managed identity is ever recreated (e.g. after `terraform destroy`), re-run steps 4 and 5 for the affected environment to update `AZ_CLIENT_ID` in its GitHub environment.
+
+## Debugging database connectivity
+
+The database has no public network access and no password-based authentication. To reach it from a running container:
+
+```bash
+# 1. Open a shell in the App Service container for the target environment
+az webapp ssh --name "qfa-${ENV}-backend" --resource-group "$TF_VAR_resource_group_name"
+
+# 2. Inside the container, obtain an Entra access token and connect via psql
+PGPASSWORD=$(az account get-access-token \
+  --resource https://ossrdbms-aad.database.windows.net \
+  --query accessToken -o tsv) \
+psql "host=$DB_HOST user=$DB_USER sslmode=require dbname=$DB_NAME"
+```
+
+The `DB_HOST`, `DB_USER`, and `DB_NAME` environment variables are set by the App Service and match the values in `app_service.tf`. The token is short-lived; if the session times out, repeat step 2.
