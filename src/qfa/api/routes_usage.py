@@ -125,8 +125,6 @@ async def usage(
     """
     from_, to = _parse_time_window(from_, to)
     stats = await usage_repo.get_usage_stats(tenant.tenant_id, from_=from_, to=to)
-    if stats is None:
-        stats = _zero_usage_stats(tenant.tenant_id)
     return UsageStatsResponse(**stats.model_dump(), from_=from_, to=to)
 
 

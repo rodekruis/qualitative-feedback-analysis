@@ -72,7 +72,7 @@ class UsageRepositoryPort(Protocol):
         tenant_id: str,
         from_: dt.datetime | None = None,
         to: dt.datetime | None = None,
-    ) -> UsageStats | None:
+    ) -> UsageStats:
         """Get aggregated usage stats for a single tenant.
 
         Parameters

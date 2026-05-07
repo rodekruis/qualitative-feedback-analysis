@@ -137,22 +137,6 @@ class TestUsageEndpoint:
         )
         assert resp.status_code == 422
 
-    async def test_empty_window_returns_200_zeros(self, test_app):
-        test_app.state.usage_repo = FakeUsageRepository(stats=None)
-        async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=test_app),
-            base_url="http://test",
-        ) as client:
-            resp = await client.get(
-                "/v1/usage",
-                headers={"Authorization": f"Bearer {FAKE_API_KEY}"},
-            )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["total_calls"] == 0
-        assert data["failed_calls"] == 0
-        assert data["total_cost_usd"] == 0
-
     async def test_requires_authentication(self, client_with_repo):
         client, _ = client_with_repo
         resp = await client.get("/v1/usage")

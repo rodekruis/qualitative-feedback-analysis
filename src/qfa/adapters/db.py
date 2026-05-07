@@ -323,7 +323,7 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         tenant_id: str,
         from_: datetime | None = None,
         to: datetime | None = None,
-    ) -> UsageStats | None:
+    ) -> UsageStats:
         """Aggregate stats for a single tenant within an optional time window.
 
         Cost, distributions, and token totals scope to ``status='ok'`` rows.
@@ -340,8 +340,6 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
                 await session.execute(_select_totals(base_pred, group_by_tenant=False))
             ).one()
 
-        if int(row._mapping["total_calls"]) == 0:
-            return None
         return _row_to_usage_stats(tenant_id, row)
 
     async def get_all_usage_stats(
