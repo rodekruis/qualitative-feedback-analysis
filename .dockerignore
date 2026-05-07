@@ -10,4 +10,5 @@ docs
 **/*.env
 **/env.*
 **/.env
+!alembic/env.py
 .ruff_cache
