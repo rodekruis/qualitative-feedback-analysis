@@ -18,7 +18,7 @@ from pydantic import (
 )
 
 
-class FeedbackItemModel(BaseModel):
+class FeedbackRecordModel(BaseModel):
     """A single feedback item submitted for analysis."""
 
     model_config = ConfigDict(frozen=True)
@@ -40,7 +40,7 @@ class AnalysisRequestModel(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    documents: tuple[FeedbackItemModel, ...] = Field(
+    documents: tuple[FeedbackRecordModel, ...] = Field(
         min_length=1,
         description="Non-empty tuple of feedback items to analyze.",
     )
@@ -65,7 +65,7 @@ class SummaryRequestModel(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    feedback_items: tuple[FeedbackItemModel, ...] = Field(
+    feedback_items: tuple[FeedbackRecordModel, ...] = Field(
         min_length=1,
         description="Non-empty tuple of feedback items to summarize.",
     )
@@ -81,7 +81,7 @@ class SummaryRequestModel(BaseModel):
     tenant_id: str = Field(description="Tenant identifier injected by the auth layer.")
 
 
-class FeedbackItemSummaryModel(BaseModel):
+class FeedbackRecordSummaryModel(BaseModel):
     """Summary output for a single feedback item."""
 
     model_config = ConfigDict(frozen=True)
@@ -101,7 +101,7 @@ class SummaryResultModel(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    feedback_item_summaries: tuple[FeedbackItemSummaryModel, ...] = Field(
+    feedback_item_summaries: tuple[FeedbackRecordSummaryModel, ...] = Field(
         description="Per-feedback-item summaries returned by the summarize flow.",
     )
 
@@ -129,7 +129,7 @@ class CodingAssignmentRequestModel(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    feedback_items: tuple[FeedbackItemModel, ...] = Field(
+    feedback_items: tuple[FeedbackRecordModel, ...] = Field(
         min_length=1,
         description="Non-empty tuple of feedback items to code.",
     )
@@ -174,7 +174,7 @@ class AssignedCodeModel(BaseModel):
     )
 
 
-class CodedFeedbackItemModel(BaseModel):
+class CodedFeedbackRecordModel(BaseModel):
     """Coding output for one feedback item."""
 
     model_config = ConfigDict(frozen=True)
@@ -192,7 +192,7 @@ class CodingAssignmentResultModel(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    coded_feedback_items: tuple[CodedFeedbackItemModel, ...] = Field(
+    coded_feedback_items: tuple[CodedFeedbackRecordModel, ...] = Field(
         description="Per-item coding results aligned with the request order.",
     )
 

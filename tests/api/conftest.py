@@ -18,10 +18,10 @@ from qfa.domain.models import (
     AnalysisRequestModel,
     AnalysisResultModel,
     AssignedCodeModel,
-    CodedFeedbackItemModel,
+    CodedFeedbackRecordModel,
     CodingAssignmentRequestModel,
     CodingAssignmentResultModel,
-    FeedbackItemSummaryModel,
+    FeedbackRecordSummaryModel,
     SummaryRequestModel,
     SummaryResultModel,
     TenantApiKey,
@@ -51,7 +51,7 @@ class FakeOrchestrator:
         )
         self._summarize_result = summarize_result or SummaryResultModel(
             feedback_item_summaries=(
-                FeedbackItemSummaryModel(
+                FeedbackRecordSummaryModel(
                     id="doc-1",
                     title="Fake summary title",
                     summary="- Fake summary point",
@@ -106,7 +106,7 @@ class FakeOrchestrator:
             raise self._error
         return CodingAssignmentResultModel(
             coded_feedback_items=tuple(
-                CodedFeedbackItemModel(
+                CodedFeedbackRecordModel(
                     feedback_item_id=item.id,
                     assigned_codes=(
                         AssignedCodeModel(

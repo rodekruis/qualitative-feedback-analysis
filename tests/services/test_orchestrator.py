@@ -12,8 +12,8 @@ from qfa.domain.models import (
     AggregateSummaryResultModel,
     AnalysisRequestModel,
     AnalysisResultModel,
-    FeedbackItemModel,
-    FeedbackItemSummaryModel,
+    FeedbackRecordModel,
+    FeedbackRecordSummaryModel,
     LLMResponse,
     SummaryRequestModel,
     SummaryResultModel,
@@ -27,7 +27,7 @@ MAX_TOKENS = 10_000
 
 
 def _make_document(doc_id="doc-1", text="Some feedback text.", metadata=None):
-    return FeedbackItemModel(id=doc_id, text=text, metadata=metadata or {})
+    return FeedbackRecordModel(id=doc_id, text=text, metadata=metadata or {})
 
 
 def _make_request(documents=None, prompt="Summarize feedback.", tenant_id=TENANT_ID):
@@ -70,7 +70,7 @@ def _make_summary_result(
 ):
     return SummaryResultModel(
         feedback_item_summaries=(
-            FeedbackItemSummaryModel(
+            FeedbackRecordSummaryModel(
                 id=item_id,
                 title=title,
                 summary=summary,

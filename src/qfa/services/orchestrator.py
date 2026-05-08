@@ -5,7 +5,6 @@ manages retries with exponential backoff, and enforces deadlines.
 """
 
 import logging
-import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -19,10 +18,10 @@ from qfa.domain.models import (
     AnalysisRequestModel,
     AnalysisResultModel,
     AssignedCodeModel,
-    CodedFeedbackItemModel,
+    CodedFeedbackRecordModel,
     CodingAssignmentRequestModel,
     CodingAssignmentResultModel,
-    FeedbackItemModel,
+    FeedbackRecordModel,
     Operation,
     SummaryRequestModel,
     SummaryResultModel,
@@ -435,7 +434,7 @@ class Orchestrator:
             tenant_id=request.tenant_id,
             operation=Operation.ASSIGN_CODES,
         ):
-            coded: list[CodedFeedbackItemModel] = []
+            coded: list[CodedFeedbackRecordModel] = []
             types = request.coding_framework.get("types") or []
             threshold = request.confidence_threshold
 
@@ -545,7 +544,7 @@ class Orchestrator:
                 top = candidates[: request.max_codes]
 
                 coded.append(
-                    CodedFeedbackItemModel(
+                    CodedFeedbackRecordModel(
                         feedback_item_id=feedback_item.id,
                         assigned_codes=tuple(
                             AssignedCodeModel(
@@ -658,7 +657,7 @@ class Orchestrator:
     # Prompt assembly
     # ------------------------------------------------------------------
 
-    def _assemble_documents(self, documents: tuple[FeedbackItemModel, ...]) -> str:
+    def _assemble_documents(self, documents: tuple[FeedbackRecordModel, ...]) -> str:
         """Assemble documents into the user-message XML block.
 
         Parameters

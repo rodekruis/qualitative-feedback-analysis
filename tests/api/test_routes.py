@@ -8,7 +8,7 @@ from qfa.domain.errors import (
     AnalysisTimeoutError,
     DocumentsTooLargeError,
 )
-from qfa.domain.models import FeedbackItemSummaryModel, SummaryResultModel
+from qfa.domain.models import FeedbackRecordSummaryModel, SummaryResultModel
 
 from .conftest import FAKE_API_KEY, FakeOrchestrator
 
@@ -400,7 +400,7 @@ class TestErrorMapping:
         test_app.state.orchestrator = FakeOrchestrator(
             summarize_result=SummaryResultModel(
                 feedback_item_summaries=(
-                    FeedbackItemSummaryModel(
+                    FeedbackRecordSummaryModel(
                         id="custom-1",
                         title="Custom title",
                         summary="- Custom point",
