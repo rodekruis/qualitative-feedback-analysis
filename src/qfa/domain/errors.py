@@ -59,6 +59,14 @@ class AuthorizationError(DomainError):
     """Raised when a user lacks permission for the requested operation."""
 
 
+class UserAlreadyExistsError(DomainError):
+    """Raised when we try to create a user with an existing id."""
+
+
+class UserNotFoundError(DomainError):
+    """Raised when we try to access a user that doesn't exist."""
+
+
 # --- Tracking errors ---
 
 

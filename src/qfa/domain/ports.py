@@ -12,6 +12,7 @@ from qfa.domain.models import (
     LLMCallRecord,
     LLMResponse,
     T_Response,
+    TenantApiKey,
     UsageStats,
 )
 
@@ -155,5 +156,73 @@ class AnonymizationPort(Protocol):
         -------
         str
             The text with placeholders replaced by original values.
+        """
+        ...
+
+
+class AuthLookupPort(Protocol):
+    """Port for authenticating users of the appication."""
+
+    def validate_api_key(self, provided_key: str) -> TenantApiKey:
+        """Validate if a user exists in the implemented adapter.
+
+        Parameters
+        ----------
+        provided_key : str
+            The API key value supplied by the caller.
+
+        Returns
+        -------
+        TenantApiKey
+            The matching tenant API key.
+
+        Raises
+        ------
+        AuthenticationError
+            If no loaded key matches *provided_key*.
+        """
+        ...
+
+    def get_all_users(self) -> list[TenantApiKey]:
+        """Return all users known by the implemented adapter.
+
+        Returns
+        -------
+        list[TenantApiKey]
+            All tenant API keys available to the authentication backend.
+        """
+        ...
+
+
+class UserManagementPort(Protocol):
+    """Port for adding/ removing users from the application."""
+
+    def add_user(self, tenant_api_key: TenantApiKey) -> None:
+        """Persist a new user/API key in the implemented adapter.
+
+        Parameters
+        ----------
+        tenant_api_key : TenantApiKey
+            The tenant API key record to add.
+
+        Raises
+        ------
+        UserAlreadyExistsError:
+            If user with this key_id already exists
+        """
+        ...
+
+    def delete_user(self, key_id: str) -> None:
+        """Delete an existing user/API key from the implemented adapter.
+
+        Parameters
+        ----------
+        key_id : str
+            The unique identifier of the API key record to remove.
+
+        Raises
+        ------
+        UserNotFoundError:
+            If no user with this key_id exists
         """
         ...

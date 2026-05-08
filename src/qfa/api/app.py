@@ -34,6 +34,8 @@ from qfa.domain.errors import (
     DocumentsTooLargeError,
     LLMError,
     UsageRepositoryUnavailableError,
+    UserAlreadyExistsError,
+    UserNotFoundError,
 )
 from qfa.domain.ports import LLMPort
 from qfa.services.orchestrator import Orchestrator
@@ -666,6 +668,8 @@ def register_exception_handlers(app: FastAPI) -> None:
     """
     app.add_exception_handler(AuthorizationError, _handle_authorization_error)  # ty: ignore[invalid-argument-type]
     app.add_exception_handler(AuthenticationError, _handle_authentication_error)  # ty: ignore[invalid-argument-type]
+    app.add_exception_handler(UserAlreadyExistsError, _handle_authentication_error)  # ty: ignore[invalid-argument-type]
+    app.add_exception_handler(UserNotFoundError, _handle_authentication_error)  # ty: ignore[invalid-argument-type]
     app.add_exception_handler(RequestValidationError, _handle_validation_error)  # ty: ignore[invalid-argument-type]
     app.add_exception_handler(DocumentsTooLargeError, _handle_documents_too_large)  # ty: ignore[invalid-argument-type]
     app.add_exception_handler(AnalysisTimeoutError, _handle_analysis_timeout)  # ty: ignore[invalid-argument-type]
