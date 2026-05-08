@@ -23,9 +23,11 @@ import pytest
 import pytest_asyncio
 import sqlalchemy as sa
 from asgi_lifespan import LifespanManager
+from pydantic import BaseModel, ValidationError
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from qfa.domain import LLMPort
+from qfa.domain.errors import LLMError
 from qfa.domain.models import LLMResponse, T_Response
 from tests.integration.conftest import integration_db_url
 
@@ -93,6 +95,19 @@ class FakeLLMPort(LLMPort):
         item = self._queued.pop(0)
         if isinstance(item, BaseException):
             raise item
+
+        # Mirror LiteLLMClient: parse raw JSON content into the requested
+        # response_model. The queue stores LLMResponse with a string
+        # `structured`; for BaseModel response_models, parse it now so the
+        # orchestrator receives a typed payload exactly as it would in prod.
+        if isinstance(item.structured, str) and issubclass(response_model, BaseModel):
+            try:
+                parsed = response_model.model_validate_json(item.structured)
+            except ValidationError as exc:
+                raise LLMError(
+                    f"LLM response validation failed for {response_model.__name__}: {exc}"
+                ) from exc
+            return item.model_copy(update={"structured": parsed})
         return item
 
 
