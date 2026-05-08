@@ -31,7 +31,7 @@ from qfa.domain.errors import (
     AnalysisTimeoutError,
     AuthenticationError,
     AuthorizationError,
-    DocumentsTooLargeError,
+    FeedbackTooLargeError,
     LLMError,
     UsageRepositoryUnavailableError,
 )
@@ -297,17 +297,17 @@ async def _handle_validation_error(
     return JSONResponse(status_code=422, content=body.model_dump())
 
 
-async def _handle_documents_too_large(
-    request: Request, exc: DocumentsTooLargeError
+async def _handle_feedback_too_large(
+    request: Request, exc: FeedbackTooLargeError
 ) -> JSONResponse:
-    """Handle DocumentsTooLargeError exceptions.
+    """Handle FeedbackTooLargeError exceptions.
 
     Parameters
     ----------
     request : Request
         The incoming HTTP request.
-    exc : DocumentsTooLargeError
-        The documents too large error.
+    exc : FeedbackTooLargeError
+        The feedback-too-large error.
 
     Returns
     -------
@@ -667,7 +667,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(AuthorizationError, _handle_authorization_error)  # ty: ignore[invalid-argument-type]
     app.add_exception_handler(AuthenticationError, _handle_authentication_error)  # ty: ignore[invalid-argument-type]
     app.add_exception_handler(RequestValidationError, _handle_validation_error)  # ty: ignore[invalid-argument-type]
-    app.add_exception_handler(DocumentsTooLargeError, _handle_documents_too_large)  # ty: ignore[invalid-argument-type]
+    app.add_exception_handler(FeedbackTooLargeError, _handle_feedback_too_large)  # ty: ignore[invalid-argument-type]
     app.add_exception_handler(AnalysisTimeoutError, _handle_analysis_timeout)  # ty: ignore[invalid-argument-type]
     app.add_exception_handler(AnalysisError, _handle_analysis_error)  # ty: ignore[invalid-argument-type]
     app.add_exception_handler(LLMError, _handle_llm_error)  # ty: ignore[invalid-argument-type]

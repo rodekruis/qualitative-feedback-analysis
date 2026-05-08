@@ -16,13 +16,13 @@ class AnalysisTimeoutError(AnalysisError):
     """Raised when an analysis exceeds the allowed deadline."""
 
 
-class DocumentsTooLargeError(AnalysisError):
-    """Raised when estimated tokens for documents exceed the limit.
+class FeedbackTooLargeError(AnalysisError):
+    """Raised when estimated tokens for the submitted feedback exceed the limit.
 
     Attributes
     ----------
     estimated_tokens : int
-        The estimated token count for the submitted documents.
+        The estimated token count for the submitted feedback records.
     limit : int
         The maximum allowed token count.
     """

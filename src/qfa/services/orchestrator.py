@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from qfa.domain.errors import (
     AnalysisError,
     AnalysisTimeoutError,
-    DocumentsTooLargeError,
+    FeedbackTooLargeError,
 )
 from qfa.domain.models import (
     AggregateSummaryResultModel,
@@ -218,7 +218,7 @@ class Orchestrator:
         ------
         AnalysisTimeoutError
             When the deadline is exceeded.
-        DocumentsTooLargeError
+        FeedbackTooLargeError
             When estimated tokens exceed the configured limit.
         AnalysisError
             For non-recoverable LLM failures or prompt injection.
@@ -698,7 +698,7 @@ class Orchestrator:
 
         Raises
         ------
-        DocumentsTooLargeError
+        FeedbackTooLargeError
             When estimated tokens exceed the configured limit.
         """
         assembled_text = system_message + user_message
@@ -708,7 +708,7 @@ class Orchestrator:
                 f"Estimated tokens ({estimated_tokens}) exceed limit "
                 f"({self._max_total_tokens})"
             )
-            raise DocumentsTooLargeError(
+            raise FeedbackTooLargeError(
                 msg,
                 estimated_tokens=estimated_tokens,
                 limit=self._max_total_tokens,

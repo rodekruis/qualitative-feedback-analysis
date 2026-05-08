@@ -6,7 +6,7 @@ import pytest
 from qfa.domain.errors import (
     AnalysisError,
     AnalysisTimeoutError,
-    DocumentsTooLargeError,
+    FeedbackTooLargeError,
 )
 from qfa.domain.models import FeedbackRecordSummaryModel, SummaryResultModel
 
@@ -277,7 +277,7 @@ class TestErrorMapping:
     @pytest.mark.asyncio
     async def test_413_documents_too_large(self, test_app):
         test_app.state.orchestrator = FakeOrchestrator(
-            error=DocumentsTooLargeError(
+            error=FeedbackTooLargeError(
                 "Too large", estimated_tokens=200_000, limit=100_000
             )
         )
@@ -342,7 +342,7 @@ class TestErrorMapping:
     @pytest.mark.asyncio
     async def test_summary_413_documents_too_large(self, test_app):
         test_app.state.orchestrator = FakeOrchestrator(
-            error=DocumentsTooLargeError(
+            error=FeedbackTooLargeError(
                 "Too large", estimated_tokens=200_000, limit=100_000
             )
         )

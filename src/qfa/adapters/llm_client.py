@@ -9,7 +9,7 @@ from litellm import acompletion, completion_cost
 from pydantic import BaseModel, ValidationError
 from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_exponential
 
-from qfa.domain import AnalysisError, DocumentsTooLargeError
+from qfa.domain import AnalysisError, FeedbackTooLargeError
 from qfa.domain.errors import LLMError, LLMRateLimitError, LLMTimeoutError
 from qfa.domain.models import LLMResponse, T_Response
 from qfa.domain.ports import LLMPort
@@ -96,7 +96,7 @@ class LiteLLMClient(LLMPort):
 
         Raises
         ------
-        DocumentsTooLargeError
+        FeedbackTooLargeError
             When estimated tokens exceed the configured limit.
         """
         assembled_text = system_message + user_message
@@ -106,7 +106,7 @@ class LiteLLMClient(LLMPort):
                 f"Estimated tokens ({estimated_tokens}) exceed limit "
                 f"({self._max_total_tokens})"
             )
-            raise DocumentsTooLargeError(
+            raise FeedbackTooLargeError(
                 msg,
                 estimated_tokens=estimated_tokens,
                 limit=self._max_total_tokens,
