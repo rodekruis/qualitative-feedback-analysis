@@ -40,9 +40,9 @@ class AnalysisRequestModel(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    documents: tuple[FeedbackRecordModel, ...] = Field(
+    feedback_records: tuple[FeedbackRecordModel, ...] = Field(
         min_length=1,
-        description="Non-empty tuple of feedback items to analyze.",
+        description="Non-empty tuple of feedback records to analyze.",
     )
     prompt: str = Field(
         min_length=1,
@@ -65,7 +65,7 @@ class SummaryRequestModel(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    feedback_items: tuple[FeedbackRecordModel, ...] = Field(
+    feedback_records: tuple[FeedbackRecordModel, ...] = Field(
         min_length=1,
         description="Non-empty tuple of feedback items to summarize.",
     )
@@ -101,7 +101,7 @@ class SummaryResultModel(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    feedback_item_summaries: tuple[FeedbackRecordSummaryModel, ...] = Field(
+    feedback_record_summaries: tuple[FeedbackRecordSummaryModel, ...] = Field(
         description="Per-feedback-item summaries returned by the summarize flow.",
     )
 
@@ -129,7 +129,7 @@ class CodingAssignmentRequestModel(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    feedback_items: tuple[FeedbackRecordModel, ...] = Field(
+    feedback_records: tuple[FeedbackRecordModel, ...] = Field(
         min_length=1,
         description="Non-empty tuple of feedback items to code.",
     )
@@ -179,7 +179,7 @@ class CodedFeedbackRecordModel(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    feedback_item_id: str = Field(
+    feedback_record_id: str = Field(
         description="Identifier of the source feedback item.",
     )
     assigned_codes: tuple[AssignedCodeModel, ...] = Field(
@@ -192,7 +192,7 @@ class CodingAssignmentResultModel(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    coded_feedback_items: tuple[CodedFeedbackRecordModel, ...] = Field(
+    coded_feedback_records: tuple[CodedFeedbackRecordModel, ...] = Field(
         description="Per-item coding results aligned with the request order.",
     )
 

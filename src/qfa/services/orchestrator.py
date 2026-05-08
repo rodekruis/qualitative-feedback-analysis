@@ -226,7 +226,7 @@ class Orchestrator:
         async with call_scope(tenant_id=request.tenant_id, operation=Operation.ANALYZE):
             timeout = self._check_deadline_and_get_timeout(deadline)
             system_message = _SYSTEM_MESSAGE_TEMPLATE.format(prompt=request.prompt)
-            user_message = self._assemble_documents(request.documents)
+            user_message = self._assemble_documents(request.feedback_records)
 
             anonymized_user_message = user_message
             if anonymize:
@@ -291,7 +291,7 @@ class Orchestrator:
             if request.prompt:
                 system_message += f"\nAdditional instructions: {request.prompt}"
 
-            user_message = str(request.feedback_items)
+            user_message = str(request.feedback_records)
             anonymized_user_message = user_message
             if anonymize:
                 anonymized_user_message, anonymization_mapping = (
@@ -351,7 +351,7 @@ class Orchestrator:
 
             user_message = "\n\n".join(
                 f"{idx}. {item.text}"
-                for idx, item in enumerate(request.feedback_items, start=1)
+                for idx, item in enumerate(request.feedback_records, start=1)
             )
 
             anonymized_user_message = user_message
@@ -438,7 +438,7 @@ class Orchestrator:
             types = request.coding_framework.get("types") or []
             threshold = request.confidence_threshold
 
-            for feedback_item in request.feedback_items:
+            for feedback_item in request.feedback_records:
                 self._check_coding_deadline(deadline)
 
                 candidates: list[_ScoredCode] = []
@@ -545,7 +545,7 @@ class Orchestrator:
 
                 coded.append(
                     CodedFeedbackRecordModel(
-                        feedback_item_id=feedback_item.id,
+                        feedback_record_id=feedback_item.id,
                         assigned_codes=tuple(
                             AssignedCodeModel(
                                 code_id=c.code_id,
@@ -561,7 +561,7 @@ class Orchestrator:
                     )
                 )
 
-            return CodingAssignmentResultModel(coded_feedback_items=tuple(coded))
+            return CodingAssignmentResultModel(coded_feedback_records=tuple(coded))
 
     def _check_deadline_and_get_timeout(self, deadline: datetime) -> float:
         """

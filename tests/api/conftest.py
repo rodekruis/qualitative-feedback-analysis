@@ -50,7 +50,7 @@ class FakeOrchestrator:
             result="Fake analysis result",
         )
         self._summarize_result = summarize_result or SummaryResultModel(
-            feedback_item_summaries=(
+            feedback_record_summaries=(
                 FeedbackRecordSummaryModel(
                     id="doc-1",
                     title="Fake summary title",
@@ -90,7 +90,7 @@ class FakeOrchestrator:
         if self._error is not None:
             raise self._error
         return AggregateSummaryResultModel(
-            ids=tuple(item.id for item in request.feedback_items),
+            ids=tuple(item.id for item in request.feedback_records),
             title="Fake aggregate title",
             summary="- Fake aggregate point",
             quality_score=0.9,
@@ -105,9 +105,9 @@ class FakeOrchestrator:
         if self._error is not None:
             raise self._error
         return CodingAssignmentResultModel(
-            coded_feedback_items=tuple(
+            coded_feedback_records=tuple(
                 CodedFeedbackRecordModel(
-                    feedback_item_id=item.id,
+                    feedback_record_id=item.id,
                     assigned_codes=(
                         AssignedCodeModel(
                             code_id="code-1",
@@ -120,7 +120,7 @@ class FakeOrchestrator:
                         ),
                     ),
                 )
-                for item in request.feedback_items
+                for item in request.feedback_records
             )
         )
 

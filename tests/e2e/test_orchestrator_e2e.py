@@ -49,7 +49,7 @@ class TestAnalyzeRecordsRow:
         resp = await e2e_client.post(
             "/v1/analyze",
             json={
-                "documents": [{"id": "d1", "text": "hello"}],
+                "feedback_records": [{"id": "d1", "text": "hello"}],
                 "prompt": "summarize",
                 "deactivate_anonymization": True,
             },
@@ -76,7 +76,7 @@ class TestAnalyzeFailureRecordsRow:
         resp = await e2e_client.post(
             "/v1/analyze",
             json={
-                "documents": [{"id": "d1", "text": "hello"}],
+                "feedback_records": [{"id": "d1", "text": "hello"}],
                 "prompt": "summarize",
                 "deactivate_anonymization": True,
             },
@@ -129,7 +129,7 @@ class TestAssignCodesRecordsMultipleRows:
             "/v1/assign_codes",
             json={
                 "coding_framework": coding_framework,
-                "feedback_items": [{"id": "f1", "content": "some feedback text"}],
+                "feedback_records": [{"id": "f1", "content": "some feedback text"}],
                 "max_codes": 5,
             },
             headers={"Authorization": f"Bearer {E2E_API_KEY}"},

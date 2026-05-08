@@ -67,47 +67,51 @@ class TestAnalysisRequestModel:
     def test_construct_with_valid_data(self):
         doc = self._make_doc()
         req = AnalysisRequestModel(
-            documents=(doc,), prompt="Summarize feedback", tenant_id="tenant-1"
+            feedback_records=(doc,), prompt="Summarize feedback", tenant_id="tenant-1"
         )
-        assert req.documents == (doc,)
+        assert req.feedback_records == (doc,)
         assert req.prompt == "Summarize feedback"
         assert req.tenant_id == "tenant-1"
 
     def test_documents_is_a_tuple(self):
         doc = self._make_doc()
         req = AnalysisRequestModel(
-            documents=(doc,), prompt="Summarize", tenant_id="tenant-1"
+            feedback_records=(doc,), prompt="Summarize", tenant_id="tenant-1"
         )
-        assert isinstance(req.documents, tuple)
+        assert isinstance(req.feedback_records, tuple)
 
     def test_frozen_raises_on_assignment(self):
         doc = self._make_doc()
         req = AnalysisRequestModel(
-            documents=(doc,), prompt="Summarize", tenant_id="tenant-1"
+            feedback_records=(doc,), prompt="Summarize", tenant_id="tenant-1"
         )
         with pytest.raises(ValidationError):
             req.prompt = "changed"
 
     def test_empty_documents_raises(self):
         with pytest.raises(ValidationError):
-            AnalysisRequestModel(documents=(), prompt="Summarize", tenant_id="tenant-1")
+            AnalysisRequestModel(
+                feedback_records=(), prompt="Summarize", tenant_id="tenant-1"
+            )
 
     def test_empty_prompt_raises(self):
         doc = self._make_doc()
         with pytest.raises(ValidationError):
-            AnalysisRequestModel(documents=(doc,), prompt="", tenant_id="tenant-1")
+            AnalysisRequestModel(
+                feedback_records=(doc,), prompt="", tenant_id="tenant-1"
+            )
 
     def test_prompt_exceeding_max_length_raises(self):
         doc = self._make_doc()
         with pytest.raises(ValidationError):
             AnalysisRequestModel(
-                documents=(doc,), prompt="x" * 4001, tenant_id="tenant-1"
+                feedback_records=(doc,), prompt="x" * 4001, tenant_id="tenant-1"
             )
 
     def test_prompt_at_max_length_is_valid(self):
         doc = self._make_doc()
         req = AnalysisRequestModel(
-            documents=(doc,), prompt="x" * 4000, tenant_id="tenant-1"
+            feedback_records=(doc,), prompt="x" * 4000, tenant_id="tenant-1"
         )
         assert len(req.prompt) == 4000
 
