@@ -26,7 +26,7 @@ from asgi_lifespan import LifespanManager
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from qfa.domain import LLMPort
-from qfa.domain.models import LLMResponse
+from qfa.domain.models import LLMResponse, T_Response
 from tests.integration.conftest import integration_db_url
 
 E2E_TENANT_ID = "tenant-e2e"
@@ -62,7 +62,7 @@ class FakeLLMPort(LLMPort):
     ) -> None:
         self._queued.append(
             LLMResponse(
-                text=text,
+                structured=text,
                 model=model,
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
@@ -74,8 +74,9 @@ class FakeLLMPort(LLMPort):
         self,
         system_message: str,
         user_message: str,
-        timeout: float,
         tenant_id: str,
+        response_model: type[T_Response],
+        timeout: float = 20.0,
     ) -> LLMResponse:
         self.calls.append(
             {

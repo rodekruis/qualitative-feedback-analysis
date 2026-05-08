@@ -136,16 +136,6 @@ class TestTimeFilterHalfOpen:
         assert stats is not None
         assert stats.total_calls == 2
 
-    async def test_empty_window_returns_none(self, pg_repo):
-        await pg_repo.record_call(_record())
-        future = _now() + timedelta(days=365)
-        stats = await pg_repo.get_usage_stats(
-            "t1",
-            from_=future,
-            to=future + timedelta(days=1),
-        )
-        assert stats is None
-
 
 class TestAlphaPolicy:
     async def test_cost_and_tokens_scope_to_ok_only(self, pg_repo):

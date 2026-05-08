@@ -32,7 +32,7 @@ async def _fetch_rows(e2e_engine):
 
 def _ok(text: str = "ok", cost: float = 0.0001) -> LLMResponse:
     return LLMResponse(
-        text=text,
+        structured=text,
         model="gpt-3.5-turbo",
         prompt_tokens=5,
         completion_tokens=2,

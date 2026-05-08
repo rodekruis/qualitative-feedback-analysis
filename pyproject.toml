@@ -95,7 +95,7 @@ convention = "numpy"
 ignore-decorators = ["typing.override"]
 
 [tool.ty.src]
-include = ["src"]
+include = ["src", "tests"]
 
 #[[tool.ty.overrides]]
 #include = ["tests/**"]

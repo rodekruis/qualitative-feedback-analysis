@@ -13,6 +13,7 @@ Override via the ``INTEGRATION_DB_URL`` env var to point at a different host.
 from __future__ import annotations
 
 import os
+from typing import AsyncGenerator
 
 import pytest
 import pytest_asyncio
@@ -64,7 +65,7 @@ async def pg_url() -> str:
 
 
 @pytest_asyncio.fixture(scope="session")
-async def pg_engine(pg_url: str) -> AsyncEngine:
+async def pg_engine(pg_url: str) -> AsyncGenerator[AsyncEngine]:
     """Session-scoped engine; runs ``alembic upgrade head`` once.
 
     Invokes the same lock-guarded migration entry point that production
