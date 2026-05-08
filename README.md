@@ -294,6 +294,10 @@ running Postgres.
 pass. The first invocation also runs `alembic upgrade head` once via the
 session-scoped `pg_engine` fixture.
 
+All three tiers run in CI on every push: the unit tier in the `test`
+job, integration + e2e in a dedicated `integration` job that brings up a
+Postgres 16 service container (see `.github/workflows/ci.yaml`).
+
 ### Postgres for tier 2 / 3
 
 ```bash
