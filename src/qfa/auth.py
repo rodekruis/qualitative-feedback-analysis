@@ -1,7 +1,5 @@
 """Authentication utilities for API key validation."""
 
-import secrets
-
 from qfa.domain.errors import AuthenticationError
 from qfa.domain.models import TenantApiKey
 
@@ -12,7 +10,8 @@ def validate_api_key(
 ) -> TenantApiKey:
     """Validate a provided API key against the loaded keys.
 
-    Uses ``secrets.compare_digest`` for constant-time comparison.
+    Uses ``secrets.compare_digest`` (inside ``TenantApiKey.matches_key``)
+    for constant-time comparison.
     Compares against **all** keys to avoid timing attacks.
 
     Parameters
@@ -35,7 +34,7 @@ def validate_api_key(
     match: TenantApiKey | None = None
 
     for api_key in api_keys:
-        if secrets.compare_digest(provided_key, api_key.key.get_secret_value()):
+        if api_key.matches_key(provided_key):
             match = api_key
 
     if match is None:
