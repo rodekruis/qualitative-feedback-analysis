@@ -73,7 +73,7 @@ class TestAnalysisRequestModel:
         assert req.prompt == "Summarize feedback"
         assert req.tenant_id == "tenant-1"
 
-    def test_documents_is_a_tuple(self):
+    def test_feedback_records_is_a_tuple(self):
         doc = self._make_doc()
         req = AnalysisRequestModel(
             feedback_records=(doc,), prompt="Summarize", tenant_id="tenant-1"
@@ -88,7 +88,7 @@ class TestAnalysisRequestModel:
         with pytest.raises(ValidationError):
             req.prompt = "changed"
 
-    def test_empty_documents_raises(self):
+    def test_empty_feedback_records_raises(self):
         with pytest.raises(ValidationError):
             AnalysisRequestModel(
                 feedback_records=(), prompt="Summarize", tenant_id="tenant-1"

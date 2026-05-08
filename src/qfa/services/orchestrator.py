@@ -162,7 +162,7 @@ class _ScoredCode:
 class Orchestrator:
     """Core orchestration service for feedback analysis.
 
-    Assembles prompts from feedback documents, validates input,
+    Assembles prompts from feedback records, validates input,
     calls the LLM through the ``LLMPort``, and manages retries
     with exponential backoff and deadline enforcement.
 
@@ -200,12 +200,12 @@ class Orchestrator:
         deadline: datetime,
         anonymize: bool = True,
     ) -> AnalysisResultModel:
-        """Analyze a batch of feedback documents.
+        """Analyze a batch of feedback records.
 
         Parameters
         ----------
         request : AnalysisRequest
-            The analysis request containing documents and prompt.
+            The analysis request containing feedback records and prompt.
         deadline : datetime
             Absolute UTC deadline by which the analysis must complete.
 
@@ -226,7 +226,7 @@ class Orchestrator:
         async with call_scope(tenant_id=request.tenant_id, operation=Operation.ANALYZE):
             timeout = self._check_deadline_and_get_timeout(deadline)
             system_message = _SYSTEM_MESSAGE_TEMPLATE.format(prompt=request.prompt)
-            user_message = self._assemble_documents(request.feedback_records)
+            user_message = self._assemble_feedback_records(request.feedback_records)
 
             anonymized_user_message = user_message
             if anonymize:
@@ -259,19 +259,19 @@ class Orchestrator:
         deadline: datetime,
         anonymize: bool = True,
     ) -> SummaryResultModel:
-        """Summarize each submitted feedback item individually.
+        """Summarize each submitted feedback record individually.
 
         Parameters
         ----------
         request : SummaryRequest
-            The summarization request containing feedback items and options.
+            The summarization request containing feedback records and options.
         deadline : datetime
             Absolute UTC deadline by which summarization must complete.
 
         Returns
         -------
         SummaryResult
-            The per-feedback-item summaries and titles.
+            The per-feedback-record summaries and titles.
 
         Raises
         ------
@@ -323,12 +323,12 @@ class Orchestrator:
         deadline: datetime,
         anonymize: bool = True,
     ) -> AggregateSummaryResultModel:
-        """Summarize multiple feedback items as a single aggregate summary.
+        """Summarize multiple feedback records as a single aggregate summary.
 
         Parameters
         ----------
         request : SummaryRequest
-            The summarization request containing feedback items and options.
+            The summarization request containing feedback records and options.
         deadline : datetime
             Absolute UTC deadline by which summarization must complete.
 
@@ -350,8 +350,8 @@ class Orchestrator:
                 system_message += f"\nAdditional instructions: {request.prompt}"
 
             user_message = "\n\n".join(
-                f"{idx}. {item.text}"
-                for idx, item in enumerate(request.feedback_records, start=1)
+                f"{idx}. {record.text}"
+                for idx, record in enumerate(request.feedback_records, start=1)
             )
 
             anonymized_user_message = user_message
@@ -405,24 +405,24 @@ class Orchestrator:
         deadline: datetime,
         anonymize: bool = True,
     ) -> CodingAssignmentResultModel:
-        """Assign hierarchical codes to each feedback item.
+        """Assign hierarchical codes to each feedback record.
 
         Parameters
         ----------
         request : CodingAssignmentRequest
-            Feedback items, coding framework, ``max_codes``, and tenant id.
+            Feedback records, coding framework, ``max_codes``, and tenant id.
         deadline : datetime
-            Absolute UTC deadline by which all items must be coded.
+            Absolute UTC deadline by which all records must be coded.
 
         Returns
         -------
         CodingAssignmentResult
-            Per-item leaf codes from ``classify_feedback``.
+            Per-record leaf codes from ``classify_feedback``.
 
         Raises
         ------
         AnalysisTimeoutError
-            When ``deadline`` is reached before every item is processed.
+            When ``deadline`` is reached before every record is processed.
         LLMTimeoutError
             When a single LLM completion exceeds the configured timeout.
         LLMRateLimitError
@@ -438,13 +438,13 @@ class Orchestrator:
             types = request.coding_framework.get("types") or []
             threshold = request.confidence_threshold
 
-            for feedback_item in request.feedback_records:
+            for feedback_record in request.feedback_records:
                 self._check_coding_deadline(deadline)
 
                 candidates: list[_ScoredCode] = []
 
                 type_indices = await self._pick_code_indices(
-                    feedback_text=feedback_item.text,
+                    feedback_text=feedback_record.text,
                     current_level="Types",
                     entries=types,
                     hierarchy_path=None,
@@ -458,7 +458,7 @@ class Orchestrator:
                     type_name = str(type_entry.get("name", ""))
 
                     judge_type = await self._judge_code_level(
-                        feedback_text=feedback_item.text,
+                        feedback_text=feedback_record.text,
                         level="Type",
                         path=[("Type", type_name)],
                         tenant_id=request.tenant_id,
@@ -470,7 +470,7 @@ class Orchestrator:
 
                     categories = type_entry.get("categories") or []
                     category_indices = await self._pick_code_indices(
-                        feedback_text=feedback_item.text,
+                        feedback_text=feedback_record.text,
                         current_level="Categories",
                         entries=categories,
                         hierarchy_path=[("Type", type_name)],
@@ -484,7 +484,7 @@ class Orchestrator:
                         category_name = str(category.get("name", ""))
 
                         judge_category = await self._judge_code_level(
-                            feedback_text=feedback_item.text,
+                            feedback_text=feedback_record.text,
                             level="Category",
                             path=[("Type", type_name), ("Category", category_name)],
                             tenant_id=request.tenant_id,
@@ -496,7 +496,7 @@ class Orchestrator:
 
                         codes = category.get("codes") or []
                         code_indices = await self._pick_code_indices(
-                            feedback_text=feedback_item.text,
+                            feedback_text=feedback_record.text,
                             current_level="Codes",
                             entries=codes,
                             hierarchy_path=[
@@ -513,7 +513,7 @@ class Orchestrator:
                             code_name = str(code.get("name", ""))
 
                             judge_code = await self._judge_code_level(
-                                feedback_text=feedback_item.text,
+                                feedback_text=feedback_record.text,
                                 level="Code",
                                 path=[
                                     ("Type", type_name),
@@ -545,7 +545,7 @@ class Orchestrator:
 
                 coded.append(
                     CodedFeedbackRecordModel(
-                        feedback_record_id=feedback_item.id,
+                        feedback_record_id=feedback_record.id,
                         assigned_codes=tuple(
                             AssignedCodeModel(
                                 code_id=c.code_id,
@@ -583,7 +583,7 @@ class Orchestrator:
         """Raise when the coding deadline is exceeded."""
         if datetime.now(UTC) >= deadline:
             raise AnalysisTimeoutError(
-                "Coding deadline exceeded before all items were processed"
+                "Coding deadline exceeded before all feedback records were processed"
             )
 
     async def _pick_code_indices(
@@ -657,27 +657,35 @@ class Orchestrator:
     # Prompt assembly
     # ------------------------------------------------------------------
 
-    def _assemble_documents(self, documents: tuple[FeedbackRecordModel, ...]) -> str:
-        """Assemble documents into the user-message XML block.
+    def _assemble_feedback_records(
+        self, feedback_records: tuple[FeedbackRecordModel, ...]
+    ) -> str:
+        """Assemble feedback records into the user-message XML block.
+
+        The XML wrapper still uses ``<documents>``/``<document>`` tags
+        because that is what the system-prompt template currently
+        instructs the LLM to expect. The prompt-language alignment
+        (including the XML tag names) is tracked separately under
+        issue #98 and intentionally not bundled with this refactor.
 
         Parameters
         ----------
-        documents : tuple[FeedbackItem, ...]
-            The documents to assemble.
+        feedback_records : tuple[FeedbackRecordModel, ...]
+            The feedback records to assemble.
 
         Returns
         -------
         str
-            The assembled documents XML block.
+            The assembled XML block.
         """
         parts: list[str] = ["<documents>"]
-        for idx, doc in enumerate(documents, start=1):
-            attrs = f'index="{idx}" id="{doc.id}"'
+        for idx, record in enumerate(feedback_records, start=1):
+            attrs = f'index="{idx}" id="{record.id}"'
             for field in self._settings.metadata_fields_to_include:
-                if field in doc.metadata:
-                    attrs += f' {field}="{doc.metadata[field]}"'
+                if field in record.metadata:
+                    attrs += f' {field}="{record.metadata[field]}"'
             parts.append(f"<document {attrs}>")
-            parts.append(doc.text)
+            parts.append(record.text)
             parts.append("</document>")
         parts.append("</documents>")
         return "\n".join(parts)
@@ -694,7 +702,7 @@ class Orchestrator:
         system_message : str
             The assembled system message.
         user_message : str
-            The assembled user message (documents block).
+            The assembled user message containing the feedback records.
 
         Raises
         ------

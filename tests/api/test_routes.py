@@ -190,7 +190,7 @@ class TestAuthentication:
 
 class TestValidation:
     @pytest.mark.asyncio
-    async def test_422_empty_documents(self, client):
+    async def test_422_empty_feedback_records(self, client):
         resp = await client.post(
             "/v1/analyze",
             json=_valid_body(feedback_records=[]),
@@ -221,7 +221,7 @@ class TestValidation:
         assert resp.json()["error"]["code"] == "validation_error"
 
     @pytest.mark.asyncio
-    async def test_422_empty_document_text(self, client):
+    async def test_422_empty_feedback_record_text(self, client):
         resp = await client.post(
             "/v1/analyze",
             json=_valid_body(feedback_records=[{"id": "1", "text": ""}]),
@@ -275,7 +275,7 @@ class TestValidation:
 
 class TestErrorMapping:
     @pytest.mark.asyncio
-    async def test_413_documents_too_large(self, test_app):
+    async def test_413_feedback_too_large(self, test_app):
         test_app.state.orchestrator = FakeOrchestrator(
             error=FeedbackTooLargeError(
                 "Too large", estimated_tokens=200_000, limit=100_000
@@ -340,7 +340,7 @@ class TestErrorMapping:
         assert resp.json()["error"]["request_id"].startswith("req_")
 
     @pytest.mark.asyncio
-    async def test_summary_413_documents_too_large(self, test_app):
+    async def test_summary_413_feedback_too_large(self, test_app):
         test_app.state.orchestrator = FakeOrchestrator(
             error=FeedbackTooLargeError(
                 "Too large", estimated_tokens=200_000, limit=100_000
@@ -456,7 +456,7 @@ class TestAssignCodesSuccess:
             "/v1/assign_codes", json=_CODING_BODY, headers=_auth_header()
         )
         assert resp.status_code == 200
-        code_item = resp.json()["coded_feedback_records"][0]["code_items"][0]
+        code_item = resp.json()["coded_feedback_records"][0]["assigned_codes"][0]
         assert code_item["confidence_type"] == 0.9
         assert code_item["confidence_category"] == 0.85
         assert code_item["confidence_code"] == 0.8

@@ -55,9 +55,9 @@ def _assign_codes_request_examples() -> list[dict[str, Any]]:
 
 
 class ApiFeedbackRecordInput(BaseModel):
-    """A single feedback item in an analysis request."""
+    """A single feedback record in an analysis request."""
 
-    id: str = Field(description="Unique identifier for the feedback item.")
+    id: str = Field(description="Unique identifier for the feedback record.")
     text: str = Field(
         min_length=1,
         max_length=100_000,
@@ -65,7 +65,7 @@ class ApiFeedbackRecordInput(BaseModel):
     )
     metadata: dict[str, str | int | float | bool] = Field(
         default_factory=dict,
-        description="Optional metadata key-value pairs associated with the feedback item.",
+        description="Optional metadata key-value pairs associated with the feedback record.",
     )
 
 
@@ -123,28 +123,28 @@ class ApiAnalyzeResponse(BaseModel):
 
 
 class ApiSummarizeFeedbackMetadata(BaseModel):
-    """Metadata for a feedback item in a summarize request."""
+    """Metadata for a feedback record in a summarize request."""
 
     created: datetime = Field(
-        description="Timestamp when the feedback item was created."
+        description="Timestamp when the feedback record was created."
     )
-    feedback_record_id: str = Field(description="Source feedback item identifier.")
+    feedback_record_id: str = Field(description="Source feedback record identifier.")
     coding_level_1: str = Field(description="Level 1 coding label.")
     coding_level_2: str = Field(description="Level 2 coding label.")
     coding_level_3: str = Field(description="Level 3 coding label.")
 
 
 class ApiSummarizeFeedbackRecord(BaseModel):
-    """A single feedback item for ``POST /v1/summarize``."""
+    """A single feedback record for ``POST /v1/summarize``."""
 
-    id: str = Field(description="Unique identifier for the feedback item.")
+    id: str = Field(description="Unique identifier for the feedback record.")
     content: str = Field(
         min_length=1,
         max_length=100_000,
         description="Feedback content to summarize.",
     )
     metadata: ApiSummarizeFeedbackMetadata = Field(
-        description="Structured metadata for the feedback item.",
+        description="Structured metadata for the feedback record.",
     )
 
 
@@ -215,11 +215,11 @@ class ApiSummarizeRequest(BaseModel):
 
     feedback_records: list[ApiSummarizeFeedbackRecord] = Field(
         min_length=1,
-        description="Non-empty list of feedback items to summarize individually.",
+        description="Non-empty list of feedback records to summarize individually.",
     )
     output_language: str | None = Field(
         default=None,
-        description="Optional target language for summaries and titles for every item.",
+        description="Optional target language for summaries and titles for every feedback record.",
     )
     prompt: str | None = Field(
         default=None,
@@ -233,12 +233,12 @@ class ApiSummarizeRequest(BaseModel):
 
 
 class ApiFeedbackRecordSummary(BaseModel):
-    """Summary response item for a single feedback item."""
+    """Per-feedback-record summary response."""
 
-    id: str = Field(description="Identifier of the source feedback item.")
-    title: str = Field(description="Generated short title for the feedback item.")
+    id: str = Field(description="Identifier of the source feedback record.")
+    title: str = Field(description="Generated short title for the feedback record.")
     summary: str = Field(
-        description="Generated bullet-point summary for the feedback item."
+        description="Generated bullet-point summary for the feedback record."
     )
     quality_score: float = Field(
         ge=0.0,
@@ -251,7 +251,7 @@ class ApiSummarizeResponse(BaseModel):
     """Response body for the ``POST /v1/summarize`` endpoint."""
 
     summaries: list[ApiFeedbackRecordSummary] = Field(
-        description="Title and summary for each submitted feedback item.",
+        description="Title and summary for each submitted feedback record.",
     )
     used_anonymization: bool = Field(
         description="Indicates whether anonymization was applied to the feedback text.",
@@ -259,9 +259,9 @@ class ApiSummarizeResponse(BaseModel):
 
 
 class ApiAggregateSummary(BaseModel):
-    """Aggregate summary covering all submitted feedback items."""
+    """Aggregate summary covering all submitted feedback records."""
 
-    ids: list[str] = Field(description="Identifiers of all source feedback items.")
+    ids: list[str] = Field(description="Identifiers of all source feedback records.")
     title: str = Field(description="Generated short title for the aggregate summary.")
     summary: str = Field(
         description="Generated bullet-point summary ordered by theme frequency."
@@ -277,7 +277,7 @@ class ApiSummarizeAggregateResponse(BaseModel):
     """Response body for the ``POST /v1/summarize-aggregate`` endpoint."""
 
     summary: ApiAggregateSummary = Field(
-        description="Aggregate summary of all submitted feedback items."
+        description="Aggregate summary of all submitted feedback records."
     )
 
 
@@ -329,7 +329,7 @@ class ApiCodingLevels(BaseModel):
 
 
 class ApiFeedbackRecord(BaseModel):
-    """Feedback item: ``id`` plus body text (reusable across endpoints)."""
+    """Feedback record: ``id`` plus body text (reusable across endpoints)."""
 
     id: str
     content: str = Field(min_length=1, max_length=100_000)
@@ -352,8 +352,8 @@ class ApiAssignCodesRequest(BaseModel):
     )
 
 
-class ApiCodeItem(BaseModel):
-    """A single code item."""
+class ApiAssignedCode(BaseModel):
+    """A single code assigned to a feedback record."""
 
     code_id: str
     code_label: str
@@ -364,17 +364,17 @@ class ApiCodeItem(BaseModel):
     explanation: str
 
 
-class ApiCodeItems(BaseModel):
-    """List of code items assigned to one feedback item."""
+class ApiCodedFeedbackRecord(BaseModel):
+    """The codes assigned to a single feedback record."""
 
     feedback_record_id: str
-    code_items: list[ApiCodeItem]
+    assigned_codes: list[ApiAssignedCode]
 
 
 class ApiAssignCodesResponse(BaseModel):
     """Response body for ``POST /v1/assign_codes``."""
 
-    coded_feedback_records: list[ApiCodeItems]
+    coded_feedback_records: list[ApiCodedFeedbackRecord]
 
 
 class ApiHealthResponse(BaseModel):

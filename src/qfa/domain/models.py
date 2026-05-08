@@ -19,11 +19,11 @@ from pydantic import (
 
 
 class FeedbackRecordModel(BaseModel):
-    """A single feedback item submitted for analysis."""
+    """A single feedback record submitted for analysis."""
 
     model_config = ConfigDict(frozen=True)
 
-    id: str = Field(description="Unique identifier for the feedback item.")
+    id: str = Field(description="Unique identifier for the feedback record.")
     text: str = Field(
         min_length=1,
         max_length=100_000,
@@ -31,12 +31,12 @@ class FeedbackRecordModel(BaseModel):
     )
     metadata: dict[str, str | int | float | bool] = Field(
         default_factory=dict,
-        description="Optional metadata key-value pairs associated with the feedback item.",
+        description="Optional metadata key-value pairs associated with the feedback record.",
     )
 
 
 class AnalysisRequestModel(BaseModel):
-    """A request to analyze one or more feedback items."""
+    """A request to analyze one or more feedback records."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -61,13 +61,13 @@ class AnalysisResultModel(BaseModel):
 
 
 class SummaryRequestModel(BaseModel):
-    """A request to summarize one or more feedback items individually."""
+    """A request to summarize one or more feedback records individually."""
 
     model_config = ConfigDict(frozen=True)
 
     feedback_records: tuple[FeedbackRecordModel, ...] = Field(
         min_length=1,
-        description="Non-empty tuple of feedback items to summarize.",
+        description="Non-empty tuple of feedback records to summarize.",
     )
     output_language: str | None = Field(
         default=None,
@@ -82,14 +82,14 @@ class SummaryRequestModel(BaseModel):
 
 
 class FeedbackRecordSummaryModel(BaseModel):
-    """Summary output for a single feedback item."""
+    """Summary output for a single feedback record."""
 
     model_config = ConfigDict(frozen=True)
 
-    id: str = Field(description="Identifier of the source feedback item.")
-    title: str = Field(description="Generated short title for the feedback item.")
+    id: str = Field(description="Identifier of the source feedback record.")
+    title: str = Field(description="Generated short title for the feedback record.")
     summary: str = Field(
-        description="Generated bullet-point summary for the feedback item."
+        description="Generated bullet-point summary for the feedback record."
     )
     quality_score: float = Field(  # TODO implement actual llm-as-a-judge for this field
         description="Judge model score for summary quality in the range 0.0-1.0.",
@@ -97,23 +97,23 @@ class FeedbackRecordSummaryModel(BaseModel):
 
 
 class SummaryResultModel(BaseModel):
-    """The result of summarizing multiple feedback items individually."""
+    """The result of summarizing multiple feedback records individually."""
 
     model_config = ConfigDict(frozen=True)
 
     feedback_record_summaries: tuple[FeedbackRecordSummaryModel, ...] = Field(
-        description="Per-feedback-item summaries returned by the summarize flow.",
+        description="Per-feedback-record summaries returned by the summarize flow.",
     )
 
 
 class AggregateSummaryResultModel(BaseModel):
-    """The result of summarizing multiple feedback items as a single aggregate.
+    """The result of summarizing multiple feedback records as a single aggregate.
 
     # TODO come up with nice solution for non-mutable quality-score, so this can be a frozen class.
     """
 
     ids: tuple[str, ...] = Field(
-        description="Identifiers of all source feedback items."
+        description="Identifiers of all source feedback records."
     )
     title: str = Field(description="Generated short title for the aggregate summary.")
     summary: str = Field(
@@ -125,13 +125,13 @@ class AggregateSummaryResultModel(BaseModel):
 
 
 class CodingAssignmentRequestModel(BaseModel):
-    """A request to assign hierarchical codes to feedback items."""
+    """A request to assign hierarchical codes to feedback records."""
 
     model_config = ConfigDict(frozen=True)
 
     feedback_records: tuple[FeedbackRecordModel, ...] = Field(
         min_length=1,
-        description="Non-empty tuple of feedback items to code.",
+        description="Non-empty tuple of feedback records to code.",
     )
     coding_framework: dict[str, Any] = Field(
         description="Hierarchical coding framework with types, categories, and codes.",
@@ -139,7 +139,7 @@ class CodingAssignmentRequestModel(BaseModel):
     max_codes: int = Field(
         ge=1,
         le=50,
-        description="Maximum number of leaf codes to retain per feedback item.",
+        description="Maximum number of leaf codes to retain per feedback record.",
     )
     confidence_threshold: float | None = Field(
         default=None,
@@ -151,20 +151,20 @@ class CodingAssignmentRequestModel(BaseModel):
 
 
 class AssignedCodeModel(BaseModel):
-    """A single leaf code assigned to a feedback item."""
+    """A single leaf code assigned to a feedback record."""
 
     model_config = ConfigDict(frozen=True)
 
     code_id: str = Field(description="Stable identifier from the coding framework.")
     code_label: str = Field(description="Human-readable code name.")
     confidence_type: float = Field(
-        description="Judge confidence that the Type level fits the feedback item (0-1)."
+        description="Judge confidence that the Type level fits the feedback record (0-1)."
     )
     confidence_category: float = Field(
-        description="Judge confidence that the Category level fits the feedback item (0-1)."
+        description="Judge confidence that the Category level fits the feedback record (0-1)."
     )
     confidence_code: float = Field(
-        description="Judge confidence that the Code level fits the feedback item (0-1)."
+        description="Judge confidence that the Code level fits the feedback record (0-1)."
     )
     confidence_aggregate: float = Field(
         description="Overall confidence, computed as min of the three level confidences."
@@ -175,25 +175,25 @@ class AssignedCodeModel(BaseModel):
 
 
 class CodedFeedbackRecordModel(BaseModel):
-    """Coding output for one feedback item."""
+    """Coding output for one feedback record."""
 
     model_config = ConfigDict(frozen=True)
 
     feedback_record_id: str = Field(
-        description="Identifier of the source feedback item.",
+        description="Identifier of the source feedback record.",
     )
     assigned_codes: tuple[AssignedCodeModel, ...] = Field(
-        description="Leaf codes selected for this feedback item.",
+        description="Leaf codes selected for this feedback record.",
     )
 
 
 class CodingAssignmentResultModel(BaseModel):
-    """The result of assigning codes to multiple feedback items."""
+    """The result of assigning codes to multiple feedback records."""
 
     model_config = ConfigDict(frozen=True)
 
     coded_feedback_records: tuple[CodedFeedbackRecordModel, ...] = Field(
-        description="Per-item coding results aligned with the request order.",
+        description="Per-feedback-record coding results aligned with the request order.",
     )
 
 

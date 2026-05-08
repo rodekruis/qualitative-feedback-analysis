@@ -92,7 +92,7 @@ class LiteLLMClient(LLMPort):
         system_message : str
             The assembled system message.
         user_message : str
-            The assembled user message (documents block).
+            The assembled user message containing the feedback records.
 
         Raises
         ------
