@@ -25,6 +25,7 @@ import sqlalchemy as sa
 from asgi_lifespan import LifespanManager
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from qfa.domain import LLMPort
 from qfa.domain.models import LLMResponse
 from tests.integration.conftest import integration_db_url
 
@@ -33,7 +34,7 @@ E2E_API_KEY = "e2e-key"
 E2E_SUPER_KEY = "e2e-super"
 
 
-class FakeLLMPort:
+class FakeLLMPort(LLMPort):
     """Queue-based ``LLMPort`` fake for e2e tests.
 
     Each ``complete()`` call pops the next queued item. Items are either

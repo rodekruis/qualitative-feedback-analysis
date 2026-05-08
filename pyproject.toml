@@ -97,11 +97,11 @@ ignore-decorators = ["typing.override"]
 [tool.ty.src]
 include = ["src"]
 
-[[tool.ty.overrides]]
-include = ["tests/**"]
+#[[tool.ty.overrides]]
+#include = ["tests/**"]
 
-[tool.ty.overrides.rules]
-invalid-method-override = "ignore"
+#[tool.ty.overrides.rules]
+#invalid-method-override = "ignore"
 
 [tool.semantic_release]
 version_toml = ["pyproject.toml:project.version"]
@@ -138,7 +138,7 @@ dev = [
     "ruff~=0.15.0",
     # ty is under development and adds new rules frequently.
     # Use pinned version so we don't get unexpected lint errors when ty gets updated
-    "ty==0.0.18",
+    "ty~=0.0.34",
 ]
 
 [tool.importlinter]

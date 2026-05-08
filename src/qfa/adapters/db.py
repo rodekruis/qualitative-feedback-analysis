@@ -7,6 +7,7 @@ from decimal import Decimal
 from urllib.parse import quote
 
 import sqlalchemy as sa
+import sqlalchemy.event  # ensure sa.event is available to type checkers
 from azure.identity import DefaultAzureCredential
 from sqlalchemy.exc import InterfaceError, OperationalError
 from sqlalchemy.ext.asyncio import (
