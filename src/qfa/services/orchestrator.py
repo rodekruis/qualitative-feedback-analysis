@@ -116,13 +116,6 @@ Output rules:
 #: Minimum time (seconds) required for an LLM attempt to be viable.
 _MINIMUM_ATTEMPT_WINDOW = 10.0
 
-#: Compiled patterns for prompt injection detection.
-_INJECTION_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
-    ("role_prefix", re.compile(r"^\s*(SYSTEM|ASSISTANT|USER)\s*:", re.IGNORECASE)),
-    ("null_byte", re.compile(r"\x00")),
-    ("repeated_chars", re.compile(r"(.)\1{199,}")),
-]
-
 _JUDGE_USER_MESSAGE = "."
 
 
