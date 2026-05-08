@@ -57,7 +57,7 @@ class LLMSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="LLM_")
 
     model: str = "azure_ai/mistral-medium-2505"
-    api_key: SecretStr  # required, no default
+    api_key: SecretStr = Field(default=...)  # required, no default
     api_base: str = ""
     api_version: str = ""
     timeout_seconds: float = 115.0
@@ -83,7 +83,7 @@ class AuthSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="AUTH_")
 
-    api_keys: list[TenantApiKey]  # required, no default
+    api_keys: list[TenantApiKey] = Field(default=...)  # required, no default
 
 
 class DatabaseSettings(BaseSettings):

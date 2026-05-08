@@ -32,7 +32,7 @@ async def _fetch_rows(e2e_engine):
 
 def _ok(text: str = "ok", cost: float = 0.0001) -> LLMResponse:
     return LLMResponse(
-        text=text,
+        structured=text,
         model="gpt-3.5-turbo",
         prompt_tokens=5,
         completion_tokens=2,
@@ -44,7 +44,7 @@ class TestAnalyzeRecordsRow:
     async def test_post_analyze_records_one_ok_row_with_operation_analyze(
         self, e2e_client, e2e_fake_llm, e2e_engine
     ):
-        e2e_fake_llm.queue_response(_ok(text="analysis ok"))
+        e2e_fake_llm.queue_response(_ok(text='{"result": "analysis ok"}'))
 
         resp = await e2e_client.post(
             "/v1/analyze",
@@ -99,8 +99,13 @@ class TestAssignCodesRecordsMultipleRows:
     async def test_one_request_records_multiple_rows_all_with_assign_codes(
         self, e2e_client, e2e_fake_llm, e2e_engine
     ):
-        # The orchestrator picks Types → Categories → Codes one level at a time.
-        # With one type/category/code path it issues 3 LLM calls.
+        # The orchestrator walks Types → Categories → Codes one level at a
+        # time, issuing both a "pick" (response_model=str, parsed as
+        # ``{"selected": [<indices>]}``) and a "judge"
+        # (response_model=JudgeResponse) call per level. With one
+        # type/category/code path it issues 6 LLM calls in this order:
+        # pick-Types, judge-Type, pick-Categories, judge-Category,
+        # pick-Codes, judge-Code.
         coding_framework = {
             "types": [
                 {
@@ -114,11 +119,11 @@ class TestAssignCodesRecordsMultipleRows:
                 }
             ]
         }
-        # The orchestrator parses the response as ``{"selected": [<indices>]}``
-        # (see ``coding_classifier._parse_selected_indices``); returning
-        # ``{"selected": [0]}`` picks index 0 at each of the 3 levels.
+        pick_response = '{"selected": [0]}'
+        judge_response = '{"score": 0.9, "explanation": "fits well"}'
         for _ in range(3):
-            e2e_fake_llm.queue_response(_ok(text='{"selected": [0]}'))
+            e2e_fake_llm.queue_response(_ok(text=pick_response))
+            e2e_fake_llm.queue_response(_ok(text=judge_response))
 
         resp = await e2e_client.post(
             "/v1/assign_codes",
@@ -132,7 +137,7 @@ class TestAssignCodesRecordsMultipleRows:
         assert resp.status_code == 200
 
         rows = await _fetch_rows(e2e_engine)
-        assert len(rows) == 3
+        assert len(rows) == 6
         for row in rows:
             assert row.operation == "assign_codes"
             assert row.status == "ok"

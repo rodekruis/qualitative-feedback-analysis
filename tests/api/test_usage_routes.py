@@ -66,7 +66,7 @@ class TestUsageDisabled:
         test_app.state.api_keys.append(
             TenantApiKey(
                 name="superuser",
-                key=FAKE_SUPERUSER_KEY,
+                key=FAKE_SUPERUSER_KEY,  # type:ignore [ty:invalid-argument-type]
                 tenant_id="admin",
                 is_superuser=True,
                 key_id="admin-0",
@@ -149,7 +149,7 @@ class TestUsageAllEndpoint:
         test_app.state.api_keys.append(
             TenantApiKey(
                 name="superuser",
-                key=FAKE_SUPERUSER_KEY,
+                key=FAKE_SUPERUSER_KEY,  # type:ignore [ty:invalid-argument-type]
                 tenant_id="admin",
                 is_superuser=True,
                 key_id="admin-0",
@@ -227,7 +227,7 @@ class TestUsageBackendUnavailable:
         test_app.state.api_keys.append(
             TenantApiKey(
                 name="superuser",
-                key=FAKE_SUPERUSER_KEY,
+                key=FAKE_SUPERUSER_KEY,  # type:ignore [ty:invalid-argument-type]
                 tenant_id="admin",
                 is_superuser=True,
                 key_id="admin-0",

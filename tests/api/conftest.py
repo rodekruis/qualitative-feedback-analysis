@@ -14,6 +14,7 @@ from qfa.api.app import (
 from qfa.api.routes import router
 from qfa.api.routes_usage import router as usage_router
 from qfa.domain.models import (
+    AggregateSummaryResultModel,
     AnalysisRequestModel,
     AnalysisResultModel,
     AssignedCodeModel,
@@ -47,10 +48,6 @@ class FakeOrchestrator:
     ):
         self._analyze_result = analyze_result or AnalysisResultModel(
             result="Fake analysis result",
-            model="gpt-4-test",
-            prompt_tokens=10,
-            completion_tokens=20,
-            cost=0.001,
         )
         self._summarize_result = summarize_result or SummaryResultModel(
             feedback_item_summaries=(
@@ -61,7 +58,6 @@ class FakeOrchestrator:
                     quality_score=0.9,
                 ),
             ),
-            cost=0.002,
         )
         self._error = error
 
@@ -84,6 +80,21 @@ class FakeOrchestrator:
         if self._error is not None:
             raise self._error
         return self._summarize_result
+
+    async def summarize_aggregate(
+        self,
+        request: SummaryRequestModel,
+        deadline: datetime,
+        anonymize: bool = True,
+    ) -> AggregateSummaryResultModel:
+        if self._error is not None:
+            raise self._error
+        return AggregateSummaryResultModel(
+            ids=tuple(item.id for item in request.feedback_items),
+            title="Fake aggregate title",
+            summary="- Fake aggregate point",
+            quality_score=0.9,
+        )
 
     async def assign_codes(
         self,
@@ -120,7 +131,7 @@ def fake_api_keys():
         TenantApiKey(
             key_id=f"{FAKE_TENANT_ID}-0",
             name=FAKE_API_KEY_NAME,
-            key=FAKE_API_KEY,
+            key=FAKE_API_KEY,  # type:ignore [ty:invalid-argument-type]
             tenant_id=FAKE_TENANT_ID,
         )
     ]

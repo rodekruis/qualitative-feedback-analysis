@@ -23,9 +23,12 @@ import pytest
 import pytest_asyncio
 import sqlalchemy as sa
 from asgi_lifespan import LifespanManager
+from pydantic import BaseModel, ValidationError
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from qfa.domain.models import LLMResponse
+from qfa.domain import LLMPort
+from qfa.domain.errors import LLMError
+from qfa.domain.models import LLMResponse, T_Response
 from tests.integration.conftest import integration_db_url
 
 E2E_TENANT_ID = "tenant-e2e"
@@ -33,7 +36,7 @@ E2E_API_KEY = "e2e-key"
 E2E_SUPER_KEY = "e2e-super"
 
 
-class FakeLLMPort:
+class FakeLLMPort(LLMPort):
     """Queue-based ``LLMPort`` fake for e2e tests.
 
     Each ``complete()`` call pops the next queued item. Items are either
@@ -61,7 +64,7 @@ class FakeLLMPort:
     ) -> None:
         self._queued.append(
             LLMResponse(
-                text=text,
+                structured=text,
                 model=model,
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
@@ -73,8 +76,9 @@ class FakeLLMPort:
         self,
         system_message: str,
         user_message: str,
-        timeout: float,
         tenant_id: str,
+        response_model: type[T_Response],
+        timeout: float = 20.0,
     ) -> LLMResponse:
         self.calls.append(
             {
@@ -91,6 +95,19 @@ class FakeLLMPort:
         item = self._queued.pop(0)
         if isinstance(item, BaseException):
             raise item
+
+        # Mirror LiteLLMClient: parse raw JSON content into the requested
+        # response_model. The queue stores LLMResponse with a string
+        # `structured`; for BaseModel response_models, parse it now so the
+        # orchestrator receives a typed payload exactly as it would in prod.
+        if isinstance(item.structured, str) and issubclass(response_model, BaseModel):
+            try:
+                parsed = response_model.model_validate_json(item.structured)
+            except ValidationError as exc:
+                raise LLMError(
+                    f"LLM response validation failed for {response_model.__name__}: {exc}"
+                ) from exc
+            return item.model_copy(update={"structured": parsed})
         return item
 
 

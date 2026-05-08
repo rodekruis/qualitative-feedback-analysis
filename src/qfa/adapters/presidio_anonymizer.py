@@ -47,7 +47,7 @@ class PresidioAnonymizer(AnonymizationPort):
 
         anonymized = self._anonymizer.anonymize(
             text=text,
-            analyzer_results=results,  # type: ignore[arg-type]
+            analyzer_results=results,  # type: ignore[ty:invalid-argument-type]
             operators=operators,
         )
         return anonymized.text, mapping

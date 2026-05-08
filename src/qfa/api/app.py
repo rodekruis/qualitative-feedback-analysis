@@ -32,6 +32,7 @@ from qfa.domain.errors import (
     AuthenticationError,
     AuthorizationError,
     DocumentsTooLargeError,
+    LLMError,
     UsageRepositoryUnavailableError,
 )
 from qfa.domain.ports import LLMPort
@@ -390,6 +391,25 @@ async def _handle_analysis_error(request: Request, exc: AnalysisError) -> JSONRe
     return JSONResponse(status_code=502, content=body.model_dump())
 
 
+async def _handle_llm_error(request: Request, exc: LLMError) -> JSONResponse:
+    """Map an LLM provider failure to 502 bad_gateway.
+
+    LLMError signals that an upstream LLM provider call failed in a way
+    the orchestrator did not recover from. From the API consumer's
+    perspective this is a bad gateway, distinct from a 504 timeout
+    (AnalysisTimeoutError) or a 502 analysis failure (AnalysisError).
+    """
+    logger.warning("LLM provider error: %s", exc, exc_info=True)
+    body = ApiErrorResponse(
+        error=ApiErrorDetail(
+            code="llm_error",
+            message=str(exc),
+            request_id=_get_request_id(request),
+        )
+    )
+    return JSONResponse(status_code=502, content=body.model_dump())
+
+
 async def _handle_usage_repository_unavailable(
     request: Request, exc: UsageRepositoryUnavailableError
 ) -> JSONResponse:
@@ -644,17 +664,18 @@ def register_exception_handlers(app: FastAPI) -> None:
     app : FastAPI
         The FastAPI application instance.
     """
-    app.add_exception_handler(AuthorizationError, _handle_authorization_error)  # type: ignore[arg-type]
-    app.add_exception_handler(AuthenticationError, _handle_authentication_error)  # type: ignore[arg-type]
-    app.add_exception_handler(RequestValidationError, _handle_validation_error)  # type: ignore[arg-type]
-    app.add_exception_handler(DocumentsTooLargeError, _handle_documents_too_large)  # type: ignore[arg-type]
-    app.add_exception_handler(AnalysisTimeoutError, _handle_analysis_timeout)  # type: ignore[arg-type]
-    app.add_exception_handler(AnalysisError, _handle_analysis_error)  # type: ignore[arg-type]
+    app.add_exception_handler(AuthorizationError, _handle_authorization_error)  # ty: ignore[invalid-argument-type]
+    app.add_exception_handler(AuthenticationError, _handle_authentication_error)  # ty: ignore[invalid-argument-type]
+    app.add_exception_handler(RequestValidationError, _handle_validation_error)  # ty: ignore[invalid-argument-type]
+    app.add_exception_handler(DocumentsTooLargeError, _handle_documents_too_large)  # ty: ignore[invalid-argument-type]
+    app.add_exception_handler(AnalysisTimeoutError, _handle_analysis_timeout)  # ty: ignore[invalid-argument-type]
+    app.add_exception_handler(AnalysisError, _handle_analysis_error)  # ty: ignore[invalid-argument-type]
+    app.add_exception_handler(LLMError, _handle_llm_error)  # ty: ignore[invalid-argument-type]
     app.add_exception_handler(
         UsageRepositoryUnavailableError,
-        _handle_usage_repository_unavailable,  # type: ignore[arg-type]
+        _handle_usage_repository_unavailable,  # ty: ignore[invalid-argument-type]
     )
-    app.add_exception_handler(HTTPException, _handle_http_exception)  # type: ignore[arg-type]
+    app.add_exception_handler(HTTPException, _handle_http_exception)  # ty: ignore[invalid-argument-type]
     app.add_exception_handler(Exception, _handle_unhandled_exception)
 
 
@@ -681,8 +702,8 @@ def create_app(*, llm_factory: LLMFactory | None = None) -> FastAPI:
         lifespan=_make_lifespan(factory),
         version=qfa.__version__,
     )
-    app.add_middleware(RequestLoggingMiddleware)  # type: ignore[arg-type]
-    app.add_middleware(RequestIdMiddleware)  # type: ignore[arg-type]
+    app.add_middleware(RequestLoggingMiddleware)
+    app.add_middleware(RequestIdMiddleware)
     app.include_router(router)
     app.include_router(usage_router)
     register_exception_handlers(app)

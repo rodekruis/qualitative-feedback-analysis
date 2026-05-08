@@ -44,10 +44,6 @@ def _make_llm_response(structured=None, model="gpt-4", cost=0.001):
     if structured is None:
         structured = AnalysisResultModel(
             result="Analysis result.",
-            model=model,
-            prompt_tokens=100,
-            completion_tokens=50,
-            cost=cost,
         )
     return LLMResponse(
         structured=structured,
@@ -60,17 +56,9 @@ def _make_llm_response(structured=None, model="gpt-4", cost=0.001):
 
 def _make_analysis_result(
     result="Analysis result.",
-    model="gpt-4",
-    prompt_tokens=100,
-    completion_tokens=50,
-    cost=0.001,
 ):
     return AnalysisResultModel(
         result=result,
-        model=model,
-        prompt_tokens=prompt_tokens,
-        completion_tokens=completion_tokens,
-        cost=cost,
     )
 
 
@@ -198,7 +186,7 @@ class TestHappyPath:
     @pytest.mark.asyncio
     async def test_single_call_succeeds(self, settings):
         resp = _make_llm_response(
-            structured=_make_analysis_result(result="Good analysis", model="gpt-4o"),
+            structured=_make_analysis_result(result="Good analysis"),
             model="gpt-4o",
         )
         fake_llm = FakeLLMPort(responses=[resp])

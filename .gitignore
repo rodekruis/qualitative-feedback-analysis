@@ -179,3 +179,4 @@ config
 /infra/.terraform/
 **/.memsearch/
 **/.terraform.lock.hcl
+/.import_linter_cache/
