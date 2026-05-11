@@ -230,7 +230,12 @@ class AuthManagementPort(Protocol):
         ...
 
     def add_key(
-        self, api_key: str, key_id: str, tenant_id: str, is_superuser: bool = False
+        self,
+        api_key: str,
+        key_id: str,
+        key_name: str,
+        tenant_id: str,
+        is_superuser: bool = False,
     ) -> str:
         """Persist a new API key in the implemented adapter.
 
@@ -240,6 +245,8 @@ class AuthManagementPort(Protocol):
             The API key value to store.
         key_id : str
             The unique identifier for the key.
+        key_name : str
+            A human-friendly name for the key.
         tenant_id : str
             The tenant this key belongs to.
         is_superuser : bool

@@ -88,7 +88,12 @@ class AuthOrchestrator:
         self.auth_management_port.delete_tenant(tenant_id)
 
     def add_key(
-        self, api_key: str, key_id: str, tenant_id: str, is_superuser: bool = False
+        self,
+        api_key: str,
+        key_id: str,
+        key_name: str,
+        tenant_id: str,
+        is_superuser: bool = False,
     ) -> None:
         """Add a key through the configured auth-management backend.
 
@@ -98,12 +103,16 @@ class AuthOrchestrator:
             The API key value to store.
         key_id : str
             The unique identifier for the key.
+        key_name : str
+            A human-friendly name for the key.
         tenant_id : str
             The tenant this key belongs to.
         is_superuser : bool
             Whether this key should have superuser privileges (default False).
         """
-        self.auth_management_port.add_key(api_key, key_id, tenant_id, is_superuser)
+        self.auth_management_port.add_key(
+            api_key, key_id, key_name, tenant_id, is_superuser
+        )
 
     def delete_key(self, key_id: str) -> None:
         """Delete a key through the configured auth-management backend.
