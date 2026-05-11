@@ -92,7 +92,7 @@ uv run pytest tests/integration/test_db_postgres.py   # specific file
 
 ## Coding style and conventions
 
-- **Follow the [project guidelines](../../AGENTS.md).** They cover package management (`uv`, not `pip`), commit messages (conventional commits, no AI-attribution trailers), and the hexagonal layer rules.
+- **Follow the [project guidelines](../../AGENTS.md).** They cover package management (`uv`, not `pip`), commit messages (conventional commits), and the hexagonal layer rules.
 - **Every adapter explicitly inherits from its port.** Even though Python `Protocol`s support structural typing, we require `class LiteLLMClient(LLMPort):` and `class PresidioAnonymizer(AnonymizationPort):` so that "go to definition" in an IDE jumps from adapter to contract. Structural conformance is reserved for ad-hoc test fakes. See [Components](../architecture/03-components.md) for the full ports/adapters layout.
 - **Import directions are enforced.** `qfa.domain` must not import third-party infra (`litellm`, `presidio_*`, `fastapi`, ...); `qfa.services` may only import `qfa.domain`; the composition root in `qfa.api.app` is the only place that wires concrete adapters into ports. `make lint` runs `lint-imports` to enforce this.
 
