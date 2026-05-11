@@ -163,7 +163,7 @@ class AnonymizationPort(Protocol):
 class AuthLookupPort(Protocol):
     """Port for authenticating users of the appication."""
 
-    def validate_api_key(self, provided_key: str) -> TenantApiKey:
+    def validate_api_key(self, provided_key: str) -> TenantApiKey | None:
         """Validate if a user exists in the implemented adapter.
 
         Parameters
@@ -175,11 +175,6 @@ class AuthLookupPort(Protocol):
         -------
         TenantApiKey
             The matching tenant API key.
-
-        Raises
-        ------
-        AuthenticationError
-            If no loaded key matches *provided_key*.
         """
         ...
 
