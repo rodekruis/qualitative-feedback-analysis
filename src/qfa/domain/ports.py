@@ -164,7 +164,7 @@ class AuthLookupPort(Protocol):
     """Port for authenticating users of the appication."""
 
     def validate_api_key(self, provided_key: str) -> TenantApiKey | None:
-        """Validate if a user exists in the implemented adapter.
+        """Validate if a key exists in the implemented adapter.
 
         Parameters
         ----------
@@ -178,8 +178,8 @@ class AuthLookupPort(Protocol):
         """
         ...
 
-    def get_all_users(self) -> list[TenantApiKey]:
-        """Return all users known by the implemented adapter.
+    def get_all_keys(self) -> list[TenantApiKey]:
+        """Return all keys known by the implemented adapter.
 
         Returns
         -------
@@ -189,28 +189,28 @@ class AuthLookupPort(Protocol):
         ...
 
 
-class UserManagementPort(Protocol):
-    """Port for adding/ removing users from the application."""
+class AuthManagementPort(Protocol):
+    """Port for adding/ removing keys and tenants from the application."""
 
-    def add_user(self, tenant_api_key: TenantApiKey) -> None:
-        """Persist a new user/API key in the implemented adapter.
+    def add_key(self, api_key: TenantApiKey) -> None:
+        """Persist a new API key in the implemented adapter.
 
         Parameters
         ----------
-        tenant_api_key : TenantApiKey
+        api_key : TenantApiKey
             The tenant API key record to add.
 
         Raises
         ------
-        UserAlreadyExistsError:
-            If user with this key_id already exists
+        KeyAlreadyExistsError:
+            If key with this key_id already exists
         CannotManageSuperUsersError:
             If the tenant_api_key has superuser privileges and the port does not allow managing superusers.
         """
         ...
 
-    def delete_user(self, key_id: str) -> None:
-        """Delete an existing user/API key from the implemented adapter.
+    def delete_key(self, key_id: str) -> None:
+        """Delete an existing API key from the implemented adapter.
 
         Parameters
         ----------
@@ -219,7 +219,7 @@ class UserManagementPort(Protocol):
 
         Raises
         ------
-        UserNotFoundError:
-            If no user with this key_id exists
+        KeyNotFoundError:
+            If no key with this key_id exists
         """
         ...
