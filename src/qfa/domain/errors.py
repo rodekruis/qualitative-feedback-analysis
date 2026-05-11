@@ -71,6 +71,10 @@ class KeyNotFoundError(DomainError):
     """Raised when we try to access a user that doesn't exist."""
 
 
+class TenantNotFoundError(DomainError):
+    """Raised when we try to access a tenant that doesn't exist."""
+
+
 # --- Tracking errors ---
 
 

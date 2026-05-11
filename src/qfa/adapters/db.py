@@ -1,15 +1,20 @@
 """SQLAlchemy-based usage repository for LLM call tracking."""
 
+import asyncio
+import uuid
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import cast
 from urllib.parse import quote
 
 import sqlalchemy as sa
 import sqlalchemy.event  # ensure sa.event is available to type checkers
 from azure.identity import DefaultAzureCredential
-from sqlalchemy.exc import InterfaceError, OperationalError
+from pydantic import SecretStr
+from sqlalchemy.engine import CursorResult
+from sqlalchemy.exc import IntegrityError, InterfaceError, OperationalError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -17,14 +22,21 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from qfa.domain.errors import UsageRepositoryUnavailableError
+from qfa.domain.errors import (
+    KeyAlreadyExistsError,
+    KeyNotFoundError,
+    TenantDoesNotAllowSuperUsersError,
+    TenantNotFoundError,
+    UsageRepositoryUnavailableError,
+)
 from qfa.domain.models import (
     DistributionStats,
     LLMCallRecord,
+    TenantApiKey,
     TokenStats,
     UsageStats,
 )
-from qfa.domain.ports import UsageRepositoryPort
+from qfa.domain.ports import AuthLookupPort, AuthManagementPort, UsageRepositoryPort
 from qfa.settings import DatabaseSettings
 
 
@@ -79,6 +91,43 @@ llm_calls = sa.Table(
     ),
     sa.Index("idx_llm_calls_tenant_timestamp", "tenant_id", "timestamp"),
     sa.Index("idx_llm_calls_timestamp", "timestamp"),
+)
+
+tenants = sa.Table(
+    "tenants",
+    metadata,
+    sa.Column("tenant_id", sa.String(255), primary_key=True),
+    sa.Column("name", sa.String(255), nullable=False),
+    sa.Column("allows_superusers", sa.Boolean, nullable=False, default=False),
+    sa.Column(
+        "created_at",
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.func.now(),
+    ),
+)
+
+keys = sa.Table(
+    "keys",
+    metadata,
+    sa.Column("key_id", sa.String(255), primary_key=True),
+    sa.Column("name", sa.String(255), nullable=False),
+    sa.Column("hashed_key", sa.String(64), nullable=False),
+    sa.Column(
+        "tenant_id",
+        sa.String(255),
+        sa.ForeignKey("tenants.tenant_id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    sa.Column("is_superuser", sa.Boolean, nullable=False, default=False),
+    sa.Column(
+        "created_at",
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.func.now(),
+    ),
+    sa.Index("idx_keys_tenant_id", "tenant_id"),
+    sa.Index("idx_keys_hashed_key", "hashed_key"),
 )
 
 
@@ -288,7 +337,9 @@ def _select_totals(
     return stmt
 
 
-class SqlAlchemyUsageRepository(UsageRepositoryPort):
+class SqlAlchemyUsageRepository(
+    UsageRepositoryPort, AuthLookupPort, AuthManagementPort
+):
     """Usage repository backed by SQLAlchemy and PostgreSQL.
 
     Parameters
@@ -299,6 +350,23 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
 
     def __init__(self, session_factory: Callable[..., AsyncSession]) -> None:
         self._session_factory = session_factory
+
+    @staticmethod
+    def _run_auth_coro(coro):  # noqa: ANN205,ANN001
+        """Run async auth DB work from sync port methods.
+
+        Auth ports are currently synchronous; this adapter stores data in an
+        async DB backend. For now we execute one-shot coroutines with
+        ``asyncio.run`` and require callers to invoke these sync methods
+        outside a running event loop.
+        """
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(coro)
+        raise RuntimeError(
+            "SqlAlchemyUsageRepository auth methods cannot be called from a running event loop"
+        )
 
     async def record_call(self, record: LLMCallRecord) -> None:
         """Insert a single LLM call attempt record."""
@@ -374,3 +442,182 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
             for r in rows
             if int(r._mapping["total_calls"]) != 0
         ]
+
+    def validate_api_key(self, provided_key: str) -> TenantApiKey | None:
+        """Validate an API key against hashed keys stored in DB."""
+        return self._run_auth_coro(self._validate_api_key_async(provided_key))
+
+    async def _validate_api_key_async(self, provided_key: str) -> TenantApiKey | None:
+        stmt = sa.select(
+            keys.c.key_id,
+            keys.c.name,
+            keys.c.hashed_key,
+            keys.c.tenant_id,
+            keys.c.is_superuser,
+        )
+        async with self._session_factory() as session:
+            rows = (await session.execute(stmt)).all()
+
+        match: TenantApiKey | None = None
+        for row in rows:
+            tenant_key = TenantApiKey(
+                key_id=str(row.key_id),
+                name=str(row.name),
+                hashed_key=SecretStr(str(row.hashed_key)),
+                tenant_id=str(row.tenant_id),
+                is_superuser=bool(row.is_superuser),
+            )
+            if tenant_key.matches_key(provided_key):
+                match = tenant_key
+
+        return match
+
+    def get_auth_keys(self, tenant_id: str | None = None) -> list[dict]:
+        """Get API key metadata for one tenant or all tenants."""
+        return self._run_auth_coro(self._get_auth_keys_async(tenant_id))
+
+    async def _get_auth_keys_async(self, tenant_id: str | None = None) -> list[dict]:
+        stmt = sa.select(
+            keys.c.key_id,
+            keys.c.name,
+            keys.c.tenant_id,
+            keys.c.is_superuser,
+        ).order_by(keys.c.tenant_id.asc(), keys.c.key_id.asc())
+        if tenant_id is not None:
+            stmt = stmt.where(keys.c.tenant_id == tenant_id)
+
+        async with self._session_factory() as session:
+            rows = (await session.execute(stmt)).all()
+
+        return [
+            {
+                "key_id": str(row.key_id),
+                "name": str(row.name),
+                "tenant_id": str(row.tenant_id),
+                "is_superuser": bool(row.is_superuser),
+            }
+            for row in rows
+        ]
+
+    def add_tenant(self, tenant_name: str, allows_superusers: bool = False) -> str:
+        """Create and persist a tenant record, returning its id."""
+        return self._run_auth_coro(
+            self._add_tenant_async(
+                tenant_name=tenant_name,
+                allows_superusers=allows_superusers,
+            )
+        )
+
+    async def _add_tenant_async(
+        self, tenant_name: str, allows_superusers: bool = False
+    ) -> str:
+        tenant_id = str(uuid.uuid4())
+        async with self._session_factory() as session:
+            await session.execute(
+                tenants.insert().values(
+                    tenant_id=tenant_id,
+                    name=tenant_name,
+                    allows_superusers=allows_superusers,
+                )
+            )
+            await session.commit()
+        return tenant_id
+
+    def delete_tenant(self, tenant_id: str) -> None:
+        """Delete a tenant and all related keys."""
+        self._run_auth_coro(self._delete_tenant_async(tenant_id))
+
+    async def _delete_tenant_async(self, tenant_id: str) -> None:
+        async with self._session_factory() as session:
+            # Keep behavior deterministic across backends/tests even when
+            # FK cascades are not enforced (e.g. sqlite without PRAGMA).
+            await session.execute(keys.delete().where(keys.c.tenant_id == tenant_id))
+            result = cast(
+                CursorResult,
+                await session.execute(
+                    tenants.delete().where(tenants.c.tenant_id == tenant_id)
+                ),
+            )
+            if result.rowcount == 0:
+                await session.rollback()
+                raise TenantNotFoundError(f"Tenant '{tenant_id}' not found")
+            await session.commit()
+
+    def add_key(
+        self,
+        api_key: str,
+        key_id: str,
+        key_name: str,
+        tenant_id: str,
+        is_superuser: bool = False,
+    ) -> str:
+        """Persist a new API key for a tenant."""
+        return self._run_auth_coro(
+            self._add_key_async(
+                api_key=api_key,
+                key_id=key_id,
+                key_name=key_name,
+                tenant_id=tenant_id,
+                is_superuser=is_superuser,
+            )
+        )
+
+    async def _add_key_async(
+        self,
+        api_key: str,
+        key_id: str,
+        key_name: str,
+        tenant_id: str,
+        is_superuser: bool = False,
+    ) -> str:
+        async with self._session_factory() as session:
+            tenant_row = (
+                await session.execute(
+                    sa.select(tenants.c.allows_superusers).where(
+                        tenants.c.tenant_id == tenant_id
+                    )
+                )
+            ).one_or_none()
+            if tenant_row is None:
+                await session.rollback()
+                raise TenantNotFoundError(f"Tenant '{tenant_id}' not found")
+
+            if is_superuser and not bool(tenant_row.allows_superusers):
+                await session.rollback()
+                raise TenantDoesNotAllowSuperUsersError(
+                    f"Tenant '{tenant_id}' does not allow superuser keys"
+                )
+
+            try:
+                await session.execute(
+                    keys.insert().values(
+                        key_id=key_id,
+                        name=key_name,
+                        hashed_key=TenantApiKey.hash_key(api_key),
+                        tenant_id=tenant_id,
+                        is_superuser=is_superuser,
+                    )
+                )
+                await session.commit()
+            except IntegrityError as exc:
+                await session.rollback()
+                raise KeyAlreadyExistsError(
+                    f"Key with id '{key_id}' already exists"
+                ) from exc
+
+        return key_id
+
+    def delete_key(self, key_id: str) -> None:
+        """Delete an API key by id."""
+        self._run_auth_coro(self._delete_key_async(key_id))
+
+    async def _delete_key_async(self, key_id: str) -> None:
+        async with self._session_factory() as session:
+            result = cast(
+                CursorResult,
+                await session.execute(keys.delete().where(keys.c.key_id == key_id)),
+            )
+            if result.rowcount == 0:
+                await session.rollback()
+                raise KeyNotFoundError(f"Key with id '{key_id}' not found")
+            await session.commit()
