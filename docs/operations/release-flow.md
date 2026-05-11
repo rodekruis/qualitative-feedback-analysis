@@ -18,13 +18,13 @@ stateDiagram-v2
     Published --> Prd: Run Promote to prd + reviewer approval
 ```
 
-Three human actions drive the whole flow: run the Release workflow, click Publish on the draft release, and run Promote to prd (with reviewer approval). Publishing is both the sign-off that dev validation passed *and* the staging-deploy trigger — the click fires `auto-staging-on-publish.yaml`, which deploys the same digest to staging with no extra workflow run. The same image digest flows through all three states — no rebuilds between environments.
+Three human actions drive the whole flow: run the Release workflow, click Publish on the draft release, and run Promote to prd (with reviewer approval). Publishing is the sign-off that dev validation passed *and* the trigger for two auto-deploys — the click fires `auto-staging-on-publish.yaml` (deploys the same digest to staging) and `docs.yaml` (publishes the Sphinx docs to GitHub Pages), both with no extra workflow run. The same image digest flows through all three app-runtime states — no rebuilds between environments.
 
 ### Normal release (e.g. v0.4.0)
 
 1. Human runs **Release** from the Actions tab. CI runs, version bumps to v0.4.0, image builds, gets pushed to Azure Container Registry (ACR) as `qfa-backend:v0.4.0`, registry digest captured, draft release v0.4.0 created with the digest in its body, dev App Service updated to run that digest. Total: one click.
 2. Human pokes around in dev. Finds nothing wrong.
-3. Human goes to the Releases page and clicks **Publish** on the v0.4.0 draft. Publishing the release automatically fires `auto-staging-on-publish.yaml`, which deploys the same digest to staging — the click is both the sign-off that dev validation passed *and* the trigger for the staging deploy.
+3. Human goes to the Releases page and clicks **Publish** on the v0.4.0 draft. Publishing the release automatically fires `auto-staging-on-publish.yaml` (deploys the same digest to staging) and `docs.yaml` (publishes the Sphinx docs to GitHub Pages) — the click is both the sign-off that dev validation passed *and* the trigger for those two auto-deploys.
 4. Final smoke testing in staging.
 5. Human runs **Promote to prd** with input `v0.4.0`. The Verify job checks "published and not pre-release", then enters the prd environment, which triggers GitHub's required-reviewers prompt. Reviewer approves. Same digest deploys to prd.
 
@@ -38,6 +38,20 @@ Three human actions drive the whole flow: run the Release workflow, click Publis
 ### Testing a feature branch in dev without cutting a release
 
 1. Human runs **Build from commit** with `ref: feat/some-experiment` and `deploy_to_dev: true`. An ephemeral image gets built and pushed as `qfa-backend:ephemeral-feat-some-experiment-<sha>`, dev gets updated to that digest. No release is created — so the image cannot enter the promotion pipeline. To get back to a real release, run **Promote to dev** with the latest released tag.
+
+## Documentation publishing
+
+The Sphinx docs (built by `make docs`, sources under `docs/`) are published to GitHub Pages at <https://rodekruis.github.io/qualitative-feedback-analysis/>.
+
+The `docs.yaml` workflow (`.github/workflows/docs.yaml`) builds the docs on every push as a CI gate so doc-rot is caught early, but only deploys to Pages in two cases:
+
+- **Release published.** When a draft release is published (the same click that fires the staging deploy in the app flow above), the docs site is rebuilt from the published commit and pushed live. This keeps the public docs aligned with the latest released version.
+- **Manual dispatch.** Run the `Docs` workflow from the Actions tab to push a one-off update — useful for doc-only fixes between releases.
+
+The published site reflects releases, not `main`. A merge to `main` triggers a build (so a broken doc PR fails CI) but does not deploy — the published site only moves forward when a release is cut or a human dispatches the workflow.
+
+> [!NOTE]
+> First-time setup requires enabling Pages in repo Settings → Pages with **Source: GitHub Actions**. Without that, the first `deploy-pages` step fails with a 404. This is a one-time repo setting, not a per-deploy step.
 
 ## Infrastructure changes
 
