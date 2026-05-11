@@ -53,8 +53,8 @@ Deployed to Azure App Service via Terraform (infrastructure) and GitHub Actions 
 
 Before the CI/CD pipeline can run, the Azure infrastructure and GitHub environments must be bootstrapped locally:
 
-1. [infra/BOOTSTRAP.md](infra/BOOTSTRAP.md) — one-time per deployment: Terraform state backend, shared container registry, and repo-scoped GitHub variables.
-2. [infra/setup-new-env.md](infra/setup-new-env.md) — run once per environment (`dev`, `staging`, `prd`, or any added later): Terraform workspace, App Service, Key Vault, managed identity, env-scoped GitHub variables, and Key Vault secrets.
+1. [docs/operations/bootstrap.md](docs/operations/bootstrap.md) — one-time per deployment: Terraform state backend, shared container registry, and repo-scoped GitHub variables.
+2. [docs/operations/setup-new-env.md](docs/operations/setup-new-env.md) — run once per environment (`dev`, `staging`, `prd`, or any added later): Terraform workspace, App Service, Key Vault, managed identity, env-scoped GitHub variables, and Key Vault secrets.
 
 ## CI/CD pipeline
 
@@ -131,7 +131,7 @@ The `terraform.yaml` workflow (`.github/workflows/terraform.yaml`) runs `plan` a
 
 ## GitHub Configuration
 
-GitHub environments (`dev`, `prd`) and their required Actions variables are managed by Terraform. See [infra/BOOTSTRAP.md](infra/BOOTSTRAP.md).
+GitHub environments (`dev`, `prd`) and their required Actions variables are managed by Terraform. See [docs/operations/bootstrap.md](docs/operations/bootstrap.md).
 
 
 # Getting Started
