@@ -21,7 +21,8 @@ def key_a1() -> TenantApiKey:
     return TenantApiKey(
         key_id="a1",
         name="Alpha Key 1",
-        key=KEY_A1_VALUE,
+        key=KEY_A1_VALUE,  # type:ignore [ty:invalid-argument-type]
+        hashed_key=None,  # type:ignore [ty:invalid-argument-type]
         tenant_id=TENANT_A,
     )
 
@@ -31,7 +32,8 @@ def key_a2() -> TenantApiKey:
     return TenantApiKey(
         key_id="a2",
         name="Alpha Key 2",
-        key=KEY_A2_VALUE,
+        key=KEY_A2_VALUE,  # type:ignore [ty:invalid-argument-type]
+        hashed_key=None,  # type:ignore [ty:invalid-argument-type]
         tenant_id=TENANT_A,
         is_superuser=True,
     )
@@ -42,7 +44,8 @@ def key_b1() -> TenantApiKey:
     return TenantApiKey(
         key_id="b1",
         name="Beta Key 1",
-        key=KEY_B1_VALUE,
+        key=KEY_B1_VALUE,  # type:ignore [ty:invalid-argument-type]
+        hashed_key=None,  # type:ignore [ty:invalid-argument-type]
         tenant_id=TENANT_B,
     )
 

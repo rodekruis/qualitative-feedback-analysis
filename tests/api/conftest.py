@@ -132,6 +132,7 @@ def fake_api_keys():
             key_id=f"{FAKE_TENANT_ID}-0",
             name=FAKE_API_KEY_NAME,
             key=FAKE_API_KEY,  # type:ignore [ty:invalid-argument-type]
+            hashed_key=None,  # type:ignore [ty:invalid-argument-type]
             tenant_id=FAKE_TENANT_ID,
         )
     ]

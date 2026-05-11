@@ -168,6 +168,7 @@ class TestTenantApiKey:
             key_id="tenant-1-0",
             name="prod-key",
             key="sk-abc123",  # type:ignore [ty:invalid-argument-type]
+            hashed_key=None,  # type:ignore [ty:invalid-argument-type]
             tenant_id="tenant-1",
         )
         assert key.key_id == "tenant-1-0"
@@ -202,6 +203,7 @@ class TestTenantApiKey:
             key_id="tenant-1-0",
             name="prod-key",
             key="sk-abc123",  # type:ignore [ty:invalid-argument-type]
+            hashed_key=None,  # type:ignore [ty:invalid-argument-type]
             tenant_id="tenant-1",
         )
         with pytest.raises(ValidationError):

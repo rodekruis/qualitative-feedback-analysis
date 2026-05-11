@@ -67,6 +67,7 @@ class TestUsageDisabled:
             TenantApiKey(
                 name="superuser",
                 key=FAKE_SUPERUSER_KEY,  # type:ignore [ty:invalid-argument-type]
+                hashed_key=None,  # type:ignore [ty:invalid-argument-type]
                 tenant_id="admin",
                 is_superuser=True,
                 key_id="admin-0",
@@ -150,6 +151,7 @@ class TestUsageAllEndpoint:
             TenantApiKey(
                 name="superuser",
                 key=FAKE_SUPERUSER_KEY,  # type:ignore [ty:invalid-argument-type]
+                hashed_key=None,  # type:ignore [ty:invalid-argument-type]
                 tenant_id="admin",
                 is_superuser=True,
                 key_id="admin-0",
@@ -228,6 +230,7 @@ class TestUsageBackendUnavailable:
             TenantApiKey(
                 name="superuser",
                 key=FAKE_SUPERUSER_KEY,  # type:ignore [ty:invalid-argument-type]
+                hashed_key=None,  # type:ignore [ty:invalid-argument-type]
                 tenant_id="admin",
                 is_superuser=True,
                 key_id="admin-0",
