@@ -18,10 +18,10 @@ from qfa.domain.models import (
     AnalysisRequestModel,
     AnalysisResultModel,
     AssignedCodeModel,
-    CodedFeedbackItemModel,
+    CodedFeedbackRecordModel,
     CodingAssignmentRequestModel,
     CodingAssignmentResultModel,
-    FeedbackItemSummaryModel,
+    FeedbackRecordSummaryModel,
     SummaryRequestModel,
     SummaryResultModel,
     TenantApiKey,
@@ -50,8 +50,8 @@ class FakeOrchestrator:
             result="Fake analysis result",
         )
         self._summarize_result = summarize_result or SummaryResultModel(
-            feedback_item_summaries=(
-                FeedbackItemSummaryModel(
+            feedback_record_summaries=(
+                FeedbackRecordSummaryModel(
                     id="doc-1",
                     title="Fake summary title",
                     summary="- Fake summary point",
@@ -90,7 +90,7 @@ class FakeOrchestrator:
         if self._error is not None:
             raise self._error
         return AggregateSummaryResultModel(
-            ids=tuple(item.id for item in request.feedback_items),
+            ids=tuple(record.id for record in request.feedback_records),
             title="Fake aggregate title",
             summary="- Fake aggregate point",
             quality_score=0.9,
@@ -105,9 +105,9 @@ class FakeOrchestrator:
         if self._error is not None:
             raise self._error
         return CodingAssignmentResultModel(
-            coded_feedback_items=tuple(
-                CodedFeedbackItemModel(
-                    feedback_item_id=item.id,
+            coded_feedback_records=tuple(
+                CodedFeedbackRecordModel(
+                    feedback_record_id=record.id,
                     assigned_codes=(
                         AssignedCodeModel(
                             code_id="code-1",
@@ -120,7 +120,7 @@ class FakeOrchestrator:
                         ),
                     ),
                 )
-                for item in request.feedback_items
+                for record in request.feedback_records
             )
         )
 
