@@ -12,7 +12,6 @@ Use `uv` for all dependency management (not `pip`). Examples:
 - Github repo: `rodekruis/qualitative-feedback-analysis`
 - use conventional commits (https://www.conventionalcommits.org/en/v1.0.0/)
 - Commit messages must contain ONLY a conventional commit subject line and optional body. No trailers of any kind.
-- DO NOT add "Co-Authored-By" or any AI attribution trailers to commit messages or pull requests.
 
 ### Workflow
 
