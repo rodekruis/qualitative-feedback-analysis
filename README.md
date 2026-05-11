@@ -9,6 +9,8 @@ Built as a FastAPI service on Azure App Service, with a hexagonal core (LiteLLM,
 
 ## Documentation
 
+The rendered Sphinx site is hosted at <https://rodekruis.github.io/qualitative-feedback-analysis/> (refreshed when a release is published — see [Documentation publishing](docs/operations/release-flow.md#documentation-publishing) for trigger details).
+
 All long-form docs live in the [documentation home](docs/README.md). The most common entry points:
 
 - **New to the project?** Start with the [Developer guide](docs/development/index.md) — local env setup, pre-commit, coding conventions.
