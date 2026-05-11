@@ -3,7 +3,7 @@
 from pydantic import SecretStr
 
 from qfa.domain import AuthenticationError, TenantApiKey
-from src.qfa.domain.ports import AuthLookupPort, AuthManagementPort
+from qfa.domain.ports import AuthLookupPort, AuthManagementPort
 
 
 class AuthOrchestrator:
