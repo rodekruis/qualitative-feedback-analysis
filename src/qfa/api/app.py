@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 import qfa
+from qfa.adapters.env_auth import EnvironmentAuthLookupAdapter
 from qfa.adapters.llm_client import LiteLLMClient
 from qfa.adapters.presidio_anonymizer import PresidioAnonymizer
 from qfa.api.routes import router
@@ -25,7 +26,6 @@ from qfa.api.schemas import (
     ApiErrorFieldDetail,
     ApiErrorResponse,
 )
-from qfa.auth import validate_api_key
 from qfa.domain.errors import (
     AnalysisError,
     AnalysisTimeoutError,
@@ -39,6 +39,7 @@ from qfa.domain.errors import (
     UsageRepositoryUnavailableError,
 )
 from qfa.domain.ports import LLMPort
+from qfa.services.auth_orchestrator import AuthOrchestrator
 from qfa.services.orchestrator import Orchestrator
 from qfa.settings import AppSettings, LLMSettings
 from qfa.utils import setup_logging
@@ -150,7 +151,7 @@ class RequestLoggingMiddleware:
         finally:
             duration_ms = (datetime.now(UTC) - start).total_seconds() * 1000
 
-            tenant_name = self._resolve_tenant(scope)
+            tenant_name = await self._resolve_tenant(scope)
 
             logger.info(
                 "%s %s status=%s duration=%.0fms request_id=%s tenant=%s",
@@ -163,7 +164,7 @@ class RequestLoggingMiddleware:
             )
 
     @staticmethod
-    def _resolve_tenant(scope: Scope) -> str:
+    async def _resolve_tenant(scope: Scope) -> str:
         """Extract tenant name from the Authorization header if possible.
 
         Never logs the API key itself. Returns ``"anonymous"`` when the
@@ -185,12 +186,8 @@ class RequestLoggingMiddleware:
         if app is None:
             return "anonymous"
 
-        api_keys = getattr(getattr(app, "state", None), "api_keys", None)
-        if not api_keys:
-            return "anonymous"
-
         try:
-            tenant = validate_api_key(token, api_keys)
+            tenant = await app.state.auth_orchestrator.validate_api_key(token)
             return tenant.name
         except Exception:
             return "invalid"
@@ -623,7 +620,7 @@ def _make_lifespan(llm_factory: LLMFactory):
         base_llm = llm_factory(settings.llm)
         llm_for_orch: LLMPort = base_llm
 
-        if settings.db.track_usage:
+        if settings.db.track_usage or True:  #! FORCE USAGE TRACKING ENABLED
             from qfa.adapters.db import (
                 SqlAlchemyUsageRepository,
                 create_async_engine_from_settings,
@@ -646,8 +643,14 @@ def _make_lifespan(llm_factory: LLMFactory):
             max_total_tokens=settings.llm.max_total_tokens,
         )
 
+        app.state.auth_orchestrator = AuthOrchestrator(
+            auth_lookup_ports=[
+                EnvironmentAuthLookupAdapter(api_keys=api_keys),
+                usage_repo,
+            ],
+            auth_management_port=usage_repo,
+        )
         app.state.orchestrator = orchestrator
-        app.state.api_keys = api_keys
         app.state.settings = settings
         app.state.usage_repo = usage_repo
 

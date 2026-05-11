@@ -4,7 +4,6 @@ from fastapi import Depends, Request, Security
 from fastapi.exceptions import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from qfa.auth import validate_api_key
 from qfa.domain.errors import AuthenticationError, AuthorizationError
 from qfa.domain.models import TenantApiKey
 from qfa.domain.ports import UsageRepositoryPort
@@ -87,7 +86,9 @@ async def authenticate_request(
         raise AuthenticationError(error_message)
 
     try:
-        return validate_api_key(credentials.credentials, request.app.state.api_keys)
+        return await request.app.state.auth_orchestrator.validate_api_key(
+            credentials.credentials
+        )
     except AuthenticationError:
         raise AuthenticationError(error_message)
 

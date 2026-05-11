@@ -116,7 +116,7 @@ class TestValidateApiKey:
             FakeAuthManagementPort(),
         )
 
-        result = await orchestrator.validate_api_key(SecretStr("provided-secret"))
+        result = await orchestrator.validate_api_key(("provided-secret"))
 
         assert result == expected
         assert first_lookup.validate_calls == ["provided-secret"]
@@ -135,7 +135,7 @@ class TestValidateApiKey:
             AuthenticationError,
             match="API key does not match any known key",
         ):
-            await orchestrator.validate_api_key(SecretStr("missing-secret"))
+            await orchestrator.validate_api_key(("missing-secret"))
 
         assert first_lookup.validate_calls == ["missing-secret"]
         assert second_lookup.validate_calls == ["missing-secret"]

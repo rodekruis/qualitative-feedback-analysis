@@ -10,7 +10,6 @@ import pytest_asyncio
 from qfa.domain.errors import UsageRepositoryUnavailableError
 from qfa.domain.models import (
     DistributionStats,
-    TenantApiKey,
     TokenStats,
     UsageStats,
 )
@@ -63,16 +62,6 @@ class TestUsageDisabled:
         assert resp.json()["error"]["code"] == "usage_tracking_disabled"
 
     async def test_usage_all_503_when_disabled(self, test_app, client):
-        test_app.state.api_keys.append(
-            TenantApiKey(
-                name="superuser",
-                key=FAKE_SUPERUSER_KEY,  # type:ignore [ty:invalid-argument-type]
-                hashed_key=None,  # type:ignore [ty:invalid-argument-type]
-                tenant_id="admin",
-                is_superuser=True,
-                key_id="admin-0",
-            )
-        )
         resp = await client.get(
             "/v1/usage/all",
             headers={"Authorization": f"Bearer {FAKE_SUPERUSER_KEY}"},
@@ -147,16 +136,6 @@ class TestUsageEndpoint:
 class TestUsageAllEndpoint:
     @pytest_asyncio.fixture
     async def client_with_repo(self, test_app):
-        test_app.state.api_keys.append(
-            TenantApiKey(
-                name="superuser",
-                key=FAKE_SUPERUSER_KEY,  # type:ignore [ty:invalid-argument-type]
-                hashed_key=None,  # type:ignore [ty:invalid-argument-type]
-                tenant_id="admin",
-                is_superuser=True,
-                key_id="admin-0",
-            )
-        )
         all_stats = [
             _make_usage_stats(tenant_id="t1", total_calls=3),
             _make_usage_stats(tenant_id="t2", total_calls=7),
@@ -226,16 +205,6 @@ class TestUsageBackendUnavailable:
         assert body["error"]["code"] != "usage_tracking_disabled"
 
     async def test_usage_all_503_with_backend_unavailable_code(self, test_app):
-        test_app.state.api_keys.append(
-            TenantApiKey(
-                name="superuser",
-                key=FAKE_SUPERUSER_KEY,  # type:ignore [ty:invalid-argument-type]
-                hashed_key=None,  # type:ignore [ty:invalid-argument-type]
-                tenant_id="admin",
-                is_superuser=True,
-                key_id="admin-0",
-            )
-        )
         test_app.state.usage_repo = _UnavailableUsageRepository()
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=test_app),

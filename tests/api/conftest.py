@@ -7,6 +7,7 @@ import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 
+from qfa.adapters.env_auth import EnvironmentAuthLookupAdapter
 from qfa.api.app import (
     RequestIdMiddleware,
     register_exception_handlers,
@@ -26,6 +27,7 @@ from qfa.domain.models import (
     SummaryResultModel,
     TenantApiKey,
 )
+from qfa.services.auth_orchestrator import AuthOrchestrator
 
 FAKE_API_KEY = "test-key-abc123"
 FAKE_SUPERUSER_KEY = "superuser-key-xyz789"
@@ -134,7 +136,16 @@ def fake_api_keys():
             key=FAKE_API_KEY,  # type:ignore [ty:invalid-argument-type]
             hashed_key=None,  # type:ignore [ty:invalid-argument-type]
             tenant_id=FAKE_TENANT_ID,
-        )
+            is_superuser=False,
+        ),
+        TenantApiKey(
+            key_id=f"{FAKE_TENANT_ID}-1",
+            name="Superuser 2",
+            key=FAKE_SUPERUSER_KEY,  # type:ignore [ty:invalid-argument-type]
+            hashed_key=None,  # type:ignore [ty:invalid-argument-type]
+            tenant_id=FAKE_TENANT_ID,
+            is_superuser=True,
+        ),
     ]
 
 
@@ -144,7 +155,15 @@ def fake_orchestrator():
 
 
 @pytest.fixture
-def test_app(fake_orchestrator, fake_api_keys):
+def fake_auth_orchestrator(fake_api_keys):
+    return AuthOrchestrator(
+        auth_lookup_ports=[EnvironmentAuthLookupAdapter(api_keys=fake_api_keys)],
+        auth_management_port=["Not testing adding users here"],
+    )  # type: ignore
+
+
+@pytest.fixture
+def test_app(fake_orchestrator, fake_auth_orchestrator):
     app = FastAPI(title="Test App")
     app.add_middleware(RequestIdMiddleware)
     app.include_router(router)
@@ -152,7 +171,7 @@ def test_app(fake_orchestrator, fake_api_keys):
     register_exception_handlers(app)
 
     app.state.orchestrator = fake_orchestrator
-    app.state.api_keys = fake_api_keys
+    app.state.auth_orchestrator = fake_auth_orchestrator
     app.state.usage_repo = None
 
     return app

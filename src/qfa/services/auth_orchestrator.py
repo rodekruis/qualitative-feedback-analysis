@@ -1,7 +1,5 @@
 """Application service for authentication and management operations."""
 
-from pydantic import SecretStr
-
 from qfa.domain import AuthenticationError, TenantApiKey
 from qfa.domain.ports import AuthLookupPort, AuthManagementPort
 
@@ -32,12 +30,12 @@ class AuthOrchestrator:
         self.auth_lookup_ports = auth_lookup_ports
         self.auth_management_port = auth_management_port
 
-    async def validate_api_key(self, api_key: SecretStr) -> TenantApiKey:
+    async def validate_api_key(self, api_key: str) -> TenantApiKey:
         """Validate an API key against available authentication backends.
 
         Parameters
         ----------
-        api_key : SecretStr
+        api_key : str
             API key supplied by the caller.
 
         Returns
@@ -51,9 +49,7 @@ class AuthOrchestrator:
             If no configured authentication backend recognizes the key.
         """
         for auth_lookup_port in self.auth_lookup_ports:
-            tenant_api_key = await auth_lookup_port.validate_api_key(
-                api_key.get_secret_value()
-            )
+            tenant_api_key = await auth_lookup_port.validate_api_key(api_key)
             if tenant_api_key is None:
                 continue
             return tenant_api_key
