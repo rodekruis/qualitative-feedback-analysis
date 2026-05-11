@@ -212,6 +212,7 @@ class AuthManagementPort(Protocol):
         str
             The unique identifier of the created tenant.
         """
+        ...
 
     def delete_tenant(self, tenant_id: str) -> None:
         """Delete an existing tenant from the implemented adapter.
