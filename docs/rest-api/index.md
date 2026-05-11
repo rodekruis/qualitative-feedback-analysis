@@ -25,8 +25,6 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 
 ## curl examples
 
-The repo ships a [`local-testing.http`](../../local-testing.http) file with minimal example calls for every endpoint. Open it in any editor that supports REST clients (VS Code REST Client, JetBrains HTTP Client, etc.), or read it and translate to curl.
-
 A minimal `analyze` call:
 
 ```bash
