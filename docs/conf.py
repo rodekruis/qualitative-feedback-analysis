@@ -59,11 +59,15 @@ exclude_patterns = [
     "**/README.md",
 ]
 
-# qfa.domain re-exports symbols from its submodules so callers can import
-# them from the package root. autodoc then sees each symbol twice (once
-# under the canonical module, once under the re-export) and warns. The
-# re-exports are intentional, so silence the noise.
-suppress_warnings = ["ref.python"]
+# -- Napoleon ---------------------------------------------------------------
+
+# Render docstring `Attributes` sections as :ivar: field lists rather than
+# `.. py:attribute::` directives. The latter collides with autodoc's own
+# attribute documentation (from real class-body annotations) and emits
+# duplicate-object-description warnings. :ivar: is a non-indexing role,
+# so the visual rendering is the same but no second Python-domain entry
+# is registered.
+napoleon_use_ivar = True
 
 # -- MyST configuration -----------------------------------------------------
 
@@ -94,14 +98,15 @@ autodoc_default_options = {
 
 # -- Intersphinx ------------------------------------------------------------
 
+# Only mappings we actually cross-reference today. Add pydantic / fastapi
+# back the first time a doc role needs them; keeping unused inventories
+# in the list means failed network fetches log warnings on every build.
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
-    "pydantic": ("https://docs.pydantic.dev/latest/", None),
-    "fastapi": ("https://fastapi.tiangolo.com/", None),
 }
 
 # -- HTML output ------------------------------------------------------------
 
-html_theme = "sphinx_rtd_theme"
+html_theme = "pydata_sphinx_theme"
 html_static_path = ["_static"]
 html_title = f"{project} {release}"

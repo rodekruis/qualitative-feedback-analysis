@@ -20,4 +20,5 @@ For decision history (why we chose what we chose), see the [architecture decisio
 03-components
 04-crosscutting
 05-data-model
+/adr/index
 ```

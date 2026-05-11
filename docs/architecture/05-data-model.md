@@ -4,19 +4,19 @@ Two surfaces: the in-memory domain models, and the on-disk usage table.
 
 ## Domain models
 
-All domain entities live in `qfa.domain.models` and are Pydantic `BaseModel(frozen=True)` per [ADR-001](../adr/001-pydantic-domain-models.md). One exception is `AggregateSummaryResultModel`, which is mutable so the orchestrator can attach a quality score after the judge call.
+All domain entities live in {py:mod}`qfa.domain.models` and are Pydantic `BaseModel(frozen=True)` per [ADR-001](../adr/001-pydantic-domain-models.md). One exception is {py:class}`~qfa.domain.models.AggregateSummaryResultModel`, which is mutable so the orchestrator can attach a quality score after the judge call.
 
 | Model | Purpose |
 |---|---|
-| `FeedbackRecordModel` | A single beneficiary feedback record submitted by the CRM. Carries `id`, `text` / `content`, optional metadata. |
-| `AnalysisRequestModel` / `AnalysisResultModel` | Request and result for `POST /v1/analyze`. |
-| `SummarizeRequestModel` / `SummaryResultModel` / `FeedbackRecordSummaryModel` | Per-record summarisation. |
-| `AggregateSummarizationRequestModel` / `AggregateSummaryResultModel` | Single aggregate summary with judge score. |
-| `CodingAssignmentRequestModel` / `CodingAssignmentResultModel` | Hierarchical code assignment. `coding_framework` is currently `dict[str, Any]` — a typed model exists in the API schemas but is not yet wired in. |
-| `LLMResponse[T_Response]` | Generic envelope returned from `LLMPort.complete`. Carries the structured payload plus `model`, `prompt_tokens`, `completion_tokens`, `cost`. |
-| `TenantApiKey` | One row in `AUTH_API_KEYS`. Fields: `key_id`, `key` (`SecretStr`), `tenant_id`, optional `is_superuser`. |
-| `LLMCallRecord` | One LLM call's worth of tracking data — written by `TrackingLLMAdapter`. |
-| `UsageStats`, `DistributionStats`, `TokenStats` | Aggregate views returned by `/v1/usage`. |
+| {py:class}`~qfa.domain.models.FeedbackRecordModel` | A single beneficiary feedback record submitted by the CRM. |
+| {py:class}`~qfa.domain.models.AnalysisRequestModel` / {py:class}`~qfa.domain.models.AnalysisResultModel` | Request and result for `POST /v1/analyze`. |
+| {py:class}`~qfa.domain.models.SummaryRequestModel` / {py:class}`~qfa.domain.models.SummaryResultModel` / {py:class}`~qfa.domain.models.FeedbackRecordSummaryModel` | Per-record summarisation. |
+| {py:class}`~qfa.domain.models.AggregateSummaryResultModel` | Single aggregate summary with judge score. |
+| {py:class}`~qfa.domain.models.CodingAssignmentRequestModel` / {py:class}`~qfa.domain.models.CodingAssignmentResultModel` | Hierarchical code assignment. `coding_framework` is currently `dict[str, Any]` — a typed model exists in the API schemas but is not yet wired in. |
+| `LLMResponse[T_Response]` | Generic envelope returned from {py:class}`~qfa.domain.ports.LLMPort`'s `complete` method. |
+| {py:class}`~qfa.domain.models.TenantApiKey` | One row in `AUTH_API_KEYS`. |
+| {py:class}`~qfa.domain.models.LLMCallRecord` | One LLM call's worth of tracking data — written by {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter`. |
+| {py:class}`~qfa.domain.models.UsageStats`, {py:class}`~qfa.domain.models.DistributionStats`, {py:class}`~qfa.domain.models.TokenStats` | Aggregate views returned by `/v1/usage`. |
 
 ## Persistence — `llm_calls`
 

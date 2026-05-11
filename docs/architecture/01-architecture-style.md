@@ -8,7 +8,7 @@ Four things tipped the decision:
 
 1. **Multiple distinct external worlds.** The core talks to an LLM provider (via LiteLLM), a PII detection engine (Presidio), and a usage-tracking database (Postgres). Each is independent and changes at a different cadence — exactly the shape hexagonal was designed for.
 2. **Parallel work along port boundaries.** Once a port is named, dev A can build the use case against a typed fake while dev B implements the real adapter — the port type is the contract that lets the two streams converge cleanly at the end. The same shape unblocks investigation work: try a second LLM provider behind the existing port without touching the orchestrator.
-3. **Type-checked fakes beat monkey-patches.** Tests inject `FakeLLMPort` (and analogous fakes for `AnonymizationPort`, `UsageRepositoryPort`) through `create_app(llm_factory=…)`. Because every fake inherits explicitly from its port, the type-checker catches drift the moment the contract shifts — there's no stale `unittest.mock.patch` chain silently passing a test against a long-changed interface.
+3. **Type-checked fakes beat monkey-patches.** Tests inject `FakeLLMPort` (and analogous fakes for {py:class}`~qfa.domain.ports.AnonymizationPort`, {py:class}`~qfa.domain.ports.UsageRepositoryPort`) through `create_app(llm_factory=…)`. Because every fake inherits explicitly from its port, the type-checker catches drift the moment the contract shifts — there's no stale `unittest.mock.patch` chain silently passing a test against a long-changed interface.
 4. **Well-known and battle-tested.** Hexagonal is recognisable enough that experienced developers and AI coding agents both navigate the layout without the architecture being explained first — a real onboarding-cost saving when both kinds of contributor are in the loop.
 
 See [ADR-001](../adr/001-pydantic-domain-models.md) through [ADR-011](../adr/011-drop-orchestrator-port.md) for individual decisions; [ADR-002](../adr/002-protocol-based-ports.md) and [ADR-011](../adr/011-drop-orchestrator-port.md) are the load-bearing ones.
@@ -35,7 +35,7 @@ Allowed import directions (enforced by `import-linter`):
 
 ## What's *not* hexagonal here
 
-Hexagonal tells us "services depend only on ports" — it doesn't say "one orchestrator class with N methods" versus "N orchestrator classes." The current `Orchestrator` is one class with four operations (`analyze`, `summarize`, `summarize_aggregate`, `assign_codes`), per [ADR-011](../adr/011-drop-orchestrator-port.md). Extracting individual use cases into their own services is anticipated when any one grows enough to warrant it.
+Hexagonal tells us "services depend only on ports" — it doesn't say "one orchestrator class with N methods" versus "N orchestrator classes." The current {py:class}`~qfa.services.orchestrator.Orchestrator` is one class with four operations (`analyze`, `summarize`, `summarize_aggregate`, `assign_codes`), per [ADR-011](../adr/011-drop-orchestrator-port.md). Extracting individual use cases into their own services is anticipated when any one grows enough to warrant it.
 
 ## Further reading
 

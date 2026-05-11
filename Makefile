@@ -70,13 +70,12 @@ test-integration:
 # reference (sphinx-autosummary against src/qfa) with the prose pages
 # under docs/. Output lands at docs/_build/html/index.html.
 #
-# Strict mode (-W) is deliberately off: autosummary's recursive crawl over
-# qfa.domain (which re-exports submodule symbols) generates duplicate
-# object descriptions that we accept until docstrings get tightened. The
-# `--keep-going` flag still surfaces every warning per build.
+# Strict mode (-W) fails the build on any warning so broken cross-refs,
+# orphaned docs, or autodoc surprises are caught at build time. Combined
+# with --keep-going so a single build surfaces every issue at once.
 docs:
 	uv sync --group docs
-	uv run sphinx-build --keep-going -a -b html docs docs/_build/html
+	uv run sphinx-build -W --keep-going -a -b html docs docs/_build/html
 	@echo "Open docs/_build/html/index.html"
 
 # Wipe generated docs artefacts. Useful when autosummary stubs go stale

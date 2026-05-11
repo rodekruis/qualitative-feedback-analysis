@@ -26,7 +26,7 @@ Every environment variable the app reads. Settings are loaded by `pydantic-setti
 
 | Variable | Required | Default | Notes |
 |---|---|---|---|
-| `AUTH_API_KEYS` | **yes** | — | JSON array of `TenantApiKey` objects. See [API key management](auth-management.md) for the shape. |
+| `AUTH_API_KEYS` | **yes** | — | JSON array of {py:class}`~qfa.domain.models.TenantApiKey` objects. See [API key management](auth-management.md) for the shape. |
 
 ## Database (`DB_*`)
 

@@ -2,7 +2,7 @@
 
 The service authenticates callers with simple bearer-token API keys, scoped to a tenant. This page covers operating that system.
 
-For the design (`TenantApiKey`, `validate_api_key`, middleware), see [Components](../architecture/03-components.md) and [ADR-005](../adr/005-bearer-auth.md).
+For the design ({py:class}`~qfa.domain.models.TenantApiKey`, `validate_api_key`, middleware), see [Components](../architecture/03-components.md) and [ADR-005](../adr/005-bearer-auth.md).
 
 ## How auth works at runtime
 
