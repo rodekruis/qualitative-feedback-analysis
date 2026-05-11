@@ -15,19 +15,15 @@ See [ADR-001](../adr/001-pydantic-domain-models.md) through [ADR-011](../adr/011
 ## Layer diagram
 
 ```mermaid
-flowchart TD
+block-beta
+    columns 2
     api["api/<br/>FastAPI routes, middleware,<br/>schemas, composition root"]
     adapters["adapters/<br/>LiteLLM client, Presidio,<br/>SQLAlchemy repo,<br/>tracking decorator"]
-    services["services/<br/>Orchestrator,<br/>CallContext"]
-    domain["domain/<br/>models, ports, errors"]
-
-    api --> adapters
-    api --> services
-    api --> domain
-    adapters --> services
-    adapters --> domain
-    services --> domain
+    services["services/<br/>Orchestrator, CallContext"]:2
+    domain["domain/<br/>models, ports, errors"]:2
 ```
+
+Each row may import from any row below it, never from a row above. `api/` and `adapters/` are siblings on the top row: neither imports from the other; both are wired together by the composition root in `api/app.py`.
 
 Allowed import directions (enforced by `import-linter`):
 

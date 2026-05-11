@@ -1,36 +1,31 @@
 # Documentation
 
-A short map of where things live.
+A short map of where things live. Each section links to its own index page with the full list.
+
+## For contributors
+
+- [Developer guide](development/README.md) — getting from a fresh clone to a green `make test`. Covers local env setup (direnv + `.env`), pre-commit hooks, and the coding conventions we expect on PRs.
+- [Devcontainer](../.devcontainer/README.md) — the pre-built dev environment with uv, pre-commit, Claude Code, and a default-deny egress firewall. The fastest path if you don't want to install toolchains on your host.
 
 ## For developers
 
-- [Architecture overview](architecture/01-architecture-style.md) — hexagonal layout, layers, pattern rationale
-- [System context](architecture/02-system-context.md) — the app and its external neighbours
-- [Components](architecture/03-components.md) — ports, adapters, orchestrator, composition root
-- [Cross-cutting concerns](architecture/04-crosscutting.md) — anonymisation, tracking, errors, logging
-- [Data model](architecture/05-data-model.md) — domain models and persistence
-- [Architecture decision records](adr/README.md) — accepted ADRs
-- [Ubiquitous language](ubiquitous_language.md) — domain vocabulary
+- [Architecture](architecture/README.md) — how the service is structured (hexagonal layout, ports & adapters) and why. Start here if you're trying to understand the codebase.
+- [Architecture decision records](adr/README.md) — the *why* behind individual design choices, kept in chronological order.
+- [Ubiquitous language](ubiquitous_language.md) — the domain vocabulary the API and code share. Read this before naming anything new.
 
 ## For operators
 
-- [Operations index](operations/README.md) — table of every operations document
-- [Deployment: runtime overview](operations/deployment.md) — container, migrations, multi-replica safety
-- [Infrastructure bootstrap](operations/bootstrap.md) — one-time setup of the shared Terraform backend and container registry
-- [Set up a new environment](operations/setup-new-env.md) — per-environment provisioning (`dev`, `staging`, `prd`)
-- [API key management](operations/auth-management.md) — adding, rotating, and revoking keys
-- [Settings reference](operations/settings-reference.md) — every environment variable
-- [Observability](operations/observability.md) — logs, request tracing, usage queries
+- [Operations](operations/README.md) — running, deploying, and observing the service. Covers infrastructure bootstrap, per-environment setup, API key management, settings reference, and observability.
 
 ## For API consumers
 
-- [API overview](api/README.md) — endpoint reference (live OpenAPI is served from `/docs` on a running instance)
+- [API overview](api/README.md) — endpoint reference, the error envelope, and a pointer to the live OpenAPI docs served from a running instance.
 
 ## For integrators
 
-- [EspoCRM connector scripts](integrations/espo-crm.md)
+- [EspoCRM connector scripts](integrations/espo-crm.md) — what the EspoCRM server-side scripts call and how they authenticate.
 
 ## Release notes
 
-- [GitHub releases](https://github.com/rodekruis/qualitative-feedback-analysis/releases) — the source of truth for what shipped in each version
-- [Migration guide for 0.14.0](migration/0.14.0-breaking-changes.md) — breaking field renames in 0.14.0
+- [GitHub releases](https://github.com/rodekruis/qualitative-feedback-analysis/releases) — the source of truth for what shipped in each version.
+- [Migration guide for 0.14.0](migration/0.14.0-breaking-changes.md) — breaking field renames in 0.14.0.
