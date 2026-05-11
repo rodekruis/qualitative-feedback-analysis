@@ -44,9 +44,6 @@ while ($i < $count) {
 
     // Append to the master string
     $finalString = string\concatenate($finalString, $itemBlock);
-    
-    // Set feedback item summary description attribute
-    record\update("CFeedbackData", $backendID, "descriptionSummary", $itemBlock);
 
     // Update counter
     $i = $i + 1;
