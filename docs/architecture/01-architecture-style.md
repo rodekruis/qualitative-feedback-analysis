@@ -30,7 +30,7 @@ Allowed import directions (enforced by `import-linter`):
 
 - **`qfa.domain`** — imports nothing from the project, and none of `openai`, `litellm`, `presidio_*`, `fastapi`, `starlette`, `tenacity`.
 - **`qfa.services`** — imports `qfa.domain` only; same third-party prohibitions minus `tenacity`.
-- **`qfa.adapters`** — sibling of `api`; may import from `services` and `domain`. Each adapter class explicitly inherits from its port (see [the project guidelines](../../AGENTS.md)).
+- **`qfa.adapters`** — sibling of `api`; may import from `services` and `domain`. Each adapter class explicitly inherits from its port (see [the project guidelines](https://github.com/rodekruis/qualitative-feedback-analysis/blob/main/AGENTS.md)).
 - **`qfa.api`** — sibling of `adapters`; the composition root in `app.py` is the only place that wires concrete adapters into ports.
 
 ## What's *not* hexagonal here

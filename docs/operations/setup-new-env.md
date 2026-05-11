@@ -100,7 +100,7 @@ uv run python3 scripts/update_auth_api_keys.py --add <tenant>
 |--------|-------------|
 | `llm-api-base`   | Base URL of your Azure OpenAI deployment (e.g. `https://<resource>.openai.azure.com/`) |
 | `llm-api-key`    | API key for the Azure OpenAI deployment |
-| `auth-api-keys`  | JSON array of API-key objects that authenticate callers to this backend (see [README § API Keys](../../README.md#api-keys)) |
+| `auth-api-keys`  | JSON array of API-key objects that authenticate callers to this backend (see [API key management](auth-management.md)) |
 
 Without these secrets the App Service will start and pass health checks, but API calls will fail with a Key Vault reference resolution error.
 

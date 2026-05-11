@@ -1,13 +1,13 @@
-# API reference
+# REST API
 
-The live, always-current API reference is served by FastAPI itself:
+The HTTP API the backend exposes. For the auto-generated reference of the `qfa` Python package, see [Python API reference](../python-api/index.md) instead.
+
+The live, always-current OpenAPI reference is served by FastAPI itself:
 
 - **Swagger UI** — `GET /docs` on a running instance
 - **OpenAPI JSON** — `GET /openapi.json` on a running instance
 
 For local dev, that's `http://localhost:8000/docs`.
-
-> A hosted reference site (Sphinx-based, served from GitHub Pages) is planned. Until it ships, the running-instance `/docs` is the source of truth.
 
 ## Quick reference
 
@@ -58,7 +58,7 @@ Every error response shares this shape:
 }
 ```
 
-`fields` only appears on 422. `request_id` is always present and matches the `X-Request-ID` response header. See [04-crosscutting.md § Error → HTTP mapping](../architecture/04-crosscutting.md) for the full mapping.
+`fields` only appears on 422. `request_id` is always present and matches the `X-Request-ID` response header. See [Cross-cutting concerns § Error → HTTP mapping](../architecture/04-crosscutting.md) for the full mapping.
 
 ## Breaking changes
 
