@@ -209,6 +209,8 @@ class UserManagementPort(Protocol):
         ------
         UserAlreadyExistsError:
             If user with this key_id already exists
+        CannotManageSuperUsersError:
+            If the tenant_api_key has superuser privileges and the port does not allow managing superusers.
         """
         ...
 

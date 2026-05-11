@@ -55,6 +55,10 @@ class AuthenticationError(DomainError):
     """Raised when an API request cannot be authenticated."""
 
 
+class CannotManageSuperUsersError(DomainError):
+    """Raised when an attempt is made to create or delete a superuser in a port that does not allow it."""
+
+
 class AuthorizationError(DomainError):
     """Raised when a user lacks permission for the requested operation."""
 
