@@ -81,7 +81,7 @@ docs:
 # Wipe generated docs artefacts. Useful when autosummary stubs go stale
 # after renames or when warnings stop reproducing.
 docs-clean:
-	rm -rf docs/_build docs/_apidoc
+	rm -rf docs/_build docs/python-api/_apidoc
 
 # Live-reload mode: rebuilds on file change. Handy while writing docs.
 docs-live:
