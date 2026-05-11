@@ -9,7 +9,7 @@ Built as a FastAPI service on Azure App Service, with a hexagonal core (LiteLLM,
 
 ## Documentation
 
-All long-form docs live under [`docs/`](docs/README.md). The most common entry points:
+All long-form docs live in the [documentation home](docs/README.md). The most common entry points:
 
 - **New to the project?** Start with the [Developer guide](docs/development/README.md) — local env setup, pre-commit, coding conventions.
 - **Want the fastest dev environment?** Use the [Devcontainer](.devcontainer/README.md).
