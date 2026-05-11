@@ -59,7 +59,7 @@ class AuthorizationError(DomainError):
     """Raised when a user lacks permission for the requested operation."""
 
 
-class TenantDoesNotAllowSuperUsersError(AuthorizationError):
+class TenantDoesNotAllowSuperUsersError(DomainError):
     """Raised when an operation requires superuser privileges but the tenant does not allow superusers."""
 
 
