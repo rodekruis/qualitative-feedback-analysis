@@ -20,7 +20,7 @@ class EnvironmentAuthLookupAdapter(AuthLookupPort):
     def __init__(self, api_keys: list[TenantApiKey]) -> None:
         self._api_keys = list(api_keys)
 
-    def validate_api_key(self, provided_key: str) -> TenantApiKey | None:
+    async def validate_api_key(self, provided_key: str) -> TenantApiKey | None:
         """Return the matching TenantApiKey, or None if no key matches.
 
         Uses ``TenantApiKey.matches_key`` (``secrets.compare_digest``) for
@@ -45,7 +45,7 @@ class EnvironmentAuthLookupAdapter(AuthLookupPort):
 
         return match
 
-    def get_auth_keys(self, tenant_id: str | None = None) -> list[dict]:
+    async def get_auth_keys(self, tenant_id: str | None = None) -> list[dict]:
         """Return API key metadata for the given tenant, or all tenants.
 
         Sensitive fields (``hashed_key``) are excluded from the returned

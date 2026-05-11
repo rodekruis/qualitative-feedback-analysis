@@ -1,6 +1,5 @@
 """SQLAlchemy-based usage repository for LLM call tracking."""
 
-import asyncio
 import uuid
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
@@ -351,23 +350,6 @@ class SqlAlchemyUsageRepository(
     def __init__(self, session_factory: Callable[..., AsyncSession]) -> None:
         self._session_factory = session_factory
 
-    @staticmethod
-    def _run_auth_coro(coro):  # noqa: ANN205,ANN001
-        """Run async auth DB work from sync port methods.
-
-        Auth ports are currently synchronous; this adapter stores data in an
-        async DB backend. For now we execute one-shot coroutines with
-        ``asyncio.run`` and require callers to invoke these sync methods
-        outside a running event loop.
-        """
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            return asyncio.run(coro)
-        raise RuntimeError(
-            "SqlAlchemyUsageRepository auth methods cannot be called from a running event loop"
-        )
-
     async def record_call(self, record: LLMCallRecord) -> None:
         """Insert a single LLM call attempt record."""
         async with self._session_factory() as session:
@@ -443,11 +425,8 @@ class SqlAlchemyUsageRepository(
             if int(r._mapping["total_calls"]) != 0
         ]
 
-    def validate_api_key(self, provided_key: str) -> TenantApiKey | None:
+    async def validate_api_key(self, provided_key: str) -> TenantApiKey | None:
         """Validate an API key against hashed keys stored in DB."""
-        return self._run_auth_coro(self._validate_api_key_async(provided_key))
-
-    async def _validate_api_key_async(self, provided_key: str) -> TenantApiKey | None:
         stmt = sa.select(
             keys.c.key_id,
             keys.c.name,
@@ -472,11 +451,8 @@ class SqlAlchemyUsageRepository(
 
         return match
 
-    def get_auth_keys(self, tenant_id: str | None = None) -> list[dict]:
+    async def get_auth_keys(self, tenant_id: str | None = None) -> list[dict]:
         """Get API key metadata for one tenant or all tenants."""
-        return self._run_auth_coro(self._get_auth_keys_async(tenant_id))
-
-    async def _get_auth_keys_async(self, tenant_id: str | None = None) -> list[dict]:
         stmt = sa.select(
             keys.c.key_id,
             keys.c.name,
@@ -499,18 +475,10 @@ class SqlAlchemyUsageRepository(
             for row in rows
         ]
 
-    def add_tenant(self, tenant_name: str, allows_superusers: bool = False) -> str:
-        """Create and persist a tenant record, returning its id."""
-        return self._run_auth_coro(
-            self._add_tenant_async(
-                tenant_name=tenant_name,
-                allows_superusers=allows_superusers,
-            )
-        )
-
-    async def _add_tenant_async(
+    async def add_tenant(
         self, tenant_name: str, allows_superusers: bool = False
     ) -> str:
+        """Create and persist a tenant record, returning its id."""
         tenant_id = str(uuid.uuid4())
         async with self._session_factory() as session:
             await session.execute(
@@ -523,11 +491,8 @@ class SqlAlchemyUsageRepository(
             await session.commit()
         return tenant_id
 
-    def delete_tenant(self, tenant_id: str) -> None:
+    async def delete_tenant(self, tenant_id: str) -> None:
         """Delete a tenant and all related keys."""
-        self._run_auth_coro(self._delete_tenant_async(tenant_id))
-
-    async def _delete_tenant_async(self, tenant_id: str) -> None:
         async with self._session_factory() as session:
             # Keep behavior deterministic across backends/tests even when
             # FK cascades are not enforced (e.g. sqlite without PRAGMA).
@@ -543,7 +508,7 @@ class SqlAlchemyUsageRepository(
                 raise TenantNotFoundError(f"Tenant '{tenant_id}' not found")
             await session.commit()
 
-    def add_key(
+    async def add_key(
         self,
         api_key: str,
         key_id: str,
@@ -552,24 +517,6 @@ class SqlAlchemyUsageRepository(
         is_superuser: bool = False,
     ) -> str:
         """Persist a new API key for a tenant."""
-        return self._run_auth_coro(
-            self._add_key_async(
-                api_key=api_key,
-                key_id=key_id,
-                key_name=key_name,
-                tenant_id=tenant_id,
-                is_superuser=is_superuser,
-            )
-        )
-
-    async def _add_key_async(
-        self,
-        api_key: str,
-        key_id: str,
-        key_name: str,
-        tenant_id: str,
-        is_superuser: bool = False,
-    ) -> str:
         async with self._session_factory() as session:
             tenant_row = (
                 await session.execute(
@@ -607,11 +554,8 @@ class SqlAlchemyUsageRepository(
 
         return key_id
 
-    def delete_key(self, key_id: str) -> None:
+    async def delete_key(self, key_id: str) -> None:
         """Delete an API key by id."""
-        self._run_auth_coro(self._delete_key_async(key_id))
-
-    async def _delete_key_async(self, key_id: str) -> None:
         async with self._session_factory() as session:
             result = cast(
                 CursorResult,

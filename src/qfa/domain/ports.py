@@ -163,7 +163,7 @@ class AnonymizationPort(Protocol):
 class AuthLookupPort(Protocol):
     """Port for authenticating users of the appication."""
 
-    def validate_api_key(self, provided_key: str) -> TenantApiKey | None:
+    async def validate_api_key(self, provided_key: str) -> TenantApiKey | None:
         """Validate if a key exists in the implemented adapter.
 
         Parameters
@@ -178,7 +178,7 @@ class AuthLookupPort(Protocol):
         """
         ...
 
-    def get_auth_keys(self, tenant_id: str | None = None) -> list[dict]:
+    async def get_auth_keys(self, tenant_id: str | None = None) -> list[dict]:
         """Get all API keys for a tenant, or all keys if tenant_id is None.
 
         Parameters
@@ -197,7 +197,9 @@ class AuthLookupPort(Protocol):
 class AuthManagementPort(Protocol):
     """Port for adding/ removing keys and tenants from the application."""
 
-    def add_tenant(self, tenant_name: str, allows_superusers: bool = False) -> str:
+    async def add_tenant(
+        self, tenant_name: str, allows_superusers: bool = False
+    ) -> str:
         """Add a new tenant to the implemented adapter and return its unique identifier.
 
         Parameters
@@ -214,7 +216,7 @@ class AuthManagementPort(Protocol):
         """
         ...
 
-    def delete_tenant(self, tenant_id: str) -> None:
+    async def delete_tenant(self, tenant_id: str) -> None:
         """Delete an existing tenant from the implemented adapter.
 
         Parameters
@@ -229,7 +231,7 @@ class AuthManagementPort(Protocol):
         """
         ...
 
-    def add_key(
+    async def add_key(
         self,
         api_key: str,
         key_id: str,
@@ -261,7 +263,7 @@ class AuthManagementPort(Protocol):
         """
         ...
 
-    def delete_key(self, key_id: str) -> None:
+    async def delete_key(self, key_id: str) -> None:
         """Delete an existing API key from the implemented adapter.
 
         Parameters
