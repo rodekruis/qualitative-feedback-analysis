@@ -31,11 +31,11 @@ from qfa.domain.errors import (
     AnalysisTimeoutError,
     AuthenticationError,
     AuthorizationError,
-    CannotManageSuperUsersError,
     DocumentsTooLargeError,
     KeyAlreadyExistsError,
     KeyNotFoundError,
     LLMError,
+    TenantDoesNotAllowSuperUsersError,
     UsageRepositoryUnavailableError,
 )
 from qfa.domain.ports import LLMPort
@@ -670,8 +670,11 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(AuthorizationError, _handle_authorization_error)  # ty: ignore[invalid-argument-type]
     app.add_exception_handler(AuthenticationError, _handle_authentication_error)  # ty: ignore[invalid-argument-type]
     app.add_exception_handler(KeyAlreadyExistsError, _handle_authentication_error)  # ty: ignore[invalid-argument-type]
-    app.add_exception_handler(CannotManageSuperUsersError, _handle_authentication_error)  # ty: ignore[invalid-argument-type]
     app.add_exception_handler(KeyNotFoundError, _handle_authentication_error)  # ty: ignore[invalid-argument-type]
+    app.add_exception_handler(
+        TenantDoesNotAllowSuperUsersError,
+        _handle_authorization_error,  # ty: ignore[invalid-argument-type]
+    )
     app.add_exception_handler(RequestValidationError, _handle_validation_error)  # ty: ignore[invalid-argument-type]
     app.add_exception_handler(DocumentsTooLargeError, _handle_documents_too_large)  # ty: ignore[invalid-argument-type]
     app.add_exception_handler(AnalysisTimeoutError, _handle_analysis_timeout)  # ty: ignore[invalid-argument-type]

@@ -178,13 +178,18 @@ class AuthLookupPort(Protocol):
         """
         ...
 
-    def get_all_keys(self) -> list[TenantApiKey]:
-        """Return all keys known by the implemented adapter.
+    def get_auth_keys(self, tenant_id: str | None = None) -> list[dict]:
+        """Get all API keys for a tenant, or all keys if tenant_id is None.
+
+        Parameters
+        ----------
+        tenant_id : str | None
+            The tenant to query, or None to get keys for all tenants.
 
         Returns
         -------
-        list[TenantApiKey]
-            All tenant API keys available to the authentication backend.
+        list[dict]
+            A list of dicts with auth key informations.
         """
         ...
 
@@ -192,20 +197,59 @@ class AuthLookupPort(Protocol):
 class AuthManagementPort(Protocol):
     """Port for adding/ removing keys and tenants from the application."""
 
-    def add_key(self, api_key: TenantApiKey) -> None:
+    def add_tenant(self, tenant_name: str, allows_superusers: bool = False) -> str:
+        """Add a new tenant to the implemented adapter and return its unique identifier.
+
+        Parameters
+        ----------
+        tenant_name : str
+            The name of the tenant to create.
+        allows_superusers : bool
+            Whether this tenant allows creation of superuser keys (default False).
+
+        Returns
+        -------
+        str
+            The unique identifier of the created tenant.
+        """
+
+    def delete_tenant(self, tenant_id: str) -> None:
+        """Delete an existing tenant from the implemented adapter.
+
+        Parameters
+        ----------
+        tenant_id : str
+            The unique identifier of the tenant to delete.
+
+        Raises
+        ------
+        TenantNotFoundError:
+            If no tenant with this tenant_id exists
+        """
+        ...
+
+    def add_key(
+        self, api_key: str, key_id: str, tenant_id: str, is_superuser: bool = False
+    ) -> str:
         """Persist a new API key in the implemented adapter.
 
         Parameters
         ----------
-        api_key : TenantApiKey
-            The tenant API key record to add.
+        api_key : str
+            The API key value to store.
+        key_id : str
+            The unique identifier for the key.
+        tenant_id : str
+            The tenant this key belongs to.
+        is_superuser : bool
+            Whether this key should have superuser privileges (default False).
 
         Raises
         ------
         KeyAlreadyExistsError:
             If key with this key_id already exists
-        CannotManageSuperUsersError:
-            If the tenant_api_key has superuser privileges and the port does not allow managing superusers.
+        TenantDoesNotAllowSuperUsersError:
+            If the tenant does not allow superuser keys and is_superuser is True
         """
         ...
 
@@ -216,10 +260,5 @@ class AuthManagementPort(Protocol):
         ----------
         key_id : str
             The unique identifier of the API key record to remove.
-
-        Raises
-        ------
-        KeyNotFoundError:
-            If no key with this key_id exists
         """
         ...
