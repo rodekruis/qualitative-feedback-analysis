@@ -4,11 +4,12 @@ The service is built as a **hexagonal application** (ports & adapters), with fou
 
 ## Why hexagonal here
 
-Three things tipped the decision:
+Four things tipped the decision:
 
-1. **Multiple distinct external worlds.** The core talks to an LLM provider (via LiteLLM), a PII detection engine (Presidio), and a usage-tracking database (Postgres). Each is independent and changes at a different cadence.
-2. **Swap stories that we actually want to swap.** Test runs use a `FakeLLMPort` injected through `create_app(llm_factory=…)`; usage tracking can be turned off via `DB_TRACK_USAGE=false`; the anonymiser can be replaced for offline tests.
-3. **Audit story for sensitive data.** Beneficiary feedback under humanitarian-data norms benefits from an enforced "no vendor SDK imports in the domain layer" rule. `import-linter` gives that answer in CI.
+1. **Multiple distinct external worlds.** The core talks to an LLM provider (via LiteLLM), a PII detection engine (Presidio), and a usage-tracking database (Postgres). Each is independent and changes at a different cadence — exactly the shape hexagonal was designed for.
+2. **Parallel work along port boundaries.** Once a port is named, dev A can build the use case against a typed fake while dev B implements the real adapter — the port type is the contract that lets the two streams converge cleanly at the end. The same shape unblocks investigation work: try a second LLM provider behind the existing port without touching the orchestrator.
+3. **Type-checked fakes beat monkey-patches.** Tests inject `FakeLLMPort` (and analogous fakes for `AnonymizationPort`, `UsageRepositoryPort`) through `create_app(llm_factory=…)`. Because every fake inherits explicitly from its port, the type-checker catches drift the moment the contract shifts — there's no stale `unittest.mock.patch` chain silently passing a test against a long-changed interface.
+4. **Well-known and battle-tested.** Hexagonal is recognisable enough that experienced developers and AI coding agents both navigate the layout without the architecture being explained first — a real onboarding-cost saving when both kinds of contributor are in the loop.
 
 See [ADR-001](../adr/001-pydantic-domain-models.md) through [ADR-011](../adr/011-drop-orchestrator-port.md) for individual decisions; [ADR-002](../adr/002-protocol-based-ports.md) and [ADR-011](../adr/011-drop-orchestrator-port.md) are the load-bearing ones.
 
