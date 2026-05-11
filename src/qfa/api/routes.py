@@ -149,12 +149,14 @@ async def summarize(
     return ApiSummarizeResponse(
         summaries=[
             ApiFeedbackRecordSummary(
-                id=summary.id,
+                id=record.id,
                 title=summary.title,
                 summary=summary.summary,
                 quality_score=summary.quality_score,
             )
-            for summary in result.feedback_record_summaries
+            for record, summary in zip(
+                body.feedback_records, result.feedback_record_summaries
+            )
         ],
         used_anonymization=body.anonymize,
     )
