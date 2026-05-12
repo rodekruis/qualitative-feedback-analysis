@@ -174,11 +174,13 @@ class TestTenantApiKey:
         assert key.key_id == "tenant-1-0"
         assert key.name == "prod-key"
         assert key.key is None
-        assert key.hashed_key.get_secret_value() == TenantApiKey.hash_key("sk-abc123")
+        assert key.hashed_key.get_secret_value() == TenantApiKey.hash_key(
+            "sk-abc123", "tenant-1-0"
+        )
         assert key.tenant_id == "tenant-1"
 
     def test_construct_with_hashed_key(self):
-        key_hash = TenantApiKey.hash_key("sk-abc123")
+        key_hash = TenantApiKey.hash_key("sk-abc123", "tenant-1-0")
         key = TenantApiKey(
             key_id="tenant-1-0",
             name="prod-key",

@@ -540,7 +540,7 @@ class SqlAlchemyUsageRepository(
                     keys.insert().values(
                         key_id=key_id,
                         name=key_name,
-                        hashed_key=TenantApiKey.hash_key(api_key),
+                        hashed_key=TenantApiKey.hash_key(api_key, key_id),
                         tenant_id=tenant_id,
                         is_superuser=is_superuser,
                     )

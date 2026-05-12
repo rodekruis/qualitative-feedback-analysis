@@ -22,7 +22,7 @@ def _make_tenant_api_key(
     return TenantApiKey(
         key_id=key_id,
         name=name,
-        hashed_key=SecretStr(TenantApiKey.hash_key(key_value)),
+        hashed_key=SecretStr(TenantApiKey.hash_key(key_value, key_id)),
         tenant_id=tenant_id,
         is_superuser=is_superuser,
     )
