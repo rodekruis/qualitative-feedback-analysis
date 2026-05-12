@@ -9,7 +9,7 @@ $outputLanguage = "English";
 
 // Initialize loop variables
 $i = 0;
-$itemsString = '';
+$recordsString = '';
 $count = array\length($$backendIDs);
 
 // Loop through real records
@@ -35,21 +35,21 @@ while($i < $count) {
       '"coding_level_2": "', $codingLevel2, '", ',
       '"coding_level_3": "', $codingLevel3, '", ',
       '"created": "', $createdAt, '", ',
-      '"feedback_item_id": "', $feedbackID, '"',
+      '"feedback_record_id": "', $feedbackID, '"',
     '}'
   );
   
-  // Fill item-level JSON string
-  $item = string\concatenate(
+  // Fill record-level JSON string
+  $record = string\concatenate(
       '{"content": "', $feedbackDescription, '", "id": "', $feedbackID, '", ', 
       '"metadata": ', $metadata, '}'
   );
 
-  // Add a comma between items, except first one
+  // Add a comma between records, except first one
   if ($i == 0) {
-      $itemsString = $item;
+      $recordsString = $record;
   } else {
-      $itemsString = string\concatenate($itemsString, ',', $item);
+      $recordsString = string\concatenate($recordsString, ',', $record);
   }
 
   $i = $i + 1;
@@ -58,7 +58,7 @@ while($i < $count) {
 // Build the payload JSON string
 $$payload = string\concatenate(
     '{',
-    '"feedback_items": [', $itemsString, '],',
+    '"feedback_records": [', $recordsString, '],',
     '"output_language": "'$outputLanguage'",',
     '"prompt": "', $additionalPrompt, '"',
     '}'
@@ -68,7 +68,7 @@ $$payload = string\concatenate(
 
 // // Test payload: uncomment to succesfully run rest of workflow
 // $$payload = '{
-//     "feedback_items": [
+//     "feedback_records": [
 //         {
 //             "content": "I ate some delicious roti at a suraam place, this is a test message",
 //             "id": "doc-001",
@@ -77,7 +77,7 @@ $$payload = string\concatenate(
 //                 "coding_level_2": "Distribution",
 //                 "coding_level_3": "Waiting times",
 //                 "created": "2024-06-01T12:00:00Z",
-//                 "feedback_item_id": "fi-001"
+//                 "feedback_record_id": "fi-001"
 //             }
 //         },
 //         {
@@ -88,7 +88,7 @@ $$payload = string\concatenate(
 //                 "coding_level_2": "Staff",
 //                 "coding_level_3": "Supplies",
 //                 "created": "2024-06-02T09:30:00Z",
-//                 "feedback_item_id": "fi-002"
+//                 "feedback_record_id": "fi-002"
 //             }
 //         }
 //     ],

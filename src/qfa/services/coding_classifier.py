@@ -163,7 +163,7 @@ def build_judge_messages(
     Parameters
     ----------
     feedback_text:
-        Raw text of the feedback item being coded.
+        Raw text of the feedback record being coded.
     level:
         The hierarchy level being evaluated: ``"Type"``, ``"Category"``, or ``"Code"``.
     path:

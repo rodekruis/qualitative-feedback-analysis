@@ -6,9 +6,9 @@ import pytest
 from qfa.domain.errors import (
     AnalysisError,
     AnalysisTimeoutError,
-    DocumentsTooLargeError,
+    FeedbackTooLargeError,
 )
-from qfa.domain.models import FeedbackItemSummaryModel, SummaryResultModel
+from qfa.domain.models import FeedbackRecordSummaryModel, SummaryResultModel
 
 from .conftest import FAKE_API_KEY, FakeOrchestrator
 
@@ -18,12 +18,12 @@ def _auth_header(key=FAKE_API_KEY):
 
 
 def _valid_body(
-    documents=None,
+    feedback_records=None,
     prompt="Summarize the feedback.",
 ):
-    if documents is None:
-        documents = [{"id": "doc-1", "text": "Great service!", "metadata": {}}]
-    return {"documents": documents, "prompt": prompt}
+    if feedback_records is None:
+        feedback_records = [{"id": "doc-1", "text": "Great service!", "metadata": {}}]
+    return {"feedback_records": feedback_records, "prompt": prompt}
 
 
 def _make_client(app):
@@ -36,7 +36,7 @@ def _make_client(app):
 def _summary_metadata(**overrides):
     base = {
         "created": "2024-01-15T10:00:00+00:00",
-        "feedback_item_id": "fi-doc-1",
+        "feedback_record_id": "fi-doc-1",
         "coding_level_1": "l1",
         "coding_level_2": "l2",
         "coding_level_3": "l3",
@@ -47,7 +47,7 @@ def _summary_metadata(**overrides):
 
 def _valid_summary_body(**overrides):
     body = {
-        "feedback_items": [
+        "feedback_records": [
             {
                 "id": "doc-1",
                 "content": "Great service!",
@@ -73,21 +73,23 @@ class TestAnalyzeSuccess:
         assert resp.status_code == 200
         data = resp.json()
         assert "analysis" in data
-        assert "document_count" in data
+        assert "feedback_record_count" in data
         assert "request_id" in data
 
     @pytest.mark.asyncio
-    async def test_document_count_matches_input(self, client):
+    async def test_feedback_record_count_matches_input(self, client):
         docs = [
             {"id": "1", "text": "Doc one"},
             {"id": "2", "text": "Doc two"},
             {"id": "3", "text": "Doc three"},
         ]
         resp = await client.post(
-            "/v1/analyze", json=_valid_body(documents=docs), headers=_auth_header()
+            "/v1/analyze",
+            json=_valid_body(feedback_records=docs),
+            headers=_auth_header(),
         )
         assert resp.status_code == 200
-        assert resp.json()["document_count"] == 3
+        assert resp.json()["feedback_record_count"] == 3
 
     @pytest.mark.asyncio
     async def test_request_id_starts_with_req(self, client):
@@ -188,10 +190,10 @@ class TestAuthentication:
 
 class TestValidation:
     @pytest.mark.asyncio
-    async def test_422_empty_documents(self, client):
+    async def test_422_empty_feedback_records(self, client):
         resp = await client.post(
             "/v1/analyze",
-            json=_valid_body(documents=[]),
+            json=_valid_body(feedback_records=[]),
             headers=_auth_header(),
         )
         assert resp.status_code == 422
@@ -202,7 +204,7 @@ class TestValidation:
     async def test_422_missing_prompt(self, client):
         resp = await client.post(
             "/v1/analyze",
-            json={"documents": [{"id": "1", "text": "data"}]},
+            json={"feedback_records": [{"id": "1", "text": "data"}]},
             headers=_auth_header(),
         )
         assert resp.status_code == 422
@@ -219,10 +221,10 @@ class TestValidation:
         assert resp.json()["error"]["code"] == "validation_error"
 
     @pytest.mark.asyncio
-    async def test_422_empty_document_text(self, client):
+    async def test_422_empty_feedback_record_text(self, client):
         resp = await client.post(
             "/v1/analyze",
-            json=_valid_body(documents=[{"id": "1", "text": ""}]),
+            json=_valid_body(feedback_records=[{"id": "1", "text": ""}]),
             headers=_auth_header(),
         )
         assert resp.status_code == 422
@@ -230,10 +232,10 @@ class TestValidation:
         assert resp.json()["error"]["fields"] is not None
 
     @pytest.mark.asyncio
-    async def test_summary_422_empty_feedback_items(self, client):
+    async def test_summary_422_empty_feedback_records(self, client):
         resp = await client.post(
             "/v1/summarize",
-            json=_valid_summary_body(feedback_items=[]),
+            json=_valid_summary_body(feedback_records=[]),
             headers=_auth_header(),
         )
         assert resp.status_code == 422
@@ -255,7 +257,7 @@ class TestValidation:
         resp = await client.post(
             "/v1/summarize",
             json=_valid_summary_body(
-                feedback_items=[
+                feedback_records=[
                     {"id": "1", "content": "", "metadata": _summary_metadata()},
                 ],
             ),
@@ -273,9 +275,9 @@ class TestValidation:
 
 class TestErrorMapping:
     @pytest.mark.asyncio
-    async def test_413_documents_too_large(self, test_app):
+    async def test_413_feedback_too_large(self, test_app):
         test_app.state.orchestrator = FakeOrchestrator(
-            error=DocumentsTooLargeError(
+            error=FeedbackTooLargeError(
                 "Too large", estimated_tokens=200_000, limit=100_000
             )
         )
@@ -338,9 +340,9 @@ class TestErrorMapping:
         assert resp.json()["error"]["request_id"].startswith("req_")
 
     @pytest.mark.asyncio
-    async def test_summary_413_documents_too_large(self, test_app):
+    async def test_summary_413_feedback_too_large(self, test_app):
         test_app.state.orchestrator = FakeOrchestrator(
-            error=DocumentsTooLargeError(
+            error=FeedbackTooLargeError(
                 "Too large", estimated_tokens=200_000, limit=100_000
             )
         )
@@ -399,8 +401,8 @@ class TestErrorMapping:
     async def test_summary_returns_configured_result(self, test_app):
         test_app.state.orchestrator = FakeOrchestrator(
             summarize_result=SummaryResultModel(
-                feedback_item_summaries=(
-                    FeedbackItemSummaryModel(
+                feedback_record_summaries=(
+                    FeedbackRecordSummaryModel(
                         id="custom-1",
                         title="Custom title",
                         summary="- Custom point",
@@ -413,12 +415,12 @@ class TestErrorMapping:
             resp = await c.post(
                 "/v1/summarize",
                 json=_valid_summary_body(
-                    feedback_items=[
+                    feedback_records=[
                         {
                             "id": "custom-1",
                             "content": "Input text",
                             "metadata": _summary_metadata(
-                                feedback_item_id="fi-custom-1"
+                                feedback_record_id="fi-custom-1"
                             ),
                         },
                     ],
@@ -442,7 +444,7 @@ class TestErrorMapping:
 
 
 _CODING_BODY = {
-    "feedback_items": [{"id": "custom-1", "content": "Long waiting times"}],
+    "feedback_records": [{"id": "custom-1", "content": "Long waiting times"}],
     "coding_framework": {"types": []},
 }
 
@@ -454,7 +456,7 @@ class TestAssignCodesSuccess:
             "/v1/assign_codes", json=_CODING_BODY, headers=_auth_header()
         )
         assert resp.status_code == 200
-        code_item = resp.json()["coded_feedback_items"][0]["code_items"][0]
+        code_item = resp.json()["coded_feedback_records"][0]["assigned_codes"][0]
         assert code_item["confidence_type"] == 0.9
         assert code_item["confidence_category"] == 0.85
         assert code_item["confidence_code"] == 0.8

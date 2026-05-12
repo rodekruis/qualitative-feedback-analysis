@@ -4,8 +4,8 @@ from qfa.domain.errors import (
     AnalysisError,
     AnalysisTimeoutError,
     AuthenticationError,
-    DocumentsTooLargeError,
     DomainError,
+    FeedbackTooLargeError,
     KeyNotFoundError,
     LLMError,
     LLMRateLimitError,
@@ -41,17 +41,17 @@ class TestAnalysisTimeoutError:
         assert str(err) == "deadline exceeded"
 
 
-class TestDocumentsTooLargeError:
+class TestFeedbackTooLargeError:
     def test_is_subclass_of_analysis_error(self):
-        assert issubclass(DocumentsTooLargeError, AnalysisError)
+        assert issubclass(FeedbackTooLargeError, AnalysisError)
 
     def test_exposes_estimated_tokens_and_limit(self):
-        err = DocumentsTooLargeError("too large", estimated_tokens=50000, limit=32000)
+        err = FeedbackTooLargeError("too large", estimated_tokens=50000, limit=32000)
         assert err.estimated_tokens == 50000
         assert err.limit == 32000
 
     def test_carries_message(self):
-        err = DocumentsTooLargeError("too large", estimated_tokens=50000, limit=32000)
+        err = FeedbackTooLargeError("too large", estimated_tokens=50000, limit=32000)
         assert str(err) == "too large"
 
 
