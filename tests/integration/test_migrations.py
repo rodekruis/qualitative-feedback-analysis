@@ -134,7 +134,7 @@ class TestAdvisoryLockSerialises:
         # Spawn two real OS subprocesses to simulate two replicas booting
         # in parallel. The session-scoped advisory lock should serialise
         # them so both end with a single alembic_version row at head.
-        env = {**os.environ, "DB_TRACK_USAGE": "true", "DB_URL": url}
+        env = {**os.environ, "DB_URL": url}
         proc_a = await asyncio.create_subprocess_exec(
             sys.executable, "-m", "qfa.cli.migrate", env=env
         )

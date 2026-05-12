@@ -415,11 +415,8 @@ async def _handle_usage_repository_unavailable(
 ) -> JSONResponse:
     """Map a usage-repository unavailability to 503 with a machine-readable code.
 
-    Distinct from ``usage_tracking_disabled`` (raised by ``get_usage_repo``
-    when the feature flag is off): this signals that the feature is on but
-    the backing store is transiently unreachable. Consumers can use the
-    code to drive retry/backoff decisions instead of treating both as the
-    same opaque 503.
+    Signals that the backing store is transiently unreachable. Consumers
+    can use the code to drive retry/backoff decisions.
     """
     logger.warning("Usage repository unavailable: %s", exc)
     body = ApiErrorResponse(
@@ -589,11 +586,9 @@ def _make_lifespan(llm_factory: LLMFactory):
            ``completion_cost()`` to value any model not in LiteLLM's
            built-in cost map.
         3. Build the base ``LLMPort`` via the closed-over factory.
-        4. If ``settings.db.track_usage`` is set: create the async DB
-           engine and wrap the base LLM in ``TrackingLLMAdapter`` so
-           every call attempt is recorded.
-        5. Construct the ``StandardOrchestrator`` over whichever LLM
-           variant was chosen above.
+        4. Create the async DB engine and wrap the base LLM in
+           ``TrackingLLMAdapter`` so every call attempt is recorded.
+        5. Construct the ``StandardOrchestrator`` over the wrapped LLM.
         6. Publish ``orchestrator``, ``api_keys``, ``settings``, and
            ``usage_repo`` on ``app.state`` for routes/middleware to read.
 
@@ -614,26 +609,22 @@ def _make_lifespan(llm_factory: LLMFactory):
         anonymizer = PresidioAnonymizer()
         api_keys = settings.auth.api_keys
 
-        engine = None
-        usage_repo = None
+        from qfa.adapters.db import (
+            SqlAlchemyUsageRepository,
+            create_async_engine_from_settings,
+            create_session_factory,
+        )
+        from qfa.adapters.tracking_llm import TrackingLLMAdapter
 
         base_llm = llm_factory(settings.llm)
-        llm_for_orch: LLMPort = base_llm
 
-        if settings.db.track_usage:
-            from qfa.adapters.db import (
-                SqlAlchemyUsageRepository,
-                create_async_engine_from_settings,
-                create_session_factory,
-            )
-            from qfa.adapters.tracking_llm import TrackingLLMAdapter
-
-            engine = create_async_engine_from_settings(settings.db)
-
-            session_factory = create_session_factory(engine)
-            usage_repo = SqlAlchemyUsageRepository(session_factory)
-            llm_for_orch = TrackingLLMAdapter(inner=base_llm, usage_repo=usage_repo)
-            logger.info("Usage tracking enabled (per-attempt, per-operation)")
+        engine = create_async_engine_from_settings(settings.db)
+        session_factory = create_session_factory(engine)
+        usage_repo = SqlAlchemyUsageRepository(session_factory)
+        llm_for_orch: LLMPort = TrackingLLMAdapter(
+            inner=base_llm, usage_repo=usage_repo
+        )
+        logger.info("Usage tracking enabled (per-attempt, per-operation)")
 
         orchestrator = Orchestrator(
             llm=llm_for_orch,
@@ -650,8 +641,7 @@ def _make_lifespan(llm_factory: LLMFactory):
 
         yield
 
-        if engine is not None:
-            await engine.dispose()
+        await engine.dispose()
 
     return lifespan
 

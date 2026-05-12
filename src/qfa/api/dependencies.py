@@ -28,7 +28,7 @@ def get_orchestrator(request: Request) -> Orchestrator:
 
 
 def get_usage_repo(request: Request) -> UsageRepositoryPort:
-    """Return the usage repository from app state, or raise 503 if disabled.
+    """Return the usage repository from app state.
 
     Parameters
     ----------
@@ -43,15 +43,15 @@ def get_usage_repo(request: Request) -> UsageRepositoryPort:
     Raises
     ------
     HTTPException
-        503 if usage tracking is not enabled.
+        503 if the usage repository is not available.
     """
     repo = getattr(request.app.state, "usage_repo", None)
     if repo is None:
         raise HTTPException(
             status_code=503,
             detail={
-                "code": "usage_tracking_disabled",
-                "message": "Usage tracking is not enabled",
+                "code": "usage_backend_unavailable",
+                "message": "Usage backend is temporarily unavailable",
             },
         )
     return repo

@@ -53,16 +53,16 @@ class FakeUsageRepository:
         return self._all_stats
 
 
-class TestUsageDisabled:
-    async def test_usage_503_when_disabled(self, client):
+class TestUsageRepositoryMissing:
+    async def test_usage_503_when_repo_not_wired(self, client):
         resp = await client.get(
             "/v1/usage",
             headers={"Authorization": f"Bearer {FAKE_API_KEY}"},
         )
         assert resp.status_code == 503
-        assert resp.json()["error"]["code"] == "usage_tracking_disabled"
+        assert resp.json()["error"]["code"] == "usage_backend_unavailable"
 
-    async def test_usage_all_503_when_disabled(self, test_app, client):
+    async def test_usage_all_503_when_repo_not_wired(self, test_app, client):
         test_app.state.api_keys.append(
             TenantApiKey(
                 name="superuser",
@@ -77,7 +77,7 @@ class TestUsageDisabled:
             headers={"Authorization": f"Bearer {FAKE_SUPERUSER_KEY}"},
         )
         assert resp.status_code == 503
-        assert resp.json()["error"]["code"] == "usage_tracking_disabled"
+        assert resp.json()["error"]["code"] == "usage_backend_unavailable"
 
 
 class TestUsageEndpoint:
@@ -192,8 +192,7 @@ class TestUsageAllEndpoint:
 class _UnavailableUsageRepository:
     """Fake repo whose reads raise ``UsageRepositoryUnavailableError``.
 
-    Models the wired-but-unreachable case that ``usage_tracking_disabled``
-    cannot describe.
+    Models the wired-but-unreachable case.
     """
 
     async def record_call(self, record):
@@ -220,8 +219,6 @@ class TestUsageBackendUnavailable:
         assert resp.status_code == 503
         body = resp.json()
         assert body["error"]["code"] == "usage_backend_unavailable"
-        # Disambiguation: the disabled-feature code must NOT be reused.
-        assert body["error"]["code"] != "usage_tracking_disabled"
 
     async def test_usage_all_503_with_backend_unavailable_code(self, test_app):
         test_app.state.api_keys.append(

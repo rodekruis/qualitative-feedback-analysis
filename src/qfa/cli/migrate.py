@@ -72,13 +72,9 @@ async def run_migrations(db: DatabaseSettings | str) -> None:
 def main() -> int:
     """CLI entry point.
 
-    Returns 0 on success (including the no-op case when usage tracking is
-    disabled).
+    Returns 0 on success.
     """
     settings = DatabaseSettings()
-    if not settings.track_usage:
-        logger.info("DB_TRACK_USAGE is false; skipping migrations")
-        return 0
     asyncio.run(run_migrations(settings))
     return 0
 
