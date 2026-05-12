@@ -100,5 +100,3 @@ resource "azurerm_role_assignment" "app_acr_repository_reader" {
   role_definition_name = "Container Registry Repository Reader"
   principal_id         = azurerm_linux_web_app.backend.identity[0].principal_id
 }
-
-
