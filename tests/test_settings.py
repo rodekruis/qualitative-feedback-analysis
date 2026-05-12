@@ -209,6 +209,7 @@ class TestAppSettings:
         )
         settings = AppSettings()
         assert settings.llm.api_key.get_secret_value() == "sk-test"
+        assert settings.db.url == "postgresql+asyncpg://user:pass@host/db"
         assert len(settings.auth.api_keys) == 1
         assert settings.auth.api_keys[0].tenant_id == "tenant-1"
         assert settings.orchestrator.chars_per_token == 4
@@ -234,4 +235,5 @@ class TestAppSettings:
         monkeypatch.setenv("ORCHESTRATOR_CHARS_PER_TOKEN", "8")
         settings = AppSettings()
         assert settings.llm.model == "gpt-3.5-turbo"
+        assert settings.db.url == "postgresql+asyncpg://user:pass@host/db"
         assert settings.orchestrator.chars_per_token == 8
