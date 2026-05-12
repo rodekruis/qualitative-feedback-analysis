@@ -13,6 +13,7 @@ from qfa.api.app import (
     register_exception_handlers,
 )
 from qfa.api.routes import router
+from qfa.api.routes_auth import router as auth_router
 from qfa.api.routes_usage import router as usage_router
 from qfa.domain.models import (
     AggregateSummaryResultModel,
@@ -28,6 +29,38 @@ from qfa.domain.models import (
     TenantApiKey,
 )
 from qfa.services.auth_orchestrator import AuthOrchestrator
+
+
+class FakeAuthManagementPort:
+    """Fake auth-management adapter for API tests."""
+
+    def __init__(self) -> None:
+        self._tenant_id_counter = 0
+
+    async def add_tenant(
+        self,
+        tenant_name: str,
+        allows_superusers: bool = False,
+    ) -> str:
+        self._tenant_id_counter += 1
+        return f"tenant-created-{self._tenant_id_counter}"
+
+    async def delete_tenant(self, tenant_id: str) -> None:
+        return None
+
+    async def add_key(
+        self,
+        api_key: str,
+        key_id: str,
+        key_name: str,
+        tenant_id: str,
+        is_superuser: bool = False,
+    ) -> str:
+        return key_id
+
+    async def delete_key(self, key_id: str) -> None:
+        return None
+
 
 FAKE_API_KEY = "test-key-abc123"
 FAKE_SUPERUSER_KEY = "superuser-key-xyz789"
@@ -158,8 +191,8 @@ def fake_orchestrator():
 def fake_auth_orchestrator(fake_api_keys):
     return AuthOrchestrator(
         auth_lookup_ports=[EnvironmentAuthLookupAdapter(api_keys=fake_api_keys)],
-        auth_management_port=["Not testing adding users here"],
-    )  # type: ignore
+        auth_management_port=FakeAuthManagementPort(),
+    )
 
 
 @pytest.fixture
@@ -167,6 +200,7 @@ def test_app(fake_orchestrator, fake_auth_orchestrator):
     app = FastAPI(title="Test App")
     app.add_middleware(RequestIdMiddleware)
     app.include_router(router)
+    app.include_router(auth_router)
     app.include_router(usage_router)
     register_exception_handlers(app)
 

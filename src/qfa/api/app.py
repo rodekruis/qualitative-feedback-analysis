@@ -20,6 +20,7 @@ from qfa.adapters.env_auth import EnvironmentAuthLookupAdapter
 from qfa.adapters.llm_client import LiteLLMClient
 from qfa.adapters.presidio_anonymizer import PresidioAnonymizer
 from qfa.api.routes import router
+from qfa.api.routes_auth import router as auth_router
 from qfa.api.routes_usage import router as usage_router
 from qfa.api.schemas import (
     ApiErrorDetail,
@@ -32,10 +33,12 @@ from qfa.domain.errors import (
     AuthenticationError,
     AuthorizationError,
     DocumentsTooLargeError,
+    DomainError,
     KeyAlreadyExistsError,
     KeyNotFoundError,
     LLMError,
     TenantDoesNotAllowSuperUsersError,
+    TenantNotFoundError,
     UsageRepositoryUnavailableError,
 )
 from qfa.domain.ports import LLMPort
@@ -261,6 +264,30 @@ async def _handle_authorization_error(
         )
     )
     return JSONResponse(status_code=403, content=body.model_dump())
+
+
+async def _handle_conflict_error(request: Request, exc: DomainError) -> JSONResponse:
+    """Handle conflict domain errors as HTTP 409 responses."""
+    body = ApiErrorResponse(
+        error=ApiErrorDetail(
+            code="conflict",
+            message=str(exc),
+            request_id=_get_request_id(request),
+        )
+    )
+    return JSONResponse(status_code=409, content=body.model_dump())
+
+
+async def _handle_not_found_error(request: Request, exc: DomainError) -> JSONResponse:
+    """Handle missing-resource domain errors as HTTP 404 responses."""
+    body = ApiErrorResponse(
+        error=ApiErrorDetail(
+            code="not_found",
+            message=str(exc),
+            request_id=_get_request_id(request),
+        )
+    )
+    return JSONResponse(status_code=404, content=body.model_dump())
 
 
 async def _handle_validation_error(
@@ -672,8 +699,9 @@ def register_exception_handlers(app: FastAPI) -> None:
     """
     app.add_exception_handler(AuthorizationError, _handle_authorization_error)  # ty: ignore[invalid-argument-type]
     app.add_exception_handler(AuthenticationError, _handle_authentication_error)  # ty: ignore[invalid-argument-type]
-    app.add_exception_handler(KeyAlreadyExistsError, _handle_authentication_error)  # ty: ignore[invalid-argument-type]
-    app.add_exception_handler(KeyNotFoundError, _handle_authentication_error)  # ty: ignore[invalid-argument-type]
+    app.add_exception_handler(KeyAlreadyExistsError, _handle_conflict_error)  # ty: ignore[invalid-argument-type]
+    app.add_exception_handler(KeyNotFoundError, _handle_not_found_error)  # ty: ignore[invalid-argument-type]
+    app.add_exception_handler(TenantNotFoundError, _handle_not_found_error)  # ty: ignore[invalid-argument-type]
     app.add_exception_handler(
         TenantDoesNotAllowSuperUsersError,
         _handle_authorization_error,  # ty: ignore[invalid-argument-type]
@@ -717,6 +745,7 @@ def create_app(*, llm_factory: LLMFactory | None = None) -> FastAPI:
     app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(RequestIdMiddleware)
     app.include_router(router)
+    app.include_router(auth_router)
     app.include_router(usage_router)
     register_exception_handlers(app)
     return app

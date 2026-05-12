@@ -94,7 +94,7 @@ class AuthOrchestrator:
         key_name: str,
         tenant_id: str,
         is_superuser: bool = False,
-    ) -> None:
+    ) -> str:
         """Add a key through the configured auth-management backend.
 
         Parameters
@@ -109,8 +109,13 @@ class AuthOrchestrator:
             The tenant this key belongs to.
         is_superuser : bool
             Whether this key should have superuser privileges (default False).
+
+        Returns
+        -------
+        str
+            The unique identifier for the created key.
         """
-        await self.auth_management_port.add_key(
+        return await self.auth_management_port.add_key(
             api_key, key_id, key_name, tenant_id, is_superuser
         )
 
