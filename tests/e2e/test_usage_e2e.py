@@ -159,38 +159,3 @@ class TestUsageAll:
         assert data["total"]["tenant_id"] is None
         assert data["total"]["total_calls"] == 2
         assert data["total"]["total_cost_usd"] == pytest.approx(0.5)
-
-
-class TestUsageDisabled:
-    @pytest.mark.xfail(reason="Tracking usage is always enabled in this revision")
-    async def test_returns_503_with_reason_when_flag_off(self, monkeypatch, e2e_db_url):
-        """When DB_TRACK_USAGE=false the dependency raises 503 with a reason."""
-        import httpx
-        from asgi_lifespan import LifespanManager
-
-        monkeypatch.setenv("DB_TRACK_USAGE", "false")
-        monkeypatch.setenv("DB_URL", "")
-        monkeypatch.setenv("LLM_MODEL", "gpt-3.5-turbo")
-        monkeypatch.setenv("LLM_API_KEY", "fake-test-key")
-        monkeypatch.setenv("LLM_API_BASE", "")
-        monkeypatch.setenv("LLM_API_VERSION", "")
-        monkeypatch.setenv(
-            "AUTH_API_KEYS",
-            f'[{{"key_id":"x","name":"x","key":"{E2E_API_KEY}",'
-            f'"tenant_id":"{E2E_TENANT_ID}","is_superuser":false}}]',
-        )
-
-        from qfa.api.app import create_app
-
-        app = create_app()
-        async with LifespanManager(app):
-            async with httpx.AsyncClient(
-                transport=httpx.ASGITransport(app=app),
-                base_url="http://test",
-            ) as client:
-                resp = await client.get(
-                    "/v1/usage",
-                    headers={"Authorization": f"Bearer {E2E_API_KEY}"},
-                )
-        assert resp.status_code == 503
-        assert resp.json()["error"]["code"] == "usage_tracking_disabled"

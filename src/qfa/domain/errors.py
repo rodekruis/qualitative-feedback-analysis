@@ -92,10 +92,8 @@ class MissingCallScopeError(RuntimeError):
 class UsageRepositoryUnavailableError(DomainError):
     """Raised when a usage-repository read fails due to backend unavailability.
 
-    Distinct from "feature disabled": this signals that the repository is
-    wired and the request hit the DB but the connection or query failed
-    transiently (e.g. Postgres unreachable, pool exhausted, broker reset).
-    The API surfaces this as ``503 {"code": "usage_backend_unavailable"}``,
-    so consumers can distinguish it from ``usage_tracking_disabled`` and
-    drive retry/backoff logic accordingly.
+    This signals that the repository is wired and the request hit the DB
+    but the connection or query failed transiently (e.g. Postgres
+    unreachable, pool exhausted, broker reset). The API surfaces this as
+    ``503 {"code": "usage_backend_unavailable"}``.
     """
