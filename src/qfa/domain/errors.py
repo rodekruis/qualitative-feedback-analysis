@@ -68,7 +68,7 @@ class KeyAlreadyExistsError(DomainError):
 
 
 class KeyNotFoundError(DomainError):
-    """Raised when we try to access a user that doesn't exist."""
+    """Raised when we try to access a keyn that doesn't exist."""
 
 
 class TenantNotFoundError(DomainError):
