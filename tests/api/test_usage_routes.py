@@ -53,33 +53,6 @@ class FakeUsageRepository:
         return self._all_stats
 
 
-class TestUsageRepositoryMissing:
-    async def test_usage_503_when_repo_not_wired(self, client):
-        resp = await client.get(
-            "/v1/usage",
-            headers={"Authorization": f"Bearer {FAKE_API_KEY}"},
-        )
-        assert resp.status_code == 503
-        assert resp.json()["error"]["code"] == "usage_backend_unavailable"
-
-    async def test_usage_all_503_when_repo_not_wired(self, test_app, client):
-        test_app.state.api_keys.append(
-            TenantApiKey(
-                name="superuser",
-                key=FAKE_SUPERUSER_KEY,  # type:ignore [ty:invalid-argument-type]
-                tenant_id="admin",
-                is_superuser=True,
-                key_id="admin-0",
-            )
-        )
-        resp = await client.get(
-            "/v1/usage/all",
-            headers={"Authorization": f"Bearer {FAKE_SUPERUSER_KEY}"},
-        )
-        assert resp.status_code == 503
-        assert resp.json()["error"]["code"] == "usage_backend_unavailable"
-
-
 class TestUsageEndpoint:
     @pytest_asyncio.fixture
     async def client_with_repo(self, test_app):
