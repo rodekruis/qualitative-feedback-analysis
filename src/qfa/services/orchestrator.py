@@ -78,7 +78,7 @@ _DEFAULT_SENSITIVITY_DETECTION_PROMPT = (
     "Return one result per input record with the matching feedback_record_id.\n"
     "If no sensitive content is present, return an empty sensitivity_types tuple for that record.\n"
     "Do not include markdown code fences.\n"
-    "Note that anonymiziation might have taken place (e.g. ``<PERSON_0>``, ``<LOCATION_1>``). \n"
+    "Note that anonymization might have taken place (e.g. ``<PERSON_0>``, ``<LOCATION_1>``). \n"
     "Please act as if these were not anonymized. For example, if you see ``<PERSON_0>``"
     " treat it as if it said 'John Doe' and classify sensitivity accordingly."
 )
