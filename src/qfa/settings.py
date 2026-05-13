@@ -93,8 +93,6 @@ class DatabaseSettings(BaseSettings):
     ----------
     url : str
         Database connection URL (asyncpg dialect).
-    track_usage : bool
-        Feature flag to enable/disable usage tracking.
     """
 
     model_config = SettingsConfigDict(env_prefix="DB_")
@@ -107,22 +105,18 @@ class DatabaseSettings(BaseSettings):
     password: SecretStr | None = None
     auth_mode: Literal["password", "entra"] = "password"
     aad_scope: str = "https://ossrdbms-aad.database.windows.net/.default"
-    track_usage: bool = False
 
     @model_validator(mode="after")
-    def _require_url_when_track_usage(self) -> "DatabaseSettings":
-        if not self.track_usage:
-            return self
-
+    def _require_url_or_parts(self) -> "DatabaseSettings":
         if self.url:
             return self
 
         if not self.host:
-            raise ValueError("DB_HOST must be set when DB_TRACK_USAGE=true")
+            raise ValueError("DB_HOST must be set when DB_URL is not provided")
         if not self.user:
-            raise ValueError("DB_USER must be set when DB_TRACK_USAGE=true")
+            raise ValueError("DB_USER must be set when DB_URL is not provided")
         if not self.name:
-            raise ValueError("DB_NAME must be set when DB_TRACK_USAGE=true")
+            raise ValueError("DB_NAME must be set when DB_URL is not provided")
         if self.port <= 0:
             raise ValueError("DB_PORT must be greater than 0")
         if self.auth_mode == "password" and self.password is None:

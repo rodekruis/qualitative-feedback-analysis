@@ -1,6 +1,7 @@
 """Shared test fixtures for API tests."""
 
 from datetime import datetime
+from decimal import Decimal
 
 import httpx
 import pytest
@@ -21,11 +22,15 @@ from qfa.domain.models import (
     CodedFeedbackRecordModel,
     CodingAssignmentRequestModel,
     CodingAssignmentResultModel,
+    DistributionStats,
     FeedbackRecordSummaryModel,
     SummaryRequestModel,
     SummaryResultModel,
     TenantApiKey,
+    TokenStats,
+    UsageStats,
 )
+from qfa.domain.ports import UsageRepositoryPort
 
 FAKE_API_KEY = "test-key-abc123"
 FAKE_SUPERUSER_KEY = "superuser-key-xyz789"
@@ -125,6 +130,41 @@ class FakeOrchestrator:
         )
 
 
+class FakeUsageRepository(UsageRepositoryPort):
+    """Minimal in-memory usage repository for API tests.
+
+    Keeps the test app wiring aligned with production where ``usage_repo``
+    is always present on ``app.state``.
+    """
+
+    async def record_call(self, record) -> None:
+        return None
+
+    async def get_usage_stats(self, tenant_id, from_=None, to=None):
+        return UsageStats(
+            tenant_id=tenant_id,
+            total_calls=0,
+            failed_calls=0,
+            total_cost_usd=Decimal("0"),
+            call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0),
+            input_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+            output_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+        )
+
+    async def get_all_usage_stats(self, from_=None, to=None):
+        return [
+            UsageStats(
+                tenant_id="test-tenant-1",
+                total_calls=0,
+                failed_calls=0,
+                total_cost_usd=Decimal("0"),
+                call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0),
+                input_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+                output_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+            )
+        ]
+
+
 @pytest.fixture
 def fake_api_keys():
     return [
@@ -152,7 +192,7 @@ def test_app(fake_orchestrator, fake_api_keys):
 
     app.state.orchestrator = fake_orchestrator
     app.state.api_keys = fake_api_keys
-    app.state.usage_repo = None
+    app.state.usage_repo = FakeUsageRepository()
 
     return app
 
