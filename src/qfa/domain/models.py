@@ -284,6 +284,7 @@ class Operation(StrEnum):
     SUMMARIZE = "summarize"
     SUMMARIZE_AGGREGATE = "summarize_aggregate"
     ASSIGN_CODES = "assign_codes"
+    DETECT_SENSITIVE = "detect_sensitive"
     UNKNOWN = "unknown"
 
 

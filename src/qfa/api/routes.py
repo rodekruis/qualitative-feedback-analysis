@@ -300,7 +300,7 @@ async def detect_sensitive(
     """
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
-    result = orchestrator.detect_sensitive_content(
+    result = await orchestrator.detect_sensitive_content(
         SensitivityAnalyisisRequestModel(
             feedback_records=tuple(
                 FeedbackRecordModel(id=record.id, text=record.text, metadata={})

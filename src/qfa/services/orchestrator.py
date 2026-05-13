@@ -72,6 +72,14 @@ _DEFAULT_AGGREGATE_SUMMARIZATION_PROMPT = (
     "Use the same language as the input feedback items unless a target language is specified."
 )
 
+_DEFAULT_SENSITIVITY_DETECTION_PROMPT = (
+    "Analyze each feedback record and detect whether it contains sensitive content.\n"
+    "Classify sensitivity using only the SensitivityType enum values from the response schema.\n"
+    "Return one result per input record with the matching feedback_record_id.\n"
+    "If no sensitive content is present, return an empty sensitivity_types tuple for that record.\n"
+    "Do not include markdown code fences."
+)
+
 _JUDGE_PROMPT = """
 You are evaluating the quality of a summary.
 
@@ -225,7 +233,10 @@ class Orchestrator:
         AnalysisError
             For non-recoverable LLM failures or prompt injection.
         """
-        async with call_scope(tenant_id=request.tenant_id, operation=Operation.ANALYZE):
+        async with call_scope(
+            tenant_id=request.tenant_id,
+            operation=Operation.DETECT_SENSITIVE,
+        ):
             timeout = self._check_deadline_and_get_timeout(deadline)
             system_message = _SYSTEM_MESSAGE_TEMPLATE.format(prompt=request.prompt)
             user_message = self._assemble_feedback_records(request.feedback_records)
@@ -565,7 +576,7 @@ class Orchestrator:
 
             return CodingAssignmentResultModel(coded_feedback_records=tuple(coded))
 
-    def detect_sensitive_content(
+    async def detect_sensitive_content(
         self,
         request: SensitivityAnalyisisRequestModel,
         deadline: datetime,
@@ -583,7 +594,35 @@ class Orchestrator:
         SensitivityAnalysisResultModelList
             The sensitivity analysis results for each feedback record.
         """
-        return SensitivityAnalysisResultModelList(results=())
+        async with call_scope(tenant_id=request.tenant_id, operation=Operation.ANALYZE):
+            timeout = self._check_deadline_and_get_timeout(deadline)
+            system_message = _DEFAULT_SENSITIVITY_DETECTION_PROMPT
+            user_message = str(request.feedback_records)
+
+            anonymized_user_message = user_message
+            if anonymize:
+                anonymized_user_message, anonymization_mapping = (
+                    self._anonymizer.anonymize(user_message)
+                )
+
+            response = await self._llm.complete(
+                system_message=system_message,
+                user_message=anonymized_user_message,
+                tenant_id=request.tenant_id,
+                response_model=SensitivityAnalysisResultModelList,
+                timeout=timeout,
+            )
+
+            if anonymize:
+                return_model_as_string = response.structured.model_dump_json()
+                unanonymized_return_model_as_string = self._anonymizer.deanonymize(
+                    return_model_as_string, anonymization_mapping
+                )
+                return SensitivityAnalysisResultModelList.model_validate_json(
+                    unanonymized_return_model_as_string
+                )
+
+            return response.structured
 
     def _check_deadline_and_get_timeout(self, deadline: datetime) -> float:
         """
