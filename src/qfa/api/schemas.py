@@ -326,6 +326,8 @@ class ApiCodingLevels(BaseModel):
             )
 
         return self
+
+
 class ApiDetectSensitiveRequest(BaseModel):
     """Request body for the ``POST /v1/detect-sensitive`` endpoint.
 
@@ -354,7 +356,9 @@ class ApiFeedbackItemSensitivityRating(BaseModel):
     """
 
     id: str = Field(description="Identifier of the source feedback item.")
-    is_sensitive: bool = Field(description="Indicates whether the feedback item is considered sensitive.")
+    is_sensitive: bool = Field(
+        description="Indicates whether the feedback item is considered sensitive."
+    )
     explanation: str = Field(description="Explanation for the sensitivity rating.")
 
 
