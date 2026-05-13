@@ -28,7 +28,7 @@ from qfa.domain.models import (
     AnalysisRequestModel,
     CodingAssignmentRequestModel,
     FeedbackRecordModel,
-    SensitivityAnalyisisRequestModel,
+    SensitivityAnalysisRequestModel,
     TenantApiKey,
 )
 from qfa.domain.models import (
@@ -301,9 +301,11 @@ async def detect_sensitive(
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
     result = await orchestrator.detect_sensitive_content(
-        SensitivityAnalyisisRequestModel(
+        SensitivityAnalysisRequestModel(
             feedback_records=tuple(
-                FeedbackRecordModel(id=record.id, text=record.text, metadata={})
+                FeedbackRecordModel(
+                    id=record.id, text=record.text, metadata=record.metadata
+                )
                 for record in body.feedback_items
             ),
             tenant_id=tenant.tenant_id,
@@ -315,11 +317,17 @@ async def detect_sensitive(
     return ApiDetectSensitiveResponse(
         ratings=[
             ApiFeedbackItemSensitivityRating(
-                id=rating.feedback_record_id,
+                id=feedback_item.id,
                 is_sensitive=rating.is_sensitive,
-                explanation=str(rating.sensitivity_types),
+                explanation=rating.explanation,
+                sensitivity_types=[
+                    sensitivity_type.value
+                    for sensitivity_type in rating.sensitivity_types
+                ],
             )
-            for rating in result.results
+            for feedback_item, rating in zip(
+                body.feedback_items, result.results, strict=False
+            )
         ]
     )
 

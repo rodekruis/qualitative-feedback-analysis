@@ -358,6 +358,8 @@ class ApiFeedbackItemSensitivityRating(BaseModel):
         Indicates whether the feedback item is considered sensitive.
     explanation : str
         Explanation for the sensitivity rating.
+    sensitivity_types : list[str]
+        Sensitivity categories detected for the feedback item.
     """
 
     id: str = Field(description="Identifier of the source feedback item.")
@@ -365,6 +367,9 @@ class ApiFeedbackItemSensitivityRating(BaseModel):
         description="Indicates whether the feedback item is considered sensitive."
     )
     explanation: str = Field(description="Explanation for the sensitivity rating.")
+    sensitivity_types: list[str] = Field(
+        description="Sensitivity categories detected for the feedback item."
+    )
 
 
 class ApiDetectSensitiveResponse(BaseModel):

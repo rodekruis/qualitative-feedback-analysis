@@ -22,7 +22,7 @@ from qfa.domain.models import (
     CodingAssignmentRequestModel,
     CodingAssignmentResultModel,
     FeedbackRecordSummaryModel,
-    SensitivityAnalyisisRequestModel,
+    SensitivityAnalysisRequestModel,
     SensitivityAnalysisResultModel,
     SensitivityAnalysisResultModelList,
     SummaryRequestModel,
@@ -71,11 +71,13 @@ class FakeOrchestrator:
                     SensitivityAnalysisResultModel(
                         feedback_record_id="doc-1",
                         sensitivity_types=(SensitivityType.CORRUPTION,),
+                        explanation="Contains a bribery allegation.",
                     ),
                 ),
             )
         )
         self._error = error
+        self.last_detect_sensitive_request = None
 
     async def analyze(
         self,
@@ -142,12 +144,13 @@ class FakeOrchestrator:
 
     async def detect_sensitive_content(
         self,
-        request: SensitivityAnalyisisRequestModel,
+        request: SensitivityAnalysisRequestModel,
         deadline: datetime,
         anonymize: bool = True,
     ) -> SensitivityAnalysisResultModelList:
         if self._error is not None:
             raise self._error
+        self.last_detect_sensitive_request = request
         return self._detect_sensitive_result
 
 

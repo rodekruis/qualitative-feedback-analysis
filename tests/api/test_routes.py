@@ -181,7 +181,34 @@ class TestDetectSensitiveSuccess:
         rating = resp.json()["ratings"][0]
         assert rating["id"] == "doc-1"
         assert rating["is_sensitive"] is True
-        assert "CORRUPTION" in rating["explanation"]
+        assert rating["explanation"] == "Contains a bribery allegation."
+        assert rating["sensitivity_types"] == ["CORRUPTION"]
+
+    @pytest.mark.asyncio
+    async def test_detect_sensitive_forwards_metadata(self, test_app):
+        body = _valid_detect_sensitive_body(
+            feedback_items=[
+                {
+                    "id": "doc-1",
+                    "text": "A staff member asked for a bribe.",
+                    "metadata": {"region": "North"},
+                }
+            ]
+        )
+        async with _make_client(test_app) as c:
+            resp = await c.post(
+                "/v1/detect-sensitive",
+                json=body,
+                headers=_auth_header(),
+            )
+        assert resp.status_code == 200
+        assert test_app.state.orchestrator.last_detect_sensitive_request is not None
+        record = (
+            test_app.state.orchestrator.last_detect_sensitive_request.feedback_records[
+                0
+            ]
+        )
+        assert record.metadata == {"region": "North"}
 
 
 # ------------------------------------------------------------------ #

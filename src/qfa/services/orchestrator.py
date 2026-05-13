@@ -23,12 +23,14 @@ from qfa.domain.models import (
     CodingAssignmentResultModel,
     FeedbackRecordModel,
     Operation,
-    SensitivityAnalyisisRequestModel,
+    SensitivityAnalysisRequestModel,
+    SensitivityAnalysisResultModel,
     SensitivityAnalysisResultModelList,
     SummaryRequestModel,
     SummaryResultModel,
 )
 from qfa.domain.ports import AnonymizationPort, LLMPort
+from qfa.domain.sensitivity_types import SENSITIVITY_TYPE_DESCRIPTIONS
 from qfa.services.call_context import call_scope
 from qfa.services.coding_classifier import (
     JudgeResponse,
@@ -39,6 +41,11 @@ from qfa.services.coding_classifier import (
 from qfa.settings import OrchestratorSettings
 
 logger = logging.getLogger(__name__)
+
+_SENSITIVITY_TYPE_GUIDANCE = "\n".join(
+    f"- {sensitivity_type.value}: {description}"
+    for sensitivity_type, description in SENSITIVITY_TYPE_DESCRIPTIONS.items()
+)
 
 _SYSTEM_MESSAGE_TEMPLATE = (
     "You are an analytical assistant for a humanitarian organisation.\n"
@@ -75,6 +82,8 @@ _DEFAULT_AGGREGATE_SUMMARIZATION_PROMPT = (
 _DEFAULT_SENSITIVITY_DETECTION_PROMPT = (
     "Analyze each feedback record and detect whether it contains sensitive content.\n"
     "Classify sensitivity using only the SensitivityType enum values from the response schema.\n"
+    "For each record, include a concise natural-language explanation for the classification.\n"
+    f"SensitivityType guidance:\n{_SENSITIVITY_TYPE_GUIDANCE}\n"
     "Return one result per input record with the matching feedback_record_id.\n"
     "If no sensitive content is present, return an empty sensitivity_types tuple for that record.\n"
     "Do not include markdown code fences.\n"
@@ -581,7 +590,7 @@ class Orchestrator:
 
     async def detect_sensitive_content(
         self,
-        request: SensitivityAnalyisisRequestModel,
+        request: SensitivityAnalysisRequestModel,
         deadline: datetime,
         anonymize: bool = True,
     ) -> SensitivityAnalysisResultModelList:
@@ -619,16 +628,33 @@ class Orchestrator:
                 timeout=timeout,
             )
 
+            structured = response.structured
             if anonymize:
-                return_model_as_string = response.structured.model_dump_json()
+                return_model_as_string = structured.model_dump_json()
                 unanonymized_return_model_as_string = self._anonymizer.deanonymize(
                     return_model_as_string, anonymization_mapping
                 )
-                return SensitivityAnalysisResultModelList.model_validate_json(
+                structured = SensitivityAnalysisResultModelList.model_validate_json(
                     unanonymized_return_model_as_string
                 )
 
-            return response.structured
+            aligned_results = tuple(
+                SensitivityAnalysisResultModel(
+                    feedback_record_id=record.id,
+                    sensitivity_types=(
+                        structured.results[idx].sensitivity_types
+                        if idx < len(structured.results)
+                        else ()
+                    ),
+                    explanation=(
+                        structured.results[idx].explanation
+                        if idx < len(structured.results)
+                        else "No sensitive content detected."
+                    ),
+                )
+                for idx, record in enumerate(request.feedback_records)
+            )
+            return SensitivityAnalysisResultModelList(results=aligned_results)
 
     def _check_deadline_and_get_timeout(self, deadline: datetime) -> float:
         """

@@ -199,7 +199,7 @@ class CodingAssignmentResultModel(BaseModel):
     )
 
 
-class SensitivityAnalyisisRequestModel(BaseModel):
+class SensitivityAnalysisRequestModel(BaseModel):
     """A request to analyze feedback records for sensitivity."""
 
     model_config = ConfigDict(frozen=True)
@@ -221,6 +221,9 @@ class SensitivityAnalysisResultModel(BaseModel):
     )
     sensitivity_types: tuple[SensitivityType, ...] = Field(
         description="Sensitivity types identified in the feedback record.",
+    )
+    explanation: str = Field(
+        description="Natural-language explanation for why the record was classified this way."
     )
 
     @property
