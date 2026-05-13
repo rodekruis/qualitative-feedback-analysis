@@ -16,8 +16,14 @@ from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 import qfa
+from qfa.adapters.db import (
+    SqlAlchemyUsageRepository,
+    create_async_engine_from_settings,
+    create_session_factory,
+)
 from qfa.adapters.llm_client import LiteLLMClient
 from qfa.adapters.presidio_anonymizer import PresidioAnonymizer
+from qfa.adapters.tracking_llm import TrackingLLMAdapter
 from qfa.api.routes import router
 from qfa.api.routes_usage import router as usage_router
 from qfa.api.schemas import (
@@ -608,13 +614,6 @@ def _make_lifespan(llm_factory: LLMFactory):
 
         anonymizer = PresidioAnonymizer()
         api_keys = settings.auth.api_keys
-
-        from qfa.adapters.db import (
-            SqlAlchemyUsageRepository,
-            create_async_engine_from_settings,
-            create_session_factory,
-        )
-        from qfa.adapters.tracking_llm import TrackingLLMAdapter
 
         base_llm = llm_factory(settings.llm)
 
