@@ -59,6 +59,14 @@ resource "azurerm_linux_web_app" "backend" {
     LLM_API_KEY   = "@Microsoft.KeyVault(SecretUri=https://${local.keyvault_name}.vault.azure.net/secrets/llm-api-key)"
     AUTH_API_KEYS = "@Microsoft.KeyVault(SecretUri=https://${local.keyvault_name}.vault.azure.net/secrets/auth-api-keys)"
 
+    DB_URL         = ""
+    DB_HOST        = azurerm_postgresql_flexible_server.db.fqdn
+    DB_PORT        = "5432"
+    DB_NAME        = var.postgres_db_name
+    DB_AUTH_MODE   = "entra"
+    DB_AAD_SCOPE   = var.db_aad_scope
+    DB_USER        = local.db_aad_principal_name
+
     WEBSITES_ENABLE_APP_SERVICE_STORAGE = "false"
     WEBSITES_PORT                       = "8000"
   }
@@ -92,6 +100,3 @@ resource "azurerm_role_assignment" "app_acr_repository_reader" {
   role_definition_name = "Container Registry Repository Reader"
   principal_id         = azurerm_linux_web_app.backend.identity[0].principal_id
 }
-
-
-

@@ -1,4 +1,4 @@
-// Script for translating reponse to output string for summarize per item feature in EspoCRM
+// Script for translating reponse to output string for summarize per record feature in EspoCRM
 
 $response = $_lastHttpResponseBody;
 
@@ -10,7 +10,7 @@ $finalString = '';
 $i = 0;
 $count = array\length($summariesList);
 
-// Loop through every summary item
+// Loop through every summary
 while ($i < $count) {
     // Extract fields for the current index
     $backendID = array\at($$backendIDs, $i);
@@ -33,7 +33,7 @@ while ($i < $count) {
     $percent = string\concatenate(number\format($percentageValue, 0, '.', ''), '%');
     
     // Build the "Executive" Block
-    $itemBlock = string\concatenate(
+    $recordBlock = string\concatenate(
         "Feedback-ID:             ", $feedbackID, "\n",
         "Backend-ID:             ", $backendID, "\n",
         "QUALITY:        ", $dots, " ", $percent, "\n",
@@ -43,10 +43,7 @@ while ($i < $count) {
     );
 
     // Append to the master string
-    $finalString = string\concatenate($finalString, $itemBlock);
-    
-    // Set feedback item summary description attribute
-    record\update("CFeedbackData", $backendID, "descriptionSummary", $itemBlock);
+    $finalString = string\concatenate($finalString, $recordBlock);
 
     // Update counter
     $i = $i + 1;

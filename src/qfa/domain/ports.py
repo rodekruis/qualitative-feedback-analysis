@@ -5,9 +5,15 @@ subtyping per ADR-002. The orchestrator is exposed as the concrete
 ``Orchestrator`` class per ADR-011 (no driving port).
 """
 
+import datetime as dt
 from typing import Protocol
 
-from qfa.domain.models import LLMResponse, T_Response
+from qfa.domain.models import (
+    LLMCallRecord,
+    LLMResponse,
+    T_Response,
+    UsageStats,
+)
 
 
 class LLMPort(Protocol):
@@ -44,6 +50,65 @@ class LLMPort(Protocol):
         -------
         LLMResponse
             The model's response including token usage.
+        """
+        ...
+
+
+class UsageRepositoryPort(Protocol):
+    """Port for recording and querying LLM usage data."""
+
+    async def record_call(self, record: LLMCallRecord) -> None:
+        """Record a single LLM call attempt.
+
+        Parameters
+        ----------
+        record : LLMCallRecord
+            The call record to persist.
+        """
+        ...
+
+    async def get_usage_stats(
+        self,
+        tenant_id: str,
+        from_: dt.datetime | None = None,
+        to: dt.datetime | None = None,
+    ) -> UsageStats:
+        """Get aggregated usage stats for a single tenant.
+
+        Parameters
+        ----------
+        tenant_id : str
+            The tenant to query.
+        from_ : datetime | None
+            Inclusive lower bound (UTC tz-aware), or None.
+        to : datetime | None
+            Exclusive upper bound (UTC tz-aware), or None.
+
+        Returns
+        -------
+        UsageStats | None
+            Stats for the tenant, or None if no calls in window.
+        """
+        ...
+
+    async def get_all_usage_stats(
+        self,
+        from_: dt.datetime | None = None,
+        to: dt.datetime | None = None,
+    ) -> list[UsageStats]:
+        """Get per-tenant stats plus a grand total entry (tenant_id=None).
+
+        Parameters
+        ----------
+        from_ : datetime | None
+            Inclusive lower bound (UTC tz-aware), or None.
+        to : datetime | None
+            Exclusive upper bound (UTC tz-aware), or None.
+
+        Returns
+        -------
+        list[UsageStats]
+            Per-tenant stats followed by a grand total entry.
         """
         ...
 

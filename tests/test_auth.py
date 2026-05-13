@@ -18,13 +18,13 @@ class TestValidateApiKey:
             TenantApiKey(
                 key_id="tenant-1-0",
                 name="prod",
-                key="sk-prod-abc",
+                key="sk-prod-abc",  # type:ignore [ty:invalid-argument-type]
                 tenant_id="tenant-1",
             ),
             TenantApiKey(
                 key_id="tenant-2-0",
                 name="staging",
-                key="sk-staging-def",
+                key="sk-staging-def",  # type:ignore [ty:invalid-argument-type]
                 tenant_id="tenant-2",
             ),
         ]

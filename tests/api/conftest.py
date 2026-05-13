@@ -1,6 +1,7 @@
 """Shared test fixtures for API tests."""
 
 from datetime import datetime
+from decimal import Decimal
 
 import httpx
 import pytest
@@ -12,20 +13,27 @@ from qfa.api.app import (
     register_exception_handlers,
 )
 from qfa.api.routes import router
+from qfa.api.routes_usage import router as usage_router
 from qfa.domain.models import (
+    AggregateSummaryResultModel,
     AnalysisRequestModel,
     AnalysisResultModel,
     AssignedCodeModel,
-    CodedFeedbackItemModel,
+    CodedFeedbackRecordModel,
     CodingAssignmentRequestModel,
     CodingAssignmentResultModel,
-    FeedbackItemSummaryModel,
+    DistributionStats,
+    FeedbackRecordSummaryModel,
     SummaryRequestModel,
     SummaryResultModel,
     TenantApiKey,
+    TokenStats,
+    UsageStats,
 )
+from qfa.domain.ports import UsageRepositoryPort
 
 FAKE_API_KEY = "test-key-abc123"
+FAKE_SUPERUSER_KEY = "superuser-key-xyz789"
 FAKE_TENANT_ID = "tenant-test"
 FAKE_API_KEY_NAME = "test-key"
 
@@ -45,21 +53,16 @@ class FakeOrchestrator:
     ):
         self._analyze_result = analyze_result or AnalysisResultModel(
             result="Fake analysis result",
-            model="gpt-4-test",
-            prompt_tokens=10,
-            completion_tokens=20,
-            cost=0.001,
         )
         self._summarize_result = summarize_result or SummaryResultModel(
-            feedback_item_summaries=(
-                FeedbackItemSummaryModel(
+            feedback_record_summaries=(
+                FeedbackRecordSummaryModel(
                     id="doc-1",
                     title="Fake summary title",
                     summary="- Fake summary point",
                     quality_score=0.9,
                 ),
             ),
-            cost=0.002,
         )
         self._error = error
 
@@ -83,6 +86,21 @@ class FakeOrchestrator:
             raise self._error
         return self._summarize_result
 
+    async def summarize_aggregate(
+        self,
+        request: SummaryRequestModel,
+        deadline: datetime,
+        anonymize: bool = True,
+    ) -> AggregateSummaryResultModel:
+        if self._error is not None:
+            raise self._error
+        return AggregateSummaryResultModel(
+            ids=tuple(record.id for record in request.feedback_records),
+            title="Fake aggregate title",
+            summary="- Fake aggregate point",
+            quality_score=0.9,
+        )
+
     async def assign_codes(
         self,
         request: CodingAssignmentRequestModel,
@@ -92,9 +110,9 @@ class FakeOrchestrator:
         if self._error is not None:
             raise self._error
         return CodingAssignmentResultModel(
-            coded_feedback_items=tuple(
-                CodedFeedbackItemModel(
-                    feedback_item_id=item.id,
+            coded_feedback_records=tuple(
+                CodedFeedbackRecordModel(
+                    feedback_record_id=record.id,
                     assigned_codes=(
                         AssignedCodeModel(
                             code_id="code-1",
@@ -107,9 +125,44 @@ class FakeOrchestrator:
                         ),
                     ),
                 )
-                for item in request.feedback_items
+                for record in request.feedback_records
             )
         )
+
+
+class FakeUsageRepository(UsageRepositoryPort):
+    """Minimal in-memory usage repository for API tests.
+
+    Keeps the test app wiring aligned with production where ``usage_repo``
+    is always present on ``app.state``.
+    """
+
+    async def record_call(self, record) -> None:
+        return None
+
+    async def get_usage_stats(self, tenant_id, from_=None, to=None):
+        return UsageStats(
+            tenant_id=tenant_id,
+            total_calls=0,
+            failed_calls=0,
+            total_cost_usd=Decimal("0"),
+            call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0),
+            input_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+            output_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+        )
+
+    async def get_all_usage_stats(self, from_=None, to=None):
+        return [
+            UsageStats(
+                tenant_id="test-tenant-1",
+                total_calls=0,
+                failed_calls=0,
+                total_cost_usd=Decimal("0"),
+                call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0),
+                input_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+                output_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+            )
+        ]
 
 
 @pytest.fixture
@@ -118,7 +171,7 @@ def fake_api_keys():
         TenantApiKey(
             key_id=f"{FAKE_TENANT_ID}-0",
             name=FAKE_API_KEY_NAME,
-            key=FAKE_API_KEY,
+            key=FAKE_API_KEY,  # type:ignore [ty:invalid-argument-type]
             tenant_id=FAKE_TENANT_ID,
         )
     ]
@@ -134,10 +187,12 @@ def test_app(fake_orchestrator, fake_api_keys):
     app = FastAPI(title="Test App")
     app.add_middleware(RequestIdMiddleware)
     app.include_router(router)
+    app.include_router(usage_router)
     register_exception_handlers(app)
 
     app.state.orchestrator = fake_orchestrator
     app.state.api_keys = fake_api_keys
+    app.state.usage_repo = FakeUsageRepository()
 
     return app
 

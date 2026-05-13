@@ -5,19 +5,16 @@ from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter, Depends, Request
 
 import qfa
-from qfa.api.dependencies import (
-    authenticate_request,
-    get_orchestrator,
-)
+from qfa.api.dependencies import authenticate_request, get_orchestrator
 from qfa.api.schemas import (
     ApiAggregateSummary,
     ApiAnalyzeRequest,
     ApiAnalyzeResponse,
     ApiAssignCodesRequest,
     ApiAssignCodesResponse,
-    ApiCodeItem,
-    ApiCodeItems,
-    ApiFeedbackItemSummary,
+    ApiAssignedCode,
+    ApiCodedFeedbackRecord,
+    ApiFeedbackRecordSummary,
     ApiHealthResponse,
     ApiSummarizeAggregateResponse,
     ApiSummarizeFeedbackMetadata,
@@ -27,7 +24,7 @@ from qfa.api.schemas import (
 from qfa.domain.models import (
     AnalysisRequestModel,
     CodingAssignmentRequestModel,
-    FeedbackItemModel,
+    FeedbackRecordModel,
     TenantApiKey,
 )
 from qfa.domain.models import (
@@ -44,7 +41,7 @@ def _summarize_metadata_to_domain(
     """Flatten summarize metadata into the domain feedback metadata dict."""
     return {
         "created": meta.model_dump(mode="json")["created"],
-        "feedback_item_id": meta.feedback_item_id,
+        "feedback_record_id": meta.feedback_record_id,
         "coding_level_1": meta.coding_level_1,
         "coding_level_2": meta.coding_level_2,
         "coding_level_3": meta.coding_level_3,
@@ -58,12 +55,12 @@ async def analyze(
     tenant: TenantApiKey = Depends(authenticate_request),
     orchestrator: Orchestrator = Depends(get_orchestrator),
 ) -> ApiAnalyzeResponse:
-    """Analyze a batch of feedback documents.
+    """Analyze a batch of feedback records.
 
     Parameters
     ----------
     body : AnalyzeRequest
-        The request body containing documents and prompt.
+        The request body containing feedback records and prompt.
     request : Request
         The incoming HTTP request.
     tenant : TenantApiKey
@@ -74,17 +71,17 @@ async def analyze(
     Returns
     -------
     AnalyzeResponse
-        The analysis result with document count and request ID.
+        The analysis result with feedback record count and request ID.
     """
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
-    domain_documents = tuple(
-        FeedbackItemModel(id=doc.id, text=doc.text, metadata=doc.metadata)
-        for doc in body.documents
+    domain_feedback_records = tuple(
+        FeedbackRecordModel(id=doc.id, text=doc.text, metadata=doc.metadata)
+        for doc in body.feedback_records
     )
 
     domain_request = AnalysisRequestModel(
-        documents=domain_documents,
+        feedback_records=domain_feedback_records,
         prompt=body.prompt,
         tenant_id=tenant.tenant_id,
     )
@@ -95,7 +92,7 @@ async def analyze(
 
     return ApiAnalyzeResponse(
         analysis=result.result,
-        document_count=len(body.documents),
+        feedback_record_count=len(body.feedback_records),
         request_id=request.state.request_id,
         used_anonymization=body.anonymize,
     )
@@ -108,12 +105,12 @@ async def summarize(
     tenant: TenantApiKey = Depends(authenticate_request),
     orchestrator: Orchestrator = Depends(get_orchestrator),
 ) -> ApiSummarizeResponse:
-    """Summarize each submitted feedback item individually.
+    """Summarize each submitted feedback record individually.
 
     Parameters
     ----------
     body : SummarizeRequest
-        The request body containing feedback items and summarization options.
+        The request body containing feedback records and summarization options.
     request : Request
         The incoming HTTP request.
     tenant : TenantApiKey
@@ -124,20 +121,20 @@ async def summarize(
     Returns
     -------
     SummarizeResponse
-        The per-feedback-item titles and summaries.
+        The per-feedback-record titles and summaries.
     """
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
-    feedback_items = tuple(
-        FeedbackItemModel(
-            id=item.id,
-            text=item.content,
-            metadata=_summarize_metadata_to_domain(item.metadata),
+    feedback_records = tuple(
+        FeedbackRecordModel(
+            id=record.id,
+            text=record.content,
+            metadata=_summarize_metadata_to_domain(record.metadata),
         )
-        for item in body.feedback_items
+        for record in body.feedback_records
     )
     domain_request = DomainSummaryRequest(
-        feedback_items=feedback_items,
+        feedback_records=feedback_records,
         output_language=body.output_language,
         prompt=body.prompt,
         tenant_id=tenant.tenant_id,
@@ -151,13 +148,13 @@ async def summarize(
 
     return ApiSummarizeResponse(
         summaries=[
-            ApiFeedbackItemSummary(
-                id=item.id,
-                title=item.title,
-                summary=item.summary,
-                quality_score=item.quality_score,
+            ApiFeedbackRecordSummary(
+                id=summary.id,
+                title=summary.title,
+                summary=summary.summary,
+                quality_score=summary.quality_score,
             )
-            for item in result.feedback_item_summaries
+            for summary in result.feedback_record_summaries
         ],
         used_anonymization=body.anonymize,
     )
@@ -172,12 +169,12 @@ async def assign_codes(
     """Assign codes via iterative LLM picks at each level of the framework."""
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
-    domain_items = tuple(
-        FeedbackItemModel(id=item.id, text=item.content, metadata={})
-        for item in body.feedback_items
+    domain_feedback_records = tuple(
+        FeedbackRecordModel(id=record.id, text=record.content, metadata={})
+        for record in body.feedback_records
     )
     domain_request = CodingAssignmentRequestModel(
-        feedback_items=domain_items,
+        feedback_records=domain_feedback_records,
         coding_framework=body.coding_framework,
         max_codes=body.max_codes,
         confidence_threshold=body.confidence_threshold,
@@ -189,11 +186,11 @@ async def assign_codes(
     )
 
     return ApiAssignCodesResponse(
-        coded_feedback_items=[
-            ApiCodeItems(
-                feedback_item_id=coded.feedback_item_id,
-                code_items=[
-                    ApiCodeItem(
+        coded_feedback_records=[
+            ApiCodedFeedbackRecord(
+                feedback_record_id=coded.feedback_record_id,
+                assigned_codes=[
+                    ApiAssignedCode(
                         code_id=assigned.code_id,
                         code_label=assigned.code_label,
                         confidence_type=assigned.confidence_type,
@@ -205,7 +202,7 @@ async def assign_codes(
                     for assigned in coded.assigned_codes
                 ],
             )
-            for coded in result.coded_feedback_items
+            for coded in result.coded_feedback_records
         ],
     )
 
@@ -221,12 +218,12 @@ async def summarize_aggregate(
     tenant: TenantApiKey = Depends(authenticate_request),
     orchestrator: Orchestrator = Depends(get_orchestrator),
 ) -> ApiSummarizeAggregateResponse:
-    """Summarize all submitted feedback items as a single aggregate summary.
+    """Summarize all submitted feedback records as a single aggregate summary.
 
     Parameters
     ----------
     body : SummarizeRequest
-        The request body containing feedback items and summarization options.
+        The request body containing feedback records and summarization options.
     request : Request
         The incoming HTTP request.
     tenant : TenantApiKey
@@ -237,20 +234,20 @@ async def summarize_aggregate(
     Returns
     -------
     SummarizeAggregateResponse
-        A single summary with themes ordered by frequency across all items.
+        A single summary with themes ordered by frequency across all feedback records.
     """
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
-    feedback_items = tuple(
-        FeedbackItemModel(
-            id=item.id,
-            text=item.content,
-            metadata=_summarize_metadata_to_domain(item.metadata),
+    feedback_records = tuple(
+        FeedbackRecordModel(
+            id=record.id,
+            text=record.content,
+            metadata=_summarize_metadata_to_domain(record.metadata),
         )
-        for item in body.feedback_items
+        for record in body.feedback_records
     )
     domain_request = DomainSummaryRequest(
-        feedback_items=feedback_items,
+        feedback_records=feedback_records,
         output_language=body.output_language,
         prompt=body.prompt,
         tenant_id=tenant.tenant_id,

@@ -20,6 +20,7 @@ to them, the options considered, and the reasoning behind the chosen approach.
 | [009](009-dedicated-state-storage-rg.md) | Dedicated resource group for Terraform state storage | Accepted |
 | [010](010-shared-container-registry.md) | Shared container registry across environments | Accepted |
 | [011](011-drop-orchestrator-port.md) | Drop swappable-orchestrator requirement and remove OrchestratorPort | Accepted (supersedes [008](obsolete/008-keep-orchestrator-port.md)) |
+| [012](012-postgres-mi-as-admin.md) | App Service managed identity as PostgreSQL Entra admin | Accepted |
 
 ## Obsolete
 

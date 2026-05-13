@@ -1,11 +1,12 @@
 """FastAPI dependency functions for authentication and service injection."""
 
-from fastapi import Request, Security
+from fastapi import Depends, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from qfa.auth import validate_api_key
-from qfa.domain.errors import AuthenticationError
+from qfa.domain.errors import AuthenticationError, AuthorizationError
 from qfa.domain.models import TenantApiKey
+from qfa.domain.ports import UsageRepositoryPort
 from qfa.services.orchestrator import Orchestrator
 
 
@@ -23,6 +24,22 @@ def get_orchestrator(request: Request) -> Orchestrator:
         The orchestrator service instance.
     """
     return request.app.state.orchestrator
+
+
+def get_usage_repo(request: Request) -> UsageRepositoryPort:
+    """Return the usage repository from app state.
+
+    Parameters
+    ----------
+    request : Request
+        The incoming HTTP request.
+
+    Returns
+    -------
+    UsageRepositoryPort
+        The usage repository instance.
+    """
+    return request.app.state.usage_repo
 
 
 async def authenticate_request(
@@ -58,3 +75,28 @@ async def authenticate_request(
         return validate_api_key(credentials.credentials, request.app.state.api_keys)
     except AuthenticationError:
         raise AuthenticationError(error_message)
+
+
+def require_superuser(
+    tenant: TenantApiKey = Depends(authenticate_request),
+) -> TenantApiKey:
+    """FastAPI dependency that authenticates and checks superuser status.
+
+    Parameters
+    ----------
+    tenant : TenantApiKey
+        The authenticated tenant (injected by ``authenticate_request``).
+
+    Returns
+    -------
+    TenantApiKey
+        The authenticated superuser tenant.
+
+    Raises
+    ------
+    AuthorizationError
+        If the tenant is not a superuser.
+    """
+    if not tenant.is_superuser:
+        raise AuthorizationError("Superuser access required")
+    return tenant

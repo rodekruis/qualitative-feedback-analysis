@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from qfa.settings import (
     AppSettings,
     AuthSettings,
+    DatabaseSettings,
     LLMSettings,
     OrchestratorSettings,
 )
@@ -115,6 +116,55 @@ class TestOrchestratorSettings:
         assert settings.chars_per_token == 4
 
 
+class TestDatabaseSettings:
+    def test_reads_from_db_prefixed_env_vars(self, monkeypatch):
+        monkeypatch.setenv("DB_URL", "postgresql+asyncpg://user:pass@host/db")
+        settings = DatabaseSettings()
+        assert settings.url == "postgresql+asyncpg://user:pass@host/db"
+
+    def test_accepts_parts_based_password_config(self, monkeypatch):
+        monkeypatch.delenv("DB_URL", raising=False)
+        monkeypatch.setenv("DB_HOST", "db.internal")
+        monkeypatch.setenv("DB_PORT", "5432")
+        monkeypatch.setenv("DB_NAME", "qfa")
+        monkeypatch.setenv("DB_USER", "qfaadmin")
+        monkeypatch.setenv("DB_PASSWORD", "secret")
+        settings = DatabaseSettings()
+        assert settings.url == ""
+        assert settings.auth_mode == "password"
+        assert settings.host == "db.internal"
+
+    def test_requires_password_in_password_mode_when_url_missing(self, monkeypatch):
+        monkeypatch.delenv("DB_URL", raising=False)
+        monkeypatch.setenv("DB_AUTH_MODE", "password")
+        monkeypatch.setenv("DB_HOST", "db.internal")
+        monkeypatch.setenv("DB_PORT", "5432")
+        monkeypatch.setenv("DB_NAME", "qfa")
+        monkeypatch.setenv("DB_USER", "qfaadmin")
+        monkeypatch.delenv("DB_PASSWORD", raising=False)
+        with pytest.raises(ValidationError):
+            DatabaseSettings()
+
+    def test_accepts_entra_mode_without_password(self, monkeypatch):
+        monkeypatch.delenv("DB_URL", raising=False)
+        monkeypatch.setenv("DB_AUTH_MODE", "entra")
+        monkeypatch.setenv("DB_HOST", "db.internal")
+        monkeypatch.setenv("DB_PORT", "5432")
+        monkeypatch.setenv("DB_NAME", "qfa")
+        monkeypatch.setenv("DB_USER", "app-msi")
+        monkeypatch.delenv("DB_PASSWORD", raising=False)
+        settings = DatabaseSettings()
+        assert settings.auth_mode == "entra"
+
+    def test_requires_parts_when_url_missing(self, monkeypatch):
+        monkeypatch.delenv("DB_URL", raising=False)
+        monkeypatch.delenv("DB_HOST", raising=False)
+        monkeypatch.delenv("DB_USER", raising=False)
+        monkeypatch.delenv("DB_NAME", raising=False)
+        with pytest.raises(ValidationError):
+            DatabaseSettings()
+
+
 class TestAuthSettings:
     def test_reads_from_auth_prefixed_env_vars(self, monkeypatch):
         keys_json = json.dumps(
@@ -143,6 +193,7 @@ class TestAuthSettings:
 class TestAppSettings:
     def test_composes_all_sub_settings(self, monkeypatch):
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
+        monkeypatch.setenv("DB_URL", "postgresql+asyncpg://user:pass@host/db")
         monkeypatch.setenv(
             "AUTH_API_KEYS",
             json.dumps(
@@ -158,6 +209,7 @@ class TestAppSettings:
         )
         settings = AppSettings()
         assert settings.llm.api_key.get_secret_value() == "sk-test"
+        assert settings.db.url == "postgresql+asyncpg://user:pass@host/db"
         assert len(settings.auth.api_keys) == 1
         assert settings.auth.api_keys[0].tenant_id == "tenant-1"
         assert settings.orchestrator.chars_per_token == 4
@@ -166,6 +218,7 @@ class TestAppSettings:
     def test_sub_settings_pick_up_env_overrides(self, monkeypatch):
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
         monkeypatch.setenv("LLM_MODEL", "gpt-3.5-turbo")
+        monkeypatch.setenv("DB_URL", "postgresql+asyncpg://user:pass@host/db")
         monkeypatch.setenv(
             "AUTH_API_KEYS",
             json.dumps(
@@ -182,4 +235,5 @@ class TestAppSettings:
         monkeypatch.setenv("ORCHESTRATOR_CHARS_PER_TOKEN", "8")
         settings = AppSettings()
         assert settings.llm.model == "gpt-3.5-turbo"
+        assert settings.db.url == "postgresql+asyncpg://user:pass@host/db"
         assert settings.orchestrator.chars_per_token == 8
