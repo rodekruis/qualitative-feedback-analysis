@@ -111,7 +111,7 @@ keys = sa.Table(
     metadata,
     sa.Column("key_id", sa.String(255), primary_key=True),
     sa.Column("name", sa.String(255), nullable=False),
-    sa.Column("hashed_key", sa.String(64), nullable=False),
+    sa.Column("hashed_key", sa.String(length=128), nullable=False),
     sa.Column(
         "tenant_id",
         sa.String(255),
