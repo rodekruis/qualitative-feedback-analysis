@@ -15,9 +15,13 @@ from qfa.domain.models import (
     FeedbackRecordModel,
     FeedbackRecordSummaryModel,
     LLMResponse,
+    SensitivityAnalyisisRequestModel,
+    SensitivityAnalysisResultModel,
+    SensitivityAnalysisResultModelList,
     SummaryRequestModel,
     SummaryResultModel,
 )
+from qfa.domain.sensitivity_types import SensitivityType
 from qfa.services.orchestrator import Orchestrator
 from qfa.settings import OrchestratorSettings
 
@@ -106,6 +110,28 @@ def _make_summary_request(
         output_language=output_language,
         prompt=prompt,
         tenant_id=tenant_id,
+    )
+
+
+def _make_sensitivity_request(feedback_records=None, tenant_id=TENANT_ID):
+    if feedback_records is None:
+        feedback_records = (_make_feedback_record(),)
+    return SensitivityAnalyisisRequestModel(
+        feedback_records=feedback_records,
+        tenant_id=tenant_id,
+    )
+
+
+def _make_sensitivity_result(item_id="doc-1", sensitivity_types=None):
+    if sensitivity_types is None:
+        sensitivity_types = (SensitivityType.CORRUPTION,)
+    return SensitivityAnalysisResultModelList(
+        results=(
+            SensitivityAnalysisResultModel(
+                feedback_record_id=item_id,
+                sensitivity_types=sensitivity_types,
+            ),
+        )
     )
 
 
@@ -386,6 +412,55 @@ class TestNonTransientError:
         assert len(fake_llm.calls) == 2
 
 
+class TestDetectSensitiveContent:
+    @pytest.mark.asyncio
+    async def test_returns_structured_result_from_llm(self, settings):
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(
+                    structured=_make_sensitivity_result(),
+                )
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        result = await orch.detect_sensitive_content(
+            _make_sensitivity_request(), _future_deadline()
+        )
+
+        assert result.results[0].feedback_record_id == "doc-1"
+        assert result.results[0].is_sensitive is True
+        assert fake_llm.calls[0]["response_model"] is SensitivityAnalysisResultModelList
+
+    @pytest.mark.asyncio
+    async def test_tenant_id_in_llm_call(self, settings):
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=_make_sensitivity_result()),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        await orch.detect_sensitive_content(
+            _make_sensitivity_request(tenant_id="special-tenant"),
+            _future_deadline(),
+        )
+
+        assert fake_llm.calls[0]["tenant_id"] == "special-tenant"
+
+
 class TestMetadataFiltering:
     @pytest.mark.asyncio
     async def test_only_configured_fields_included(self):
@@ -650,4 +725,37 @@ async def test_analyze_enters_call_scope_with_analyze_operation():
     assert len(captured) >= 1
     assert captured[0] is not None
     assert captured[0].operation == Operation.ANALYZE
+    assert captured[0].tenant_id == TENANT_ID
+
+
+@pytest.mark.asyncio
+async def test_detect_sensitive_enters_call_scope_with_detect_sensitive_operation():
+    from qfa.domain.models import Operation
+    from qfa.services.call_context import current_call_context
+
+    captured: list = []
+
+    class CapturingLLM:
+        async def complete(
+            self,
+            system_message,
+            user_message,
+            tenant_id,
+            response_model=str,
+            timeout=20.0,
+        ):
+            captured.append(current_call_context.get())
+            return _make_llm_response(structured=_make_sensitivity_result())
+
+    orch = _make_orchestrator(CapturingLLM(), OrchestratorSettings())
+
+    await orch.detect_sensitive_content(
+        _make_sensitivity_request(),
+        _future_deadline(),
+        anonymize=False,
+    )
+
+    assert len(captured) >= 1
+    assert captured[0] is not None
+    assert captured[0].operation == Operation.DETECT_SENSITIVE
     assert captured[0].tenant_id == TENANT_ID

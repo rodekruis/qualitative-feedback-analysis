@@ -238,7 +238,7 @@ class Orchestrator:
         """
         async with call_scope(
             tenant_id=request.tenant_id,
-            operation=Operation.DETECT_SENSITIVE,
+            operation=Operation.ANALYZE,
         ):
             timeout = self._check_deadline_and_get_timeout(deadline)
             system_message = _SYSTEM_MESSAGE_TEMPLATE.format(prompt=request.prompt)
@@ -597,7 +597,10 @@ class Orchestrator:
         SensitivityAnalysisResultModelList
             The sensitivity analysis results for each feedback record.
         """
-        async with call_scope(tenant_id=request.tenant_id, operation=Operation.ANALYZE):
+        async with call_scope(
+            tenant_id=request.tenant_id,
+            operation=Operation.DETECT_SENSITIVE,
+        ):
             timeout = self._check_deadline_and_get_timeout(deadline)
             system_message = _DEFAULT_SENSITIVITY_DETECTION_PROMPT
             user_message = str(request.feedback_records)

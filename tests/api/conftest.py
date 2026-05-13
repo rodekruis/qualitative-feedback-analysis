@@ -22,10 +22,14 @@ from qfa.domain.models import (
     CodingAssignmentRequestModel,
     CodingAssignmentResultModel,
     FeedbackRecordSummaryModel,
+    SensitivityAnalyisisRequestModel,
+    SensitivityAnalysisResultModel,
+    SensitivityAnalysisResultModelList,
     SummaryRequestModel,
     SummaryResultModel,
     TenantApiKey,
 )
+from qfa.domain.sensitivity_types import SensitivityType
 
 FAKE_API_KEY = "test-key-abc123"
 FAKE_SUPERUSER_KEY = "superuser-key-xyz789"
@@ -44,6 +48,7 @@ class FakeOrchestrator:
         self,
         analyze_result=None,
         summarize_result=None,
+        detect_sensitive_result=None,
         error=None,
     ):
         self._analyze_result = analyze_result or AnalysisResultModel(
@@ -58,6 +63,17 @@ class FakeOrchestrator:
                     quality_score=0.9,
                 ),
             ),
+        )
+        self._detect_sensitive_result = (
+            detect_sensitive_result
+            or SensitivityAnalysisResultModelList(
+                results=(
+                    SensitivityAnalysisResultModel(
+                        feedback_record_id="doc-1",
+                        sensitivity_types=(SensitivityType.CORRUPTION,),
+                    ),
+                ),
+            )
         )
         self._error = error
 
@@ -123,6 +139,16 @@ class FakeOrchestrator:
                 for record in request.feedback_records
             )
         )
+
+    async def detect_sensitive_content(
+        self,
+        request: SensitivityAnalyisisRequestModel,
+        deadline: datetime,
+        anonymize: bool = True,
+    ) -> SensitivityAnalysisResultModelList:
+        if self._error is not None:
+            raise self._error
+        return self._detect_sensitive_result
 
 
 @pytest.fixture
