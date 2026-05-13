@@ -23,6 +23,8 @@ from qfa.domain.models import (
     CodingAssignmentResultModel,
     FeedbackRecordModel,
     Operation,
+    SensitivityAnalyisisRequestModel,
+    SensitivityAnalysisResultModelList,
     SummaryRequestModel,
     SummaryResultModel,
 )
@@ -562,6 +564,26 @@ class Orchestrator:
                 )
 
             return CodingAssignmentResultModel(coded_feedback_records=tuple(coded))
+
+    def detect_sensitive_content(
+        self,
+        request: SensitivityAnalyisisRequestModel,
+        deadline: datetime,
+        anonymize: bool = True,
+    ) -> SensitivityAnalysisResultModelList:
+        """Detect sensitive content in feedback records.
+
+        Parameters
+        ----------
+        request : SensitivityAnalysisRequestModel
+            The sensitivity analysis request containing feedback records and tenant id.
+
+        Returns
+        -------
+        SensitivityAnalysisResultModelList
+            The sensitivity analysis results for each feedback record.
+        """
+        return SensitivityAnalysisResultModelList(results=())
 
     def _check_deadline_and_get_timeout(self, deadline: datetime) -> float:
         """

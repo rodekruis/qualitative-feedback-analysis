@@ -16,6 +16,7 @@ from qfa.api.schemas import (
     ApiCodedFeedbackRecord,
     ApiDetectSensitiveRequest,
     ApiDetectSensitiveResponse,
+    ApiFeedbackItemSensitivityRating,
     ApiFeedbackRecordSummary,
     ApiHealthResponse,
     ApiSummarizeAggregateResponse,
@@ -27,6 +28,7 @@ from qfa.domain.models import (
     AnalysisRequestModel,
     CodingAssignmentRequestModel,
     FeedbackRecordModel,
+    SensitivityAnalyisisRequestModel,
     TenantApiKey,
 )
 from qfa.domain.models import (
@@ -296,8 +298,30 @@ async def detect_sensitive(
     ApiDetectSensitiveResponse
         Sensitivity rating for each submitted feedback item.
     """
-    _deadline = datetime.now(UTC) + timedelta(seconds=120)
-    return ApiDetectSensitiveResponse(ratings=[])
+    deadline = datetime.now(UTC) + timedelta(seconds=120)
+
+    result = orchestrator.detect_sensitive_content(
+        SensitivityAnalyisisRequestModel(
+            feedback_records=tuple(
+                FeedbackRecordModel(id=record.id, text=record.text, metadata={})
+                for record in body.feedback_items
+            ),
+            tenant_id=tenant.tenant_id,
+        ),
+        deadline,
+        anonymize=body.anonymize,
+    )
+
+    return ApiDetectSensitiveResponse(
+        ratings=[
+            ApiFeedbackItemSensitivityRating(
+                id=rating.feedback_record_id,
+                is_sensitive=rating.is_sensitive,
+                explanation=str(rating.sensitivity_types),
+            )
+            for rating in result.results
+        ]
+    )
 
 
 @router.get("/v1/health", response_model=ApiHealthResponse, status_code=200)

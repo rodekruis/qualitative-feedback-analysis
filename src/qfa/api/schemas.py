@@ -341,6 +341,11 @@ class ApiDetectSensitiveRequest(BaseModel):
         description="List of feedback items to check for sensitive content.",
     )
 
+    anonymize: bool = Field(
+        default=True,
+        description="If true, the service will anonymize feedback text before sending it to the LLM. Disable only if you are sure that no personally identifiable information (PII) is present in the input.",
+    )
+
 
 class ApiFeedbackItemSensitivityRating(BaseModel):
     """Represents the sensitivity rating for a single feedback item.

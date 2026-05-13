@@ -17,6 +17,8 @@ from pydantic import (
     model_validator,
 )
 
+from qfa.domain.sensitivity_types import SensitivityType
+
 
 class FeedbackRecordModel(BaseModel):
     """A single feedback record submitted for analysis."""
@@ -194,6 +196,46 @@ class CodingAssignmentResultModel(BaseModel):
 
     coded_feedback_records: tuple[CodedFeedbackRecordModel, ...] = Field(
         description="Per-feedback-record coding results aligned with the request order.",
+    )
+
+
+class SensitivityAnalyisisRequestModel(BaseModel):
+    """A request to analyze feedback records for sensitivity."""
+
+    model_config = ConfigDict(frozen=True)
+
+    feedback_records: tuple[FeedbackRecordModel, ...] = Field(
+        min_length=1,
+        description="Non-empty tuple of feedback records to analyze for sensitivity.",
+    )
+    tenant_id: str = Field(description="Tenant identifier injected by the auth layer.")
+
+
+class SensitivityAnalysisResultModel(BaseModel):
+    """The result of analyzing feedback records for sensitivity."""
+
+    model_config = ConfigDict(frozen=True)
+
+    feedback_record_id: str = Field(
+        description="Identifier of the source feedback record.",
+    )
+    sensitivity_types: tuple[SensitivityType, ...] = Field(
+        description="Sensitivity types identified in the feedback record.",
+    )
+
+    @property
+    def is_sensitive(self) -> bool:
+        """Convenience property indicating whether any sensitivity types were detected."""
+        return len(self.sensitivity_types) > 0
+
+
+class SensitivityAnalysisResultModelList(BaseModel):
+    """The result of analyzing feedback records for sensitivity."""
+
+    model_config = ConfigDict(frozen=True)
+
+    results: tuple[SensitivityAnalysisResultModel, ...] = Field(
+        description="Sensitivity analysis results for each feedback record.",
     )
 
 
