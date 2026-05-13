@@ -311,11 +311,29 @@ class Orchestrator:
                 unanonymized_return_model_as_string = self._anonymizer.deanonymize(
                     return_model_as_string, anonymization_mapping
                 )
-                return SummaryResultModel.model_validate_json(
+                result = SummaryResultModel.model_validate_json(
                     unanonymized_return_model_as_string
                 )
+            else:
+                result = llm_completion.structured
 
-            return llm_completion.structured
+            # Guard against LLM returning a different number of summaries than records submitted
+            if len(result.feedback_record_summaries) != len(request.feedback_records):
+                raise AnalysisError(
+                    f"LLM returned {len(result.feedback_record_summaries)} summaries"
+                    f" for {len(request.feedback_records)} requested feedback records."
+                )
+            # Replace LLM-generated IDs with the authoritative input record IDs
+            summaries_with_updated_id = tuple(
+                summary.model_copy(update={"id": record.id})
+                for record, summary in zip(
+                    request.feedback_records, result.feedback_record_summaries
+                )
+            )
+            result = result.model_copy(
+                update={"feedback_record_summaries": summaries_with_updated_id}
+            )
+            return result
 
     async def summarize_aggregate(
         self,
