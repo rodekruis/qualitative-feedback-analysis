@@ -30,6 +30,7 @@ from qfa.domain.models import (
     TokenStats,
     UsageStats,
 )
+from qfa.domain.ports import UsageRepositoryPort
 
 FAKE_API_KEY = "test-key-abc123"
 FAKE_SUPERUSER_KEY = "superuser-key-xyz789"
@@ -129,7 +130,7 @@ class FakeOrchestrator:
         )
 
 
-class FakeUsageRepository:
+class FakeUsageRepository(UsageRepositoryPort):
     """Minimal in-memory usage repository for API tests.
 
     Keeps the test app wiring aligned with production where ``usage_repo``
