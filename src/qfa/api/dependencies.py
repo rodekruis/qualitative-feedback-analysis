@@ -1,7 +1,6 @@
 """FastAPI dependency functions for authentication and service injection."""
 
 from fastapi import Depends, Request, Security
-from fastapi.exceptions import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from qfa.auth import validate_api_key
@@ -42,18 +41,12 @@ def get_usage_repo(request: Request) -> UsageRepositoryPort:
 
     Raises
     ------
-    HTTPException
-        503 if the usage repository is not available.
+    RuntimeError
+        If the usage repository is not configured in app state.
     """
     repo = getattr(request.app.state, "usage_repo", None)
     if repo is None:
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "code": "usage_backend_unavailable",
-                "message": "Usage backend is temporarily unavailable",
-            },
-        )
+        raise RuntimeError("Usage repository not configured")
     return repo
 
 
