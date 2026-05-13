@@ -161,7 +161,7 @@ class AnonymizationPort(Protocol):
 
 
 class AuthLookupPort(Protocol):
-    """Port for authenticating users of the appication."""
+    """Port for authenticating users of the application."""
 
     async def validate_api_key(self, provided_key: str) -> TenantApiKey | None:
         """Validate if a key exists in the implemented adapter.
@@ -189,7 +189,7 @@ class AuthLookupPort(Protocol):
         Returns
         -------
         list[dict]
-            A list of dicts with auth key informations.
+            A list of dicts with auth key metadata.
         """
         ...
 
