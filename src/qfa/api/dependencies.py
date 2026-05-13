@@ -38,16 +38,8 @@ def get_usage_repo(request: Request) -> UsageRepositoryPort:
     -------
     UsageRepositoryPort
         The usage repository instance.
-
-    Raises
-    ------
-    RuntimeError
-        If the usage repository is not configured in app state.
     """
-    repo = getattr(request.app.state, "usage_repo", None)
-    if repo is None:
-        raise RuntimeError("Usage repository not configured")
-    return repo
+    return request.app.state.usage_repo
 
 
 async def authenticate_request(
