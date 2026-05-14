@@ -89,7 +89,8 @@ _DEFAULT_SENSITIVITY_DETECTION_PROMPT = (
     "Do not include markdown code fences.\n"
     "Note that anonymization might have taken place (e.g. ``<PERSON_0>``, ``<LOCATION_1>``). \n"
     "Please act as if these were not anonymized. For example, if you see ``<PERSON_0>``"
-    " treat it as if it said 'John Doe' and classify sensitivity accordingly."
+    " treat it as if it said 'John Doe' and classify sensitivity accordingly. \n"
+    "Please note that we prefer false positives over false negatives in this classification."
 )
 
 _JUDGE_PROMPT = """
