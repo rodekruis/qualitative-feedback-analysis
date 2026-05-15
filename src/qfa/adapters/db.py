@@ -508,6 +508,26 @@ class SqlAlchemyUsageRepository(
                 raise TenantNotFoundError(f"Tenant '{tenant_id}' not found")
             await session.commit()
 
+    async def get_tenants(self) -> list[dict]:
+        """Return metadata for all tenants."""
+        stmt = sa.select(
+            tenants.c.tenant_id,
+            tenants.c.name,
+            tenants.c.allows_superusers,
+        ).order_by(tenants.c.tenant_id.asc())
+
+        async with self._session_factory() as session:
+            rows = (await session.execute(stmt)).all()
+
+        return [
+            {
+                "tenant_id": str(row.tenant_id),
+                "name": str(row.name),
+                "allows_superusers": bool(row.allows_superusers),
+            }
+            for row in rows
+        ]
+
     async def add_key(
         self,
         api_key: str,

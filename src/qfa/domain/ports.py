@@ -272,3 +272,13 @@ class AuthManagementPort(Protocol):
             The unique identifier of the API key record to remove.
         """
         ...
+
+    async def get_tenants(self) -> list[dict]:
+        """Return metadata for all tenants in the implemented adapter.
+
+        Returns
+        -------
+        list[dict]
+            A list of dicts with tenant metadata (tenant_id, name, allows_superusers).
+        """
+        ...

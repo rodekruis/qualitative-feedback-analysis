@@ -57,6 +57,19 @@ class TestTenantManagement:
         with pytest.raises(TenantNotFoundError):
             await repo.delete_tenant("missing-tenant")
 
+    async def test_get_tenants_returns_all(self, repo_with_engine):
+        repo, _ = repo_with_engine
+        await repo.add_tenant("Tenant A", allows_superusers=False)
+        await repo.add_tenant("Tenant B", allows_superusers=True)
+
+        result = await repo.get_tenants()
+
+        assert len(result) == 2
+        names = {r["name"] for r in result}
+        assert names == {"Tenant A", "Tenant B"}
+        for record in result:
+            assert set(record.keys()) == {"tenant_id", "name", "allows_superusers"}
+
 
 class TestKeyManagement:
     async def test_add_key_and_validate_round_trip(self, repo_with_engine):

@@ -52,6 +52,7 @@ class FakeAuthManagementPort(AuthManagementPort):
         self.key_id_to_return = "key-created"
         self.add_tenant_calls = []
         self.delete_tenant_calls = []
+        self.get_tenants_calls = 0
         self.add_key_calls = []
         self.delete_key_calls = []
 
@@ -68,6 +69,12 @@ class FakeAuthManagementPort(AuthManagementPort):
 
     async def delete_tenant(self, tenant_id: str) -> None:
         self.delete_tenant_calls.append(tenant_id)
+
+    async def get_tenants(self) -> list[dict]:
+        self.get_tenants_calls += 1
+        return [
+            {"tenant_id": "t-1", "name": "Tenant One", "allows_superusers": False},
+        ]
 
     async def add_key(
         self,
@@ -160,6 +167,17 @@ class TestTenantManagement:
         await orchestrator.delete_tenant("tenant-7")
 
         assert management_port.delete_tenant_calls == ["tenant-7"]
+
+    async def test_get_tenants_delegates_to_management_port(self):
+        management_port = FakeAuthManagementPort()
+        orchestrator = AuthOrchestrator([FakeAuthLookupPort()], management_port)
+
+        result = await orchestrator.get_tenants()
+
+        assert result == [
+            {"tenant_id": "t-1", "name": "Tenant One", "allows_superusers": False}
+        ]
+        assert management_port.get_tenants_calls == 1
 
 
 class TestKeyManagement:

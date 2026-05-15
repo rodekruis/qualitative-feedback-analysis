@@ -129,6 +129,16 @@ class AuthOrchestrator:
         """
         await self.auth_management_port.delete_key(key_id)
 
+    async def get_tenants(self) -> list[dict]:
+        """Get all tenants through the configured auth-management backend.
+
+        Returns
+        -------
+        list[dict]
+            List of tenant metadata dicts (tenant_id, name, allows_superusers).
+        """
+        return await self.auth_management_port.get_tenants()
+
     async def get_auth_keys(self, tenant_id: str | None = None) -> list[dict]:
         """Get all API keys through the configured auth-management backend.
 

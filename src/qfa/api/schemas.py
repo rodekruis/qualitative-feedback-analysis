@@ -397,6 +397,22 @@ class ApiAddTenantResponse(BaseModel):
     tenant_id: str = Field(description="Unique identifier of the created tenant.")
 
 
+class ApiTenant(BaseModel):
+    """A single tenant metadata item."""
+
+    tenant_id: str = Field(description="Unique identifier for the tenant.")
+    name: str = Field(description="Display name for the tenant.")
+    allows_superusers: bool = Field(
+        description="Whether this tenant is allowed to own superuser keys.",
+    )
+
+
+class ApiTenantsResponse(BaseModel):
+    """Response body for ``GET /v1/auth/tenants``."""
+
+    tenants: list[ApiTenant] = Field(description="Tenant metadata records.")
+
+
 class ApiAddKeyRequest(BaseModel):
     """Request body for ``POST /v1/auth/keys``."""
 

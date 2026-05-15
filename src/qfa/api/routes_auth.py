@@ -10,6 +10,8 @@ from qfa.api.schemas import (
     ApiAddTenantResponse,
     ApiAuthKey,
     ApiAuthKeysResponse,
+    ApiTenant,
+    ApiTenantsResponse,
 )
 from qfa.domain.models import TenantApiKey
 from qfa.services.auth_orchestrator import AuthOrchestrator
@@ -29,6 +31,25 @@ async def add_tenant(
         allows_superusers=body.allows_superusers,
     )
     return ApiAddTenantResponse(tenant_id=tenant_id)
+
+
+@router.get("/v1/auth/tenants", response_model=ApiTenantsResponse, status_code=200)
+async def get_tenants(
+    _tenant: TenantApiKey = Depends(require_superuser),
+    auth_orchestrator: AuthOrchestrator = Depends(get_auth_orchestrator),
+) -> ApiTenantsResponse:
+    """List all tenants. Requires superuser access."""
+    tenant_records = await auth_orchestrator.get_tenants()
+    return ApiTenantsResponse(
+        tenants=[
+            ApiTenant(
+                tenant_id=record["tenant_id"],
+                name=record["name"],
+                allows_superusers=record["allows_superusers"],
+            )
+            for record in tenant_records
+        ]
+    )
 
 
 @router.delete("/v1/auth/tenants/{tenant_id}", status_code=204)

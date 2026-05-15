@@ -17,6 +17,7 @@ class RecordingAuthOrchestrator:
         self._api_keys = api_keys
         self.add_tenant_calls: list[dict] = []
         self.delete_tenant_calls: list[str] = []
+        self.get_tenants_calls: int = 0
         self.add_key_calls: list[dict] = []
         self.delete_key_calls: list[str] = []
         self.get_auth_keys_calls: list[str | None] = []
@@ -51,6 +52,13 @@ class RecordingAuthOrchestrator:
         if self.raise_on_delete_tenant is not None:
             raise self.raise_on_delete_tenant
         self.delete_tenant_calls.append(tenant_id)
+
+    async def get_tenants(self) -> list[dict]:
+        self.get_tenants_calls += 1
+        return [
+            {"tenant_id": "tenant-a", "name": "Tenant A", "allows_superusers": False},
+            {"tenant_id": "tenant-b", "name": "Tenant B", "allows_superusers": True},
+        ]
 
     async def add_key(
         self,
@@ -132,6 +140,30 @@ class TestAuthManagementSuccess:
         assert auth_orchestrator_spy.add_tenant_calls == [
             {"tenant_name": "Tenant Red", "allows_superusers": True}
         ]
+
+    @pytest.mark.asyncio
+    async def test_get_tenants_200(self, auth_client, auth_orchestrator_spy):
+        resp = await auth_client.get(
+            "/v1/auth/tenants",
+            headers=_auth_header(FAKE_SUPERUSER_KEY),
+        )
+
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "tenants": [
+                {
+                    "tenant_id": "tenant-a",
+                    "name": "Tenant A",
+                    "allows_superusers": False,
+                },
+                {
+                    "tenant_id": "tenant-b",
+                    "name": "Tenant B",
+                    "allows_superusers": True,
+                },
+            ]
+        }
+        assert auth_orchestrator_spy.get_tenants_calls == 1
 
     @pytest.mark.asyncio
     async def test_delete_tenant_204(self, auth_client, auth_orchestrator_spy):
