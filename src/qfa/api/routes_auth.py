@@ -19,7 +19,12 @@ from qfa.services.auth_orchestrator import AuthOrchestrator
 router = APIRouter()
 
 
-@router.post("/v1/auth/tenants", response_model=ApiAddTenantResponse, status_code=201)
+@router.post(
+    "/v1/auth/tenants",
+    response_model=ApiAddTenantResponse,
+    status_code=201,
+    tags=["User Management"],
+)
 async def add_tenant(
     body: ApiAddTenantRequest,
     _tenant: TenantApiKey = Depends(require_superuser),
@@ -33,7 +38,12 @@ async def add_tenant(
     return ApiAddTenantResponse(tenant_id=tenant_id)
 
 
-@router.get("/v1/auth/tenants", response_model=ApiTenantsResponse, status_code=200)
+@router.get(
+    "/v1/auth/tenants",
+    response_model=ApiTenantsResponse,
+    status_code=200,
+    tags=["User Management"],
+)
 async def get_tenants(
     _tenant: TenantApiKey = Depends(require_superuser),
     auth_orchestrator: AuthOrchestrator = Depends(get_auth_orchestrator),
@@ -52,7 +62,9 @@ async def get_tenants(
     )
 
 
-@router.delete("/v1/auth/tenants/{tenant_id}", status_code=204)
+@router.delete(
+    "/v1/auth/tenants/{tenant_id}", status_code=204, tags=["User Management"]
+)
 async def delete_tenant(
     tenant_id: str,
     _tenant: TenantApiKey = Depends(require_superuser),
@@ -63,7 +75,12 @@ async def delete_tenant(
     return Response(status_code=204)
 
 
-@router.post("/v1/auth/keys", response_model=ApiAddKeyResponse, status_code=201)
+@router.post(
+    "/v1/auth/keys",
+    response_model=ApiAddKeyResponse,
+    status_code=201,
+    tags=["User Management"],
+)
 async def add_key(
     body: ApiAddKeyRequest,
     _tenant: TenantApiKey = Depends(require_superuser),
@@ -80,7 +97,7 @@ async def add_key(
     return ApiAddKeyResponse(key_id=key_id)
 
 
-@router.delete("/v1/auth/keys/{key_id}", status_code=204)
+@router.delete("/v1/auth/keys/{key_id}", status_code=204, tags=["User Management"])
 async def delete_key(
     key_id: str,
     _tenant: TenantApiKey = Depends(require_superuser),
@@ -91,7 +108,12 @@ async def delete_key(
     return Response(status_code=204)
 
 
-@router.get("/v1/auth/keys", response_model=ApiAuthKeysResponse, status_code=200)
+@router.get(
+    "/v1/auth/keys",
+    response_model=ApiAuthKeysResponse,
+    status_code=200,
+    tags=["User Management"],
+)
 async def get_auth_keys(
     tenant_id: str | None = Query(
         default=None,

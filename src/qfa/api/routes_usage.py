@@ -89,7 +89,12 @@ def _parse_time_window(
     return from_, to
 
 
-@router.get("/v1/usage", response_model=UsageStatsResponse, status_code=200)
+@router.get(
+    "/v1/usage",
+    response_model=UsageStatsResponse,
+    status_code=200,
+    tags=["Usage Tracking"],
+)
 async def usage(
     tenant: TenantApiKey = Depends(authenticate_request),
     usage_repo: UsageRepositoryPort = Depends(get_usage_repo),
@@ -132,7 +137,12 @@ async def usage(
     )
 
 
-@router.get("/v1/usage/all", response_model=AllUsageStatsResponse, status_code=200)
+@router.get(
+    "/v1/usage/all",
+    response_model=AllUsageStatsResponse,
+    status_code=200,
+    tags=["Usage Tracking"],
+)
 async def usage_all(
     _tenant: TenantApiKey = Depends(require_superuser),
     usage_repo: UsageRepositoryPort = Depends(get_usage_repo),

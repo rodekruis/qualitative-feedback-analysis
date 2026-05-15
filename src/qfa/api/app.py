@@ -726,10 +726,31 @@ def create_app(*, llm_factory: LLMFactory | None = None) -> FastAPI:
         The fully configured application instance.
     """
     factory: LLMFactory = llm_factory if llm_factory is not None else build_llm_client
+
+    tags_metadata = [
+        {
+            "name": "Default",
+            "description": "System health and status endpoints",
+        },
+        {
+            "name": "Inference",
+            "description": "Analyze, summarize, and assign codes to feedback records",
+        },
+        {
+            "name": "User Management",
+            "description": "Manage tenants and API keys",
+        },
+        {
+            "name": "Usage Tracking",
+            "description": "View usage statistics and billing information",
+        },
+    ]
+
     app = FastAPI(
         title="Feedback Analysis Backend",
         lifespan=_make_lifespan(factory),
         version=qfa.__version__,
+        openapi_tags=tags_metadata,
     )
     app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(RequestIdMiddleware)
