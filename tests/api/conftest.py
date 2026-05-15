@@ -66,6 +66,9 @@ class FakeAuthManagementPort:
     async def delete_key(self, key_id: str) -> None:
         return None
 
+    async def get_tenants(self) -> list[dict]:
+        return []
+
 
 FAKE_API_KEY = "test-key-abc123"
 FAKE_SUPERUSER_KEY = "superuser-key-xyz789"
