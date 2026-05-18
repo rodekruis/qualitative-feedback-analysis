@@ -20,12 +20,15 @@ ALLOWED_HOSTS=(
     api.anthropic.com
     claude.ai
     platform.claude.com
-    sentry.io
+    #downloads.claude.ai
+    #sentry.io
     # Only the specific Sentry ingest subdomain used by Claude Code is listed.
     # DNS-based firewalls cannot do wildcard matching. Update this if the DSN changes.
-    o4509477028462592.ingest.us.sentry.io
+    #o4509477028462592.ingest.us.sentry.io
     statsig.anthropic.com
     statsig.com
+    mcp.context7.com
+    context7.com
     # GitHub
     github.com
     api.github.com
@@ -33,6 +36,12 @@ ALLOWED_HOSTS=(
     # Python package registries
     pypi.org
     files.pythonhosted.org
+    # HuggingFace Hub (memsearch ONNX model download — cached after first use)
+    huggingface.co
+    cdn-lfs.huggingface.co
+    cdn-lfs-us-1.huggingface.co
+    # HuggingFace Xet storage (newer model blobs redirect here, e.g. bge-m3-onnx-int8)
+    xethub.hf.co
     # npm (for npx-based MCP servers)
     registry.npmjs.org
 )

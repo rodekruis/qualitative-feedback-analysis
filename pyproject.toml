@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "qualitative-feedback-analysis"
-version = "0.13.1"
+version = "1.0.0"
 description = "The feedback analysis tool receives feedback items and analyses trends, topics and their evolution over time."
 readme = "README.md"
 license = "LicenseRef-Proprietary"
@@ -130,6 +130,7 @@ dev = [
     "azure-keyvault-secrets~=4.10",
     "httpx~=0.28",
     "import-linter>=2.11",
+    "ipykernel>=7.2.0",
     "pre-commit>=4.6.0",
     "pytest~=9.0",
     "pytest-asyncio~=1.3.0",
