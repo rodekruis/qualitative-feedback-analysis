@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Host-side helper: run zsh in devcontainer
+# Usage:
+#   dcsh
+set -euo pipefail
+
+exec dcexec zsh "$@"

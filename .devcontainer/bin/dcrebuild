@@ -31,7 +31,9 @@ if [[ "$wipe" -eq 1 ]]; then
 fi
 
 echo "==> Building image..."
-docker compose -f "$compose_file" build "${build_args[@]}"
+# ${arr[@]+"${arr[@]}"} expands safely when the array is empty under
+# `set -u` on bash 3.2 (the version macOS still ships).
+docker compose -f "$compose_file" build "${build_args[@]+"${build_args[@]}"}"
 
 echo "==> Recreating container..."
 exec devcontainer up --workspace-folder . --remove-existing-container

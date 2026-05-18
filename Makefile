@@ -63,3 +63,27 @@ migrate:
 
 test-integration:
 	uv run pytest -m "integration or e2e"
+
+.PHONY: docs docs-clean docs-live
+
+# Build the HTML documentation locally. Combines the auto-generated API
+# reference (sphinx-autosummary against src/qfa) with the prose pages
+# under docs/. Output lands at docs/_build/html/index.html.
+#
+# Strict mode (-W) fails the build on any warning so broken cross-refs,
+# orphaned docs, or autodoc surprises are caught at build time. Combined
+# with --keep-going so a single build surfaces every issue at once.
+docs:
+	uv sync --group docs
+	uv run sphinx-build -W --keep-going -a -b html docs docs/_build/html
+	@echo "Open docs/_build/html/index.html"
+
+# Wipe generated docs artefacts. Useful when autosummary stubs go stale
+# after renames or when warnings stop reproducing.
+docs-clean:
+	rm -rf docs/_build docs/python-api/_apidoc
+
+# Live-reload mode: rebuilds on file change. Handy while writing docs.
+docs-live:
+	uv sync --group docs
+	uv run sphinx-autobuild -a -b html docs docs/_build/html --watch src/qfa --open-browser

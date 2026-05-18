@@ -37,7 +37,7 @@ concrete `StandardOrchestrator`. Without the swap requirement, that
 abstraction is decorative.
 
 The architecturally load-bearing inversions are the **driven** ports
-(`LLMPort` today, `AnonymizationPort` next). Those keep heavyweight
+({py:class}`~qfa.domain.ports.LLMPort` today, {py:class}`~qfa.domain.ports.AnonymizationPort` next). Those keep heavyweight
 infrastructure (OpenAI SDK, Presidio's spaCy models) out of the
 application ring and enable fast, mock-free testing. None of that
 depends on `OrchestratorPort`.

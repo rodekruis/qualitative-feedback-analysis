@@ -55,12 +55,16 @@ for each of them.
 
 1. **Create a GitHub token** — see [GitHub token](#github-token) below.
 
-2. **Write your keys to `.devcontainer/.env`** (gitignored):
+2. **Write your keys to `.devcontainer/.env`** (gitignored). 
+   Either copy and modify `.env.example`, or:
 
    ```bash
    cat > .devcontainer/.env <<'EOF'
-   ANTHROPIC_API_KEY=sk-ant-XXXXX
-   GH_TOKEN=github_pat_XXXXX
+   GH_TOKEN=github_pat_...
+   # optional, if ommitted you have to run `/login` after starting Claude Code in the devcontainer:
+   ANTHROPIC_API_KEY=sk-ant-...
+   # optional, if you want higher rate limits for Context7:
+   CONTEXT7_API_KEY=ctx7sk-...
    EOF
    ```
    
@@ -76,15 +80,24 @@ for each of them.
 3. **Open in your IDE** or start manually:
 
    ```bash
+   # shorthand commands that ship with this repo:
+   export PATH="$PATH:$(pwd)/.devcontainer/bin"
+   dcrebuild   # build or rebuild the container
+   dcc         # run Claude Code with --dangerously-skip-permissions
+   dcexec bash # start the container and open a bash shell
+   dczsh       # start the container and open a zsh shell
+   dcdown      # stop the container
+   
+   # or use the `devcontainer` bin directly:
    devcontainer up --workspace-folder .
    devcontainer exec --workspace-folder . zsh
-   
-   # or shorthand scripts:
-   dcrebuild  # build or rebuild the container
-   dcexec zsh  # start the container and open a shell
-   dcc        # run Claude Code with --dangerously-skip-permissions
-   dcdown     # stop the container
    ```
+   
+> [!TIP]
+> You need to adjust the PATH variable so that the shorthand commands can be found.
+> Instead of doing this manually, you can install [direnv](https://direnv.net/).
+> Together with the `.envrc` file in the root of this repo, it will automatically
+> set the correct PATH whenever you enter this directory.
 
 4. **First run** happens automatically — `postCreateCommand` runs
    `uv sync`, installs pre-commit hooks, and sets up Claude Code plugins.

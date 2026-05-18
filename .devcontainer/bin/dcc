@@ -3,4 +3,4 @@
 # Usage:
 set -euo pipefail
 
-exec dcexec claude --dangerously-skip-permissions
+exec dcexec claude --dangerously-skip-permissions "$@"

@@ -1,15 +1,15 @@
 # Set Up a New Environment
 
-Run this once per environment (`dev`, `staging`, `prd`, or any additional environment added later). It assumes [BOOTSTRAP.md](BOOTSTRAP.md) has already been completed for this deployment.
+Run this once per environment (`dev`, `staging`, `prd`, or any additional environment added later). It assumes [Infrastructure bootstrap](bootstrap.md) has already been completed for this deployment.
 
 Each environment lives in its own Azure resource group and its own Terraform workspace, so state and resources stay isolated between environments.
 
 ## Prerequisites
 
-- [BOOTSTRAP.md](BOOTSTRAP.md) has been completed for this deployment.
-- The shared environment variables from [BOOTSTRAP.md § Export environment variables](BOOTSTRAP.md#2-export-environment-variables) are exported in your current shell (re-export them if you opened a new shell).
+- [Infrastructure bootstrap](bootstrap.md) has been completed for this deployment.
+- The shared environment variables from [Infrastructure bootstrap § Export environment variables](bootstrap.md#2-export-environment-variables) are exported in your current shell (re-export them if you opened a new shell).
 - An Azure resource group exists for this environment. Create one via the Azure portal or `az group create -n <name> -l westeurope`.
-- The roles listed in [BOOTSTRAP.md § Required roles](BOOTSTRAP.md#required-roles-to-run-initial-terraform-apply) on the environment's resource group and on its Key Vault.
+- The roles listed in [Infrastructure bootstrap § Required roles](bootstrap.md#required-roles-to-run-initial-terraform-apply) on the environment's resource group and on its Key Vault.
 
 ## Steps
 
@@ -87,7 +87,7 @@ az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "llm-api-base" 
 az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "llm-api-key"  --value "<your-llm-api-key>"
 ```
 
-For the `auth-api-keys` secret, prefer [`scripts/update_auth_api_keys.py`](../scripts/update_auth_api_keys.py) — it generates a secure token, manages the JSON shape, and works for the initial seed (the secret does not need to exist yet). See the module docstring at the top of the script for the full set of operations (`--add`, `--replace`, `--remove`).
+For the `auth-api-keys` secret, prefer [`scripts/update_auth_api_keys.py`](../../scripts/update_auth_api_keys.py) — it generates a secure token, manages the JSON shape, and works for the initial seed (the secret does not need to exist yet). See the module docstring at the top of the script for the full set of operations (`--add`, `--replace`, `--remove`).
 
 ```bash
 export AZURE_KEYVAULT="qfa-${ENV}-keyvault"
@@ -100,7 +100,7 @@ uv run python3 scripts/update_auth_api_keys.py --add <tenant>
 |--------|-------------|
 | `llm-api-base`   | Base URL of your Azure OpenAI deployment (e.g. `https://<resource>.openai.azure.com/`) |
 | `llm-api-key`    | API key for the Azure OpenAI deployment |
-| `auth-api-keys`  | JSON array of API-key objects that authenticate callers to this backend (see [README § API Keys](../README.md#api-keys)) |
+| `auth-api-keys`  | JSON array of API-key objects that authenticate callers to this backend (see [API key management](auth-management.md)) |
 
 Without these secrets the App Service will start and pass health checks, but API calls will fail with a Key Vault reference resolution error.
 
