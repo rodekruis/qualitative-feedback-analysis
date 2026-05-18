@@ -24,7 +24,7 @@ Place the Terraform state storage account in a conceptually separate
 resource group, distinct from both the per-environment resource groups
 and the shared platform resource group (which hosts the ACR).
 
-In `bootstrap.sh` and `BOOTSTRAP.md`, this is expressed via the
+In `bootstrap.sh` and `docs/operations/bootstrap.md`, this is expressed via the
 `TF_VAR_tf_state_resource_group_name` environment variable. For a
 minimal single-RG deployment, operators may point it at the same RG as
 everything else; for a multi-RG deployment, it gets its own dedicated RG.

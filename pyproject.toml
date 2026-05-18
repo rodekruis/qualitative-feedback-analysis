@@ -141,6 +141,13 @@ dev = [
     # Use pinned version so we don't get unexpected lint errors when ty gets updated
     "ty~=0.0.34",
 ]
+docs = [
+    "sphinx>=7",
+    "myst-parser>=2",
+    "sphinxcontrib-mermaid>=0.9",
+    "sphinx-autobuild>=2024.4",
+    "pydata-sphinx-theme>=0.17.1",
+]
 
 [tool.importlinter]
 root_packages = ["qfa"]
