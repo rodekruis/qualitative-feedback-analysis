@@ -30,9 +30,25 @@ Notes:
 
 ## Call context and usage tracking
 
-`qfa.services.call_context` defines a `ContextVar[CallContext | None]` and a `call_scope(tenant_id, operation)` async context manager. Every public orchestrator method enters a scope; the {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter` reads the context to attribute each LLM call to a tenant and operation.
+`qfa.services.call_context` defines two cooperating `ContextVar`s and their context-manager helpers:
 
-Consequence: any new code path that calls `LLMPort.complete` outside an orchestrator method will raise {py:exc}`~qfa.domain.errors.MissingCallScopeError` at runtime. The tracking adapter refuses to record an untyped call.
+- `current_request_id` / `request_id_scope(uuid)` — set per HTTP request by `RequestIdMiddleware` in `qfa.api.app`. The same UUID is returned in the `X-Request-ID` response header.
+- `current_call_context` / `call_scope(tenant_id, operation)` — set per orchestrator invocation. Reads `current_request_id` and stamps it onto the `CallContext` as `call_id`, so the HTTP header, log lines, and `llm_calls.call_id` rows all share one UUID. Raises {py:exc}`~qfa.domain.errors.MissingRequestScopeError` if no request scope is active.
+
+`call_scope` is entered by a FastAPI dependency at the driving-adapter layer, **not** by the orchestrator. Each route declares which operation it represents:
+
+```python
+async def analyze(
+    ...,
+    _scope: CallContext = Depends(call_scope_for(Operation.ANALYZE)),
+): ...
+```
+
+`call_scope_for` lives in `qfa.api.dependencies`; it composes with `authenticate_request` to resolve the tenant and enters `call_scope` before the route body (and the orchestrator) runs. The orchestrator is therefore free of scope plumbing — pure use-case logic. The {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter` reads `current_call_context` when persisting each LLM call.
+
+Non-HTTP callers (CLI, future jobs, ad-hoc tests) wrap their work in `request_id_scope(uuid4())` and `call_scope(...)` explicitly.
+
+If `LLMPort.complete` is invoked outside an active `call_scope` (e.g. a wiring bug), `TrackingLLMAdapter` does **not** raise — it logs at ERROR, routes through to the inner LLM, and returns the response without persisting the attempt. Observability never breaks the use case; missing scope is loud in logs and alertable, but does not fail user-facing requests.
 
 ## Deadlines, timeouts, retries
 
