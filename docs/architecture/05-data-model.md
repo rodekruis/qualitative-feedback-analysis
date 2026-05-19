@@ -29,6 +29,7 @@ Roughly:
 | `id` | UUID primary key |
 | `tenant_id` | Caller, set from the authenticated `TenantApiKey` |
 | `operation` | One of `analyze`, `summarize`, `summarize_aggregate`, `assign_codes` |
+| `call_id` | UUID linking all LLM calls made within one API invocation — enables per-invocation cost aggregation across the fan-out from one orchestrator entry. Set in `call_scope`; identical for every row produced by a single endpoint call. |
 | `model` | The LiteLLM model string used |
 | `prompt_tokens`, `completion_tokens` | From the provider response |
 | `cost` | Computed from LiteLLM's cost map; zero when the model has no published pricing |

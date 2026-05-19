@@ -87,6 +87,7 @@ class TrackingLLMAdapter(LLMPort):
                 LLMCallRecord(
                     tenant_id=ctx.tenant_id,
                     operation=ctx.operation,
+                    call_id=ctx.call_id,
                     timestamp=started_at,
                     call_duration_ms=duration_ms,
                     model="",
@@ -104,6 +105,7 @@ class TrackingLLMAdapter(LLMPort):
             LLMCallRecord(
                 tenant_id=ctx.tenant_id,
                 operation=ctx.operation,
+                call_id=ctx.call_id,
                 timestamp=started_at,
                 call_duration_ms=duration_ms,
                 model=response.model,

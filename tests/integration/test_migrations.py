@@ -76,6 +76,7 @@ class TestUpgradeFromEmpty:
         assert {
             "tenant_id",
             "operation",
+            "call_id",
             "timestamp",
             "call_duration_ms",
             "model",
@@ -86,6 +87,47 @@ class TestUpgradeFromEmpty:
             "error_class",
             "created_at",
         }.issubset(col_names)
+
+
+class TestCallIdBackfill:
+    """Pre-existing rows must receive distinct synthetic UUIDs on upgrade."""
+
+    async def test_existing_rows_get_distinct_call_ids_on_upgrade(self, fresh_pg):
+        engine, url = fresh_pg
+
+        # Bring schema to the pre-call_id revision (the original create
+        # migration) so we can seed rows without a call_id column.
+        env = {**os.environ, "DB_URL": url}
+        subprocess.run(
+            [sys.executable, "-m", "alembic", "upgrade", "20260429_01"],
+            env=env,
+            check=True,
+        )
+
+        # Seed three rows without call_id (column doesn't exist yet).
+        async with engine.begin() as conn:
+            for _ in range(3):
+                await conn.execute(
+                    sa.text(
+                        "INSERT INTO llm_calls (tenant_id, operation, timestamp, "
+                        "call_duration_ms, model, input_tokens, output_tokens, "
+                        "cost_usd, status, error_class) VALUES "
+                        "('t1', 'analyze', NOW(), 100, 'gpt-4', 1, 1, 0.0001, 'ok', NULL)"
+                    )
+                )
+
+        # Apply the call_id migration; backfill must populate every row
+        # with a distinct, non-null UUID.
+        await run_migrations(url)
+
+        async with engine.connect() as conn:
+            rows = (
+                await conn.execute(sa.text("SELECT call_id FROM llm_calls"))
+            ).fetchall()
+
+        assert len(rows) == 3
+        assert all(r[0] is not None for r in rows), "backfill left NULL call_id"
+        assert len({r[0] for r in rows}) == 3, "backfill produced duplicate call_ids"
 
 
 class TestDowngradeUpgradeIdempotence:

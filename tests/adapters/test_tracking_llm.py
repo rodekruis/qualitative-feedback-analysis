@@ -1,6 +1,8 @@
 """Tests for TrackingLLMAdapter."""
 
+import asyncio
 from decimal import Decimal
+from uuid import uuid4
 
 import pytest
 
@@ -236,6 +238,124 @@ async def test_record_retries_transient_operational_error_and_eventually_persist
 
     assert repo.attempts == 3
     assert len(repo.records) == 1
+
+
+async def test_records_copy_call_id_from_context():
+    inner = FakeLLMPort()
+    inner.queue_response(_ok_response())
+    repo = FakeUsageRepository()
+    adapter = TrackingLLMAdapter(inner=inner, usage_repo=repo)
+    fixed = uuid4()
+
+    async with call_scope(tenant_id="t1", operation=Operation.ANALYZE, call_id=fixed):
+        await adapter.complete(
+            system_message="sys",
+            user_message="usr",
+            tenant_id="t1",
+            response_model=str,
+            timeout=10.0,
+        )
+
+    assert len(repo.records) == 1
+    assert repo.records[0].call_id == fixed
+
+
+async def test_error_path_record_copies_call_id_from_context():
+    inner = FakeLLMPort()
+    inner.queue_failure(LLMError("boom"))
+    repo = FakeUsageRepository()
+    adapter = TrackingLLMAdapter(inner=inner, usage_repo=repo)
+    fixed = uuid4()
+
+    async with call_scope(tenant_id="t1", operation=Operation.SUMMARIZE, call_id=fixed):
+        with pytest.raises(LLMError):
+            await adapter.complete(
+                system_message="sys",
+                user_message="usr",
+                tenant_id="t1",
+                response_model=str,
+                timeout=10.0,
+            )
+
+    assert len(repo.records) == 1
+    assert repo.records[0].call_id == fixed
+
+
+async def test_multiple_calls_in_one_scope_share_call_id():
+    """Two LLM calls under one call_scope must persist the same call_id.
+
+    This is the property #91's aggregation relies on: "sum cost per
+    invocation" = group by call_id.
+    """
+
+    class _ReusableFake(FakeLLMPort):
+        async def complete(self, *args, **kwargs):
+            self._next_response = _ok_response()
+            return await super().complete(*args, **kwargs)
+
+    inner = _ReusableFake()
+    repo = FakeUsageRepository()
+    adapter = TrackingLLMAdapter(inner=inner, usage_repo=repo)
+
+    async with call_scope(tenant_id="t1", operation=Operation.ANALYZE):
+        await adapter.complete(
+            system_message="sys",
+            user_message="u1",
+            tenant_id="t1",
+            response_model=str,
+        )
+        await adapter.complete(
+            system_message="sys",
+            user_message="u2",
+            tenant_id="t1",
+            response_model=str,
+        )
+
+    assert len(repo.records) == 2
+    assert repo.records[0].call_id == repo.records[1].call_id
+
+
+async def test_parallel_fanout_calls_share_call_id():
+    """Parallel LLM calls via asyncio.gather inherit the same call_id.
+
+    ContextVars are snapshot-on-spawn for asyncio tasks, so any fan-out
+    pattern (gather, create_task) inside a call_scope sees the same context.
+    """
+
+    class _ReusableFake(FakeLLMPort):
+        async def complete(self, *args, **kwargs):
+            self._next_response = _ok_response()
+            return await super().complete(*args, **kwargs)
+
+    inner = _ReusableFake()
+    repo = FakeUsageRepository()
+    adapter = TrackingLLMAdapter(inner=inner, usage_repo=repo)
+
+    async with call_scope(tenant_id="t1", operation=Operation.ANALYZE):
+        await asyncio.gather(
+            adapter.complete(
+                system_message="sys",
+                user_message="u1",
+                tenant_id="t1",
+                response_model=str,
+            ),
+            adapter.complete(
+                system_message="sys",
+                user_message="u2",
+                tenant_id="t1",
+                response_model=str,
+            ),
+            adapter.complete(
+                system_message="sys",
+                user_message="u3",
+                tenant_id="t1",
+                response_model=str,
+            ),
+        )
+
+    assert len(repo.records) == 3
+    ids = {r.call_id for r in repo.records}
+    assert len(ids) == 1
 
 
 async def test_record_does_not_retry_non_transient_runtime_error():

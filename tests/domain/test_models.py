@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 from decimal import Decimal
+from uuid import UUID, uuid4
 
 import pytest
 from pydantic import ValidationError
@@ -210,14 +211,20 @@ class TestCallStatusEnum:
 
 class TestCallContext:
     def test_construct(self):
-        ctx = CallContext(tenant_id="t1", operation=Operation.ANALYZE)
+        cid = uuid4()
+        ctx = CallContext(tenant_id="t1", operation=Operation.ANALYZE, call_id=cid)
         assert ctx.tenant_id == "t1"
         assert ctx.operation == Operation.ANALYZE
+        assert ctx.call_id == cid
 
     def test_frozen(self):
-        ctx = CallContext(tenant_id="t1", operation=Operation.ANALYZE)
+        ctx = CallContext(tenant_id="t1", operation=Operation.ANALYZE, call_id=uuid4())
         with pytest.raises(ValidationError):
             ctx.tenant_id = "t2"
+
+    def test_call_id_required(self):
+        with pytest.raises(ValidationError):
+            CallContext(tenant_id="t1", operation=Operation.ANALYZE)  # type:ignore [ty:missing-argument]
 
 
 # --- LLMCallRecord ---
@@ -232,6 +239,7 @@ class TestLLMCallRecord:
         rec = LLMCallRecord(
             tenant_id="t1",
             operation=Operation.ANALYZE,
+            call_id=uuid4(),
             timestamp=_now(),
             call_duration_ms=100,
             model="gpt-4",
@@ -242,12 +250,14 @@ class TestLLMCallRecord:
         )
         assert rec.status == CallStatus.OK
         assert rec.error_class is None
+        assert isinstance(rec.call_id, UUID)
 
     def test_error_status_requires_error_class(self):
         with pytest.raises(ValidationError):
             LLMCallRecord(
                 tenant_id="t1",
                 operation=Operation.ANALYZE,
+                call_id=uuid4(),
                 timestamp=_now(),
                 call_duration_ms=100,
                 model="",
@@ -263,6 +273,7 @@ class TestLLMCallRecord:
             LLMCallRecord(
                 tenant_id="t1",
                 operation=Operation.ANALYZE,
+                call_id=uuid4(),
                 timestamp=_now(),
                 call_duration_ms=100,
                 model="gpt-4",
@@ -271,6 +282,20 @@ class TestLLMCallRecord:
                 cost_usd=Decimal("0.0001"),
                 status=CallStatus.OK,
                 error_class="LLMTimeoutError",
+            )
+
+    def test_call_id_required(self):
+        with pytest.raises(ValidationError):
+            LLMCallRecord(  # type:ignore [ty:missing-argument]
+                tenant_id="t1",
+                operation=Operation.ANALYZE,
+                timestamp=_now(),
+                call_duration_ms=100,
+                model="gpt-4",
+                input_tokens=10,
+                output_tokens=20,
+                cost_usd=Decimal("0.0001"),
+                status=CallStatus.OK,
             )
 
 

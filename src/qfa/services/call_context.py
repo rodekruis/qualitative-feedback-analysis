@@ -10,6 +10,7 @@ context without explicit forwarding.
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
+from uuid import UUID, uuid4
 
 from qfa.domain.models import CallContext, Operation
 
@@ -23,6 +24,7 @@ current_call_context: ContextVar[CallContext | None] = ContextVar(
 async def call_scope(
     tenant_id: str,
     operation: Operation,
+    call_id: UUID | None = None,
 ) -> AsyncIterator[CallContext]:
     """Set ``current_call_context`` for the duration of the block.
 
@@ -32,13 +34,21 @@ async def call_scope(
         Tenant making the call.
     operation : Operation
         Public orchestrator operation issuing the call.
+    call_id : UUID | None
+        Correlation ID for the API call. Auto-generated via ``uuid4()`` when
+        ``None`` (the default). Pass an explicit value to honor an inbound
+        request-ID header or to pin the ID in tests.
 
     Yields
     ------
     CallContext
         The context that was set.
     """
-    ctx = CallContext(tenant_id=tenant_id, operation=operation)
+    ctx = CallContext(
+        tenant_id=tenant_id,
+        operation=operation,
+        call_id=call_id if call_id is not None else uuid4(),
+    )
     token = current_call_context.set(ctx)
     try:
         yield ctx
