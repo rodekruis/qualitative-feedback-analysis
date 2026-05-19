@@ -252,6 +252,10 @@ class TenantApiKey(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _normalize_key_inputs(cls, data: Any) -> Any:
+        """Normalize input to accept either 'key' or 'hashed_key' but not both, and compute the hash if only 'key' is provided.
+
+        This allows flexible construction while ensuring that the model instance only retains the hashed key for security.
+        """
         if not isinstance(data, dict):
             return data
 
