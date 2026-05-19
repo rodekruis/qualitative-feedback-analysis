@@ -55,13 +55,11 @@ class FakeAuthManagementPort:
 
     async def add_key(
         self,
-        api_key: str,
-        key_id: str,
         key_name: str,
         tenant_id: str,
         is_superuser: bool = False,
-    ) -> str:
-        return key_id
+    ) -> tuple[str, str]:
+        return "generated-key-id", "generated-api-key"
 
     async def delete_key(self, key_id: str) -> None:
         return None

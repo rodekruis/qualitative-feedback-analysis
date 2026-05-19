@@ -1,5 +1,6 @@
 """SQLAlchemy-based usage repository for LLM call tracking."""
 
+import secrets
 import uuid
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
@@ -536,13 +537,14 @@ class SQLAlchemyAuthAdapter(AuthLookupPort, AuthManagementPort):
 
     async def add_key(
         self,
-        api_key: str,
-        key_id: str,
         key_name: str,
         tenant_id: str,
         is_superuser: bool = False,
-    ) -> str:
+    ) -> tuple[str, str]:
         """Persist a new API key for a tenant."""
+        key_id = str(uuid.uuid4())
+        api_key = secrets.token_urlsafe(32)
+
         async with self._session_factory() as session:
             tenant_row = (
                 await session.execute(
@@ -586,7 +588,7 @@ class SQLAlchemyAuthAdapter(AuthLookupPort, AuthManagementPort):
                     f"Key with id '{key_id}' already exists"
                 ) from exc
 
-        return key_id
+            return key_id, api_key
 
     async def delete_key(self, key_id: str) -> None:
         """Delete an API key by id."""

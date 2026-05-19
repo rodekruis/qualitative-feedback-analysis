@@ -62,14 +62,14 @@ class RecordingAuthOrchestrator:
 
     async def add_key(
         self,
-        api_key: str,
-        key_id: str,
         key_name: str,
         tenant_id: str,
         is_superuser: bool = False,
-    ) -> str:
+    ) -> tuple[str, str]:
         if self.raise_on_add_key is not None:
             raise self.raise_on_add_key
+        key_id = "generated-key-id"
+        api_key = "generated-api-key"
         self.add_key_calls.append(
             {
                 "api_key": api_key,
@@ -79,7 +79,7 @@ class RecordingAuthOrchestrator:
                 "is_superuser": is_superuser,
             }
         )
-        return key_id
+        return key_id, api_key
 
     async def delete_key(self, key_id: str) -> None:
         if self.raise_on_delete_key is not None:

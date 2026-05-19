@@ -89,20 +89,14 @@ class AuthOrchestrator:
 
     async def add_key(
         self,
-        api_key: str,
-        key_id: str,
         key_name: str,
         tenant_id: str,
         is_superuser: bool = False,
-    ) -> str:
+    ) -> tuple[str, str]:
         """Add a key through the configured auth-management backend.
 
         Parameters
         ----------
-        api_key : str
-            The API key value to store.
-        key_id : str
-            The unique identifier for the key.
         key_name : str
             A human-friendly name for the key.
         tenant_id : str
@@ -112,11 +106,13 @@ class AuthOrchestrator:
 
         Returns
         -------
-        str
-            The unique identifier for the created key.
+        tuple[str, str]
+            The created key identifier and plaintext API key as ``(key_id, api_key)``.
         """
         return await self.auth_management_port.add_key(
-            api_key, key_id, key_name, tenant_id, is_superuser
+            key_name,
+            tenant_id,
+            is_superuser,
         )
 
     async def delete_key(self, key_id: str) -> None:

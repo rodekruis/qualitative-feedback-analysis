@@ -50,6 +50,7 @@ class FakeAuthManagementPort(AuthManagementPort):
     def __init__(self, tenant_id_to_return: str = "tenant-created"):
         self.tenant_id_to_return = tenant_id_to_return
         self.key_id_to_return = "key-created"
+        self.api_key_to_return = "api-key-created"
         self.add_tenant_calls = []
         self.delete_tenant_calls = []
         self.get_tenants_calls = 0
@@ -78,22 +79,18 @@ class FakeAuthManagementPort(AuthManagementPort):
 
     async def add_key(
         self,
-        api_key: str,
-        key_id: str,
         key_name: str,
         tenant_id: str,
         is_superuser: bool = False,
-    ) -> str:
+    ) -> tuple[str, str]:
         self.add_key_calls.append(
             {
-                "api_key": api_key,
-                "key_id": key_id,
                 "key_name": key_name,
                 "tenant_id": tenant_id,
                 "is_superuser": is_superuser,
             }
         )
-        return self.key_id_to_return
+        return self.key_id_to_return, self.api_key_to_return
 
     async def delete_key(self, key_id: str) -> None:
         self.delete_key_calls.append(key_id)
@@ -185,9 +182,7 @@ class TestKeyManagement:
         management_port = FakeAuthManagementPort()
         orchestrator = AuthOrchestrator([FakeAuthLookupPort()], management_port)
 
-        await orchestrator.add_key(
-            api_key="plain-secret",
-            key_id="key-7",
+        key_id, api_key = await orchestrator.add_key(
             key_name="Operations",
             tenant_id="tenant-7",
             is_superuser=True,
@@ -195,13 +190,13 @@ class TestKeyManagement:
 
         assert management_port.add_key_calls == [
             {
-                "api_key": "plain-secret",
-                "key_id": "key-7",
                 "key_name": "Operations",
                 "tenant_id": "tenant-7",
                 "is_superuser": True,
             }
         ]
+        assert key_id == "key-created"
+        assert api_key == "api-key-created"
 
     async def test_delete_key_delegates_to_management_port(self):
         management_port = FakeAuthManagementPort()

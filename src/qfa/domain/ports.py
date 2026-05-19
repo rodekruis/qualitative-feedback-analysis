@@ -233,26 +233,26 @@ class AuthManagementPort(Protocol):
 
     async def add_key(
         self,
-        api_key: str,
-        key_id: str,
         key_name: str,
         tenant_id: str,
         is_superuser: bool = False,
-    ) -> str:
-        """Persist a new API key in the implemented adapter.
+    ) -> tuple[str, str]:
+        """Generate and persist a new API key in the implemented adapter.
 
         Parameters
         ----------
-        api_key : str
-            The API key value to store.
-        key_id : str
-            The unique identifier for the key.
         key_name : str
             A human-friendly name for the key.
         tenant_id : str
             The tenant this key belongs to.
         is_superuser : bool
             Whether this key should have superuser privileges (default False).
+
+        Returns
+        -------
+        tuple[str, str]
+            The created key identifier and plaintext API key as ``(key_id, api_key)``.
+            The plaintext key is returned only once at creation time.
 
         Raises
         ------

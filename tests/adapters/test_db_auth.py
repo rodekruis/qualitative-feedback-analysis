@@ -76,17 +76,18 @@ class TestKeyManagement:
         adapter, _ = adapter_with_engine
         tenant_id = await adapter.add_tenant("Tenant A")
 
-        returned_key_id = await adapter.add_key(
-            api_key="secret-abc",
-            key_id="a1",
+        returned_key_id, returned_api_key = await adapter.add_key(
             key_name="Primary key",
             tenant_id=tenant_id,
         )
 
-        matched = await adapter.validate_api_key("secret-abc")
-        assert returned_key_id == "a1"
+        matched = await adapter.validate_api_key(returned_api_key)
+        assert isinstance(returned_key_id, str)
+        assert returned_key_id != ""
+        assert isinstance(returned_api_key, str)
+        assert returned_api_key != ""
         assert matched is not None
-        assert matched.key_id == "a1"
+        assert matched.key_id == returned_key_id
         assert matched.name == "Primary key"
         assert matched.tenant_id == tenant_id
         assert matched.is_superuser is False
@@ -96,26 +97,22 @@ class TestKeyManagement:
 
         with pytest.raises(TenantNotFoundError):
             await adapter.add_key(
-                api_key="secret-abc",
-                key_id="a1",
                 key_name="Primary key",
                 tenant_id="missing-tenant",
             )
 
-    async def test_duplicate_key_id_raises(self, adapter_with_engine):
+    async def test_duplicate_key_id_raises(self, adapter_with_engine, monkeypatch):
         adapter, _ = adapter_with_engine
         tenant_id = await adapter.add_tenant("Tenant A")
+
+        monkeypatch.setattr("qfa.adapters.db.uuid.uuid4", lambda: "dup-key-id")
         await adapter.add_key(
-            api_key="secret-abc",
-            key_id="a1",
             key_name="Primary key",
             tenant_id=tenant_id,
         )
 
         with pytest.raises(KeyAlreadyExistsError):
             await adapter.add_key(
-                api_key="another-secret",
-                key_id="a1",
                 key_name="Duplicate key id",
                 tenant_id=tenant_id,
             )
@@ -126,8 +123,6 @@ class TestKeyManagement:
 
         with pytest.raises(TenantDoesNotAllowSuperUsersError):
             await adapter.add_key(
-                api_key="secret-abc",
-                key_id="su-1",
                 key_name="Superuser key",
                 tenant_id=tenant_id,
                 is_superuser=True,
@@ -146,9 +141,9 @@ class TestLookupAndListing:
         tenant_a = await adapter.add_tenant("Tenant A")
         tenant_b = await adapter.add_tenant("Tenant B")
 
-        await adapter.add_key("secret-a1", "a1", "A1", tenant_a)
-        await adapter.add_key("secret-a2", "a2", "A2", tenant_a)
-        await adapter.add_key("secret-b1", "b1", "B1", tenant_b)
+        await adapter.add_key("A1", tenant_a)
+        await adapter.add_key("A2", tenant_a)
+        await adapter.add_key("B1", tenant_b)
 
         all_keys = await adapter.get_auth_keys()
         only_a = await adapter.get_auth_keys(tenant_id=tenant_a)
@@ -160,7 +155,7 @@ class TestLookupAndListing:
     async def test_delete_tenant_cascades_keys(self, adapter_with_engine):
         adapter, engine = adapter_with_engine
         tenant_id = await adapter.add_tenant("Tenant A")
-        await adapter.add_key("secret-a1", "a1", "A1", tenant_id)
+        await adapter.add_key("A1", tenant_id)
 
         await adapter.delete_tenant(tenant_id)
 
