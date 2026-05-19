@@ -562,11 +562,19 @@ class SQLAlchemyAuthAdapter(AuthLookupPort, AuthManagementPort):
                 )
 
             try:
+                tenant_api_key = TenantApiKey(
+                    key_id=key_id,
+                    name=key_name,
+                    key=SecretStr(api_key),
+                    hashed_key=None,  # type: ignore[ty:invalid-argument-type]
+                    tenant_id=tenant_id,
+                    is_superuser=is_superuser,
+                )
                 await session.execute(
                     keys.insert().values(
                         key_id=key_id,
                         name=key_name,
-                        hashed_key=TenantApiKey.hash_key(api_key, key_id),
+                        hashed_key=tenant_api_key.hashed_key.get_secret_value(),
                         tenant_id=tenant_id,
                         is_superuser=is_superuser,
                     )

@@ -239,16 +239,11 @@ class TenantApiKey(BaseModel):
     is_superuser: bool = False
 
     @staticmethod
-    def hash_key(key: str, key_id: str) -> str:
-        """Return a stable scrypt-derived hex digest for an API key.
-
-        Uses *key_id* as the per-key salt so the hash is deterministic
-        without a separate salt column, while still being resistant to
-        brute-force attacks.
-        """
+    def hash_key(key: str) -> str:
+        """Return a stable scrypt-derived hex digest for an API key."""
         return hashlib.scrypt(
             key.encode("utf-8"),
-            salt=key_id.encode("utf-8"),
+            salt=b"",
             n=2**14,
             r=8,
             p=1,
@@ -278,12 +273,7 @@ class TenantApiKey(BaseModel):
                 normalized_key = raw_key.get_secret_value()
             else:
                 normalized_key = raw_key
-            key_id = data.get("key_id")
-            if key_id is None:
-                raise ValueError(
-                    "'key_id' must be provided when constructing with a plain 'key'"
-                )
-            computed_hash = cls.hash_key(normalized_key, str(key_id))
+            computed_hash = cls.hash_key(normalized_key)
 
             data["hashed_key"] = computed_hash
             # Ensure plaintext keys are not retained on the model instance.
@@ -295,7 +285,7 @@ class TenantApiKey(BaseModel):
         """Check whether *provided_key* matches this stored API key hash."""
         return secrets.compare_digest(
             self.hashed_key.get_secret_value(),
-            self.hash_key(provided_key, self.key_id),
+            self.hash_key(provided_key),
         )
 
 
