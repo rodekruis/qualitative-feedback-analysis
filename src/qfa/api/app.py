@@ -2,11 +2,11 @@
 
 import importlib.resources
 import logging
-import secrets
 from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 import litellm
 import yaml
@@ -42,6 +42,7 @@ from qfa.domain.errors import (
     UsageRepositoryUnavailableError,
 )
 from qfa.domain.ports import LLMPort
+from qfa.services.call_context import request_id_scope
 from qfa.services.orchestrator import Orchestrator
 from qfa.settings import AppSettings, LLMSettings
 from qfa.utils import setup_logging
@@ -52,8 +53,15 @@ logger = logging.getLogger(__name__)
 class RequestIdMiddleware:
     """Pure ASGI middleware that assigns a unique request ID to every request.
 
-    Stores ``request_id`` and ``start_utc`` on ``scope["state"]`` and
-    adds an ``X-Request-ID`` header to every response.
+    Generates a fresh ``uuid4()`` per request and surfaces it three ways:
+
+    * ``X-Request-ID`` response header — canonical UUID string format.
+    * ``scope["state"]["request_id"]`` — the same string, for logging and
+      error envelopes.
+    * The ``current_request_id`` ContextVar — for the duration of the
+      request, so that ``call_scope`` adopts the same UUID as
+      ``call_id`` and rows in ``llm_calls`` join cleanly to the
+      ``X-Request-ID`` value clients see.
 
     Parameters
     ----------
@@ -83,9 +91,10 @@ class RequestIdMiddleware:
             await self.app(scope, receive, send)
             return
 
-        request_id = "req_" + secrets.token_urlsafe(16)
+        request_id = uuid4()
+        request_id_str = str(request_id)
         scope.setdefault("state", {})
-        scope["state"]["request_id"] = request_id
+        scope["state"]["request_id"] = request_id_str
         scope["state"]["start_utc"] = datetime.now(UTC)
 
         response_started = False
@@ -95,25 +104,26 @@ class RequestIdMiddleware:
             if message["type"] == "http.response.start":
                 response_started = True
                 headers: list[Any] = list(message.get("headers", []))
-                headers.append([b"x-request-id", request_id.encode()])
+                headers.append([b"x-request-id", request_id_str.encode()])
                 message["headers"] = headers
             await send(message)
 
         try:
-            await self.app(scope, receive, send_with_request_id)
+            async with request_id_scope(request_id):
+                await self.app(scope, receive, send_with_request_id)
         except Exception:
             if response_started:
                 raise
-            logger.exception("Unhandled exception for request %s", request_id)
+            logger.exception("Unhandled exception for request %s", request_id_str)
             body = ApiErrorResponse(
                 error=ApiErrorDetail(
                     code="internal_error",
                     message="An unexpected error occurred",
-                    request_id=request_id,
+                    request_id=request_id_str,
                 )
             )
             response = JSONResponse(status_code=500, content=body.model_dump())
-            response.headers["X-Request-ID"] = request_id
+            response.headers["X-Request-ID"] = request_id_str
             await response(scope, receive, send)
 
 
