@@ -97,6 +97,7 @@ tenants = sa.Table(
     metadata,
     sa.Column("tenant_id", sa.String(255), primary_key=True),
     sa.Column("name", sa.String(255), nullable=False),
+    # This column exists to allow tenant-level control over whether superuser keys are permitted, which is enforced in the application layer since it's not a simple FK constraint.
     sa.Column("allows_superusers", sa.Boolean, nullable=False, default=False),
     sa.Column(
         "created_at",
