@@ -33,7 +33,16 @@ def upgrade() -> None:
     """Add ``call_id`` column, backfill with synthetic UUIDs, then add index."""
     op.add_column(
         "llm_calls",
-        sa.Column("call_id", sa.Uuid(), nullable=True),
+        sa.Column(
+            "call_id",
+            sa.Uuid(),
+            nullable=True,
+            comment=(
+                "Correlation ID shared by all LLM calls made within a single "
+                "API invocation (one call_scope). Lets /v1/usage aggregate "
+                "cost/duration per invocation by grouping on call_id."
+            ),
+        ),
     )
     op.execute("UPDATE llm_calls SET call_id = gen_random_uuid() WHERE call_id IS NULL")
     op.alter_column("llm_calls", "call_id", nullable=False)
