@@ -127,6 +127,11 @@ class TrackingLLMAdapter(LLMPort):
         await self._usage_repo.record_call(record)
 
     async def _record_safely(self, record: LLMCallRecord) -> None:
+        """Try to persist to DB, log error on failure (do not raise).
+
+        Rationale: if the usage repository is misbehaving, we don't want the endpoint
+        to fail.
+        """
         try:
             await self._record_with_retry(record)
         except Exception:
