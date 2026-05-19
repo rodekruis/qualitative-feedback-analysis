@@ -318,22 +318,38 @@ class Orchestrator:
                 result = llm_completion.structured
 
             # Guard against LLM returning a different number of summaries than records submitted
-            if len(result.feedback_record_summaries) != len(request.feedback_records):
-                raise AnalysisError(
-                    f"LLM returned {len(result.feedback_record_summaries)} summaries"
-                    f" for {len(request.feedback_records)} requested feedback records."
-                )
-            # Replace LLM-generated IDs with the authoritative input record IDs
-            summaries_with_updated_id = tuple(
-                summary.model_copy(update={"id": record.id})
-                for record, summary in zip(
-                    request.feedback_records, result.feedback_record_summaries
-                )
-            )
-            result = result.model_copy(
-                update={"feedback_record_summaries": summaries_with_updated_id}
-            )
+            result = self._align_record_ids(request, result)
             return result
+
+    def _align_record_ids(
+        self, request: SummaryRequestModel, result: SummaryResultModel
+    ) -> SummaryResultModel:
+        """Align ids between input request and model output.
+
+        The model does not reliably reproduce the ids of the input records in its
+        output. This function:
+        1. checks that the number of records matches between intput and output
+        2. copies the ids from the input records into to output records.
+
+        Assumptions:
+        * the order of the model output matches the input.
+        """
+        if len(result.feedback_record_summaries) != len(request.feedback_records):
+            raise AnalysisError(
+                f"LLM returned {len(result.feedback_record_summaries)} summaries"
+                f" for {len(request.feedback_records)} requested feedback records."
+            )
+        # Replace LLM-generated IDs with the authoritative input record IDs
+        summaries_with_updated_id = tuple(
+            summary.model_copy(update={"id": record.id})
+            for record, summary in zip(
+                request.feedback_records, result.feedback_record_summaries
+            )
+        )
+        result = result.model_copy(
+            update={"feedback_record_summaries": summaries_with_updated_id}
+        )
+        return result
 
     async def summarize_aggregate(
         self,
