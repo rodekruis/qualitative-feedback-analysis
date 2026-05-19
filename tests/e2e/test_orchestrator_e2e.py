@@ -125,19 +125,34 @@ class TestRequestIdEqualsCallId:
         """
         from uuid import UUID
 
-        # /v1/summarize_aggregate fans out: one summarize per record + one
-        # aggregate; queue two responses so both legs succeed.
+        # /v1/summarize-aggregate fans out into 2 LLM calls: the aggregate
+        # summary itself, then a judge call that scores the summary as a
+        # plain float string. Queue both.
         e2e_fake_llm.queue_response(
-            _ok(text='{"id": "d1", "title": "t", "summary": "s", "quality_score": 0.9}')
+            _ok(
+                text='{"ids": ["d1"], "title": "t", "summary": "s", "quality_score": 0.5}'
+            )
         )
-        e2e_fake_llm.queue_response(_ok(text='{"summary": "agg"}'))
+        e2e_fake_llm.queue_response(_ok(text="0.9"))
 
         resp = await e2e_client.post(
-            "/v1/summarize_aggregate",
+            "/v1/summarize-aggregate",
             json={
-                "feedback_records": [{"id": "d1", "text": "hello"}],
+                "feedback_records": [
+                    {
+                        "id": "d1",
+                        "content": "hello",
+                        "metadata": {
+                            "created": "2024-06-01T12:00:00Z",
+                            "feedback_record_id": "fi-d1",
+                            "coding_level_1": "L1",
+                            "coding_level_2": "L2",
+                            "coding_level_3": "L3",
+                        },
+                    }
+                ],
                 "prompt": "summarize then aggregate",
-                "deactivate_anonymization": True,
+                "anonymize": False,
             },
             headers={"Authorization": f"Bearer {E2E_API_KEY}"},
         )
@@ -145,7 +160,7 @@ class TestRequestIdEqualsCallId:
 
         header_uuid = UUID(resp.headers["x-request-id"])
         rows = await _fetch_rows(e2e_engine)
-        assert len(rows) >= 2, "expected >=2 LLM calls for summarize_aggregate"
+        assert len(rows) >= 2, "expected >=2 LLM calls for summarize-aggregate"
         assert {r.call_id for r in rows} == {header_uuid}
 
 
