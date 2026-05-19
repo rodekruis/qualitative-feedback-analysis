@@ -42,7 +42,6 @@ from qfa.domain.errors import (
     UsageRepositoryUnavailableError,
 )
 from qfa.domain.ports import LLMPort
-from qfa.services.call_context import request_id_scope
 from qfa.services.orchestrator import Orchestrator
 from qfa.settings import AppSettings, LLMSettings
 from qfa.utils import setup_logging
@@ -53,15 +52,15 @@ logger = logging.getLogger(__name__)
 class RequestIdMiddleware:
     """Pure ASGI middleware that assigns a unique request ID to every request.
 
-    Generates a fresh ``uuid4()`` per request and surfaces it three ways:
+    Generates a fresh ``uuid4()`` per request and surfaces it two ways:
 
     * ``X-Request-ID`` response header — canonical UUID string format.
-    * ``scope["state"]["request_id"]`` — the same string, for logging and
-      error envelopes.
-    * The ``current_request_id`` ContextVar — for the duration of the
-      request, so that ``call_scope`` adopts the same UUID as
-      ``call_id`` and rows in ``llm_calls`` join cleanly to the
-      ``X-Request-ID`` value clients see.
+    * ``scope["state"]["request_id"]`` — the same string, for logging,
+      error envelopes, and downstream FastAPI dependencies. The
+      :func:`~qfa.api.dependencies.call_scope_for` dep reads it from
+      ``request.state.request_id`` and passes it into ``call_scope`` as
+      ``request_id``, so the header, logs, and ``llm_calls.call_id``
+      rows always share one UUID.
 
     Parameters
     ----------
@@ -91,8 +90,7 @@ class RequestIdMiddleware:
             await self.app(scope, receive, send)
             return
 
-        request_id = uuid4()
-        request_id_str = str(request_id)
+        request_id_str = str(uuid4())
         scope.setdefault("state", {})
         scope["state"]["request_id"] = request_id_str
         scope["state"]["start_utc"] = datetime.now(UTC)
@@ -109,8 +107,7 @@ class RequestIdMiddleware:
             await send(message)
 
         try:
-            async with request_id_scope(request_id):
-                await self.app(scope, receive, send_with_request_id)
+            await self.app(scope, receive, send_with_request_id)
         except Exception:
             if response_started:
                 raise

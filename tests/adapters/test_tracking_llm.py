@@ -1,12 +1,10 @@
 """Tests for TrackingLLMAdapter."""
 
 import asyncio
-from collections.abc import AsyncIterator
 from decimal import Decimal
 from uuid import uuid4
 
 import pytest
-import pytest_asyncio
 
 from qfa.adapters.tracking_llm import TrackingLLMAdapter
 from qfa.domain.errors import LLMError
@@ -16,24 +14,9 @@ from qfa.domain.models import (
     LLMResponse,
     Operation,
 )
-from qfa.services.call_context import call_scope, request_id_scope
+from qfa.services.call_context import call_scope
 
 pytestmark = pytest.mark.asyncio
-
-
-@pytest_asyncio.fixture(autouse=True)
-async def _ambient_request_scope() -> AsyncIterator[None]:
-    """Wrap every test in a ``request_id_scope`` so ``call_scope`` works.
-
-    These tests don't care about correlating to an HTTP X-Request-ID;
-    they just need a valid request scope so the orchestrator's
-    ``call_scope`` can resolve a ``call_id`` without raising
-    ``MissingRequestScopeError``. Mirrors production where every
-    orchestrator entry happens inside a request scope (set by
-    ``RequestIdMiddleware`` for HTTP, or by the caller for CLI/jobs).
-    """
-    async with request_id_scope(uuid4()):
-        yield
 
 
 class FakeLLMPort:
@@ -104,7 +87,9 @@ async def test_records_successful_call_with_operation_and_cost():
     repo = FakeUsageRepository()
     adapter = TrackingLLMAdapter(inner=inner, usage_repo=repo)
 
-    async with call_scope(tenant_id="t1", operation=Operation.ANALYZE):
+    async with call_scope(
+        tenant_id="t1", operation=Operation.ANALYZE, request_id=uuid4()
+    ):
         result = await adapter.complete(
             system_message="sys",
             user_message="usr",
@@ -133,7 +118,9 @@ async def test_records_failed_call_with_error_class():
     repo = FakeUsageRepository()
     adapter = TrackingLLMAdapter(inner=inner, usage_repo=repo)
 
-    async with call_scope(tenant_id="t1", operation=Operation.SUMMARIZE):
+    async with call_scope(
+        tenant_id="t1", operation=Operation.SUMMARIZE, request_id=uuid4()
+    ):
         with pytest.raises(LLMError):
             await adapter.complete(
                 system_message="sys",
@@ -189,7 +176,9 @@ async def test_recording_failure_does_not_break_completion():
     repo.fail = True
     adapter = TrackingLLMAdapter(inner=inner, usage_repo=repo)
 
-    async with call_scope(tenant_id="t1", operation=Operation.ANALYZE):
+    async with call_scope(
+        tenant_id="t1", operation=Operation.ANALYZE, request_id=uuid4()
+    ):
         result = await adapter.complete(
             system_message="sys",
             user_message="usr",
@@ -208,7 +197,9 @@ async def test_recording_failure_during_error_path_still_propagates_original():
     repo.fail = True
     adapter = TrackingLLMAdapter(inner=inner, usage_repo=repo)
 
-    async with call_scope(tenant_id="t1", operation=Operation.ANALYZE):
+    async with call_scope(
+        tenant_id="t1", operation=Operation.ANALYZE, request_id=uuid4()
+    ):
         with pytest.raises(LLMError, match="upstream"):
             await adapter.complete(
                 system_message="sys",
@@ -255,7 +246,9 @@ async def test_record_retries_transient_operational_error_and_eventually_persist
     repo = _FlakyRepo(exc=_operational_error(), fail_times=2)
     adapter = TrackingLLMAdapter(inner=inner, usage_repo=repo)
 
-    async with call_scope(tenant_id="t1", operation=Operation.ANALYZE):
+    async with call_scope(
+        tenant_id="t1", operation=Operation.ANALYZE, request_id=uuid4()
+    ):
         await adapter.complete(
             system_message="sys",
             user_message="usr",
@@ -280,15 +273,16 @@ async def test_records_copy_call_id_from_context():
     adapter = TrackingLLMAdapter(inner=inner, usage_repo=repo)
     fixed = uuid4()
 
-    async with request_id_scope(fixed):
-        async with call_scope(tenant_id="t1", operation=Operation.ANALYZE):
-            await adapter.complete(
-                system_message="sys",
-                user_message="usr",
-                tenant_id="t1",
-                response_model=str,
-                timeout=10.0,
-            )
+    async with call_scope(
+        tenant_id="t1", operation=Operation.ANALYZE, request_id=fixed
+    ):
+        await adapter.complete(
+            system_message="sys",
+            user_message="usr",
+            tenant_id="t1",
+            response_model=str,
+            timeout=10.0,
+        )
 
     assert len(repo.records) == 1
     assert repo.records[0].call_id == fixed
@@ -306,16 +300,17 @@ async def test_error_path_record_copies_call_id_from_context():
     adapter = TrackingLLMAdapter(inner=inner, usage_repo=repo)
     fixed = uuid4()
 
-    async with request_id_scope(fixed):
-        async with call_scope(tenant_id="t1", operation=Operation.SUMMARIZE):
-            with pytest.raises(LLMError):
-                await adapter.complete(
-                    system_message="sys",
-                    user_message="usr",
-                    tenant_id="t1",
-                    response_model=str,
-                    timeout=10.0,
-                )
+    async with call_scope(
+        tenant_id="t1", operation=Operation.SUMMARIZE, request_id=fixed
+    ):
+        with pytest.raises(LLMError):
+            await adapter.complete(
+                system_message="sys",
+                user_message="usr",
+                tenant_id="t1",
+                response_model=str,
+                timeout=10.0,
+            )
 
     assert len(repo.records) == 1
     assert repo.records[0].call_id == fixed
@@ -337,7 +332,9 @@ async def test_multiple_calls_in_one_scope_share_call_id():
     repo = FakeUsageRepository()
     adapter = TrackingLLMAdapter(inner=inner, usage_repo=repo)
 
-    async with call_scope(tenant_id="t1", operation=Operation.ANALYZE):
+    async with call_scope(
+        tenant_id="t1", operation=Operation.ANALYZE, request_id=uuid4()
+    ):
         await adapter.complete(
             system_message="sys",
             user_message="u1",
@@ -371,7 +368,9 @@ async def test_parallel_fanout_calls_share_call_id():
     repo = FakeUsageRepository()
     adapter = TrackingLLMAdapter(inner=inner, usage_repo=repo)
 
-    async with call_scope(tenant_id="t1", operation=Operation.ANALYZE):
+    async with call_scope(
+        tenant_id="t1", operation=Operation.ANALYZE, request_id=uuid4()
+    ):
         await asyncio.gather(
             adapter.complete(
                 system_message="sys",
@@ -405,7 +404,9 @@ async def test_record_does_not_retry_non_transient_runtime_error():
     repo = _FlakyRepo(exc=RuntimeError("schema mismatch"), fail_times=10)
     adapter = TrackingLLMAdapter(inner=inner, usage_repo=repo)
 
-    async with call_scope(tenant_id="t1", operation=Operation.ANALYZE):
+    async with call_scope(
+        tenant_id="t1", operation=Operation.ANALYZE, request_id=uuid4()
+    ):
         result = await adapter.complete(
             system_message="sys",
             user_message="usr",

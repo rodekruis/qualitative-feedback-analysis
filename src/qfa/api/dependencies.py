@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncIterator
 from typing import Callable
+from uuid import UUID
 
 from fastapi import Depends, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -114,9 +115,14 @@ def call_scope_for(
     """
 
     async def _scope(
+        request: Request,
         tenant: TenantApiKey = Depends(authenticate_request),
     ) -> AsyncIterator[CallContext]:
-        async with call_scope(tenant_id=tenant.tenant_id, operation=operation) as ctx:
+        async with call_scope(
+            tenant_id=tenant.tenant_id,
+            operation=operation,
+            request_id=UUID(request.state.request_id),
+        ) as ctx:
             yield ctx
 
     return _scope

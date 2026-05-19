@@ -87,8 +87,9 @@ class TestRequestIdEqualsCallId:
     ):
         """The UUID in X-Request-ID equals the call_id column of the inserted row.
 
-        End-to-end proof that ``RequestIdMiddleware`` → ``request_id_scope``
-        → ``call_scope`` → ``LLMCallRecord.call_id`` all carry the same value.
+        End-to-end proof that ``RequestIdMiddleware`` → ``call_scope_for``
+        dependency → ``call_scope`` → ``LLMCallRecord.call_id`` all
+        carry the same value.
         """
         from uuid import UUID
 

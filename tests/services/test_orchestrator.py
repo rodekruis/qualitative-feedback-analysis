@@ -1,11 +1,8 @@
 """Tests for the orchestrator service."""
 
-from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
-from uuid import uuid4
 
 import pytest
-import pytest_asyncio
 
 from qfa.domain.errors import (
     AnalysisError,
@@ -21,24 +18,8 @@ from qfa.domain.models import (
     SummaryRequestModel,
     SummaryResultModel,
 )
-from qfa.services.call_context import request_id_scope
 from qfa.services.orchestrator import Orchestrator
 from qfa.settings import OrchestratorSettings
-
-
-@pytest_asyncio.fixture(autouse=True)
-async def _ambient_request_scope() -> AsyncIterator[None]:
-    """Wrap every orchestrator test in a ``request_id_scope``.
-
-    The orchestrator's public methods enter ``call_scope`` internally;
-    that requires either an ambient ``current_request_id`` or an
-    explicit ``call_id``. Tests don't go through the HTTP middleware,
-    so this fixture stands in — mirroring the invariant that every
-    orchestrator entry in production happens inside a request scope.
-    """
-    async with request_id_scope(uuid4()):
-        yield
-
 
 TENANT_ID = "tenant-42"
 LLM_TIMEOUT = 30.0
