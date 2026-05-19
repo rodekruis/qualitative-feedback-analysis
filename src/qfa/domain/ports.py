@@ -173,8 +173,8 @@ class AuthLookupPort(Protocol):
 
         Returns
         -------
-        TenantApiKey
-            The matching tenant API key.
+        TenantApiKey | None
+            The matching tenant API key, or None if no match was found.
         """
         ...
 
