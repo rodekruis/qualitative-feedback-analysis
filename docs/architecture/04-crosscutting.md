@@ -50,40 +50,24 @@ Non-HTTP callers (CLI, future jobs, ad-hoc tests) wrap their work in `request_id
 
 If `LLMPort.complete` is invoked outside an active `call_scope` (e.g. a wiring bug), `TrackingLLMAdapter` does **not** raise — it logs at ERROR, routes through to the inner LLM, and returns the response without persisting the attempt. Observability never breaks the use case; missing scope is loud in logs and alertable, but does not fail user-facing requests.
 
-The flow — driving adapter (FastAPI) sets the ContextVars; driven adapter (`TrackingLLMAdapter`) reads them; the orchestrator in between is unaware:
+Conceptually: the driving adapter writes the ContextVar; the driven adapter reads it. The orchestrator in between never touches it.
 
 ```mermaid
-sequenceDiagram
-    participant mw as RequestIdMiddleware
-    participant dep as call_scope_for(Op)
-    participant route as Route handler
-    participant orch as Orchestrator
-    participant tla as TrackingLLMAdapter
-    participant llm as Inner LLMPort
-    participant repo as UsageRepository
-
-    Note over mw,repo: Driving adapter sets ContextVars
-    mw->>mw: set current_request_id = uuid4()
-    mw->>dep: invoke FastAPI dependency
-    dep->>dep: read current_request_id<br/>set current_call_context<br/>(tenant_id, operation, call_id)
-    dep->>route: yield CallContext
-    route->>orch: analyze(request, deadline)
-
-    Note over orch,llm: Orchestrator is scope-unaware
-    orch->>tla: complete(system_message, user_message, …)
-
-    Note over tla,repo: Driven adapter reads ContextVar
-    tla->>tla: ctx = current_call_context.get()
-    tla->>llm: complete(…)
-    llm-->>tla: LLMResponse
-    tla->>repo: record_call(LLMCallRecord(<br/>tenant_id=ctx.tenant_id,<br/>operation=ctx.operation,<br/>call_id=ctx.call_id, …))
-    tla-->>orch: LLMResponse
-    orch-->>route: result
-    route-->>mw: response
-    mw->>mw: reset current_request_id<br/>(and X-Request-ID header)
+flowchart LR
+    subgraph driving["qfa.api  ·  driving adapter"]
+        R["Route handler<br/><sub>Depends(call_scope_for(Op.X))</sub>"]
+    end
+    subgraph services["qfa.services  ·  application"]
+        CV[("current_call_context<br/><sub>ContextVar[CallContext]</sub>")]
+    end
+    subgraph driven["qfa.adapters  ·  driven adapter"]
+        T["TrackingLLMAdapter"]
+    end
+    R -- "set<br/><sub>(tenant_id, operation, call_id)</sub>" --> CV
+    CV -- "get<br/><sub>stamps LLMCallRecord</sub>" --> T
 ```
 
-The two ContextVars are reset on the way out (by `request_id_scope` and `call_scope` respectively), so successive requests in one event loop never leak state across each other.
+Both adapters depend on `qfa.services.call_context`; neither depends on the other. The ContextVar is set on request entry and reset on exit, so successive requests in one event loop never leak state across each other.
 
 ## Deadlines, timeouts, retries
 
