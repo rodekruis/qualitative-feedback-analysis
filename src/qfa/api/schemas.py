@@ -416,15 +416,6 @@ class ApiTenantsResponse(BaseModel):
 class ApiAddKeyRequest(BaseModel):
     """Request body for ``POST /v1/auth/keys``."""
 
-    api_key: str = Field(
-        min_length=1,
-        description="Plain API key value to store securely.",
-    )
-    key_id: str = Field(
-        min_length=1,
-        max_length=255,
-        description="Unique identifier for the API key.",
-    )
     key_name: str = Field(
         min_length=1,
         max_length=255,
@@ -445,6 +436,9 @@ class ApiAddKeyResponse(BaseModel):
     """Response body for ``POST /v1/auth/keys``."""
 
     key_id: str = Field(description="Unique identifier of the created API key.")
+    api_key: str = Field(
+        description="Plain API key. Shown once — store it now, it cannot be retrieved again.",
+    )
 
 
 class ApiAuthKey(BaseModel):

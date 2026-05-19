@@ -1,5 +1,8 @@
 """API route handlers for auth-management endpoints."""
 
+import secrets
+from uuid import uuid4
+
 from fastapi import APIRouter, Depends, Query, Response
 
 from qfa.api.dependencies import get_auth_orchestrator, require_superuser
@@ -87,14 +90,16 @@ async def add_key(
     auth_orchestrator: AuthOrchestrator = Depends(get_auth_orchestrator),
 ) -> ApiAddKeyResponse:
     """Create an API key for a tenant. Requires superuser access."""
-    key_id = await auth_orchestrator.add_key(
-        api_key=body.api_key,
-        key_id=body.key_id,
+    key_id = str(uuid4())
+    api_key = secrets.token_urlsafe(32)
+    await auth_orchestrator.add_key(
+        api_key=api_key,
+        key_id=key_id,
         key_name=body.key_name,
         tenant_id=body.tenant_id,
         is_superuser=body.is_superuser,
     )
-    return ApiAddKeyResponse(key_id=key_id)
+    return ApiAddKeyResponse(key_id=key_id, api_key=api_key)
 
 
 @router.delete("/v1/auth/keys/{key_id}", status_code=204, tags=["User Management"])

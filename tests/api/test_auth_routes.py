@@ -177,22 +177,27 @@ class TestAuthManagementSuccess:
 
     @pytest.mark.asyncio
     async def test_add_key_201(self, auth_client, auth_orchestrator_spy):
-        payload = {
-            "api_key": "plain-secret",
-            "key_id": "key-123",
-            "key_name": "Ops Key",
-            "tenant_id": "tenant-123",
-            "is_superuser": False,
-        }
         resp = await auth_client.post(
             "/v1/auth/keys",
-            json=payload,
+            json={
+                "key_name": "Ops Key",
+                "tenant_id": "tenant-123",
+                "is_superuser": False,
+            },
             headers=_auth_header(FAKE_SUPERUSER_KEY),
         )
 
         assert resp.status_code == 201
-        assert resp.json() == {"key_id": "key-123"}
-        assert auth_orchestrator_spy.add_key_calls == [payload]
+        body = resp.json()
+        assert isinstance(body["key_id"], str) and body["key_id"]
+        assert isinstance(body["api_key"], str) and body["api_key"]
+        assert len(auth_orchestrator_spy.add_key_calls) == 1
+        call = auth_orchestrator_spy.add_key_calls[0]
+        assert call["key_name"] == "Ops Key"
+        assert call["tenant_id"] == "tenant-123"
+        assert call["is_superuser"] is False
+        assert call["key_id"] == body["key_id"]
+        assert call["api_key"] == body["api_key"]
 
     @pytest.mark.asyncio
     async def test_delete_key_204(self, auth_client, auth_orchestrator_spy):
@@ -282,8 +287,6 @@ class TestAuthManagementErrors:
         resp = await auth_client.post(
             "/v1/auth/keys",
             json={
-                "api_key": "plain-secret",
-                "key_id": "key-123",
                 "key_name": "Ops Key",
                 "tenant_id": "tenant-123",
                 "is_superuser": False,
