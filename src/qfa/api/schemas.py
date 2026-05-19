@@ -378,7 +378,7 @@ class ApiAssignCodesResponse(BaseModel):
 
 
 class ApiAddTenantRequest(BaseModel):
-    """Request body for ``POST /v1/auth/tenants``."""
+    """Request body for ``POST /v1/admin/tenants``."""
 
     tenant_name: str = Field(
         min_length=1,
@@ -392,7 +392,7 @@ class ApiAddTenantRequest(BaseModel):
 
 
 class ApiAddTenantResponse(BaseModel):
-    """Response body for ``POST /v1/auth/tenants``."""
+    """Response body for ``POST /v1/admin/tenants``."""
 
     tenant_id: str = Field(description="Unique identifier of the created tenant.")
 
@@ -408,13 +408,13 @@ class ApiTenant(BaseModel):
 
 
 class ApiTenantsResponse(BaseModel):
-    """Response body for ``GET /v1/auth/tenants``."""
+    """Response body for ``GET /v1/admin/tenants``."""
 
     tenants: list[ApiTenant] = Field(description="Tenant metadata records.")
 
 
 class ApiAddKeyRequest(BaseModel):
-    """Request body for ``POST /v1/auth/keys``."""
+    """Request body for ``POST /v1/admin/keys``."""
 
     key_name: str = Field(
         min_length=1,
@@ -433,7 +433,7 @@ class ApiAddKeyRequest(BaseModel):
 
 
 class ApiAddKeyResponse(BaseModel):
-    """Response body for ``POST /v1/auth/keys``."""
+    """Response body for ``POST /v1/admin/keys``."""
 
     key_id: str = Field(description="Unique identifier of the created API key.")
     api_key: str = Field(
@@ -453,7 +453,7 @@ class ApiAuthKey(BaseModel):
 
 
 class ApiAuthKeysResponse(BaseModel):
-    """Response body for ``GET /v1/auth/keys``."""
+    """Response body for ``GET /v1/admin/keys``."""
 
     auth_keys: list[ApiAuthKey] = Field(
         description="API key metadata records filtered by tenant when requested.",
