@@ -7,6 +7,7 @@ manages retries with exponential backoff, and enforces deadlines.
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Callable, TypeVar
 
 from qfa.domain.errors import (
     AnalysisError,
@@ -139,6 +140,8 @@ Output rules:
 _MINIMUM_ATTEMPT_WINDOW = 10.0
 
 _JUDGE_USER_MESSAGE = "."
+
+_AlignedItemT = TypeVar("_AlignedItemT")
 
 
 def _parse_judge_quality_score(raw: str) -> float:
@@ -343,39 +346,49 @@ class Orchestrator:
             else:
                 result = llm_completion.structured
 
-            # Guard against LLM returning a different number of summaries than records submitted
-            result = self._align_record_ids(request, result)
+            # Guard against LLM returning a different number of summaries than records
+            # submitted and replace model-provided IDs with authoritative input IDs.
+            aligned_summaries = self._align_record_items(
+                request_records=request.feedback_records,
+                llm_items=result.feedback_record_summaries,
+                align_item=lambda record_id, summary, _index: summary.model_copy(
+                    update={"id": record_id}
+                ),
+            )
+            result = result.model_copy(
+                update={"feedback_record_summaries": aligned_summaries}
+            )
             return result
 
-    def _align_record_ids(
-        self, request: SummaryRequestModel, result: SummaryResultModel
-    ) -> SummaryResultModel:
-        """Align ids between input request and model output.
+    def _align_record_items(
+        self,
+        *,
+        request_records: tuple[FeedbackRecordModel, ...],
+        llm_items: tuple[_AlignedItemT, ...],
+        align_item: Callable[[str, _AlignedItemT, int], _AlignedItemT],
+    ) -> tuple[_AlignedItemT, ...]:
+        """Align LLM result items to input record IDs by request order.
 
-        The model does not reliably reproduce the ids of the input records in its
-        output. This function:
-        1. checks that the number of records matches between intput and output
-        2. copies the ids from the input records into to output records.
+        The LLM is not authoritative for per-record IDs; request IDs are. This
+        helper applies a caller-provided item mapper against request IDs.
 
         Assumptions:
-        * the order of the model output matches the input.
+        * request order is the canonical order for outputs
         """
-        if len(result.feedback_record_summaries) != len(request.feedback_records):
+        if len(llm_items) != len(request_records):
             raise AnalysisError(
-                f"LLM returned {len(result.feedback_record_summaries)} summaries"
-                f" for {len(request.feedback_records)} requested feedback records."
+                f"LLM returned {len(llm_items)} result items"
+                f" for {len(request_records)} requested feedback records."
             )
-        # Replace LLM-generated IDs with the authoritative input record IDs
-        summaries_with_updated_id = tuple(
-            summary.model_copy(update={"id": record.id})
-            for record, summary in zip(
-                request.feedback_records, result.feedback_record_summaries
+
+        return tuple(
+            align_item(
+                record.id,
+                llm_items[idx],
+                idx,
             )
+            for idx, record in enumerate(request_records)
         )
-        result = result.model_copy(
-            update={"feedback_record_summaries": summaries_with_updated_id}
-        )
-        return result
 
     async def summarize_aggregate(
         self,
