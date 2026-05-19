@@ -130,7 +130,7 @@ class TestAuthManagementSuccess:
     @pytest.mark.asyncio
     async def test_add_tenant_201(self, auth_client, auth_orchestrator_spy):
         resp = await auth_client.post(
-            "/v1/auth/tenants",
+            "/v1/admin/tenants",
             json={"tenant_name": "Tenant Red", "allows_superusers": True},
             headers=_auth_header(FAKE_SUPERUSER_KEY),
         )
@@ -144,7 +144,7 @@ class TestAuthManagementSuccess:
     @pytest.mark.asyncio
     async def test_get_tenants_200(self, auth_client, auth_orchestrator_spy):
         resp = await auth_client.get(
-            "/v1/auth/tenants",
+            "/v1/admin/tenants",
             headers=_auth_header(FAKE_SUPERUSER_KEY),
         )
 
@@ -168,7 +168,7 @@ class TestAuthManagementSuccess:
     @pytest.mark.asyncio
     async def test_delete_tenant_204(self, auth_client, auth_orchestrator_spy):
         resp = await auth_client.delete(
-            "/v1/auth/tenants/tenant-123",
+            "/v1/admin/tenants/tenant-123",
             headers=_auth_header(FAKE_SUPERUSER_KEY),
         )
 
@@ -178,7 +178,7 @@ class TestAuthManagementSuccess:
     @pytest.mark.asyncio
     async def test_add_key_201(self, auth_client, auth_orchestrator_spy):
         resp = await auth_client.post(
-            "/v1/auth/keys",
+            "/v1/admin/keys",
             json={
                 "key_name": "Ops Key",
                 "tenant_id": "tenant-123",
@@ -202,7 +202,7 @@ class TestAuthManagementSuccess:
     @pytest.mark.asyncio
     async def test_delete_key_204(self, auth_client, auth_orchestrator_spy):
         resp = await auth_client.delete(
-            "/v1/auth/keys/key-123",
+            "/v1/admin/keys/key-123",
             headers=_auth_header(FAKE_SUPERUSER_KEY),
         )
 
@@ -216,7 +216,7 @@ class TestAuthManagementSuccess:
         auth_orchestrator_spy,
     ):
         resp = await auth_client.get(
-            "/v1/auth/keys",
+            "/v1/admin/keys",
             params={"tenant_id": "tenant-a"},
             headers=_auth_header(FAKE_SUPERUSER_KEY),
         )
@@ -239,7 +239,7 @@ class TestAuthManagementAuthorization:
     @pytest.mark.asyncio
     async def test_401_when_missing_auth_header(self, auth_client):
         resp = await auth_client.post(
-            "/v1/auth/tenants",
+            "/v1/admin/tenants",
             json={"tenant_name": "Tenant Red"},
         )
 
@@ -249,7 +249,7 @@ class TestAuthManagementAuthorization:
     @pytest.mark.asyncio
     async def test_403_for_non_superuser(self, auth_client):
         resp = await auth_client.get(
-            "/v1/auth/keys",
+            "/v1/admin/keys",
             headers=_auth_header(FAKE_API_KEY),
         )
 
@@ -269,7 +269,7 @@ class TestAuthManagementErrors:
         )
 
         resp = await auth_client.delete(
-            "/v1/auth/tenants/missing",
+            "/v1/admin/tenants/missing",
             headers=_auth_header(FAKE_SUPERUSER_KEY),
         )
 
@@ -285,7 +285,7 @@ class TestAuthManagementErrors:
         )
 
         resp = await auth_client.post(
-            "/v1/auth/keys",
+            "/v1/admin/keys",
             json={
                 "key_name": "Ops Key",
                 "tenant_id": "tenant-123",

@@ -23,7 +23,7 @@ router = APIRouter()
 
 
 @router.post(
-    "/v1/auth/tenants",
+    "/v1/admin/tenants",
     response_model=ApiAddTenantResponse,
     status_code=201,
     tags=["User Management"],
@@ -42,7 +42,7 @@ async def add_tenant(
 
 
 @router.get(
-    "/v1/auth/tenants",
+    "/v1/admin/tenants",
     response_model=ApiTenantsResponse,
     status_code=200,
     tags=["User Management"],
@@ -66,7 +66,7 @@ async def get_tenants(
 
 
 @router.delete(
-    "/v1/auth/tenants/{tenant_id}", status_code=204, tags=["User Management"]
+    "/v1/admin/tenants/{tenant_id}", status_code=204, tags=["User Management"]
 )
 async def delete_tenant(
     tenant_id: str,
@@ -79,7 +79,7 @@ async def delete_tenant(
 
 
 @router.post(
-    "/v1/auth/keys",
+    "/v1/admin/keys",
     response_model=ApiAddKeyResponse,
     status_code=201,
     tags=["User Management"],
@@ -102,7 +102,7 @@ async def add_key(
     return ApiAddKeyResponse(key_id=key_id, api_key=api_key)
 
 
-@router.delete("/v1/auth/keys/{key_id}", status_code=204, tags=["User Management"])
+@router.delete("/v1/admin/keys/{key_id}", status_code=204, tags=["User Management"])
 async def delete_key(
     key_id: str,
     _tenant: TenantApiKey = Depends(require_superuser),
@@ -114,7 +114,7 @@ async def delete_key(
 
 
 @router.get(
-    "/v1/auth/keys",
+    "/v1/admin/keys",
     response_model=ApiAuthKeysResponse,
     status_code=200,
     tags=["User Management"],

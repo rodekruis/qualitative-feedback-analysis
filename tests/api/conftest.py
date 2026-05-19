@@ -14,7 +14,7 @@ from qfa.api.app import (
     register_exception_handlers,
 )
 from qfa.api.routes import router
-from qfa.api.routes_auth import router as auth_router
+from qfa.api.routes_admin import router as auth_router
 from qfa.api.routes_usage import router as usage_router
 from qfa.domain.models import (
     AggregateSummaryResultModel,
