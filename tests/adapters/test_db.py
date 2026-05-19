@@ -154,7 +154,6 @@ async def test_translate_db_errors_maps_sqlalchemy_exceptions_to_domain():
 
 async def test_resolve_database_url_uses_explicit_url():
     settings = DatabaseSettings(
-        track_usage=True,
         url="postgresql+asyncpg://user:pass@host:5432/qfa",
     )
     assert (
@@ -164,7 +163,6 @@ async def test_resolve_database_url_uses_explicit_url():
 
 async def test_resolve_database_url_from_password_parts():
     settings = DatabaseSettings(
-        track_usage=True,
         host="db.internal",
         port=5432,
         name="qfa",
@@ -179,7 +177,6 @@ async def test_resolve_database_url_from_password_parts():
 
 async def test_resolve_database_url_from_entra_parts():
     settings = DatabaseSettings(
-        track_usage=True,
         auth_mode="entra",
         host="db.internal",
         port=5432,

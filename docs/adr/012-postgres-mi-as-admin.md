@@ -76,7 +76,7 @@ identity.
   identity; no separate migration-time credential is needed.
 - An on-call engineer who needs direct Postgres access should use the
   `az webapp ssh` path documented in
-  [setup-new-env.md § Debugging database connectivity](../../infra/setup-new-env.md#debugging-database-connectivity).
+  [setup-new-env.md § Debugging database connectivity](../operations/setup-new-env.md#debugging-database-connectivity).
 - If the schema ever stores PII or feedback content, reconsider Option A:
   create a dedicated Entra group for human admins, demote the app MI to
   a least-privileged role (INSERT/SELECT on the relevant tables), and

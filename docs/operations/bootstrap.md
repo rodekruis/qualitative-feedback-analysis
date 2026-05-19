@@ -150,14 +150,14 @@ The `terraform.yaml` workflow can now run autonomously in CI.
 
 ### 7. Seed Key Vault secrets
 
-Seeding secrets is a per-environment step. See [setup-new-env.md § Seed Key Vault secrets](setup-new-env.md#6-seed-key-vault-secrets).
+Seeding secrets is a per-environment step. See [Set up a new environment § Seed Key Vault secrets](setup-new-env.md#6-seed-key-vault-secrets).
 
 ## Next: create each environment
 
 > [!NOTE]
 > The steps above create the shared Terraform backend and container registry, and the repo-scoped GitHub variables. They do **not** yet create any App Service, Key Vault, or managed identity — those are per-environment and are provisioned in the next document.
 
-Run [setup-new-env.md](setup-new-env.md) once for each environment (`dev`, `staging`, `prd`). That doc creates a Terraform workspace, applies the per-environment resources (including the managed identity + federated credential that lets GitHub Actions authenticate without any secrets), configures the per-environment GitHub variables, and seeds Key Vault secrets.
+Run [Set up a new environment](setup-new-env.md) once for each environment (`dev`, `staging`, `prd`). That doc creates a Terraform workspace, applies the per-environment resources (including the managed identity + federated credential that lets GitHub Actions authenticate without any secrets), configures the per-environment GitHub variables, and seeds Key Vault secrets.
 
 ## Subsequent infrastructure changes
 
@@ -166,4 +166,4 @@ After the bootstrap and per-environment setup are complete, infrastructure chang
 - Open a PR touching `infra/` → CI runs `terraform plan` automatically
 - Merge to `main` → trigger `terraform apply` manually from the Actions tab
 
-If the managed identity is ever recreated (e.g. after `terraform destroy`), re-run steps 4 and 5 of [setup-new-env.md](setup-new-env.md) for the affected environment to update `AZ_CLIENT_ID`.
+If the managed identity is ever recreated (e.g. after `terraform destroy`), re-run steps 4 and 5 of [Set up a new environment](setup-new-env.md) for the affected environment to update `AZ_CLIENT_ID`.

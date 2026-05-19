@@ -15,8 +15,8 @@ composed sub-settings classes.
 
 ## Decision
 
-Use composed sub-settings: `AppSettings` contains `LLMSettings`,
-`OrchestratorSettings`, `AuthSettings`, and `LogSettings`, each with its
+Use composed sub-settings: {py:class}`~qfa.settings.AppSettings` contains {py:class}`~qfa.settings.LLMSettings`,
+{py:class}`~qfa.settings.OrchestratorSettings`, {py:class}`~qfa.settings.AuthSettings`, and {py:class}`~qfa.settings.LogSettings`, each with its
 own `env_prefix`.
 
 ## Options Considered

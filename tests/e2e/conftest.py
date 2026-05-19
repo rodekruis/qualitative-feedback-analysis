@@ -152,7 +152,6 @@ async def e2e_migrated(e2e_db_url: str) -> str:
 async def e2e_app(e2e_migrated: str, monkeypatch):
     e2e_db_url = e2e_migrated
     """Boot the FastAPI app with a FakeLLMPort wired via ``create_app``."""
-    monkeypatch.setenv("DB_TRACK_USAGE", "true")
     monkeypatch.setenv("DB_URL", e2e_db_url)
 
     # The fake LLM ignores model/api_base, but settings still need to validate.

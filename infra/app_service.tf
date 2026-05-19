@@ -66,7 +66,6 @@ resource "azurerm_linux_web_app" "backend" {
     DB_AUTH_MODE   = "entra"
     DB_AAD_SCOPE   = var.db_aad_scope
     DB_USER        = local.db_aad_principal_name
-    DB_TRACK_USAGE = "true"
 
     WEBSITES_ENABLE_APP_SERVICE_STORAGE = "false"
     WEBSITES_PORT                       = "8000"
@@ -101,6 +100,3 @@ resource "azurerm_role_assignment" "app_acr_repository_reader" {
   role_definition_name = "Container Registry Repository Reader"
   principal_id         = azurerm_linux_web_app.backend.identity[0].principal_id
 }
-
-
-

@@ -1,7 +1,6 @@
 """FastAPI dependency functions for authentication and service injection."""
 
 from fastapi import Depends, Request, Security
-from fastapi.exceptions import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from qfa.auth import validate_api_key
@@ -28,7 +27,7 @@ def get_orchestrator(request: Request) -> Orchestrator:
 
 
 def get_usage_repo(request: Request) -> UsageRepositoryPort:
-    """Return the usage repository from app state, or raise 503 if disabled.
+    """Return the usage repository from app state.
 
     Parameters
     ----------
@@ -39,22 +38,8 @@ def get_usage_repo(request: Request) -> UsageRepositoryPort:
     -------
     UsageRepositoryPort
         The usage repository instance.
-
-    Raises
-    ------
-    HTTPException
-        503 if usage tracking is not enabled.
     """
-    repo = getattr(request.app.state, "usage_repo", None)
-    if repo is None:
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "code": "usage_tracking_disabled",
-                "message": "Usage tracking is not enabled",
-            },
-        )
-    return repo
+    return request.app.state.usage_repo
 
 
 async def authenticate_request(

@@ -73,4 +73,9 @@ RUN uv tool install pre-commit
 # ── ast-grep (structural code search, installed via uv) ─────────────
 RUN uv tool install ast-grep-cli
 
+# ── pyright (Python language server, installed via uv) ──────────────
+RUN uv tool install pyright
+
+RUN uv tool install memsearch[onnx]
+
 WORKDIR /workspace

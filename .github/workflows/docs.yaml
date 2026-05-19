@@ -1,0 +1,54 @@
+# Build Sphinx docs on every push (CI-style validation) and deploy to
+# GitHub Pages only when a release is published or when triggered
+# manually from the Actions tab.
+#
+# The build job runs everywhere and uploads the Pages artifact so that
+# doc-rot is caught early. The deploy job is gated on the event type
+# and consumes the artifact uploaded in the same workflow run
+# (actions/deploy-pages cannot reach across runs).
+#
+# Prerequisite: in repo Settings → Pages, set "Source" to
+# "GitHub Actions". No branch is used as a source.
+name: Docs
+
+on:
+  push:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - name: Build docs
+        run: make docs
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/_build/html
+
+  deploy:
+    needs: build
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
