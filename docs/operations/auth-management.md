@@ -43,7 +43,7 @@ Example:
 Keys can be created at runtime through `POST /v1/auth/keys` (requires a superuser key). The server generates both the key value and its unique identifier — you do **not** supply them:
 
 ```http
-POST /v1/auth/keys
+POST /v1/auth/keys HTTP/1.1
 Authorization: Bearer <superuser-key>
 Content-Type: application/json
 
