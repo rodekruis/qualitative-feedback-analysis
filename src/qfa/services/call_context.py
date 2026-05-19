@@ -44,10 +44,11 @@ async def call_scope(
     CallContext
         The context that was set.
     """
+    resolved_call_id = call_id if call_id is not None else uuid4()
     ctx = CallContext(
         tenant_id=tenant_id,
         operation=operation,
-        call_id=call_id if call_id is not None else uuid4(),
+        call_id=resolved_call_id,
     )
     token = current_call_context.set(ctx)
     try:

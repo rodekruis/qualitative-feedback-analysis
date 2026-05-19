@@ -241,6 +241,11 @@ async def test_record_retries_transient_operational_error_and_eventually_persist
 
 
 async def test_records_copy_call_id_from_context():
+    """The adapter must copy ``ctx.call_id`` into the persisted record.
+
+    The whole point of carrying ``call_id`` on ``CallContext`` is for the
+    tracking adapter to stamp it onto every row; verify that wiring.
+    """
     inner = FakeLLMPort()
     inner.queue_response(_ok_response())
     repo = FakeUsageRepository()
@@ -261,6 +266,11 @@ async def test_records_copy_call_id_from_context():
 
 
 async def test_error_path_record_copies_call_id_from_context():
+    """The error path must also propagate ``ctx.call_id`` into the record.
+
+    Failed LLM calls still need correlation so #91's aggregation can
+    attribute them to the originating API invocation.
+    """
     inner = FakeLLMPort()
     inner.queue_failure(LLMError("boom"))
     repo = FakeUsageRepository()

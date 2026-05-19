@@ -211,6 +211,11 @@ class TestCallStatusEnum:
 
 class TestCallContext:
     def test_construct(self):
+        """Constructor accepts and exposes the three required fields.
+
+        Smoke test for the data shape — guards against accidental rename
+        or removal of any of ``tenant_id``, ``operation``, ``call_id``.
+        """
         cid = uuid4()
         ctx = CallContext(tenant_id="t1", operation=Operation.ANALYZE, call_id=cid)
         assert ctx.tenant_id == "t1"
@@ -218,11 +223,22 @@ class TestCallContext:
         assert ctx.call_id == cid
 
     def test_frozen(self):
+        """``CallContext`` is frozen — assignment after construction must raise.
+
+        Immutability matters because the context lives in a ContextVar and
+        gets snapshotted across asyncio tasks; mutating it mid-request
+        would silently desynchronise tasks that already captured it.
+        """
         ctx = CallContext(tenant_id="t1", operation=Operation.ANALYZE, call_id=uuid4())
         with pytest.raises(ValidationError):
             ctx.tenant_id = "t2"
 
     def test_call_id_required(self):
+        """``call_id`` is mandatory — omitting it must raise ValidationError.
+
+        Prevents accidental "context without correlation" — every record
+        persisted through ``TrackingLLMAdapter`` depends on this field.
+        """
         with pytest.raises(ValidationError):
             CallContext(tenant_id="t1", operation=Operation.ANALYZE)  # type:ignore [ty:missing-argument]
 
@@ -236,6 +252,11 @@ def _now() -> datetime:
 
 class TestLLMCallRecord:
     def test_ok_status(self):
+        """A fully-populated ``status=OK`` record constructs cleanly.
+
+        Covers the happy path: all required fields including ``call_id``
+        accepted, ``error_class`` defaults to None, ``call_id`` is a UUID.
+        """
         rec = LLMCallRecord(
             tenant_id="t1",
             operation=Operation.ANALYZE,
@@ -253,6 +274,11 @@ class TestLLMCallRecord:
         assert isinstance(rec.call_id, UUID)
 
     def test_error_status_requires_error_class(self):
+        """``status=ERROR`` with ``error_class=None`` must be rejected.
+
+        The model validator enforces the ``error_class iff error`` invariant
+        so the DB check-constraint and the application stay in agreement.
+        """
         with pytest.raises(ValidationError):
             LLMCallRecord(
                 tenant_id="t1",
@@ -269,6 +295,11 @@ class TestLLMCallRecord:
             )
 
     def test_ok_status_rejects_error_class(self):
+        """``status=OK`` with a non-None ``error_class`` must be rejected.
+
+        The other half of the ``error_class iff error`` invariant — keeps
+        success rows from carrying stale error metadata.
+        """
         with pytest.raises(ValidationError):
             LLMCallRecord(
                 tenant_id="t1",
@@ -285,6 +316,11 @@ class TestLLMCallRecord:
             )
 
     def test_call_id_required(self):
+        """``call_id`` is mandatory — omitting it must raise ValidationError.
+
+        Mirror of the ``CallContext`` check at the record level; a record
+        without ``call_id`` would defeat per-invocation aggregation.
+        """
         with pytest.raises(ValidationError):
             LLMCallRecord(  # type:ignore [ty:missing-argument]
                 tenant_id="t1",

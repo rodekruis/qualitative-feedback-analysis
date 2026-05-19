@@ -88,6 +88,11 @@ async def test_record_call_inserts_row(sqlite_repo):
 
 @pytest.mark.usefixtures("needs_aiosqlite")
 async def test_record_call_round_trips_all_fields(sqlite_repo):
+    """Every field of ``LLMCallRecord`` survives the insert/select round-trip.
+
+    Catches regressions in the SQLAlchemy column mapping or repo write —
+    e.g., a column rename that compiles but silently drops values.
+    """
     repo, engine = sqlite_repo
     fixed_id = uuid4()
     rec = _make_record(

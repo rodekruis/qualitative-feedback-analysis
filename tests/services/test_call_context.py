@@ -40,11 +40,21 @@ async def test_call_scope_propagates_through_create_task():
 
 
 async def test_call_scope_auto_generates_call_id():
+    """``call_scope`` must populate ``ctx.call_id`` with a UUID by default.
+
+    Callers shouldn't be required to supply a ``call_id`` — the scope should
+    mint one so the orchestrator doesn't need to plumb correlation IDs.
+    """
     async with call_scope(tenant_id="t1", operation=Operation.ANALYZE) as ctx:
         assert isinstance(ctx.call_id, UUID)
 
 
 async def test_call_scope_generates_distinct_call_ids_for_separate_scopes():
+    """Separate ``call_scope`` enters must produce different ``call_id`` values.
+
+    Two API invocations must not collide on the correlation key, otherwise
+    per-invocation aggregation in ``/v1/usage`` would silently merge them.
+    """
     async with call_scope(tenant_id="t1", operation=Operation.ANALYZE) as ctx1:
         first = ctx1.call_id
     async with call_scope(tenant_id="t1", operation=Operation.ANALYZE) as ctx2:
@@ -53,6 +63,11 @@ async def test_call_scope_generates_distinct_call_ids_for_separate_scopes():
 
 
 async def test_call_scope_accepts_explicit_call_id_override():
+    """An explicit ``call_id`` argument must override auto-generation.
+
+    Needed so a future request-ID middleware (or tests) can pin the
+    correlation ID to a known value rather than the auto-generated UUID.
+    """
     fixed = uuid4()
     async with call_scope(
         tenant_id="t1", operation=Operation.ANALYZE, call_id=fixed

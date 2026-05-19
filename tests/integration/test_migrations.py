@@ -46,6 +46,12 @@ async def fresh_pg(pg_url: str):
 
 class TestUpgradeFromEmpty:
     async def test_upgrades_to_head(self, fresh_pg):
+        """Running migrations from empty produces the full expected schema.
+
+        Asserts both ``llm_calls`` and ``alembic_version`` exist and every
+        domain column (including ``call_id`` added in 20260519_01) is present.
+        Catches forgotten migrations and accidental column removals.
+        """
         engine, url = fresh_pg
         await run_migrations(url)
 
@@ -93,6 +99,12 @@ class TestCallIdBackfill:
     """Pre-existing rows must receive distinct synthetic UUIDs on upgrade."""
 
     async def test_existing_rows_get_distinct_call_ids_on_upgrade(self, fresh_pg):
+        """Backfill assigns a distinct, non-null UUID to every pre-existing row.
+
+        The migration's promise is option (a) from PR design: old rows look
+        like one-LLM-call invocations. This guards that promise — and would
+        fail loudly if someone removed the ``gen_random_uuid()`` UPDATE.
+        """
         engine, url = fresh_pg
 
         # Bring schema to the pre-call_id revision (the original create

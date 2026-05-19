@@ -78,6 +78,11 @@ class TestRoundTrip:
         assert stats.total_cost_usd == Decimal("0")
 
     async def test_call_id_round_trips_through_postgres(self, pg_repo, pg_engine):
+        """A UUID ``call_id`` written via the repo reads back unchanged from PG.
+
+        SQLite uses CHAR(32) for ``sa.Uuid`` whereas Postgres uses the
+        native UUID type; this guards the Postgres path specifically.
+        """
         fixed = uuid4()
         await pg_repo.record_call(_record(call_id=fixed))
         async with pg_engine.connect() as conn:
@@ -87,6 +92,11 @@ class TestRoundTrip:
 
 class TestCheckConstraint:
     async def test_db_rejects_ok_with_error_class(self, pg_engine):
+        """The DB check constraint rejects ``status='ok'`` with an error_class.
+
+        Validation lives in two places (Pydantic + DB CHECK); this test
+        guards the DB half against drift if someone removes the constraint.
+        """
         with pytest.raises(IntegrityError):
             async with pg_engine.begin() as conn:
                 await conn.execute(
@@ -106,6 +116,11 @@ class TestCheckConstraint:
                 )
 
     async def test_db_rejects_error_without_error_class(self, pg_engine):
+        """The DB check constraint rejects ``status='error'`` with no error_class.
+
+        Mirror of the OK-with-error case — guards the other half of the
+        ``error_class iff error`` constraint at the database boundary.
+        """
         with pytest.raises(IntegrityError):
             async with pg_engine.begin() as conn:
                 await conn.execute(
@@ -194,6 +209,12 @@ class TestGetAllUsageStats:
 
 class TestIndexUsage:
     async def test_tenant_timestamp_query_uses_composite_index(self, pg_engine):
+        """All expected indexes on ``llm_calls`` exist after migration.
+
+        Postgres may seq-scan tiny test tables, so we don't assert plan
+        choice; we just confirm each declared index is present in
+        ``pg_indexes`` so a dropped/renamed migration fails loudly here.
+        """
         async with pg_engine.connect() as conn:
             plan = (
                 await conn.execute(

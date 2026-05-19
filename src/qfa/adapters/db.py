@@ -58,6 +58,10 @@ llm_calls = sa.Table(
     ),
     sa.Column("tenant_id", sa.String(255), nullable=False),
     sa.Column("operation", sa.String(64), nullable=False),
+    # Correlation ID shared by all LLM calls made within a single API
+    # invocation (one ``call_scope``). Lets ``/v1/usage`` aggregate
+    # cost/duration per invocation by grouping rows on ``call_id``, on
+    # top of the existing per-LLM-call aggregation.
     sa.Column("call_id", sa.Uuid(), nullable=False),
     sa.Column("timestamp", sa.DateTime(timezone=True), nullable=False),
     sa.Column("call_duration_ms", sa.Integer, nullable=False),
