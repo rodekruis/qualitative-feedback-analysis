@@ -13,7 +13,13 @@ from tenacity import (
     wait_exponential,
 )
 
-from qfa.domain.models import CallStatus, LLMCallRecord, LLMResponse, T_Response
+from qfa.domain.models import (
+    CallContext,
+    CallStatus,
+    LLMCallRecord,
+    LLMResponse,
+    T_Response,
+)
 from qfa.domain.ports import LLMPort, UsageRepositoryPort
 from qfa.services.call_context import current_call_context
 
@@ -65,6 +71,23 @@ class TrackingLLMAdapter(LLMPort):
         ``call_scope_for`` at the route layer.
         """
         ctx = current_call_context.get()
+        started_at = datetime.now(UTC)
+        start_monotonic = time.monotonic()
+
+        outcome: LLMResponse[T_Response] | Exception
+        try:
+            outcome = await self._inner.complete(
+                system_message=system_message,
+                user_message=user_message,
+                tenant_id=tenant_id,
+                response_model=response_model,
+                timeout=timeout,
+            )
+        except Exception as exc:
+            outcome = exc
+
+        duration_ms = int((time.monotonic() - start_monotonic) * 1000)
+
         if ctx is None:
             logger.error(
                 "TrackingLLMAdapter.complete called outside an active "
@@ -73,61 +96,14 @@ class TrackingLLMAdapter(LLMPort):
                 "into the orchestrator should be wrapped in call_scope "
                 "(routes do this via Depends(call_scope_for(...))).",
             )
-            return await self._inner.complete(
-                system_message=system_message,
-                user_message=user_message,
-                tenant_id=tenant_id,
-                response_model=response_model,
-                timeout=timeout,
-            )
-
-        started_at = datetime.now(UTC)
-        start_monotonic = time.monotonic()
-
-        try:
-            response = await self._inner.complete(
-                system_message=system_message,
-                user_message=user_message,
-                tenant_id=tenant_id,
-                response_model=response_model,
-                timeout=timeout,
-            )
-        except Exception as exc:
-            duration_ms = int((time.monotonic() - start_monotonic) * 1000)
+        else:
             await self._record_safely(
-                LLMCallRecord(
-                    tenant_id=ctx.tenant_id,
-                    operation=ctx.operation,
-                    call_id=ctx.call_id,
-                    timestamp=started_at,
-                    call_duration_ms=duration_ms,
-                    model="",
-                    input_tokens=0,
-                    output_tokens=0,
-                    cost_usd=Decimal("0"),
-                    status=CallStatus.ERROR,
-                    error_class=type(exc).__name__,
-                )
+                _build_record(ctx, started_at, duration_ms, outcome)
             )
-            raise
 
-        duration_ms = int((time.monotonic() - start_monotonic) * 1000)
-        await self._record_safely(
-            LLMCallRecord(
-                tenant_id=ctx.tenant_id,
-                operation=ctx.operation,
-                call_id=ctx.call_id,
-                timestamp=started_at,
-                call_duration_ms=duration_ms,
-                model=response.model,
-                input_tokens=response.prompt_tokens,
-                output_tokens=response.completion_tokens,
-                cost_usd=_to_decimal(response.cost),
-                status=CallStatus.OK,
-                error_class=None,
-            )
-        )
-        return response
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
 
     @retry(
         retry=retry_if_exception_type((OperationalError, InterfaceError)),
@@ -153,6 +129,47 @@ class TrackingLLMAdapter(LLMPort):
                 record.tenant_id,
                 record.operation,
             )
+
+
+def _build_record(
+    ctx: CallContext,
+    started_at: datetime,
+    duration_ms: int,
+    outcome: LLMResponse | Exception,
+) -> LLMCallRecord:
+    """Build an ``LLMCallRecord`` for one inner-LLM attempt.
+
+    ``outcome`` carries either the successful ``LLMResponse`` or the
+    captured exception — same shape on both paths except for the
+    response/error-specific fields.
+    """
+    if isinstance(outcome, Exception):
+        return LLMCallRecord(
+            tenant_id=ctx.tenant_id,
+            operation=ctx.operation,
+            call_id=ctx.call_id,
+            timestamp=started_at,
+            call_duration_ms=duration_ms,
+            model="",
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=Decimal("0"),
+            status=CallStatus.ERROR,
+            error_class=type(outcome).__name__,
+        )
+    return LLMCallRecord(
+        tenant_id=ctx.tenant_id,
+        operation=ctx.operation,
+        call_id=ctx.call_id,
+        timestamp=started_at,
+        call_duration_ms=duration_ms,
+        model=outcome.model,
+        input_tokens=outcome.prompt_tokens,
+        output_tokens=outcome.completion_tokens,
+        cost_usd=_to_decimal(outcome.cost),
+        status=CallStatus.OK,
+        error_class=None,
+    )
 
 
 def _to_decimal(cost: float | None) -> Decimal:
