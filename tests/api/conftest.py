@@ -26,9 +26,11 @@ from qfa.domain.models import (
     CodingAssignmentResultModel,
     DistributionStats,
     FeedbackRecordSummaryModel,
+    KeyCreationResponse,
     SummaryRequestModel,
     SummaryResultModel,
     TenantApiKey,
+    TenantInfo,
     TokenStats,
     UsageStats,
 )
@@ -58,13 +60,16 @@ class FakeAuthManagementPort:
         key_name: str,
         tenant_id: str,
         is_superuser: bool = False,
-    ) -> tuple[str, str]:
-        return "generated-key-id", "generated-api-key"
+    ) -> KeyCreationResponse:
+        return KeyCreationResponse(
+            key_id="generated-key-id",
+            api_key="generated-api-key",
+        )
 
     async def delete_key(self, key_id: str) -> None:
         return None
 
-    async def get_tenants(self) -> list[dict]:
+    async def get_tenants(self) -> list[TenantInfo]:
         return []
 
 
