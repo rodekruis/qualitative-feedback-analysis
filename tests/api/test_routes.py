@@ -125,27 +125,27 @@ class TestAnalyzeSuccess:
     async def test_x_request_id_propagates_into_call_scope_as_call_id(self, test_app):
         """The X-Request-ID UUID is the same value seen as ``ctx.call_id``.
 
-        Unit-level proof of the unification: a custom orchestrator captures
-        ``current_call_context.call_id`` from within ``call_scope`` and the
-        test asserts it matches the X-Request-ID returned in the response.
-        Catches a broken middleware/ContextVar wiring at unit-test speed,
-        before the e2e tier even runs.
+        Unit-level proof of the unification across the full middleware →
+        dependency → orchestrator chain: the route's
+        ``Depends(call_scope_for(Operation.ANALYZE))`` enters call_scope
+        before the orchestrator runs, so the orchestrator can read
+        ``current_call_context`` directly without entering scope itself.
+        Catches a broken middleware/dep/ContextVar wiring at unit-test
+        speed, before the e2e tier even runs.
         """
         from uuid import UUID
 
         from qfa.domain.models import AnalysisResultModel, Operation
-        from qfa.services.call_context import call_scope, current_call_context
+        from qfa.services.call_context import current_call_context
 
         captured: dict = {}
 
         class CapturingOrchestrator:
             async def analyze(self, request, deadline, anonymize=True):
-                async with call_scope(
-                    tenant_id=request.tenant_id, operation=Operation.ANALYZE
-                ):
-                    ctx = current_call_context.get()
-                    assert ctx is not None
-                    captured["call_id"] = ctx.call_id
+                ctx = current_call_context.get()
+                assert ctx is not None
+                captured["call_id"] = ctx.call_id
+                captured["operation"] = ctx.operation
                 return AnalysisResultModel(result="ok")
 
         test_app.state.orchestrator = CapturingOrchestrator()
@@ -156,6 +156,7 @@ class TestAnalyzeSuccess:
         assert resp.status_code == 200
         header_uuid = UUID(resp.headers["x-request-id"])
         assert captured["call_id"] == header_uuid
+        assert captured["operation"] == Operation.ANALYZE
 
 
 class TestSummarizeSuccess:

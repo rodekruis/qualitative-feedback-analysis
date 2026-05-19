@@ -13,7 +13,6 @@ from tenacity import (
     wait_exponential,
 )
 
-from qfa.domain.errors import MissingCallScopeError
 from qfa.domain.models import CallStatus, LLMCallRecord, LLMResponse, T_Response
 from qfa.domain.ports import LLMPort, UsageRepositoryPort
 from qfa.services.call_context import current_call_context
@@ -57,17 +56,29 @@ class TrackingLLMAdapter(LLMPort):
     ) -> LLMResponse[T_Response]:
         """Run the inner ``complete`` and record the attempt.
 
-        Raises
-        ------
-        MissingCallScopeError
-            When ``current_call_context`` is unset; indicates a wiring bug
-            (the orchestrator forgot to enter ``call_scope``).
+        If ``current_call_context`` is unset the call still goes through
+        — observability never breaks the use case — but the attempt is
+        not persisted and the missing scope is logged at ERROR. In the
+        current wiring this happens only when the orchestrator is
+        invoked outside an HTTP request (e.g. a CLI or test that forgot
+        to set up scopes); HTTP paths set the scope via
+        ``call_scope_for`` at the route layer.
         """
         ctx = current_call_context.get()
         if ctx is None:
-            raise MissingCallScopeError(
-                "TrackingLLMAdapter.complete called outside an active call_scope; "
-                "the orchestrator must enter call_scope(...) at each public-method entry."
+            logger.error(
+                "TrackingLLMAdapter.complete called outside an active "
+                "call_scope; bypassing persistence and routing through to "
+                "inner LLM. This indicates a wiring bug — every entry "
+                "into the orchestrator should be wrapped in call_scope "
+                "(routes do this via Depends(call_scope_for(...))).",
+            )
+            return await self._inner.complete(
+                system_message=system_message,
+                user_message=user_message,
+                tenant_id=tenant_id,
+                response_model=response_model,
+                timeout=timeout,
             )
 
         started_at = datetime.now(UTC)

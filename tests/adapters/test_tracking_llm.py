@@ -1,22 +1,39 @@
 """Tests for TrackingLLMAdapter."""
 
 import asyncio
+from collections.abc import AsyncIterator
 from decimal import Decimal
 from uuid import uuid4
 
 import pytest
+import pytest_asyncio
 
 from qfa.adapters.tracking_llm import TrackingLLMAdapter
-from qfa.domain.errors import LLMError, MissingCallScopeError
+from qfa.domain.errors import LLMError
 from qfa.domain.models import (
     CallStatus,
     LLMCallRecord,
     LLMResponse,
     Operation,
 )
-from qfa.services.call_context import call_scope
+from qfa.services.call_context import call_scope, request_id_scope
 
 pytestmark = pytest.mark.asyncio
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _ambient_request_scope() -> AsyncIterator[None]:
+    """Wrap every test in a ``request_id_scope`` so ``call_scope`` works.
+
+    These tests don't care about correlating to an HTTP X-Request-ID;
+    they just need a valid request scope so the orchestrator's
+    ``call_scope`` can resolve a ``call_id`` without raising
+    ``MissingRequestScopeError``. Mirrors production where every
+    orchestrator entry happens inside a request scope (set by
+    ``RequestIdMiddleware`` for HTTP, or by the caller for CLI/jobs).
+    """
+    async with request_id_scope(uuid4()):
+        yield
 
 
 class FakeLLMPort:
@@ -136,14 +153,22 @@ async def test_records_failed_call_with_error_class():
     assert rec.operation == Operation.SUMMARIZE
 
 
-async def test_raises_when_call_scope_unset():
+async def test_bypasses_persistence_and_logs_when_call_scope_unset(caplog):
+    """Without a call_scope the inner LLM still runs; persistence is skipped + logged.
+
+    Observability must never break the use case: missing scope is a
+    wiring bug, but routing the request through to the inner LLM
+    preserves user-facing availability. The skipped persistence is
+    flagged at ERROR so log-based alerting can fire on the underlying
+    wiring bug.
+    """
     inner = FakeLLMPort()
     inner.queue_response(_ok_response())
     repo = FakeUsageRepository()
     adapter = TrackingLLMAdapter(inner=inner, usage_repo=repo)
 
-    with pytest.raises(MissingCallScopeError):
-        await adapter.complete(
+    with caplog.at_level("ERROR", logger="qfa.adapters.tracking_llm"):
+        result = await adapter.complete(
             system_message="sys",
             user_message="usr",
             tenant_id="t1",
@@ -151,7 +176,10 @@ async def test_raises_when_call_scope_unset():
             timeout=10.0,
         )
 
-    assert inner.calls == []
+    assert result.structured == "hello"
+    assert len(inner.calls) == 1
+    assert repo.records == []
+    assert any("call_scope" in r.message for r in caplog.records)
 
 
 async def test_recording_failure_does_not_break_completion():
@@ -252,14 +280,15 @@ async def test_records_copy_call_id_from_context():
     adapter = TrackingLLMAdapter(inner=inner, usage_repo=repo)
     fixed = uuid4()
 
-    async with call_scope(tenant_id="t1", operation=Operation.ANALYZE, call_id=fixed):
-        await adapter.complete(
-            system_message="sys",
-            user_message="usr",
-            tenant_id="t1",
-            response_model=str,
-            timeout=10.0,
-        )
+    async with request_id_scope(fixed):
+        async with call_scope(tenant_id="t1", operation=Operation.ANALYZE):
+            await adapter.complete(
+                system_message="sys",
+                user_message="usr",
+                tenant_id="t1",
+                response_model=str,
+                timeout=10.0,
+            )
 
     assert len(repo.records) == 1
     assert repo.records[0].call_id == fixed
@@ -277,15 +306,16 @@ async def test_error_path_record_copies_call_id_from_context():
     adapter = TrackingLLMAdapter(inner=inner, usage_repo=repo)
     fixed = uuid4()
 
-    async with call_scope(tenant_id="t1", operation=Operation.SUMMARIZE, call_id=fixed):
-        with pytest.raises(LLMError):
-            await adapter.complete(
-                system_message="sys",
-                user_message="usr",
-                tenant_id="t1",
-                response_model=str,
-                timeout=10.0,
-            )
+    async with request_id_scope(fixed):
+        async with call_scope(tenant_id="t1", operation=Operation.SUMMARIZE):
+            with pytest.raises(LLMError):
+                await adapter.complete(
+                    system_message="sys",
+                    user_message="usr",
+                    tenant_id="t1",
+                    response_model=str,
+                    timeout=10.0,
+                )
 
     assert len(repo.records) == 1
     assert repo.records[0].call_id == fixed

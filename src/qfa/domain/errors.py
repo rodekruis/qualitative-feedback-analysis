@@ -62,11 +62,15 @@ class AuthorizationError(DomainError):
 # --- Tracking errors ---
 
 
-class MissingCallScopeError(RuntimeError):
-    """Raised when an LLM call is recorded without an active CallContext.
+class MissingRequestScopeError(RuntimeError):
+    """Raised when ``call_scope`` is entered with no ambient request_id and no explicit ``call_id``.
 
-    Indicates a wiring bug: the orchestrator forgot to enter a ``call_scope``
-    block before calling the LLM. Should never reach a user.
+    Indicates a wiring bug: an orchestrator entry happened outside an
+    HTTP request (where ``RequestIdMiddleware`` would set
+    ``current_request_id``) and without the caller passing an explicit
+    ``call_id``. Tests and non-HTTP entry points must either wrap their
+    call in ``request_id_scope(uuid4())`` or pass ``call_id=`` to
+    ``call_scope`` directly. Should never reach a user.
     """
 
 
