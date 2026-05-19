@@ -463,3 +463,58 @@ class UsageStats(BaseModel):
     @field_serializer("total_cost_usd")
     def _serialize_total_cost(self, v: Decimal) -> float:
         return float(v)
+
+
+class KeyCreationResponse(BaseModel):
+    """Response model for API key creation.
+
+    Attributes
+    ----------
+    key_id : str
+        Unique generated identifier for the API key.
+    api_key : str
+        The generated API key value.
+    """
+
+    key_id: str
+    api_key: str
+
+
+class AuthKeyInfo(BaseModel):
+    """Metadata for an API key returned by the auth orchestrator.
+
+    Attributes
+    ----------
+    key_id : str
+        Unique identifier for the API key.
+    name : str
+        Human-readable name for the API key.
+    tenant_id : str
+        Tenant identifier this key belongs to.
+    is_superuser : bool
+        Whether this key has superuser privileges.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    key_id: str
+    name: str
+    tenant_id: str
+    is_superuser: bool
+
+
+class TenantInfo(BaseModel):
+    """Tenant information returned by the auth orchestrator.
+
+    Attributes
+    ----------
+    tenant_id : str
+    name : str
+    allows_superusers : bool
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    tenant_id: str
+    name: str
+    allows_superusers: bool

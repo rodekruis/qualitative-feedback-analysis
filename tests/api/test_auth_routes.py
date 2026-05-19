@@ -5,7 +5,7 @@ import pytest
 import pytest_asyncio
 
 from qfa.domain.errors import KeyAlreadyExistsError, TenantNotFoundError
-from qfa.domain.models import TenantApiKey
+from qfa.domain.models import AuthKeyInfo, KeyCreationResponse, TenantApiKey, TenantInfo
 
 from .conftest import FAKE_API_KEY, FAKE_SUPERUSER_KEY
 
@@ -53,11 +53,11 @@ class RecordingAuthOrchestrator:
             raise self.raise_on_delete_tenant
         self.delete_tenant_calls.append(tenant_id)
 
-    async def get_tenants(self) -> list[dict]:
+    async def get_tenants(self) -> list[TenantInfo]:
         self.get_tenants_calls += 1
         return [
-            {"tenant_id": "tenant-a", "name": "Tenant A", "allows_superusers": False},
-            {"tenant_id": "tenant-b", "name": "Tenant B", "allows_superusers": True},
+            TenantInfo(tenant_id="tenant-a", name="Tenant A", allows_superusers=False),
+            TenantInfo(tenant_id="tenant-b", name="Tenant B", allows_superusers=True),
         ]
 
     async def add_key(
@@ -65,7 +65,7 @@ class RecordingAuthOrchestrator:
         key_name: str,
         tenant_id: str,
         is_superuser: bool = False,
-    ) -> tuple[str, str]:
+    ) -> KeyCreationResponse:
         if self.raise_on_add_key is not None:
             raise self.raise_on_add_key
         key_id = "generated-key-id"
@@ -79,32 +79,26 @@ class RecordingAuthOrchestrator:
                 "is_superuser": is_superuser,
             }
         )
-        return key_id, api_key
+        return KeyCreationResponse(key_id=key_id, api_key=api_key)
 
     async def delete_key(self, key_id: str) -> None:
         if self.raise_on_delete_key is not None:
             raise self.raise_on_delete_key
         self.delete_key_calls.append(key_id)
 
-    async def get_auth_keys(self, tenant_id: str | None = None) -> list[dict]:
+    async def get_auth_keys(self, tenant_id: str | None = None) -> list[AuthKeyInfo]:
         self.get_auth_keys_calls.append(tenant_id)
         records = [
-            {
-                "key_id": "k-1",
-                "name": "Key One",
-                "tenant_id": "tenant-a",
-                "is_superuser": False,
-            },
-            {
-                "key_id": "k-2",
-                "name": "Key Two",
-                "tenant_id": "tenant-b",
-                "is_superuser": True,
-            },
+            AuthKeyInfo(
+                key_id="k-1", name="Key One", tenant_id="tenant-a", is_superuser=False
+            ),
+            AuthKeyInfo(
+                key_id="k-2", name="Key Two", tenant_id="tenant-b", is_superuser=True
+            ),
         ]
         if tenant_id is None:
             return records
-        return [record for record in records if record["tenant_id"] == tenant_id]
+        return [record for record in records if record.tenant_id == tenant_id]
 
 
 @pytest.fixture

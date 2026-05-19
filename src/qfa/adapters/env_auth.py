@@ -1,6 +1,6 @@
 """Environment-based authentication lookup adapter."""
 
-from qfa.domain.models import TenantApiKey
+from qfa.domain.models import AuthKeyInfo, TenantApiKey
 from qfa.domain.ports import AuthLookupPort
 
 
@@ -45,7 +45,7 @@ class EnvironmentAuthLookupAdapter(AuthLookupPort):
 
         return match
 
-    async def get_auth_keys(self, tenant_id: str | None = None) -> list[dict]:
+    async def get_auth_keys(self, tenant_id: str | None = None) -> list[AuthKeyInfo]:
         """Return API key metadata for the given tenant, or all tenants.
 
         Sensitive fields (``hashed_key``) are excluded from the returned
@@ -59,12 +59,12 @@ class EnvironmentAuthLookupAdapter(AuthLookupPort):
 
         Returns
         -------
-        list[dict]
-            A list of dicts with auth key information (no secret values).
+        list[AuthKeyInfo]
+            A list of AuthKeyInfo objects with auth key information (no secret values).
         """
         keys = (
             self._api_keys
             if tenant_id is None
             else [k for k in self._api_keys if k.tenant_id == tenant_id]
         )
-        return [k.model_dump(exclude={"hashed_key"}) for k in keys]
+        return [AuthKeyInfo(**k.model_dump(exclude={"hashed_key"})) for k in keys]

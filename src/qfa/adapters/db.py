@@ -30,9 +30,12 @@ from qfa.domain.errors import (
     UsageRepositoryUnavailableError,
 )
 from qfa.domain.models import (
+    AuthKeyInfo,
     DistributionStats,
+    KeyCreationResponse,
     LLMCallRecord,
     TenantApiKey,
+    TenantInfo,
     TokenStats,
     UsageStats,
 )
@@ -458,7 +461,7 @@ class SQLAlchemyAuthAdapter(AuthLookupPort, AuthManagementPort):
 
         return match
 
-    async def get_auth_keys(self, tenant_id: str | None = None) -> list[dict]:
+    async def get_auth_keys(self, tenant_id: str | None = None) -> list[AuthKeyInfo]:
         """Get API key metadata for one tenant or all tenants."""
         stmt = sa.select(
             keys.c.key_id,
@@ -473,12 +476,12 @@ class SQLAlchemyAuthAdapter(AuthLookupPort, AuthManagementPort):
             rows = (await session.execute(stmt)).all()
 
         return [
-            {
-                "key_id": str(row.key_id),
-                "name": str(row.name),
-                "tenant_id": str(row.tenant_id),
-                "is_superuser": bool(row.is_superuser),
-            }
+            AuthKeyInfo(
+                key_id=str(row.key_id),
+                name=str(row.name),
+                tenant_id=str(row.tenant_id),
+                is_superuser=bool(row.is_superuser),
+            )
             for row in rows
         ]
 
@@ -515,7 +518,7 @@ class SQLAlchemyAuthAdapter(AuthLookupPort, AuthManagementPort):
                 raise TenantNotFoundError(f"Tenant '{tenant_id}' not found")
             await session.commit()
 
-    async def get_tenants(self) -> list[dict]:
+    async def get_tenants(self) -> list[TenantInfo]:
         """Return metadata for all tenants."""
         stmt = sa.select(
             tenants.c.tenant_id,
@@ -527,11 +530,11 @@ class SQLAlchemyAuthAdapter(AuthLookupPort, AuthManagementPort):
             rows = (await session.execute(stmt)).all()
 
         return [
-            {
-                "tenant_id": str(row.tenant_id),
-                "name": str(row.name),
-                "allows_superusers": bool(row.allows_superusers),
-            }
+            TenantInfo(
+                tenant_id=str(row.tenant_id),
+                name=str(row.name),
+                allows_superusers=bool(row.allows_superusers),
+            )
             for row in rows
         ]
 
@@ -540,7 +543,7 @@ class SQLAlchemyAuthAdapter(AuthLookupPort, AuthManagementPort):
         key_name: str,
         tenant_id: str,
         is_superuser: bool = False,
-    ) -> tuple[str, str]:
+    ) -> KeyCreationResponse:
         """Persist a new API key for a tenant."""
         key_id = str(uuid.uuid4())
         api_key = secrets.token_urlsafe(32)
@@ -588,7 +591,7 @@ class SQLAlchemyAuthAdapter(AuthLookupPort, AuthManagementPort):
                     f"Key with id '{key_id}' already exists"
                 ) from exc
 
-            return key_id, api_key
+            return KeyCreationResponse(key_id=key_id, api_key=api_key)
 
     async def delete_key(self, key_id: str) -> None:
         """Delete an API key by id."""

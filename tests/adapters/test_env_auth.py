@@ -134,12 +134,12 @@ class TestGetAuthKeys:
     async def test_tenant_filter_returns_matching_keys(self, adapter):
         result = await adapter.get_auth_keys(tenant_id=TENANT_A)
         assert len(result) == 2
-        assert all(r["tenant_id"] == TENANT_A for r in result)
+        assert all(r.tenant_id == TENANT_A for r in result)
 
     async def test_tenant_filter_single_key(self, adapter):
         result = await adapter.get_auth_keys(tenant_id=TENANT_B)
         assert len(result) == 1
-        assert result[0]["tenant_id"] == TENANT_B
+        assert result[0].tenant_id == TENANT_B
 
     async def test_unknown_tenant_returns_empty_list(self, adapter):
         result = await adapter.get_auth_keys(tenant_id="nonexistent-tenant")
@@ -156,7 +156,7 @@ class TestGetAuthKeys:
 
     async def test_result_contains_expected_fields(self, adapter, key_a1):
         result = await adapter.get_auth_keys(tenant_id=TENANT_A)
-        a1 = next(r for r in result if r["key_id"] == "a1")
-        assert a1["name"] == key_a1.name
-        assert a1["tenant_id"] == TENANT_A
-        assert a1["is_superuser"] is False
+        a1 = next(r for r in result if r.key_id == "a1")
+        assert a1.name == key_a1.name
+        assert a1.tenant_id == TENANT_A
+        assert a1.is_superuser is False

@@ -1,6 +1,7 @@
 """Application service for authentication and management operations."""
 
 from qfa.domain import AuthenticationError, TenantApiKey
+from qfa.domain.models import AuthKeyInfo, KeyCreationResponse, TenantInfo
 from qfa.domain.ports import AuthLookupPort, AuthManagementPort
 
 
@@ -92,7 +93,7 @@ class AuthOrchestrator:
         key_name: str,
         tenant_id: str,
         is_superuser: bool = False,
-    ) -> tuple[str, str]:
+    ) -> KeyCreationResponse:
         """Add a key through the configured auth-management backend.
 
         Parameters
@@ -125,17 +126,17 @@ class AuthOrchestrator:
         """
         await self.auth_management_port.delete_key(key_id)
 
-    async def get_tenants(self) -> list[dict]:
+    async def get_tenants(self) -> list[TenantInfo]:
         """Get all tenants through the configured auth-management backend.
 
         Returns
         -------
-        list[dict]
-            List of tenant metadata dicts (tenant_id, name, allows_superusers).
+        list[TenantInfo]
+            List of tenant metadata objects (tenant_id, name, allows_superusers).
         """
         return await self.auth_management_port.get_tenants()
 
-    async def get_auth_keys(self, tenant_id: str | None = None) -> list[dict]:
+    async def get_auth_keys(self, tenant_id: str | None = None) -> list[AuthKeyInfo]:
         """Get all API keys through the configured auth-management backend.
 
         Can be filtered by tenant_id if provided.
@@ -147,10 +148,10 @@ class AuthOrchestrator:
 
         Returns
         -------
-        list[dict]
+        list[AuthKeyInfo]
             List of API key informations associated with the tenant.
         """
-        auth_key_informations: list[dict] = []
+        auth_key_informations: list[AuthKeyInfo] = []
         for auth_lookup_port in self.auth_lookup_ports:
             auth_key_informations.extend(
                 await auth_lookup_port.get_auth_keys(tenant_id)

@@ -53,9 +53,9 @@ async def get_tenants(
     return ApiTenantsResponse(
         tenants=[
             ApiTenant(
-                tenant_id=record["tenant_id"],
-                name=record["name"],
-                allows_superusers=record["allows_superusers"],
+                tenant_id=record.tenant_id,
+                name=record.name,
+                allows_superusers=record.allows_superusers,
             )
             for record in tenant_records
         ]
@@ -87,12 +87,15 @@ async def add_key(
     auth_orchestrator: AuthOrchestrator = Depends(get_auth_orchestrator),
 ) -> ApiAddKeyResponse:
     """Create an API key for a tenant. Requires superuser access."""
-    key_id, api_key = await auth_orchestrator.add_key(
+    key_creation_response = await auth_orchestrator.add_key(
         key_name=body.key_name,
         tenant_id=body.tenant_id,
         is_superuser=body.is_superuser,
     )
-    return ApiAddKeyResponse(key_id=key_id, api_key=api_key)
+    return ApiAddKeyResponse(
+        key_id=key_creation_response.key_id,
+        api_key=key_creation_response.api_key,
+    )
 
 
 @router.delete("/v1/admin/keys/{key_id}", status_code=204, tags=["User Management"])
@@ -125,10 +128,10 @@ async def get_auth_keys(
     return ApiAuthKeysResponse(
         auth_keys=[
             ApiAuthKey(
-                key_id=record["key_id"],
-                name=record["name"],
-                tenant_id=record["tenant_id"],
-                is_superuser=record["is_superuser"],
+                key_id=record.key_id,
+                name=record.name,
+                tenant_id=record.tenant_id,
+                is_superuser=record.is_superuser,
             )
             for record in auth_keys
         ]

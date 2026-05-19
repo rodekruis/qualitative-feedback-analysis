@@ -9,10 +9,13 @@ import datetime as dt
 from typing import Protocol
 
 from qfa.domain.models import (
+    AuthKeyInfo,
+    KeyCreationResponse,
     LLMCallRecord,
     LLMResponse,
     T_Response,
     TenantApiKey,
+    TenantInfo,
     UsageStats,
 )
 
@@ -178,7 +181,7 @@ class AuthLookupPort(Protocol):
         """
         ...
 
-    async def get_auth_keys(self, tenant_id: str | None = None) -> list[dict]:
+    async def get_auth_keys(self, tenant_id: str | None = None) -> list[AuthKeyInfo]:
         """Get all API keys for a tenant, or all keys if tenant_id is None.
 
         Parameters
@@ -188,8 +191,8 @@ class AuthLookupPort(Protocol):
 
         Returns
         -------
-        list[dict]
-            A list of dicts with auth key metadata.
+        list[AuthKeyMetadata]
+            A list of AuthKeyMetadata objects
         """
         ...
 
@@ -236,7 +239,7 @@ class AuthManagementPort(Protocol):
         key_name: str,
         tenant_id: str,
         is_superuser: bool = False,
-    ) -> tuple[str, str]:
+    ) -> KeyCreationResponse:
         """Generate and persist a new API key in the implemented adapter.
 
         Parameters
@@ -273,12 +276,12 @@ class AuthManagementPort(Protocol):
         """
         ...
 
-    async def get_tenants(self) -> list[dict]:
+    async def get_tenants(self) -> list[TenantInfo]:
         """Return metadata for all tenants in the implemented adapter.
 
         Returns
         -------
-        list[dict]
-            A list of dicts with tenant metadata (tenant_id, name, allows_superusers).
+        list[TenantInfo]
+            A list of TenantInfo objects with tenant metadata.
         """
         ...

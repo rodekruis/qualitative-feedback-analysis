@@ -65,10 +65,14 @@ class TestTenantManagement:
         result = await adapter.get_tenants()
 
         assert len(result) == 2
-        names = {r["name"] for r in result}
+        names = {r.name for r in result}
         assert names == {"Tenant A", "Tenant B"}
         for record in result:
-            assert set(record.keys()) == {"tenant_id", "name", "allows_superusers"}
+            assert (
+                record.tenant_id
+                and record.name
+                and record.allows_superusers is not None
+            )
 
 
 class TestKeyManagement:
@@ -76,10 +80,12 @@ class TestKeyManagement:
         adapter, _ = adapter_with_engine
         tenant_id = await adapter.add_tenant("Tenant A")
 
-        returned_key_id, returned_api_key = await adapter.add_key(
+        key_creation = await adapter.add_key(
             key_name="Primary key",
             tenant_id=tenant_id,
         )
+        returned_key_id = key_creation.key_id
+        returned_api_key = key_creation.api_key
 
         matched = await adapter.validate_api_key(returned_api_key)
         assert isinstance(returned_key_id, str)
@@ -150,7 +156,7 @@ class TestLookupAndListing:
 
         assert len(all_keys) == 3
         assert len(only_a) == 2
-        assert all(k["tenant_id"] == tenant_a for k in only_a)
+        assert all(k.tenant_id == tenant_a for k in only_a)
 
     async def test_delete_tenant_cascades_keys(self, adapter_with_engine):
         adapter, engine = adapter_with_engine
