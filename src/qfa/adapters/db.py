@@ -337,9 +337,7 @@ def _select_totals(
     return stmt
 
 
-class SqlAlchemyUsageRepository(
-    UsageRepositoryPort, AuthLookupPort, AuthManagementPort
-):
+class SqlAlchemyUsageRepository(UsageRepositoryPort):
     """Usage repository backed by SQLAlchemy and PostgreSQL.
 
     Parameters
@@ -425,6 +423,13 @@ class SqlAlchemyUsageRepository(
             for r in rows
             if int(r._mapping["total_calls"]) != 0
         ]
+
+
+class SQLAlchemyAuthAdapter(AuthLookupPort, AuthManagementPort):
+    """Auth adapter backed by SQLAlchemy and PostgreSQL."""
+
+    def __init__(self, session_factory: Callable[..., AsyncSession]) -> None:
+        self._session_factory = session_factory
 
     async def validate_api_key(self, provided_key: str) -> TenantApiKey | None:
         """Validate an API key against hashed keys stored in DB."""

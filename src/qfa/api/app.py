@@ -17,6 +17,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 import qfa
 from qfa.adapters.db import (
+    SQLAlchemyAuthAdapter,
     SqlAlchemyUsageRepository,
     create_async_engine_from_settings,
     create_session_factory,
@@ -647,6 +648,7 @@ def _make_lifespan(llm_factory: LLMFactory):
         engine = create_async_engine_from_settings(settings.db)
         session_factory = create_session_factory(engine)
         usage_repo = SqlAlchemyUsageRepository(session_factory)
+        auth_adapter = SQLAlchemyAuthAdapter(session_factory)
         llm_for_orch: LLMPort = TrackingLLMAdapter(
             inner=base_llm, usage_repo=usage_repo
         )
@@ -663,9 +665,9 @@ def _make_lifespan(llm_factory: LLMFactory):
         app.state.auth_orchestrator = AuthOrchestrator(
             auth_lookup_ports=[
                 EnvironmentAuthLookupAdapter(api_keys=api_keys),
-                usage_repo,
+                auth_adapter,
             ],
-            auth_management_port=usage_repo,
+            auth_management_port=auth_adapter,
         )
         app.state.orchestrator = orchestrator
         app.state.settings = settings
