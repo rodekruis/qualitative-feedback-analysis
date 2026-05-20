@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from qfa.api.schemas import ApiCodingLevels, ApiCodingNode
+from qfa.api.schemas import ApiCodingLevels, ApiCodingNode, ApiSummarizeRequest
 
 
 def test_max_child_depth_leaf_returns_zero():
@@ -126,3 +126,9 @@ def test_coding_levels_unequal_depth_within_subtree_raises():
 def test_coding_levels_with_no_children_fail():
     with pytest.raises(ValidationError, match="should have at least 1"):
         ApiCodingLevels(root_codes=[])
+
+
+def test_summarize_request_example_uses_ubiquitous_language():
+    examples = ApiSummarizeRequest.model_config["json_schema_extra"]["examples"]
+    prompt = examples[0]["prompt"]
+    assert prompt == "Focus on operational issues and community-member experience."
