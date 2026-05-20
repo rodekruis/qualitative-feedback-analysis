@@ -18,5 +18,5 @@ def test_orchestrator_system_prompts_use_ubiquitous_language():
 
 
 def test_coding_classifier_system_prompt_uses_ubiquitous_language():
-    assert "beneficiary" not in coding_classifier.SYSTEM_PROMPT
-    assert "feedback records from community members" in coding_classifier.SYSTEM_PROMPT
+    assert "beneficiary" not in coding_classifier._SYSTEM
+    assert "feedback records from community members" in coding_classifier._SYSTEM
