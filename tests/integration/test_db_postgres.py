@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from uuid import UUID, uuid4
 
 import pytest
 import sqlalchemy as sa
@@ -36,10 +37,12 @@ def _record(
     status: CallStatus = CallStatus.OK,
     error_class: str | None = None,
     model: str = "gpt-4-test",
+    call_id: UUID | None = None,
 ) -> LLMCallRecord:
     return LLMCallRecord(
         tenant_id=tenant_id,
         operation=operation,
+        call_id=call_id if call_id is not None else uuid4(),
         timestamp=timestamp or _now(),
         call_duration_ms=call_duration_ms,
         model=model,
@@ -74,15 +77,33 @@ class TestRoundTrip:
         assert stats.failed_calls == 1
         assert stats.total_cost_usd == Decimal("0")
 
+    async def test_call_id_round_trips_through_postgres(self, pg_repo, pg_engine):
+        """A UUID ``call_id`` written via the repo reads back unchanged from PG.
+
+        SQLite uses CHAR(32) for ``sa.Uuid`` whereas Postgres uses the
+        native UUID type; this guards the Postgres path specifically.
+        """
+        fixed = uuid4()
+        await pg_repo.record_call(_record(call_id=fixed))
+        async with pg_engine.connect() as conn:
+            row = (await conn.execute(sa.select(llm_calls.c.call_id))).one()
+        assert row.call_id == fixed
+
 
 class TestCheckConstraint:
     async def test_db_rejects_ok_with_error_class(self, pg_engine):
+        """The DB check constraint rejects ``status='ok'`` with an error_class.
+
+        Validation lives in two places (Pydantic + DB CHECK); this test
+        guards the DB half against drift if someone removes the constraint.
+        """
         with pytest.raises(IntegrityError):
             async with pg_engine.begin() as conn:
                 await conn.execute(
                     llm_calls.insert().values(
                         tenant_id="t1",
                         operation="analyze",
+                        call_id=uuid4(),
                         timestamp=_now(),
                         call_duration_ms=10,
                         model="gpt-4",
@@ -95,12 +116,18 @@ class TestCheckConstraint:
                 )
 
     async def test_db_rejects_error_without_error_class(self, pg_engine):
+        """The DB check constraint rejects ``status='error'`` with no error_class.
+
+        Mirror of the OK-with-error case — guards the other half of the
+        ``error_class iff error`` constraint at the database boundary.
+        """
         with pytest.raises(IntegrityError):
             async with pg_engine.begin() as conn:
                 await conn.execute(
                     llm_calls.insert().values(
                         tenant_id="t1",
                         operation="analyze",
+                        call_id=uuid4(),
                         timestamp=_now(),
                         call_duration_ms=10,
                         model="",
@@ -182,6 +209,12 @@ class TestGetAllUsageStats:
 
 class TestIndexUsage:
     async def test_tenant_timestamp_query_uses_composite_index(self, pg_engine):
+        """All expected indexes on ``llm_calls`` exist after migration.
+
+        Postgres may seq-scan tiny test tables, so we don't assert plan
+        choice; we just confirm each declared index is present in
+        ``pg_indexes`` so a dropped/renamed migration fails loudly here.
+        """
         async with pg_engine.connect() as conn:
             plan = (
                 await conn.execute(
@@ -207,4 +240,5 @@ class TestIndexUsage:
         names = {row[0] for row in indexes}
         assert "idx_llm_calls_tenant_timestamp" in names
         assert "idx_llm_calls_timestamp" in names
+        assert "idx_llm_calls_tenant_operation_call_id" in names
         assert text  # plan rendered (sanity)

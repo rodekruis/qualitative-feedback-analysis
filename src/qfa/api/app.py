@@ -2,11 +2,11 @@
 
 import importlib.resources
 import logging
-import secrets
 from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 import litellm
 import yaml
@@ -60,8 +60,15 @@ logger = logging.getLogger(__name__)
 class RequestIdMiddleware:
     """Pure ASGI middleware that assigns a unique request ID to every request.
 
-    Stores ``request_id`` and ``start_utc`` on ``scope["state"]`` and
-    adds an ``X-Request-ID`` header to every response.
+    Generates a fresh ``uuid4()`` per request and surfaces it two ways:
+
+    * ``X-Request-ID`` response header — canonical UUID string format.
+    * ``scope["state"]["request_id"]`` — the same string, for logging,
+      error envelopes, and downstream FastAPI dependencies. The
+      :func:`~qfa.api.dependencies.call_scope_for` dep reads it from
+      ``request.state.request_id`` and passes it into ``call_scope`` as
+      ``request_id``, so the header, logs, and ``llm_calls.call_id``
+      rows always share one UUID.
 
     Parameters
     ----------
@@ -91,9 +98,9 @@ class RequestIdMiddleware:
             await self.app(scope, receive, send)
             return
 
-        request_id = "req_" + secrets.token_urlsafe(16)
+        request_id_str = str(uuid4())
         scope.setdefault("state", {})
-        scope["state"]["request_id"] = request_id
+        scope["state"]["request_id"] = request_id_str
         scope["state"]["start_utc"] = datetime.now(UTC)
 
         response_started = False
@@ -103,7 +110,7 @@ class RequestIdMiddleware:
             if message["type"] == "http.response.start":
                 response_started = True
                 headers: list[Any] = list(message.get("headers", []))
-                headers.append([b"x-request-id", request_id.encode()])
+                headers.append([b"x-request-id", request_id_str.encode()])
                 message["headers"] = headers
             await send(message)
 
@@ -112,16 +119,16 @@ class RequestIdMiddleware:
         except Exception:
             if response_started:
                 raise
-            logger.exception("Unhandled exception for request %s", request_id)
+            logger.exception("Unhandled exception for request %s", request_id_str)
             body = ApiErrorResponse(
                 error=ApiErrorDetail(
                     code="internal_error",
                     message="An unexpected error occurred",
-                    request_id=request_id,
+                    request_id=request_id_str,
                 )
             )
             response = JSONResponse(status_code=500, content=body.model_dump())
-            response.headers["X-Request-ID"] = request_id
+            response.headers["X-Request-ID"] = request_id_str
             await response(scope, receive, send)
 
 

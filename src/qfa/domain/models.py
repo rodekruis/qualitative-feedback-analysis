@@ -9,6 +9,7 @@ from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Any, Generic, TypeVar, Union
+from uuid import UUID
 
 from pydantic import (
     BaseModel,
@@ -325,12 +326,17 @@ class CallContext(BaseModel):
         Tenant making the call.
     operation : Operation
         Public orchestrator operation that issued the call.
+    call_id : UUID
+        Correlation ID for the API call. All LLM calls made inside one
+        ``call_scope`` share this ID, enabling per-invocation cost
+        aggregation across the fan-out of LLM calls.
     """
 
     model_config = ConfigDict(frozen=True)
 
     tenant_id: str
     operation: Operation
+    call_id: UUID
 
 
 class LLMCallRecord(BaseModel):
@@ -346,6 +352,10 @@ class LLMCallRecord(BaseModel):
         Tenant that made the call.
     operation : Operation
         Public orchestrator operation that issued the call.
+    call_id : UUID
+        Correlation ID linking all LLM calls made within a single API
+        invocation. Shared across the fan-out of LLM calls from one
+        ``call_scope``, enabling per-invocation aggregation in usage reports.
     timestamp : datetime
         UTC wall-clock when the call started.
     call_duration_ms : int
@@ -369,6 +379,7 @@ class LLMCallRecord(BaseModel):
 
     tenant_id: str
     operation: Operation
+    call_id: UUID
     timestamp: datetime
     call_duration_ms: int
     model: str

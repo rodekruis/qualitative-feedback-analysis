@@ -9,7 +9,6 @@ from qfa.domain.errors import (
     LLMError,
     LLMRateLimitError,
     LLMTimeoutError,
-    MissingCallScopeError,
 )
 from qfa.domain.models import (
     AnalysisRequestModel,
@@ -40,7 +39,6 @@ __all__ = [
     "LLMRateLimitError",
     "LLMResponse",
     "LLMTimeoutError",
-    "MissingCallScopeError",
     "Operation",
     "TenantApiKey",
 ]
