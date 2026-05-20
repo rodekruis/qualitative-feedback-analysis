@@ -400,3 +400,52 @@ class TestUsageStatsExtensions:
         )
         assert stats.total_cost_usd == Decimal("0.5")
         assert stats.failed_calls == 1
+
+
+class TestAnalysisRequestMode:
+    def test_default_mode_is_single_pass(self):
+        """``mode`` defaults to ``single_pass`` when omitted by callers."""
+        req = AnalysisRequestModel(
+            feedback_records=(FeedbackRecordModel(id="d", text="t"),),
+            prompt="x",
+            tenant_id="t",
+        )
+        assert req.mode == "single_pass"
+
+    def test_explicit_single_pass_accepted(self):
+        """``mode=single_pass`` is the documented explicit value."""
+        req = AnalysisRequestModel(
+            feedback_records=(FeedbackRecordModel(id="d", text="t"),),
+            prompt="x",
+            tenant_id="t",
+            mode="single_pass",
+        )
+        assert req.mode == "single_pass"
+
+    def test_invalid_mode_rejected(self):
+        """Any other ``mode`` value raises a validation error."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            AnalysisRequestModel(
+                feedback_records=(FeedbackRecordModel(id="d", text="t"),),
+                prompt="x",
+                tenant_id="t",
+                mode="hierarchical",  # type: ignore[call-arg]
+            )
+
+
+class TestAnalysisResultModelExtended:
+    def test_quality_score_can_be_none(self):
+        """``quality_score=None`` represents judge unavailability."""
+        m = AnalysisResultModel(
+            result="ok", quality_score=None, uncertainty_explanation="why"
+        )
+        assert m.quality_score is None
+
+    def test_quality_score_float_accepted(self):
+        """Floats in ``[0, 1]`` are accepted."""
+        m = AnalysisResultModel(
+            result="ok", quality_score=0.42, uncertainty_explanation="why"
+        )
+        assert m.quality_score == 0.42
