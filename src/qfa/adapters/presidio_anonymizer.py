@@ -5,10 +5,39 @@ analyzer and anonymizer engines. Owns the heavy spaCy-backed pipelines
 so the application service layer never imports Presidio directly.
 """
 
+from langdetect import detect
+from langdetect.lang_detect_exception import LangDetectException
 from presidio_analyzer import AnalyzerEngine
+from presidio_analyzer.nlp_engine import NlpEngineProvider
 from presidio_anonymizer import AnonymizerEngine, OperatorConfig
 
 from qfa.domain.ports import AnonymizationPort
+
+LANGUAGES_AND_ANONYMIZATION_MODEL_PAIRINGS = [
+    {"lang_code": "en", "model_name": "en_core_web_sm"},
+    {"lang_code": "fr", "model_name": "fr_core_news_sm"},
+    {"lang_code": "uk", "model_name": "uk_core_news_sm"},
+    {"lang_code": "ru", "model_name": "ru_core_news_sm"},
+    {"lang_code": "es", "model_name": "es_core_news_sm"},
+    {"lang_code": "xx", "model_name": "xx_ent_wiki_sm"},
+]
+
+
+def detect_language(text: str) -> str:
+    """Detect the language of ``text`` and return a Presidio-compatible language code.
+
+    If the detected language isn't in our pre-defined list of SpaCy models, return "xx".
+    """
+    try:
+        language_shortcode = detect(text)
+    except LangDetectException:
+        return "xx"
+
+    if language_shortcode not in [
+        ent["lang_code"] for ent in LANGUAGES_AND_ANONYMIZATION_MODEL_PAIRINGS
+    ]:
+        return "xx"
+    return language_shortcode
 
 
 class PresidioAnonymizer(AnonymizationPort):
@@ -22,14 +51,22 @@ class PresidioAnonymizer(AnonymizationPort):
     """
 
     def __init__(self) -> None:
-        self._analyzer: AnalyzerEngine = AnalyzerEngine()
+        self._analyzer: AnalyzerEngine = AnalyzerEngine(
+            nlp_engine=NlpEngineProvider(
+                nlp_configuration={
+                    "nlp_engine_name": "spacy",
+                    "models": LANGUAGES_AND_ANONYMIZATION_MODEL_PAIRINGS,
+                }
+            ).create_engine()
+        )
         self._anonymizer: AnonymizerEngine = AnonymizerEngine()
 
     def anonymize(self, text: str) -> tuple[str, dict[str, str]]:
         """Replace sensitive entities in ``text`` with placeholders."""
-        mapping: dict[str, str] = {}
+        detected_language = detect_language(text)
 
-        results = self._analyzer.analyze(text=text, language="en")
+        mapping: dict[str, str] = {}
+        results = self._analyzer.analyze(text=text, language=detected_language)
         unique_entities = {res.entity_type for res in results}
 
         operators: dict[str, OperatorConfig] = {}

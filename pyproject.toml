@@ -35,7 +35,22 @@ dependencies = [
     "pyyaml~=6.0",
     "tenacity~=9.1",
     "uvicorn[standard]~=0.42.0",
+    "en_core_web_sm",
+    "fr_core_news_sm",
+    "uk_core_news_sm",
+    "ru_core_news_sm",
+    "es_core_news_sm",
+    "xx_ent_wiki_sm",
+    "langdetect>=1.0.9",
 ]
+
+[tool.uv.sources] # include spacy models through custom-defined sources https://stackoverflow.com/a/79768491
+en-core-web-sm = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" }
+fr-core-news-sm = { url = "https://github.com/explosion/spacy-models/releases/download/fr_core_news_sm-3.8.0/fr_core_news_sm-3.8.0-py3-none-any.whl" }
+uk-core-news-sm = { url = "https://github.com/explosion/spacy-models/releases/download/uk_core_news_sm-3.8.0/uk_core_news_sm-3.8.0-py3-none-any.whl" }
+ru-core-news-sm = { url = "https://github.com/explosion/spacy-models/releases/download/ru_core_news_sm-3.8.0/ru_core_news_sm-3.8.0-py3-none-any.whl" }
+es_core_news_sm = { url = "https://github.com/explosion/spacy-models/releases/download/es_core_news_sm-3.8.0/es_core_news_sm-3.8.0-py3-none-any.whl" }
+xx-ent-wiki-sm = { url = "https://github.com/explosion/spacy-models/releases/download/xx_ent_wiki_sm-3.8.0/xx_ent_wiki_sm-3.8.0-py3-none-any.whl" }
 
 [project.urls]
 Homepage = "https://github.com/rodekruis/qualitative-feedback-analysis"
