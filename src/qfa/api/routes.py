@@ -71,7 +71,33 @@ async def analyze(
     orchestrator: Orchestrator = Depends(get_orchestrator),
     _scope: CallContext = Depends(call_scope_for(Operation.ANALYZE)),
 ) -> ApiAnalyzeResponse:
-    """Analyze a batch of feedback records.
+    """Analyze a batch of feedback records for trends and themes.
+
+    The analyst prompt in ``body.prompt`` is wrapped in a structural
+    envelope together with the feedback records, and the model is
+    instructed to treat record text as data, not instructions.  A
+    server-side disclaimer is prepended to every analysis output.
+
+    A second LLM call (AI-as-judge) scores the analysis and produces a
+    natural-language ``uncertainty_explanation`` the analyst can use to
+    spot unsupported claims.  If the judge call fails, the response still
+    returns 200 with ``quality_score=null`` and a constant unavailable
+    message in ``uncertainty_explanation``.
+
+    ``ai_generated`` and ``requires_human_review`` are always ``true``
+    on this endpoint — treat them as documentation flags, not
+    toggleable fields.
+
+    **Edge cases**:
+
+    - ``mode`` other than ``"single_pass"`` → 422
+      (see ``mode`` field description for supported modes).
+    - Input that exceeds the token cap → 413 ``payload_too_large``
+      (reduce the batch size; large-corpus analysis is tracked in
+      `#124 <https://github.com/rodekruis/qualitative-feedback-analysis/issues/124>`_).
+    - Injection-like text in record content or metadata is neutralised
+      structurally by the envelope; regex-based detection is a separate
+      guard handled by the LLM adapter.
 
     Parameters
     ----------
@@ -87,7 +113,9 @@ async def analyze(
     Returns
     -------
     AnalyzeResponse
-        The analysis result with feedback record count and request ID.
+        The analysis result with quality score, uncertainty explanation,
+        constant AI-generated/human-review flags, feedback record count,
+        and request ID.
     """
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
@@ -100,6 +128,7 @@ async def analyze(
         feedback_records=domain_feedback_records,
         prompt=body.prompt,
         tenant_id=tenant.tenant_id,
+        mode=body.mode,
     )
 
     result = await orchestrator.analyze(
@@ -108,6 +137,10 @@ async def analyze(
 
     return ApiAnalyzeResponse(
         analysis=result.result,
+        quality_score=result.quality_score,
+        uncertainty_explanation=result.uncertainty_explanation,
+        ai_generated=True,
+        requires_human_review=True,
         feedback_record_count=len(body.feedback_records),
         request_id=request.state.request_id,
         used_anonymization=body.anonymize,

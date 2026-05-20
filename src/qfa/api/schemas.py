@@ -7,7 +7,7 @@ HTTP contract can evolve independently of the core domain.
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -89,6 +89,7 @@ class ApiAnalyzeRequest(BaseModel):
                         },
                     ],
                     "prompt": "Summarize the main themes and sentiment of the feedback.",
+                    "mode": "single_pass",
                 },
             ],
         },
@@ -105,20 +106,53 @@ class ApiAnalyzeRequest(BaseModel):
     )
     anonymize: bool = Field(
         default=True,
-        description="If true, the service will anonymize feedback text before sending it to the LLM. Disable only if you are sure that no personally identifiable information (PII) is present in the input.",
+        description=(
+            "If true, the service will anonymize feedback text before sending it"
+            " to the LLM. Disable only if you are sure that no personally"
+            " identifiable information (PII) is present in the input."
+        ),
+    )
+    mode: Literal["single_pass"] = Field(
+        default="single_pass",
+        description=(
+            "Analysis mode. ``single_pass`` is the only supported value in this"
+            " version. Other modes (hierarchical / map-reduce) are tracked in #124."
+        ),
     )
 
 
 class ApiAnalyzeResponse(BaseModel):
-    """Response body for the ``POST /v1/analyze`` endpoint."""
+    """Response body for the ``POST /v1/analyze`` endpoint.
 
-    analysis: str = Field(description="Analysis output text.")
+    ``ai_generated`` and ``requires_human_review`` are constant ``true``
+    on this endpoint by design — every analyse response is AI-generated
+    and requires human review before action.
+    """
+
+    analysis: str = Field(
+        description="Analysis output text, with a server-side disclaimer prepended.",
+    )
+    quality_score: float | None = Field(
+        description="Judge model score in [0,1]; ``null`` when the judge call failed.",
+    )
+    uncertainty_explanation: str = Field(
+        description=(
+            "Natural-language explanation from the judge call. A constant"
+            " unavailable message is returned when the judge call failed."
+        ),
+    )
+    ai_generated: bool = Field(
+        description="Constant ``true`` — this endpoint always returns AI-generated content.",
+    )
+    requires_human_review: bool = Field(
+        description="Constant ``true`` — every analyse response requires human review.",
+    )
     feedback_record_count: int = Field(
         description="Number of feedback records that were analyzed.",
     )
     request_id: str = Field(description="Unique identifier for this request.")
     used_anonymization: bool = Field(
-        description="Indicates whether anonymization was applied to the feedback text."
+        description="Indicates whether anonymization was applied to the feedback text.",
     )
 
 
