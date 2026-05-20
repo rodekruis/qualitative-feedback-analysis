@@ -49,6 +49,8 @@ exclude_patterns = [
     "reviews",
     "architecture-review-*.md",
     "superpowers",
+    "specs",
+    "plans",
     "TODO-TOMORROW.md",
     "Thumbs.db",
     ".DS_Store",

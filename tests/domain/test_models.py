@@ -431,7 +431,7 @@ class TestAnalysisRequestMode:
                 feedback_records=(FeedbackRecordModel(id="d", text="t"),),
                 prompt="x",
                 tenant_id="t",
-                mode="hierarchical",  # type: ignore[call-arg]
+                mode="hierarchical",  # ty: ignore[invalid-argument-type]
             )
 
 
