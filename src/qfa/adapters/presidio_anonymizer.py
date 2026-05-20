@@ -6,6 +6,7 @@ so the application service layer never imports Presidio directly.
 """
 
 from langdetect import detect
+from langdetect.lang_detect_exception import LangDetectException
 from presidio_analyzer import AnalyzerEngine
 from presidio_analyzer.nlp_engine import NlpEngineProvider
 from presidio_anonymizer import AnonymizerEngine, OperatorConfig
@@ -27,7 +28,11 @@ def detect_language(text: str) -> str:
 
     If the detected language isn't in our pre-defined list of SpaCy models, return "xx".
     """
-    language_shortcode = detect(text)
+    try:
+        language_shortcode = detect(text)
+    except LangDetectException:
+        return "xx"
+
     if language_shortcode not in [
         ent["lang_code"] for ent in LANGUAGES_AND_ANONYMIZATION_MODEL_PAIRINGS
     ]:
