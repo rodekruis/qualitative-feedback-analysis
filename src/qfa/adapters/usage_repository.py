@@ -374,10 +374,17 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         different groupings in a single result set — semantically
         equivalent to ``UNION ALL`` of N separate ``GROUP BY`` queries,
         but evaluated once over the same scan. Here we use it to return
-        per-(tenant, operation) rows, per-tenant subtotals, and the
-        grand total from one round-trip; the consumer dispatches on
-        which columns are ``NULL`` in the row to know which grouping it
-        belongs to.
+        per-(tenant, operation) rows, per-tenant subtotals, per-operation
+        cross-tenant subtotals, and the grand total from one round-trip;
+        the consumer dispatches on which columns are ``NULL`` in the row
+        to know which grouping it belongs to.
+
+        When both tenant and operation grouping are requested, this emits
+        the full 2-axis cube — equivalent to ``CUBE(tenant_id,
+        operation)`` — because ``/v1/usage/all`` needs the grand-total
+        per-operation rows (``tenant_id IS NULL`` with ``operation``
+        bound) to populate the ``operations`` breakdown on the
+        grand-total entry.
 
         Returns ``None`` when neither tenant nor operation grouping is
         required (i.e. the original "single row totals" case for a
@@ -388,6 +395,7 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         if group_by_tenant and group_by_operation:
             sets.append("(tenant_id, operation)")
             sets.append("(tenant_id)")
+            sets.append("(operation)")
             sets.append("()")
         elif group_by_operation:
             sets.append("(operation)")

@@ -255,6 +255,41 @@ def test_usage_stats_new_shape_has_llm_call_stats_and_operations():
     assert stats.operations == ()
 
 
+def test_grouping_sets_clause_cross_tenant_emits_full_cube():
+    """All-tenants query must emit the 4-set cube, not 3.
+
+    Why: ``/v1/usage/all`` needs grand-total-per-operation rows
+    (``tenant_id IS NULL`` with ``operation`` bound) to populate the
+    ``operations`` list on the grand-total entry. Without
+    ``(operation)`` in the grouping sets, composition has no source for
+    those rows and the grand total's ``operations`` comes back empty —
+    a regression that's invisible to SQLite-backed unit tests because
+    SQLite doesn't support ``GROUPING SETS`` at all, and previously
+    only surfaced in Postgres-backed integration/e2e tests.
+    """
+    clause = SqlAlchemyUsageRepository._grouping_sets_clause(
+        group_by_tenant=True, group_by_operation=True
+    )
+    assert clause is not None
+    text = str(clause)
+    assert "(tenant_id, operation)" in text
+    assert "(tenant_id)" in text
+    assert "(operation)" in text
+    assert "()" in text
+
+
+def test_grouping_sets_clause_single_tenant_omits_tenant_axis():
+    """Single-tenant query keeps the 2-set rollup (operation, ())."""
+    clause = SqlAlchemyUsageRepository._grouping_sets_clause(
+        group_by_tenant=False, group_by_operation=True
+    )
+    assert clause is not None
+    text = str(clause)
+    assert "(operation)" in text
+    assert "()" in text
+    assert "tenant_id" not in text
+
+
 async def test_resolve_database_url_from_password_parts():
     settings = DatabaseSettings(
         host="db.internal",
