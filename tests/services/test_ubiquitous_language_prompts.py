@@ -7,6 +7,7 @@ def test_orchestrator_system_prompts_use_ubiquitous_language():
     assert "beneficiary" not in orchestrator._SYSTEM_MESSAGE_TEMPLATE
     assert "beneficiary" not in orchestrator._DEFAULT_AGGREGATE_SUMMARIZATION_PROMPT
     assert "documents" not in orchestrator._SYSTEM_MESSAGE_TEMPLATE
+    assert "documents" not in orchestrator._DEFAULT_AGGREGATE_SUMMARIZATION_PROMPT
     assert (
         "feedback records from community members"
         in orchestrator._SYSTEM_MESSAGE_TEMPLATE
