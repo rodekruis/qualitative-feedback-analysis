@@ -212,6 +212,49 @@ async def test_resolve_database_url_uses_explicit_url():
     )
 
 
+def test_usage_stats_new_shape_has_llm_call_stats_and_operations():
+    """UsageStats carries the new llm_call_stats and operations fields.
+
+    Verifies the domain shape directly (not via DB query) so this test
+    runs without any database. The per-invocation aggregation correctness
+    and the zero-window path against a real Postgres are covered in
+    tests/integration/test_db_postgres.py. (SQLite does not support
+    GROUPING SETS so the DB-backed zero-window path cannot be tested here.)
+    """
+    from decimal import Decimal
+
+    from qfa.domain.models import (
+        DistributionStats,
+        TokenStats,
+        UsageMetrics,
+        UsageStats,
+    )
+
+    zero_metrics = UsageMetrics(
+        total_calls=0,
+        failed_calls=0,
+        total_cost_usd=Decimal("0"),
+        call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0),
+        input_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+        output_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+    )
+    stats = UsageStats(
+        tenant_id="tenant-1",
+        total_calls=0,
+        failed_calls=0,
+        total_cost_usd=Decimal("0"),
+        call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0),
+        input_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+        output_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+        llm_call_stats=zero_metrics,
+        operations=(),
+    )
+    assert stats.tenant_id == "tenant-1"
+    assert stats.total_calls == 0
+    assert stats.llm_call_stats.total_calls == 0
+    assert stats.operations == ()
+
+
 async def test_resolve_database_url_from_password_parts():
     settings = DatabaseSettings(
         host="db.internal",
