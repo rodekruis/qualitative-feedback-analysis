@@ -23,6 +23,19 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 | `GET` | `/v1/usage/all` | Cross-tenant stats (requires `is_superuser=true`) |
 | `GET` | `/v1/health` | Liveness probe; no auth |
 
+## Usage endpoint response shape (issue #91)
+
+Both `GET /v1/usage` and `GET /v1/usage/all` return aggregated stats in two parallel views:
+
+- **Per-invocation** (inherited top-level fields): one count per distinct API call (per-`call_id` aggregation). Multi-LLM-call operations such as `/v1/assign_codes` collapse to a single invocation.
+- **Per-LLM-call** (`llm_call_stats`): one count per LLM call attempt — identical to the pre-#91 behaviour.
+
+`operations` carries a per-operation breakdown of the same data, sorted by `total_cost_usd` desc (ties: operation asc), with empty operations omitted. Every per-operation block also carries its own `llm_call_stats` so clients can compute fan-out (`llm_call_stats.total_calls / total_calls`) per operation.
+
+`total_cost_usd`, `input_tokens.total`, and `output_tokens.total` are numerically unchanged. `total_calls`, `failed_calls`, and every distribution field changed semantics for multi-LLM-call operations — read `llm_call_stats` for the previous semantics.
+
+Full per-field semantics (including the per-invocation `failed_calls` rule and the `asyncio.gather` fan-out caveat on `call_duration`) live in the OpenAPI docs at `GET /docs`.
+
 ## curl examples
 
 A minimal `analyze` call:

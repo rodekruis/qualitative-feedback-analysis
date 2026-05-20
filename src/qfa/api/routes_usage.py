@@ -125,6 +125,39 @@ async def usage(
 ) -> UsageStatsResponse:
     """Usage statistics for the authenticated tenant within an optional window.
 
+    The response carries two views of the same data:
+
+    - **Per-invocation** (inherited top-level fields): each distinct
+      ``call_id`` counts as one. Multi-LLM-call operations (e.g.
+      ``/v1/assign_codes``) collapse to a single entry. ``call_duration``
+      sums the LLM-call durations within one invocation — equal to
+      wall-clock latency for sequential invocations, **overestimating**
+      wall-clock when the orchestrator fans out LLM calls in parallel
+      via ``asyncio.gather``.
+    - **Per-LLM-call** (``llm_call_stats``): each LLM call attempt counts
+      as one. Identical semantics to the pre-#91 behaviour. Use this
+      when you want today's "every row counts as one call" view.
+
+    ``operations`` carries a per-operation breakdown of the same data.
+    Each entry has the same shape (per-invocation top-level +
+    ``llm_call_stats``). The list is sorted by ``total_cost_usd``
+    descending with ties broken by ``operation`` ascending; operations
+    with zero calls in the window are omitted.
+
+    **`failed_calls` semantics (per-invocation top-level):** an invocation
+    counts as failed only when *every* LLM call within its ``call_id``
+    has ``status='error'``. Mixed-status invocations do NOT count.
+    Failed-only invocations are excluded from distributions and from
+    ``total_cost_usd``, but every individual error row is still counted
+    in ``llm_call_stats.failed_calls``.
+
+    **Backwards-compatible numerics:** ``total_cost_usd``,
+    ``input_tokens.total``, and ``output_tokens.total`` are unchanged
+    vs. the pre-#91 implementation. **Numerics that have changed
+    semantics** for multi-LLM-call operations: ``total_calls``,
+    ``failed_calls``, and every ``avg/min/max/p5/p95`` field. Clients
+    needing the previous semantics should read ``llm_call_stats``.
+
     Parameters
     ----------
     tenant : TenantApiKey
@@ -167,6 +200,23 @@ async def usage_all(
     ),
 ) -> AllUsageStatsResponse:
     """Per-tenant and grand-total usage statistics. Requires superuser access.
+
+    Response shape: ``tenants`` is a list of per-tenant ``UsageStats``
+    (sorted alphabetically by ``tenant_id``); ``total`` is the
+    cross-tenant grand total (``tenant_id`` is null). Every entry —
+    per-tenant and grand-total — carries the same dual-view shape as
+    ``GET /v1/usage``: per-invocation top-level fields, an
+    ``llm_call_stats`` block with the per-LLM-call view, and an
+    ``operations`` tuple sorted by cost desc (ties: operation asc,
+    empties omitted).
+
+    Tenants with zero calls in the window are filtered from
+    ``tenants``. The ``total`` entry is always present (zero-filled when
+    the window is empty).
+
+    See ``GET /v1/usage`` for the full per-field semantic contract,
+    including the per-invocation ``failed_calls`` rule and the
+    backwards-compatibility note on which numerics changed.
 
     Parameters
     ----------

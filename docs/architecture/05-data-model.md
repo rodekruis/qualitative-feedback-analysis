@@ -16,7 +16,7 @@ All domain entities live in {py:mod}`qfa.domain.models` and are Pydantic `BaseMo
 | `LLMResponse[T_Response]` | Generic envelope returned from {py:class}`~qfa.domain.ports.LLMPort`'s `complete` method. |
 | {py:class}`~qfa.domain.models.TenantApiKey` | One row in `AUTH_API_KEYS`. |
 | {py:class}`~qfa.domain.models.LLMCallRecord` | One LLM call's worth of tracking data — written by {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter`. |
-| {py:class}`~qfa.domain.models.UsageStats`, {py:class}`~qfa.domain.models.DistributionStats`, {py:class}`~qfa.domain.models.TokenStats` | Aggregate views returned by `/v1/usage`. |
+| {py:class}`~qfa.domain.models.UsageMetrics`, {py:class}`~qfa.domain.models.OperationStats`, {py:class}`~qfa.domain.models.UsageStats`, {py:class}`~qfa.domain.models.DistributionStats`, {py:class}`~qfa.domain.models.TokenStats` | Aggregate views returned by `/v1/usage` and `/v1/usage/all`. `UsageStats` carries per-invocation top-level fields, a per-LLM-call `llm_call_stats` block, and a per-operation `operations` tuple of `OperationStats` (sorted cost desc). `UsageMetrics` is the shared leaf class. |
 
 ## Persistence — `llm_calls`
 
