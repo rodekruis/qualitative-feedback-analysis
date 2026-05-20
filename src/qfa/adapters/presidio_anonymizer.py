@@ -17,6 +17,7 @@ LANGUAGES_AND_ANONYMIZATION_MODEL_PAIRINGS = [
     {"lang_code": "fr", "model_name": "fr_core_news_sm"},
     {"lang_code": "uk", "model_name": "uk_core_news_sm"},
     {"lang_code": "ru", "model_name": "ru_core_news_sm"},
+    {"lang_code": "es", "model_name": "es_core_news_sm"},
     {"lang_code": "xx", "model_name": "xx_ent_wiki_sm"},
 ]
 
