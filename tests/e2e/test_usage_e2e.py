@@ -12,10 +12,8 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from qfa.adapters.db import (
-    SqlAlchemyUsageRepository,
-    create_session_factory,
-)
+from qfa.adapters.db import create_session_factory
+from qfa.adapters.usage_repository import SqlAlchemyUsageRepository
 from qfa.domain.models import CallStatus, LLMCallRecord, Operation
 from tests.e2e.conftest import E2E_API_KEY, E2E_SUPER_KEY, E2E_TENANT_ID
 

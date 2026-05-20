@@ -147,8 +147,11 @@ async def usage(
     **`failed_calls` semantics (per-invocation top-level):** an invocation
     counts as failed only when *every* LLM call within its ``call_id``
     has ``status='error'``. Mixed-status invocations do NOT count.
-    Failed-only invocations are excluded from distributions and from
-    ``total_cost_usd``, but every individual error row is still counted
+    Failed-only invocations are excluded from the per-invocation
+    distributions (so failures cannot skew latency/token quantiles) but
+    their cost is still summed into ``total_cost_usd`` — the grand total
+    reflects what was actually spent, including invocations the provider
+    billed before erroring. Every individual error row is still counted
     in ``llm_call_stats.failed_calls``.
 
     **Backwards-compatible numerics:** ``total_cost_usd``,

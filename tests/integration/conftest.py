@@ -21,10 +21,10 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from qfa.adapters.db import (
-    SqlAlchemyUsageRepository,
     create_session_factory,
     llm_calls,
 )
+from qfa.adapters.usage_repository import SqlAlchemyUsageRepository
 
 DEFAULT_DB_URL = "postgresql+asyncpg://qfa:qfa@localhost:5432/qfa"
 

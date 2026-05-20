@@ -165,7 +165,19 @@ class TestTimeFilterHalfOpen:
 
 
 class TestAlphaPolicy:
-    async def test_cost_and_tokens_scope_to_ok_only(self, pg_repo):
+    async def test_cost_sums_all_rows_tokens_scope_to_ok_only(self, pg_repo):
+        """``total_cost_usd`` sums every row (incl. errors); token totals stay ok-only.
+
+        Why: failed attempts may incur a real cost (provider billed for
+        tokens consumed before the error, partial streaming, etc.). The
+        grand total must reflect what was actually spent, so the SQL
+        must not filter cost by status. Token totals and distributions
+        still gate on ``status='ok'`` so failures cannot skew them.
+
+        The error row is seeded with a non-zero ``cost_usd`` on purpose
+        — the current tracking adapter writes 0, but the SQL must remain
+        correct if a future adapter ever records real cost on error.
+        """
         await pg_repo.record_call(
             _record(
                 cost_usd=Decimal("1.0"),
@@ -176,9 +188,9 @@ class TestAlphaPolicy:
         )
         await pg_repo.record_call(
             _record(
-                cost_usd=Decimal("0"),
-                input_tokens=0,
-                output_tokens=0,
+                cost_usd=Decimal("0.5"),
+                input_tokens=10,
+                output_tokens=5,
                 status=CallStatus.ERROR,
                 error_class="LLMError",
                 model="",
@@ -188,7 +200,7 @@ class TestAlphaPolicy:
         assert stats is not None
         assert stats.total_calls == 2
         assert stats.failed_calls == 1
-        assert stats.total_cost_usd == Decimal("1.0")
+        assert stats.total_cost_usd == Decimal("1.5")
         assert stats.input_tokens.total == 100
         assert stats.output_tokens.total == 50
 
@@ -308,17 +320,28 @@ class TestPerInvocationAggregation:
         assert stats.llm_call_stats.total_calls == 4
         assert stats.llm_call_stats.failed_calls == 3
 
-    async def test_all_failed_excluded_from_distribution(self, pg_repo):
-        """An all-failed invocation's duration is NOT in the per-invocation distribution.
+    async def test_all_failed_excluded_from_distribution_but_summed_in_cost(
+        self, pg_repo
+    ):
+        """All-failed invocation: out of distributions, in ``total_cost_usd``.
 
         Mirrors the per-LLM-call convention "distributions exclude failures,
-        counts include them". Failed rows are still counted in
-        ``llm_call_stats``.
+        counts include them" — and extends it: ``total_cost_usd`` sums every
+        invocation including all-failed ones, so the grand total reflects
+        actual spend even when a provider billed for a request that errored.
+        The all-failed row is seeded with a non-zero ``cost_usd`` to
+        exercise that path (the current tracking adapter writes 0, but the
+        SQL must remain correct if a future adapter records real cost).
         """
         ok = uuid4()
         bad = uuid4()
         await pg_repo.record_call(
-            _record(call_id=ok, status=CallStatus.OK, call_duration_ms=500)
+            _record(
+                call_id=ok,
+                status=CallStatus.OK,
+                call_duration_ms=500,
+                cost_usd=Decimal("1.0"),
+            )
         )
         await pg_repo.record_call(
             _record(
@@ -326,7 +349,7 @@ class TestPerInvocationAggregation:
                 status=CallStatus.ERROR,
                 error_class="LLMError",
                 call_duration_ms=9999,
-                cost_usd=Decimal("0"),
+                cost_usd=Decimal("0.25"),
                 input_tokens=0,
                 output_tokens=0,
                 model="",
@@ -342,6 +365,9 @@ class TestPerInvocationAggregation:
         # But the per-LLM-call view still counts it.
         assert stats.llm_call_stats.total_calls == 2
         assert stats.llm_call_stats.failed_calls == 1
+        # Cost sums OK + all-failed (1.0 + 0.25) at both views.
+        assert stats.total_cost_usd == Decimal("1.25")
+        assert stats.llm_call_stats.total_cost_usd == Decimal("1.25")
 
 
 class TestOperationsBreakdown:

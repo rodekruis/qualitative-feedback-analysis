@@ -381,27 +381,8 @@ class UsageMetrics(BaseModel):
     ``UsageStats`` and ``OperationStats``, and as the base class for the
     per-invocation totals on ``UsageStats`` / ``OperationStats``.
 
-    Attributes
-    ----------
-    total_calls : int
-        Count of records in scope (LLM-call attempts for ``llm_call_stats``;
-        distinct ``call_id`` invocations for the per-invocation view).
-    failed_calls : int
-        Count of failed records (per-LLM-call: ``status='error'`` rows;
-        per-invocation: invocations where *every* row is ``status='error'``).
-    total_cost_usd : Decimal
-        Sum of ``cost_usd`` over OK records (numerically identical between
-        the two views — failed rows already store 0).
-    call_duration : DistributionStats
-        Distribution of durations in milliseconds. Per-invocation view
-        sums ``call_duration_ms`` across the rows of one ``call_id``
-        (failed attempts contribute their real duration). Distribution
-        excludes all-failed invocations.
-    input_tokens : TokenStats
-        Distribution + total of input tokens. ``total`` is identical
-        across both views; distribution scope differs.
-    output_tokens : TokenStats
-        Distribution + total of output tokens. Same parity as ``input_tokens``.
+    Per-field semantics are in the ``Field(description=...)`` below and
+    surface in the OpenAPI schema at ``GET /docs``.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -423,7 +404,12 @@ class UsageMetrics(BaseModel):
     )
     total_cost_usd: Decimal = Field(
         default=Decimal("0"),
-        description="Sum of ``cost_usd``. Identical across both views.",
+        description=(
+            "Sum of ``cost_usd`` across every row in scope — including "
+            "failed attempts that incurred a real cost. Identical between "
+            "the per-invocation view and ``llm_call_stats`` (the same rows "
+            "are summed, just regrouped)."
+        ),
     )
     call_duration: DistributionStats = Field(
         description=(
@@ -453,14 +439,6 @@ class OperationStats(UsageMetrics):
     semantics) and adds the ``operation`` discriminator plus a parallel
     ``llm_call_stats`` block giving the per-LLM-call view for the same
     operation.
-
-    Attributes
-    ----------
-    operation : Operation
-        The orchestrator operation this block aggregates.
-    llm_call_stats : UsageMetrics
-        Per-LLM-call view of the same window/operation — i.e. ``total_calls``
-        is raw LLM call attempts, ``call_duration`` is provider latency.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -485,18 +463,6 @@ class UsageStats(UsageMetrics):
     adds the per-LLM-call view, the per-operation breakdown, and the
     optional ``tenant_id`` (``None`` is the grand-total sentinel used by
     ``/v1/usage/all``).
-
-    Attributes
-    ----------
-    tenant_id : str | None
-        Tenant identifier, or ``None`` for the grand-total entry.
-    llm_call_stats : UsageMetrics
-        Per-LLM-call view across the same window/tenant. Use this when
-        you need today's "every row counts as one call" semantics.
-    operations : tuple[OperationStats, ...]
-        Per-operation breakdown, sorted by ``total_cost_usd`` desc with
-        ties broken by ``operation.value`` asc. Operations with zero
-        calls in the window are omitted.
     """
 
     model_config = ConfigDict(frozen=True)

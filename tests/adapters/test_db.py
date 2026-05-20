@@ -16,12 +16,12 @@ import sqlalchemy as sa
 from pydantic import SecretStr
 
 from qfa.adapters.db import (
-    SqlAlchemyUsageRepository,
     create_session_factory,
     llm_calls,
     metadata,
     resolve_database_url,
 )
+from qfa.adapters.usage_repository import SqlAlchemyUsageRepository
 from qfa.domain.models import CallStatus, LLMCallRecord, Operation
 from qfa.settings import DatabaseSettings
 
@@ -186,7 +186,7 @@ async def test_translate_db_errors_maps_sqlalchemy_exceptions_to_domain():
     """
     from sqlalchemy.exc import InterfaceError, OperationalError
 
-    from qfa.adapters.db import _translate_db_errors
+    from qfa.adapters.usage_repository import _translate_db_errors
     from qfa.domain.errors import UsageRepositoryUnavailableError
 
     with pytest.raises(UsageRepositoryUnavailableError):
