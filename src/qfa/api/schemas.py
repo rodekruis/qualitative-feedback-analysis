@@ -328,6 +328,62 @@ class ApiCodingLevels(BaseModel):
         return self
 
 
+class ApiDetectSensitiveRequest(BaseModel):
+    """Request body for the ``POST /v1/detect-sensitive`` endpoint.
+
+    Attributes
+    ----------
+        feedback_items : list[ApiFeedbackRecordInput]
+    """
+
+    feedback_items: list[ApiFeedbackRecordInput] = Field(
+        min_length=1,
+        description="List of feedback items to check for sensitive content.",
+    )
+
+    anonymize: bool = Field(
+        default=True,
+        description="If true, the service will anonymize feedback text before sending it to the LLM. Disable only if you are sure that no personally identifiable information (PII) is present in the input.",
+    )
+
+
+class ApiFeedbackItemSensitivityRating(BaseModel):
+    """Represents the sensitivity rating for a single feedback item.
+
+    Attributes
+    ----------
+    id : str
+        Identifier of the source feedback item.
+    is_sensitive : bool
+        Indicates whether the feedback item is considered sensitive.
+    explanation : str
+        Explanation for the sensitivity rating.
+    sensitivity_types : list[str]
+        Sensitivity categories detected for the feedback item.
+    """
+
+    id: str = Field(description="Identifier of the source feedback item.")
+    is_sensitive: bool = Field(
+        description="Indicates whether the feedback item is considered sensitive."
+    )
+    explanation: str = Field(description="Explanation for the sensitivity rating.")
+    sensitivity_types: list[str] = Field(
+        description="Sensitivity categories detected for the feedback item."
+    )
+
+
+class ApiDetectSensitiveResponse(BaseModel):
+    """Response body for the ``POST /v1/detect-sensitive`` endpoint.
+
+    Attributes
+    ----------
+    ratings : list[ApiFeedbackItemSensitivityRating]
+        Sensitivity rating for each submitted feedback item.
+    """
+
+    ratings: list[ApiFeedbackItemSensitivityRating]
+
+
 class ApiFeedbackRecord(BaseModel):
     """Feedback record: ``id`` plus body text (reusable across endpoints)."""
 

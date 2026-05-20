@@ -17,10 +17,12 @@ from qfa.domain.models import (
     LLMCallRecord,
     LLMResponse,
     Operation,
+    SensitivityAnalysisResultModelList,
     TenantApiKey,
     TokenStats,
     UsageStats,
 )
+from qfa.domain.sensitivity_types import SensitivityType
 
 # --- FeedbackRecordModel ---
 
@@ -201,6 +203,29 @@ class TestOperationEnum:
         assert Operation.SUMMARIZE_AGGREGATE == "summarize_aggregate"
         assert Operation.ASSIGN_CODES == "assign_codes"
         assert Operation.UNKNOWN == "unknown"
+
+
+class TestSensitivityModels:
+    def test_sensitive_result_parses_enum_codes_from_json(self):
+        result = SensitivityAnalysisResultModelList.model_validate_json(
+            """
+            {
+                "results": [
+                    {
+                        "feedback_record_id": "doc-1",
+                        "sensitivity_types": ["CORRUPTION"],
+                        "explanation": "Contains a bribery allegation."
+                    }
+                ]
+            }
+            """
+        )
+
+        assert result.results[0].sensitivity_types == (SensitivityType.CORRUPTION,)
+        assert result.results[0].explanation == "Contains a bribery allegation."
+
+    def test_sensitivity_enum_uses_short_stable_values(self):
+        assert SensitivityType.CORRUPTION.value == "CORRUPTION"
 
 
 class TestCallStatusEnum:
