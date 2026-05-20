@@ -30,6 +30,10 @@ def upgrade() -> None:
             sa.Boolean,
             nullable=False,
             server_default=sa.text("false"),
+            comment=(
+                "Allows tenant-level control over whether superuser keys are permitted. "
+                "Enforced in the application layer since it's not a simple FK constraint."
+            ),
         ),
         sa.Column(
             "created_at",
