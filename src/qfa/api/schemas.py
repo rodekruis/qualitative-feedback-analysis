@@ -433,6 +433,89 @@ class ApiAssignCodesResponse(BaseModel):
     coded_feedback_records: list[ApiCodedFeedbackRecord]
 
 
+class ApiAddTenantRequest(BaseModel):
+    """Request body for ``POST /v1/admin/tenants``."""
+
+    tenant_name: str = Field(
+        min_length=1,
+        max_length=255,
+        description="Display name for the tenant to create.",
+    )
+    allows_superusers: bool = Field(
+        default=False,
+        description="Whether this tenant is allowed to own superuser keys.",
+    )
+
+
+class ApiAddTenantResponse(BaseModel):
+    """Response body for ``POST /v1/admin/tenants``."""
+
+    tenant_id: str = Field(description="Unique identifier of the created tenant.")
+
+
+class ApiTenant(BaseModel):
+    """A single tenant metadata item."""
+
+    tenant_id: str = Field(description="Unique identifier for the tenant.")
+    name: str = Field(description="Display name for the tenant.")
+    allows_superusers: bool = Field(
+        description="Whether this tenant is allowed to own superuser keys.",
+    )
+
+
+class ApiTenantsResponse(BaseModel):
+    """Response body for ``GET /v1/admin/tenants``."""
+
+    tenants: list[ApiTenant] = Field(description="Tenant metadata records.")
+
+
+class ApiAddKeyRequest(BaseModel):
+    """Request body for ``POST /v1/admin/keys``."""
+
+    key_name: str = Field(
+        min_length=1,
+        max_length=255,
+        description="Human-readable name for the API key.",
+    )
+    tenant_id: str = Field(
+        min_length=1,
+        max_length=255,
+        description="Tenant identifier this key should belong to.",
+    )
+    is_superuser: bool = Field(
+        default=False,
+        description="Whether this key should have superuser privileges.",
+    )
+
+
+class ApiAddKeyResponse(BaseModel):
+    """Response body for ``POST /v1/admin/keys``."""
+
+    key_id: str = Field(description="Unique identifier of the created API key.")
+    api_key: str = Field(
+        description="Plain API key. Shown once — store it now, it cannot be retrieved again.",
+    )
+
+
+class ApiAuthKey(BaseModel):
+    """A single API key metadata item."""
+
+    key_id: str = Field(description="Unique identifier for the API key.")
+    name: str = Field(description="Human-readable key name.")
+    tenant_id: str = Field(description="Tenant identifier for this key.")
+    is_superuser: bool = Field(
+        description="Whether the key has superuser privileges.",
+    )
+
+
+class ApiAuthKeysResponse(BaseModel):
+    """Response body for ``GET /v1/admin/keys``."""
+
+    auth_keys: list[ApiAuthKey] = Field(
+        description="API key metadata records filtered by tenant when requested.",
+    )
+
+
 class ApiHealthResponse(BaseModel):
     """Response body for the ``GET /v1/health`` endpoint."""
 

@@ -58,7 +58,12 @@ def _summarize_metadata_to_domain(
     }
 
 
-@router.post("/v1/analyze", response_model=ApiAnalyzeResponse, status_code=200)
+@router.post(
+    "/v1/analyze",
+    response_model=ApiAnalyzeResponse,
+    status_code=200,
+    tags=["Inference"],
+)
 async def analyze(
     body: ApiAnalyzeRequest,
     request: Request,
@@ -109,7 +114,12 @@ async def analyze(
     )
 
 
-@router.post("/v1/summarize", response_model=ApiSummarizeResponse, status_code=200)
+@router.post(
+    "/v1/summarize",
+    response_model=ApiSummarizeResponse,
+    status_code=200,
+    tags=["Inference"],
+)
 async def summarize(
     body: ApiSummarizeRequest,
     request: Request,
@@ -172,7 +182,12 @@ async def summarize(
     )
 
 
-@router.post("/v1/assign_codes", response_model=ApiAssignCodesResponse, status_code=200)
+@router.post(
+    "/v1/assign_codes",
+    response_model=ApiAssignCodesResponse,
+    status_code=200,
+    tags=["Inference"],
+)
 async def assign_codes(
     body: ApiAssignCodesRequest,
     tenant: TenantApiKey = Depends(authenticate_request),
@@ -224,6 +239,7 @@ async def assign_codes(
     "/v1/summarize-aggregate",
     response_model=ApiSummarizeAggregateResponse,
     status_code=200,
+    tags=["Inference"],
 )
 async def summarize_aggregate(
     body: ApiSummarizeRequest,
@@ -343,7 +359,9 @@ async def detect_sensitive(
     )
 
 
-@router.get("/v1/health", response_model=ApiHealthResponse, status_code=200)
+@router.get(
+    "/v1/health", response_model=ApiHealthResponse, status_code=200, tags=["Default"]
+)
 async def health() -> ApiHealthResponse:
     """Return service health status.
 

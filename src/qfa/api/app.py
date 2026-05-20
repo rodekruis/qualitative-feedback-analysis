@@ -17,31 +17,39 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 import qfa
 from qfa.adapters.db import (
+    SQLAlchemyAuthAdapter,
     SqlAlchemyUsageRepository,
     create_async_engine_from_settings,
     create_session_factory,
 )
+from qfa.adapters.env_auth import EnvironmentAuthLookupAdapter
 from qfa.adapters.llm_client import LiteLLMClient
 from qfa.adapters.presidio_anonymizer import PresidioAnonymizer
 from qfa.adapters.tracking_llm import TrackingLLMAdapter
 from qfa.api.routes import router
+from qfa.api.routes_admin import router as auth_router
 from qfa.api.routes_usage import router as usage_router
 from qfa.api.schemas import (
     ApiErrorDetail,
     ApiErrorFieldDetail,
     ApiErrorResponse,
 )
-from qfa.auth import validate_api_key
 from qfa.domain.errors import (
     AnalysisError,
     AnalysisTimeoutError,
     AuthenticationError,
     AuthorizationError,
+    DomainError,
     FeedbackTooLargeError,
+    KeyAlreadyExistsError,
+    KeyNotFoundError,
     LLMError,
+    TenantDoesNotAllowSuperUsersError,
+    TenantNotFoundError,
     UsageRepositoryUnavailableError,
 )
 from qfa.domain.ports import LLMPort
+from qfa.services.auth_orchestrator import AuthOrchestrator
 from qfa.services.orchestrator import Orchestrator
 from qfa.settings import AppSettings, LLMSettings
 from qfa.utils import setup_logging
@@ -160,7 +168,7 @@ class RequestLoggingMiddleware:
         finally:
             duration_ms = (datetime.now(UTC) - start).total_seconds() * 1000
 
-            tenant_name = self._resolve_tenant(scope)
+            tenant_name = await self._resolve_tenant(scope)
 
             logger.info(
                 "%s %s status=%s duration=%.0fms request_id=%s tenant=%s",
@@ -173,7 +181,7 @@ class RequestLoggingMiddleware:
             )
 
     @staticmethod
-    def _resolve_tenant(scope: Scope) -> str:
+    async def _resolve_tenant(scope: Scope) -> str:
         """Extract tenant name from the Authorization header if possible.
 
         Never logs the API key itself. Returns ``"anonymous"`` when the
@@ -195,12 +203,8 @@ class RequestLoggingMiddleware:
         if app is None:
             return "anonymous"
 
-        api_keys = getattr(getattr(app, "state", None), "api_keys", None)
-        if not api_keys:
-            return "anonymous"
-
         try:
-            tenant = validate_api_key(token, api_keys)
+            tenant = await app.state.auth_orchestrator.validate_api_key(token)
             return tenant.name
         except Exception:
             return "invalid"
@@ -274,6 +278,30 @@ async def _handle_authorization_error(
         )
     )
     return JSONResponse(status_code=403, content=body.model_dump())
+
+
+async def _handle_conflict_error(request: Request, exc: DomainError) -> JSONResponse:
+    """Handle conflict domain errors as HTTP 409 responses."""
+    body = ApiErrorResponse(
+        error=ApiErrorDetail(
+            code="conflict",
+            message=str(exc),
+            request_id=_get_request_id(request),
+        )
+    )
+    return JSONResponse(status_code=409, content=body.model_dump())
+
+
+async def _handle_not_found_error(request: Request, exc: DomainError) -> JSONResponse:
+    """Handle missing-resource domain errors as HTTP 404 responses."""
+    body = ApiErrorResponse(
+        error=ApiErrorDetail(
+            code="not_found",
+            message=str(exc),
+            request_id=_get_request_id(request),
+        )
+    )
+    return JSONResponse(status_code=404, content=body.model_dump())
 
 
 async def _handle_validation_error(
@@ -627,6 +655,7 @@ def _make_lifespan(llm_factory: LLMFactory):
         engine = create_async_engine_from_settings(settings.db)
         session_factory = create_session_factory(engine)
         usage_repo = SqlAlchemyUsageRepository(session_factory)
+        auth_adapter = SQLAlchemyAuthAdapter(session_factory)
         llm_for_orch: LLMPort = TrackingLLMAdapter(
             inner=base_llm, usage_repo=usage_repo
         )
@@ -640,8 +669,14 @@ def _make_lifespan(llm_factory: LLMFactory):
             max_total_tokens=settings.llm.max_total_tokens,
         )
 
+        app.state.auth_orchestrator = AuthOrchestrator(
+            auth_lookup_ports=[
+                EnvironmentAuthLookupAdapter(api_keys=api_keys),
+                auth_adapter,
+            ],
+            auth_management_port=auth_adapter,
+        )
         app.state.orchestrator = orchestrator
-        app.state.api_keys = api_keys
         app.state.settings = settings
         app.state.usage_repo = usage_repo
 
@@ -662,6 +697,13 @@ def register_exception_handlers(app: FastAPI) -> None:
     """
     app.add_exception_handler(AuthorizationError, _handle_authorization_error)  # ty: ignore[invalid-argument-type]
     app.add_exception_handler(AuthenticationError, _handle_authentication_error)  # ty: ignore[invalid-argument-type]
+    app.add_exception_handler(KeyAlreadyExistsError, _handle_conflict_error)  # ty: ignore[invalid-argument-type]
+    app.add_exception_handler(KeyNotFoundError, _handle_not_found_error)  # ty: ignore[invalid-argument-type]
+    app.add_exception_handler(TenantNotFoundError, _handle_not_found_error)  # ty: ignore[invalid-argument-type]
+    app.add_exception_handler(
+        TenantDoesNotAllowSuperUsersError,
+        _handle_authorization_error,  # ty: ignore[invalid-argument-type]
+    )
     app.add_exception_handler(RequestValidationError, _handle_validation_error)  # ty: ignore[invalid-argument-type]
     app.add_exception_handler(FeedbackTooLargeError, _handle_feedback_too_large)  # ty: ignore[invalid-argument-type]
     app.add_exception_handler(AnalysisTimeoutError, _handle_analysis_timeout)  # ty: ignore[invalid-argument-type]
@@ -693,14 +735,36 @@ def create_app(*, llm_factory: LLMFactory | None = None) -> FastAPI:
         The fully configured application instance.
     """
     factory: LLMFactory = llm_factory if llm_factory is not None else build_llm_client
+
+    tags_metadata = [
+        {
+            "name": "Default",
+            "description": "System health and status endpoints",
+        },
+        {
+            "name": "Inference",
+            "description": "Analyze, summarize, and assign codes to feedback records",
+        },
+        {
+            "name": "User Management",
+            "description": "Manage tenants and API keys",
+        },
+        {
+            "name": "Usage Tracking",
+            "description": "View usage statistics and billing information",
+        },
+    ]
+
     app = FastAPI(
         title="Feedback Analysis Backend",
         lifespan=_make_lifespan(factory),
         version=qfa.__version__,
+        openapi_tags=tags_metadata,
     )
     app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(RequestIdMiddleware)
     app.include_router(router)
+    app.include_router(auth_router)
     app.include_router(usage_router)
     register_exception_handlers(app)
     return app

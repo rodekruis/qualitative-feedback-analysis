@@ -181,7 +181,8 @@ class TestAuthSettings:
         settings = AuthSettings()
         assert len(settings.api_keys) == 1
         assert settings.api_keys[0].name == "prod"
-        assert settings.api_keys[0].key.get_secret_value() == "sk-abc123"
+        assert settings.api_keys[0].key is None
+        assert settings.api_keys[0].matches_key("sk-abc123") is True
         assert settings.api_keys[0].tenant_id == "tenant-1"
 
     def test_requires_api_keys(self, monkeypatch):

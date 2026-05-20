@@ -180,3 +180,4 @@ config
 **/.memsearch/
 **/.terraform.lock.hcl
 /.import_linter_cache/
+*.db

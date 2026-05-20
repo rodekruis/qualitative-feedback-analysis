@@ -8,11 +8,13 @@ import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 
+from qfa.adapters.env_auth import EnvironmentAuthLookupAdapter
 from qfa.api.app import (
     RequestIdMiddleware,
     register_exception_handlers,
 )
 from qfa.api.routes import router
+from qfa.api.routes_admin import router as auth_router
 from qfa.api.routes_usage import router as usage_router
 from qfa.domain.models import (
     AggregateSummaryResultModel,
@@ -24,17 +26,56 @@ from qfa.domain.models import (
     CodingAssignmentResultModel,
     DistributionStats,
     FeedbackRecordSummaryModel,
+    KeyCreationResponse,
     SensitivityAnalysisRequestModel,
     SensitivityAnalysisResultModel,
     SensitivityAnalysisResultModelList,
     SummaryRequestModel,
     SummaryResultModel,
     TenantApiKey,
+    TenantInfo,
     TokenStats,
     UsageStats,
 )
 from qfa.domain.ports import UsageRepositoryPort
 from qfa.domain.sensitivity_types import SensitivityType
+from qfa.services.auth_orchestrator import AuthOrchestrator
+
+
+class FakeAuthManagementPort:
+    """Fake auth-management adapter for API tests."""
+
+    def __init__(self) -> None:
+        self._tenant_id_counter = 0
+
+    async def add_tenant(
+        self,
+        tenant_name: str,
+        allows_superusers: bool = False,
+    ) -> str:
+        self._tenant_id_counter += 1
+        return f"tenant-created-{self._tenant_id_counter}"
+
+    async def delete_tenant(self, tenant_id: str) -> None:
+        return None
+
+    async def add_key(
+        self,
+        key_name: str,
+        tenant_id: str,
+        is_superuser: bool = False,
+    ) -> KeyCreationResponse:
+        return KeyCreationResponse(
+            key_id="generated-key-id",
+            api_key="generated-api-key",
+        )
+
+    async def delete_key(self, key_id: str) -> None:
+        return None
+
+    async def get_tenants(self) -> list[TenantInfo]:
+        return []
+
 
 FAKE_API_KEY = "test-key-abc123"
 FAKE_SUPERUSER_KEY = "superuser-key-xyz789"
@@ -201,8 +242,18 @@ def fake_api_keys():
             key_id=f"{FAKE_TENANT_ID}-0",
             name=FAKE_API_KEY_NAME,
             key=FAKE_API_KEY,  # type:ignore [ty:invalid-argument-type]
+            hashed_key=None,  # type:ignore [ty:invalid-argument-type]
             tenant_id=FAKE_TENANT_ID,
-        )
+            is_superuser=False,
+        ),
+        TenantApiKey(
+            key_id=f"{FAKE_TENANT_ID}-1",
+            name="Superuser 2",
+            key=FAKE_SUPERUSER_KEY,  # type:ignore [ty:invalid-argument-type]
+            hashed_key=None,  # type:ignore [ty:invalid-argument-type]
+            tenant_id=FAKE_TENANT_ID,
+            is_superuser=True,
+        ),
     ]
 
 
@@ -212,15 +263,24 @@ def fake_orchestrator():
 
 
 @pytest.fixture
-def test_app(fake_orchestrator, fake_api_keys):
+def fake_auth_orchestrator(fake_api_keys):
+    return AuthOrchestrator(
+        auth_lookup_ports=[EnvironmentAuthLookupAdapter(api_keys=fake_api_keys)],
+        auth_management_port=FakeAuthManagementPort(),
+    )
+
+
+@pytest.fixture
+def test_app(fake_orchestrator, fake_auth_orchestrator):
     app = FastAPI(title="Test App")
     app.add_middleware(RequestIdMiddleware)
     app.include_router(router)
+    app.include_router(auth_router)
     app.include_router(usage_router)
     register_exception_handlers(app)
 
     app.state.orchestrator = fake_orchestrator
-    app.state.api_keys = fake_api_keys
+    app.state.auth_orchestrator = fake_auth_orchestrator
     app.state.usage_repo = FakeUsageRepository()
 
     return app

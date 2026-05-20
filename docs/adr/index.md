@@ -21,6 +21,7 @@ to them, the options considered, and the reasoning behind the chosen approach.
 | [010](010-shared-container-registry.md) | Shared container registry across environments | Accepted |
 | [011](011-drop-orchestrator-port.md) | Drop swappable-orchestrator requirement and remove OrchestratorPort | Accepted (supersedes [008](obsolete/008-keep-orchestrator-port.md)) |
 | [012](012-postgres-mi-as-admin.md) | App Service managed identity as PostgreSQL Entra admin | Accepted |
+| [013](013-keys-in-db-and-environment-vars.md) | Store API keys in both the database and environment variables | Accepted |
 
 ## Obsolete
 
@@ -42,5 +43,6 @@ to them, the options considered, and the reasoning behind the chosen approach.
 010-shared-container-registry
 011-drop-orchestrator-port
 012-postgres-mi-as-admin
+013-keys-in-db-and-environment-vars
 obsolete/008-keep-orchestrator-port
 ```

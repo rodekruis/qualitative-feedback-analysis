@@ -7,10 +7,10 @@ from uuid import UUID
 from fastapi import Depends, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from qfa.auth import validate_api_key
 from qfa.domain.errors import AuthenticationError, AuthorizationError
 from qfa.domain.models import CallContext, Operation, TenantApiKey
 from qfa.domain.ports import UsageRepositoryPort
+from qfa.services.auth_orchestrator import AuthOrchestrator
 from qfa.services.call_context import call_scope
 from qfa.services.orchestrator import Orchestrator
 
@@ -29,6 +29,22 @@ def get_orchestrator(request: Request) -> Orchestrator:
         The orchestrator service instance.
     """
     return request.app.state.orchestrator
+
+
+def get_auth_orchestrator(request: Request) -> AuthOrchestrator:
+    """Return the auth orchestrator from app state.
+
+    Parameters
+    ----------
+    request : Request
+        The incoming HTTP request.
+
+    Returns
+    -------
+    AuthOrchestrator
+        The auth orchestrator service instance.
+    """
+    return request.app.state.auth_orchestrator
 
 
 def get_usage_repo(request: Request) -> UsageRepositoryPort:
@@ -77,7 +93,9 @@ async def authenticate_request(
         raise AuthenticationError(error_message)
 
     try:
-        return validate_api_key(credentials.credentials, request.app.state.api_keys)
+        return await request.app.state.auth_orchestrator.validate_api_key(
+            credentials.credentials
+        )
     except AuthenticationError:
         raise AuthenticationError(error_message)
 
