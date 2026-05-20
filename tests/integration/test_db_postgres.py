@@ -194,17 +194,220 @@ class TestAlphaPolicy:
 
 
 class TestGetAllUsageStats:
-    async def test_per_tenant_alphabetical_with_grand_total(self, pg_repo):
-        await pg_repo.record_call(_record(tenant_id="b-tenant"))
-        await pg_repo.record_call(_record(tenant_id="a-tenant"))
-        await pg_repo.record_call(_record(tenant_id="a-tenant"))
+    async def test_per_tenant_plus_grand_total_with_operations(self, pg_repo):
+        """get_all_usage_stats returns per-tenant + grand-total entries with operations.
+
+        Two tenants, overlapping operations. Verifies:
+        - tenants returned alphabetically by tenant_id
+        - grand-total entry appended last (tenant_id is None)
+        - grand-total has operations rolled up across tenants
+        - per-tenant operations are isolated to that tenant
+        """
+        await pg_repo.record_call(
+            _record(tenant_id="a-tenant", operation=Operation.ANALYZE)
+        )
+        await pg_repo.record_call(
+            _record(tenant_id="a-tenant", operation=Operation.SUMMARIZE)
+        )
+        await pg_repo.record_call(
+            _record(tenant_id="b-tenant", operation=Operation.ANALYZE)
+        )
 
         all_stats = await pg_repo.get_all_usage_stats()
         ids = [s.tenant_id for s in all_stats]
         assert ids == ["a-tenant", "b-tenant", None]
 
+        a = next(s for s in all_stats if s.tenant_id == "a-tenant")
+        assert {op.operation for op in a.operations} == {
+            Operation.ANALYZE,
+            Operation.SUMMARIZE,
+        }
+
+        b = next(s for s in all_stats if s.tenant_id == "b-tenant")
+        assert {op.operation for op in b.operations} == {Operation.ANALYZE}
+
         grand = next(s for s in all_stats if s.tenant_id is None)
         assert grand.total_calls == 3
+        # Grand total carries operations rolled up across tenants.
+        assert {op.operation for op in grand.operations} == {
+            Operation.ANALYZE,
+            Operation.SUMMARIZE,
+        }
+        # analyze appears in both tenants ⇒ grand total operation total_calls == 2
+        analyze = next(
+            op for op in grand.operations if op.operation == Operation.ANALYZE
+        )
+        assert analyze.total_calls == 2
+
+
+class TestPerInvocationAggregation:
+    async def test_inherited_metrics_group_by_call_id(self, pg_repo):
+        """One call_id with 3 LLM rows aggregates to one invocation.
+
+        Inherited ``call_duration`` sums to 900ms (single point ⇒ avg=min=max=900);
+        ``llm_call_stats`` keeps the three individual rows {200, 300, 400}.
+        This is the headline behaviour change vs. the previous schema —
+        directly validates that ``call_id`` is the per-invocation grouping key.
+        """
+        shared = uuid4()
+        await pg_repo.record_call(_record(call_id=shared, call_duration_ms=200))
+        await pg_repo.record_call(_record(call_id=shared, call_duration_ms=300))
+        await pg_repo.record_call(_record(call_id=shared, call_duration_ms=400))
+
+        stats = await pg_repo.get_usage_stats("t1")
+
+        # Per-invocation: one invocation with summed duration.
+        assert stats.total_calls == 1
+        assert stats.call_duration.avg == pytest.approx(900.0)
+        assert stats.call_duration.min == 900
+        assert stats.call_duration.max == 900
+
+        # Per-LLM-call: three rows, with their own distribution.
+        assert stats.llm_call_stats.total_calls == 3
+        assert stats.llm_call_stats.call_duration.min == 200
+        assert stats.llm_call_stats.call_duration.max == 400
+
+    async def test_failed_calls_per_invocation_semantics(self, pg_repo):
+        """failed_calls (per-invocation) counts only all-failed call_ids.
+
+        call_id A: 1 ok + 1 error ⇒ NOT counted in per-invocation failed_calls
+        (mixed); per-LLM-call failed_calls still counts the one error row.
+        call_id B: 2 errors ⇒ counted as ONE failed invocation.
+        """
+        a = uuid4()
+        b = uuid4()
+        await pg_repo.record_call(_record(call_id=a, status=CallStatus.OK))
+        await pg_repo.record_call(
+            _record(
+                call_id=a,
+                status=CallStatus.ERROR,
+                error_class="LLMError",
+                cost_usd=Decimal("0"),
+                input_tokens=0,
+                output_tokens=0,
+                model="",
+            )
+        )
+        for _ in range(2):
+            await pg_repo.record_call(
+                _record(
+                    call_id=b,
+                    status=CallStatus.ERROR,
+                    error_class="LLMError",
+                    cost_usd=Decimal("0"),
+                    input_tokens=0,
+                    output_tokens=0,
+                    model="",
+                )
+            )
+
+        stats = await pg_repo.get_usage_stats("t1")
+
+        assert stats.total_calls == 2  # A and B
+        assert stats.failed_calls == 1  # only B is all-failed
+        assert stats.llm_call_stats.total_calls == 4
+        assert stats.llm_call_stats.failed_calls == 3
+
+    async def test_all_failed_excluded_from_distribution(self, pg_repo):
+        """An all-failed invocation's duration is NOT in the per-invocation distribution.
+
+        Mirrors the per-LLM-call convention "distributions exclude failures,
+        counts include them". Failed rows are still counted in
+        ``llm_call_stats``.
+        """
+        ok = uuid4()
+        bad = uuid4()
+        await pg_repo.record_call(
+            _record(call_id=ok, status=CallStatus.OK, call_duration_ms=500)
+        )
+        await pg_repo.record_call(
+            _record(
+                call_id=bad,
+                status=CallStatus.ERROR,
+                error_class="LLMError",
+                call_duration_ms=9999,
+                cost_usd=Decimal("0"),
+                input_tokens=0,
+                output_tokens=0,
+                model="",
+            )
+        )
+
+        stats = await pg_repo.get_usage_stats("t1")
+
+        assert stats.total_calls == 2
+        assert stats.failed_calls == 1
+        # The 9999ms all-failed row must not appear in the distribution.
+        assert stats.call_duration.max == 500
+        # But the per-LLM-call view still counts it.
+        assert stats.llm_call_stats.total_calls == 2
+        assert stats.llm_call_stats.failed_calls == 1
+
+
+class TestOperationsBreakdown:
+    async def test_operations_sorted_by_cost_desc_then_name(self, pg_repo):
+        """``operations`` is sorted by total_cost_usd desc; ties by operation asc.
+
+        Seeded so summarize > analyze on cost, and analyze comes before
+        summarize alphabetically — the cost-desc primary key wins. A
+        third (assign_codes) ties summarize on cost to exercise the
+        alphabetical tie-break.
+        """
+        await pg_repo.record_call(
+            _record(operation=Operation.ANALYZE, cost_usd=Decimal("0.1"))
+        )
+        await pg_repo.record_call(
+            _record(operation=Operation.SUMMARIZE, cost_usd=Decimal("0.5"))
+        )
+        await pg_repo.record_call(
+            _record(operation=Operation.ASSIGN_CODES, cost_usd=Decimal("0.5"))
+        )
+
+        stats = await pg_repo.get_usage_stats("t1")
+
+        # Expected order: assign_codes (0.5), summarize (0.5), analyze (0.1)
+        ops = [op.operation for op in stats.operations]
+        assert ops == [
+            Operation.ASSIGN_CODES,
+            Operation.SUMMARIZE,
+            Operation.ANALYZE,
+        ]
+
+    async def test_empty_operations_omitted(self, pg_repo):
+        """Operations with zero calls in the window are omitted from ``operations``.
+
+        Tenant called only ``analyze`` ⇒ ``operations`` has length 1 and
+        ``summarize`` / ``assign_codes`` / ``summarize_aggregate`` are absent.
+        Mirrors the precedent in db.py:391 that filters zero-call tenants.
+        """
+        await pg_repo.record_call(_record(operation=Operation.ANALYZE))
+
+        stats = await pg_repo.get_usage_stats("t1")
+
+        assert len(stats.operations) == 1
+        assert stats.operations[0].operation == Operation.ANALYZE
+
+    async def test_per_operation_llm_call_stats_populated(self, pg_repo):
+        """Each OperationStats carries its own ``llm_call_stats`` block.
+
+        Multi-LLM-call invocation under one operation: one invocation but
+        three LLM rows. Per-operation ``total_calls == 1``, per-operation
+        ``llm_call_stats.total_calls == 3``. Lets clients compute fan-out
+        per operation.
+        """
+        shared = uuid4()
+        for _ in range(3):
+            await pg_repo.record_call(
+                _record(operation=Operation.ASSIGN_CODES, call_id=shared)
+            )
+
+        stats = await pg_repo.get_usage_stats("t1")
+
+        assert len(stats.operations) == 1
+        op = stats.operations[0]
+        assert op.operation == Operation.ASSIGN_CODES
+        assert op.total_calls == 1
+        assert op.llm_call_stats.total_calls == 3
 
 
 class TestIndexUsage:
