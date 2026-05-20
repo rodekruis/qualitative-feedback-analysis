@@ -46,7 +46,7 @@ The tracking decorator is the only place hex's "stack adapters at the compositio
 | `analyze` | `POST /v1/analyze` | One LLM call. Free-text summary of themes across submitted records. |
 | `summarize` | `POST /v1/summarize` | One LLM call. Per-record summaries with a self-evaluated quality score. |
 | `summarize_aggregate` | `POST /v1/summarize-aggregate` | Two LLM calls (summary + judge). Single aggregate summary with a calibrated score. |
-| `assign_codes` | `POST /v1/assign_codes` | Multiple LLM calls per record: pick + judge at each level of a hierarchical coding framework. |
+| `assign_codes` | `POST /v1/assign-codes` | Multiple LLM calls per record: pick + judge at each level of a hierarchical coding framework. |
 
 Each method is pure use-case logic — no scope or correlation plumbing. `call_scope` is entered by a FastAPI dependency declared on the route (`Depends(call_scope_for(Operation.X))`), so by the time an orchestrator method runs `current_call_context` is already set. See [Cross-cutting concerns](04-crosscutting.md) for the full picture.
 

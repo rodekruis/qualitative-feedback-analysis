@@ -223,7 +223,7 @@ class TestAssignCodesRecordsMultipleRows:
             e2e_fake_llm.queue_response(_ok(text=judge_response))
 
         resp = await e2e_client.post(
-            "/v1/assign_codes",
+            "/v1/assign-codes",
             json={
                 "coding_framework": coding_framework,
                 "feedback_records": [{"id": "f1", "content": "some feedback text"}],
