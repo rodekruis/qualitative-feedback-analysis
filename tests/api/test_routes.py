@@ -59,6 +59,19 @@ def _valid_summary_body(**overrides):
     return body
 
 
+def _valid_detect_sensitive_body(**overrides):
+    body = {
+        "feedback_items": [
+            {
+                "id": "doc-1",
+                "text": "A staff member asked for a bribe.",
+            },
+        ],
+    }
+    body.update(overrides)
+    return body
+
+
 # ------------------------------------------------------------------ #
 # Success cases
 # ------------------------------------------------------------------ #
@@ -197,6 +210,60 @@ class TestSummarizeSuccess:
         UUID(resp.headers["x-request-id"])
 
 
+class TestDetectSensitiveSuccess:
+    @pytest.mark.asyncio
+    async def test_200_on_valid_request(self, client):
+        resp = await client.post(
+            "/v1/detect-sensitive",
+            json=_valid_detect_sensitive_body(),
+            headers=_auth_header(),
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "ratings" in data
+        assert len(data["ratings"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_response_contains_rating_fields(self, client):
+        resp = await client.post(
+            "/v1/detect-sensitive",
+            json=_valid_detect_sensitive_body(),
+            headers=_auth_header(),
+        )
+        assert resp.status_code == 200
+        rating = resp.json()["ratings"][0]
+        assert rating["id"] == "doc-1"
+        assert rating["is_sensitive"] is True
+        assert rating["explanation"] == "Contains a bribery allegation."
+        assert rating["sensitivity_types"] == ["CORRUPTION"]
+
+    @pytest.mark.asyncio
+    async def test_detect_sensitive_forwards_metadata(self, test_app):
+        body = _valid_detect_sensitive_body(
+            feedback_items=[
+                {
+                    "id": "doc-1",
+                    "text": "A staff member asked for a bribe.",
+                    "metadata": {"region": "North"},
+                }
+            ]
+        )
+        async with _make_client(test_app) as c:
+            resp = await c.post(
+                "/v1/detect-sensitive",
+                json=body,
+                headers=_auth_header(),
+            )
+        assert resp.status_code == 200
+        assert test_app.state.orchestrator.last_detect_sensitive_request is not None
+        record = (
+            test_app.state.orchestrator.last_detect_sensitive_request.feedback_records[
+                0
+            ]
+        )
+        assert record.metadata == {"region": "North"}
+
+
 # ------------------------------------------------------------------ #
 # Authentication
 # ------------------------------------------------------------------ #
@@ -232,6 +299,14 @@ class TestAuthentication:
     @pytest.mark.asyncio
     async def test_summary_401_missing_authorization_header(self, client):
         resp = await client.post("/v1/summarize", json=_valid_summary_body())
+        assert resp.status_code == 401
+        assert resp.json()["error"]["code"] == "authentication_required"
+
+    @pytest.mark.asyncio
+    async def test_detect_sensitive_401_missing_authorization_header(self, client):
+        resp = await client.post(
+            "/v1/detect-sensitive", json=_valid_detect_sensitive_body()
+        )
         assert resp.status_code == 401
         assert resp.json()["error"]["code"] == "authentication_required"
 
@@ -314,6 +389,17 @@ class TestValidation:
                     {"id": "1", "content": "", "metadata": _summary_metadata()},
                 ],
             ),
+            headers=_auth_header(),
+        )
+        assert resp.status_code == 422
+        assert resp.json()["error"]["code"] == "validation_error"
+        assert resp.json()["error"]["fields"] is not None
+
+    @pytest.mark.asyncio
+    async def test_detect_sensitive_422_empty_feedback_items(self, client):
+        resp = await client.post(
+            "/v1/detect-sensitive",
+            json=_valid_detect_sensitive_body(feedback_items=[]),
             headers=_auth_header(),
         )
         assert resp.status_code == 422
@@ -497,6 +583,20 @@ class TestErrorMapping:
                 "quality_score": 0.75,
             }
         ]
+
+    @pytest.mark.asyncio
+    async def test_detect_sensitive_502_analysis_error(self, test_app):
+        test_app.state.orchestrator = FakeOrchestrator(
+            error=AnalysisError("LLM failure")
+        )
+        async with _make_client(test_app) as c:
+            resp = await c.post(
+                "/v1/detect-sensitive",
+                json=_valid_detect_sensitive_body(),
+                headers=_auth_header(),
+            )
+        assert resp.status_code == 502
+        assert resp.json()["error"]["code"] == "analysis_unavailable"
 
 
 # ------------------------------------------------------------------ #

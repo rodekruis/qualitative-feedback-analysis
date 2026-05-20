@@ -15,9 +15,13 @@ from qfa.domain.models import (
     FeedbackRecordModel,
     FeedbackRecordSummaryModel,
     LLMResponse,
+    SensitivityAnalysisRequestModel,
+    SensitivityAnalysisResultModel,
+    SensitivityAnalysisResultModelList,
     SummaryRequestModel,
     SummaryResultModel,
 )
+from qfa.domain.sensitivity_types import SensitivityType
 from qfa.services.orchestrator import Orchestrator
 from qfa.settings import OrchestratorSettings
 
@@ -106,6 +110,29 @@ def _make_summary_request(
         output_language=output_language,
         prompt=prompt,
         tenant_id=tenant_id,
+    )
+
+
+def _make_sensitivity_request(feedback_records=None, tenant_id=TENANT_ID):
+    if feedback_records is None:
+        feedback_records = (_make_feedback_record(),)
+    return SensitivityAnalysisRequestModel(
+        feedback_records=feedback_records,
+        tenant_id=tenant_id,
+    )
+
+
+def _make_sensitivity_result(item_id="doc-1", sensitivity_types=None):
+    if sensitivity_types is None:
+        sensitivity_types = (SensitivityType.CORRUPTION,)
+    return SensitivityAnalysisResultModelList(
+        results=(
+            SensitivityAnalysisResultModel(
+                feedback_record_id=item_id,
+                sensitivity_types=sensitivity_types,
+                explanation="Contains a corruption allegation.",
+            ),
+        )
     )
 
 
@@ -384,6 +411,113 @@ class TestNonTransientError:
             await orch.summarize_aggregate(_make_summary_request(), _future_deadline())
 
         assert len(fake_llm.calls) == 2
+
+
+class TestDetectSensitiveContent:
+    @pytest.mark.asyncio
+    async def test_returns_structured_result_from_llm(self, settings):
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(
+                    structured=_make_sensitivity_result(),
+                )
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        result = await orch.detect_sensitive_content(
+            _make_sensitivity_request(), _future_deadline()
+        )
+
+        assert result.results[0].feedback_record_id == "doc-1"
+        assert result.results[0].is_sensitive is True
+        assert fake_llm.calls[0]["response_model"] is SensitivityAnalysisResultModelList
+
+    @pytest.mark.asyncio
+    async def test_tenant_id_in_llm_call(self, settings):
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=_make_sensitivity_result()),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        await orch.detect_sensitive_content(
+            _make_sensitivity_request(tenant_id="special-tenant"),
+            _future_deadline(),
+        )
+
+        assert fake_llm.calls[0]["tenant_id"] == "special-tenant"
+
+    @pytest.mark.asyncio
+    async def test_result_ids_are_pinned_to_request_order(self, settings):
+        records = (
+            _make_feedback_record(doc_id="doc-1"),
+            _make_feedback_record(doc_id="doc-2"),
+        )
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(
+                    structured=SensitivityAnalysisResultModelList(
+                        results=(
+                            SensitivityAnalysisResultModel(
+                                feedback_record_id="wrong-1",
+                                sensitivity_types=(SensitivityType.CORRUPTION,),
+                                explanation="Bribery risk.",
+                            ),
+                        )
+                    ),
+                ),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        result = await orch.detect_sensitive_content(
+            _make_sensitivity_request(feedback_records=records), _future_deadline()
+        )
+
+        assert tuple(r.feedback_record_id for r in result.results) == ("doc-1", "doc-2")
+        assert result.results[0].sensitivity_types == (SensitivityType.CORRUPTION,)
+        assert result.results[1].sensitivity_types == ()
+        assert result.results[1].explanation == "No sensitive content detected."
+
+    @pytest.mark.asyncio
+    async def test_prompt_contains_sensitivity_guidance(self, settings):
+        fake_llm = FakeLLMPort(
+            responses=[_make_llm_response(structured=_make_sensitivity_result())]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        await orch.detect_sensitive_content(
+            _make_sensitivity_request(), _future_deadline()
+        )
+
+        system_msg = fake_llm.calls[0]["system_message"]
+        assert "CORRUPTION: Apply when feedback alleges bribery" in system_msg
 
 
 class TestMetadataFiltering:

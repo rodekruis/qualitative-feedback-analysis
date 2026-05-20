@@ -27,6 +27,9 @@ from qfa.domain.models import (
     DistributionStats,
     FeedbackRecordSummaryModel,
     KeyCreationResponse,
+    SensitivityAnalysisRequestModel,
+    SensitivityAnalysisResultModel,
+    SensitivityAnalysisResultModelList,
     SummaryRequestModel,
     SummaryResultModel,
     TenantApiKey,
@@ -35,6 +38,7 @@ from qfa.domain.models import (
     UsageStats,
 )
 from qfa.domain.ports import UsageRepositoryPort
+from qfa.domain.sensitivity_types import SensitivityType
 from qfa.services.auth_orchestrator import AuthOrchestrator
 
 
@@ -90,6 +94,7 @@ class FakeOrchestrator:
         self,
         analyze_result=None,
         summarize_result=None,
+        detect_sensitive_result=None,
         error=None,
     ):
         self._analyze_result = analyze_result or AnalysisResultModel(
@@ -105,7 +110,20 @@ class FakeOrchestrator:
                 ),
             ),
         )
+        self._detect_sensitive_result = (
+            detect_sensitive_result
+            or SensitivityAnalysisResultModelList(
+                results=(
+                    SensitivityAnalysisResultModel(
+                        feedback_record_id="doc-1",
+                        sensitivity_types=(SensitivityType.CORRUPTION,),
+                        explanation="Contains a bribery allegation.",
+                    ),
+                ),
+            )
+        )
         self._error = error
+        self.last_detect_sensitive_request = None
 
     async def analyze(
         self,
@@ -169,6 +187,17 @@ class FakeOrchestrator:
                 for record in request.feedback_records
             )
         )
+
+    async def detect_sensitive_content(
+        self,
+        request: SensitivityAnalysisRequestModel,
+        deadline: datetime,
+        anonymize: bool = True,
+    ) -> SensitivityAnalysisResultModelList:
+        if self._error is not None:
+            raise self._error
+        self.last_detect_sensitive_request = request
+        return self._detect_sensitive_result
 
 
 class FakeUsageRepository(UsageRepositoryPort):
