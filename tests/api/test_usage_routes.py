@@ -10,8 +10,11 @@ import pytest_asyncio
 from qfa.domain.errors import UsageRepositoryUnavailableError
 from qfa.domain.models import (
     DistributionStats,
+    Operation,
+    OperationStats,
     TenantApiKey,
     TokenStats,
+    UsageMetrics,
     UsageStats,
 )
 
@@ -21,7 +24,32 @@ FAKE_SUPERUSER_KEY = "superuser-key-xyz789"
 pytestmark = pytest.mark.asyncio
 
 
+def _make_metrics(total_calls: int = 5) -> UsageMetrics:
+    return UsageMetrics(
+        total_calls=total_calls,
+        failed_calls=1,
+        total_cost_usd=Decimal("0.500000"),
+        call_duration=DistributionStats(avg=100, min=50, max=200, p5=55, p95=190),
+        input_tokens=TokenStats(
+            avg=500, min=100, max=1000, p5=120, p95=950, total=2500
+        ),
+        output_tokens=TokenStats(avg=200, min=50, max=400, p5=60, p95=380, total=1000),
+    )
+
+
 def _make_usage_stats(tenant_id: str | None = "tenant-test", total_calls: int = 5):
+    op = OperationStats(
+        operation=Operation.ANALYZE,
+        total_calls=total_calls,
+        failed_calls=1,
+        total_cost_usd=Decimal("0.500000"),
+        call_duration=DistributionStats(avg=100, min=50, max=200, p5=55, p95=190),
+        input_tokens=TokenStats(
+            avg=500, min=100, max=1000, p5=120, p95=950, total=2500
+        ),
+        output_tokens=TokenStats(avg=200, min=50, max=400, p5=60, p95=380, total=1000),
+        llm_call_stats=_make_metrics(total_calls=total_calls),
+    )
     return UsageStats(
         tenant_id=tenant_id,
         total_calls=total_calls,
@@ -32,6 +60,8 @@ def _make_usage_stats(tenant_id: str | None = "tenant-test", total_calls: int = 
             avg=500, min=100, max=1000, p5=120, p95=950, total=2500
         ),
         output_tokens=TokenStats(avg=200, min=50, max=400, p5=60, p95=380, total=1000),
+        llm_call_stats=_make_metrics(total_calls=total_calls),
+        operations=(op,),
     )
 
 
@@ -114,6 +144,29 @@ class TestUsageEndpoint:
         client, _ = client_with_repo
         resp = await client.get("/v1/usage")
         assert resp.status_code == 401
+
+    async def test_response_includes_llm_call_stats_and_operations(
+        self, client_with_repo
+    ):
+        """The /v1/usage response wires ``llm_call_stats`` and ``operations`` through.
+
+        Locks the API contract evolution from issue #91: clients can now
+        read a per-LLM-call view and a per-operation breakdown without
+        re-aggregating. Failure here means the schemas_usage wrapper
+        dropped the inherited fields.
+        """
+        client, _ = client_with_repo
+        resp = await client.get(
+            "/v1/usage",
+            headers={"Authorization": f"Bearer {FAKE_API_KEY}"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "llm_call_stats" in data
+        assert data["llm_call_stats"]["total_calls"] == 5
+        assert isinstance(data["operations"], list)
+        assert data["operations"][0]["operation"] == "analyze"
+        assert "llm_call_stats" in data["operations"][0]
 
 
 class TestUsageAllEndpoint:

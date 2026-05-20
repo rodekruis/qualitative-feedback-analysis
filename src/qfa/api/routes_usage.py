@@ -20,6 +20,7 @@ from qfa.domain.models import (
     DistributionStats,
     TenantApiKey,
     TokenStats,
+    UsageMetrics,
     UsageStats,
 )
 from qfa.domain.ports import UsageRepositoryPort
@@ -45,7 +46,22 @@ _TIME_FILTER_EXAMPLES = ["2026-04-01T00:00:00Z", "2026-04-15T12:30:00+02:00"]
 
 
 def _zero_usage_stats(tenant_id: str | None) -> UsageStats:
-    """Build a domain ``UsageStats`` representing an empty time window."""
+    """Build a domain ``UsageStats`` representing an empty time window.
+
+    Used as the fallback grand-total in ``/v1/usage/all`` when no rows
+    matched the time filter. Populates both the per-invocation (inherited)
+    fields and the ``llm_call_stats`` block with zeros, and an empty
+    ``operations`` tuple — matching the wire shape clients see in any
+    other empty-window case.
+    """
+    zero_metrics = UsageMetrics(
+        total_calls=0,
+        failed_calls=0,
+        total_cost_usd=Decimal("0"),
+        call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0),
+        input_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+        output_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+    )
     return UsageStats(
         tenant_id=tenant_id,
         total_calls=0,
@@ -54,6 +70,8 @@ def _zero_usage_stats(tenant_id: str | None) -> UsageStats:
         call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0),
         input_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
         output_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+        llm_call_stats=zero_metrics,
+        operations=(),
     )
 
 
