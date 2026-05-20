@@ -58,6 +58,16 @@ llm_calls = sa.Table(
     ),
     sa.Column("tenant_id", sa.String(255), nullable=False),
     sa.Column("operation", sa.String(64), nullable=False),
+    sa.Column(
+        "call_id",
+        sa.Uuid(),
+        nullable=False,
+        comment=(
+            "Correlation ID shared by all LLM calls made within a single "
+            "API invocation (one call_scope). Lets /v1/usage aggregate "
+            "cost/duration per invocation by grouping on call_id."
+        ),
+    ),
     sa.Column("timestamp", sa.DateTime(timezone=True), nullable=False),
     sa.Column("call_duration_ms", sa.Integer, nullable=False),
     sa.Column("model", sa.String(255), nullable=False),
@@ -79,6 +89,12 @@ llm_calls = sa.Table(
     ),
     sa.Index("idx_llm_calls_tenant_timestamp", "tenant_id", "timestamp"),
     sa.Index("idx_llm_calls_timestamp", "timestamp"),
+    sa.Index(
+        "idx_llm_calls_tenant_operation_call_id",
+        "tenant_id",
+        "operation",
+        "call_id",
+    ),
 )
 
 
@@ -307,6 +323,7 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
                 llm_calls.insert().values(
                     tenant_id=record.tenant_id,
                     operation=str(record.operation),
+                    call_id=record.call_id,
                     timestamp=record.timestamp,
                     call_duration_ms=record.call_duration_ms,
                     model=record.model,

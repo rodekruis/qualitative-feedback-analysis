@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from uuid import uuid4
 
 import pytest
 
@@ -35,6 +36,7 @@ def _record(
     return LLMCallRecord(
         tenant_id=tenant_id,
         operation=operation,
+        call_id=uuid4(),
         timestamp=timestamp or datetime.now(UTC),
         call_duration_ms=100,
         model="gpt-3.5-turbo" if status == CallStatus.OK else "",

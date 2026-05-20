@@ -30,9 +30,43 @@ Notes:
 
 ## Call context and usage tracking
 
-`qfa.services.call_context` defines a `ContextVar[CallContext | None]` and a `call_scope(tenant_id, operation)` async context manager. Every public orchestrator method enters a scope; the {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter` reads the context to attribute each LLM call to a tenant and operation.
+`qfa.services.call_context` defines a single `ContextVar[CallContext | None]` named `current_call_context`, plus an async context-manager helper `call_scope(tenant_id, operation, request_id)` that sets and resets it. The `CallContext` it holds carries `tenant_id`, `operation`, and `call_id` (the correlation UUID) for the duration of one orchestrator invocation. The {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter` reads it when persisting each LLM call so every row in `llm_calls` is attributed to the right tenant, operation, and API invocation.
 
-Consequence: any new code path that calls `LLMPort.complete` outside an orchestrator method will raise {py:exc}`~qfa.domain.errors.MissingCallScopeError` at runtime. The tracking adapter refuses to record an untyped call.
+`call_scope` is entered by a FastAPI dependency at the driving-adapter layer, **not** by the orchestrator. Each route declares which operation it represents:
+
+```python
+async def analyze(
+    ...,
+    _scope: CallContext = Depends(call_scope_for(Operation.ANALYZE)),
+): ...
+```
+
+`call_scope_for` lives in `qfa.api.dependencies`. It composes with `authenticate_request` (to resolve the tenant) and reads `request.state.request_id` (set by `RequestIdMiddleware` on the way in, also returned to the client as the `X-Request-ID` header). It then enters `call_scope(tenant_id, operation, request_id=…)` before the route body — and the orchestrator beneath it — runs. The orchestrator is therefore free of scope plumbing; it's pure use-case logic that happens to execute under an ambient context the tracking adapter reads.
+
+Because `call_scope` receives `request_id` as an explicit argument, the header value, the log lines, and the `llm_calls.call_id` rows always share one UUID by construction — no second ContextVar, no priority chain, no fallback.
+
+Non-HTTP callers (CLI, future jobs, ad-hoc tests) generate a UUID themselves and pass it: `async with call_scope(tenant, operation, request_id=uuid4()): …`.
+
+If `LLMPort.complete` is invoked outside an active `call_scope` (e.g. a wiring bug), `TrackingLLMAdapter` does **not** raise — it logs at ERROR, routes through to the inner LLM, and returns the response without persisting the attempt. Observability never breaks the use case; missing scope is loud in logs and alertable, but does not fail user-facing requests.
+
+Conceptually: the driving adapter writes the ContextVar; the driven adapter reads it. The orchestrator in between never touches it.
+
+```mermaid
+flowchart LR
+    subgraph driving["qfa.api  ·  driving adapter"]
+        R["Route handler<br/><sub>Depends(call_scope_for(Op.X))</sub>"]
+    end
+    subgraph services["qfa.services  ·  application"]
+        CV[("current_call_context<br/><sub>ContextVar[CallContext]</sub>")]
+    end
+    subgraph driven["qfa.adapters  ·  driven adapter"]
+        T["TrackingLLMAdapter"]
+    end
+    R -- "set<br/><sub>(tenant_id, operation, call_id)</sub>" --> CV
+    CV -- "get<br/><sub>stamps LLMCallRecord</sub>" --> T
+```
+
+Both adapters depend on `qfa.services.call_context`; neither depends on the other. The ContextVar is set on request entry and reset on exit, so successive requests in one event loop never leak state across each other.
 
 ## Deadlines, timeouts, retries
 

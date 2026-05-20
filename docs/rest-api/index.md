@@ -48,7 +48,7 @@ Every error response shares this shape:
   "error": {
     "code": "validation_error",
     "message": "Request validation failed.",
-    "request_id": "req_…",
+    "request_id": "550e8400-e29b-41d4-a716-446655440000",
     "fields": [
       {"field": "feedback_records[0].text", "issue": "..."}
     ]
@@ -56,7 +56,7 @@ Every error response shares this shape:
 }
 ```
 
-`fields` only appears on 422. `request_id` is always present and matches the `X-Request-ID` response header. See [Cross-cutting concerns § Error → HTTP mapping](../architecture/04-crosscutting.md) for the full mapping.
+`fields` only appears on 422. `request_id` is always present and matches the `X-Request-ID` response header. It is a canonical UUID string and is also the value persisted in the `llm_calls.call_id` column for every LLM call the request makes — quote the `request_id` when reporting an issue and ops can join logs and DB rows on it directly. See [Cross-cutting concerns § Error → HTTP mapping](../architecture/04-crosscutting.md) for the full mapping.
 
 ## Breaking changes
 
