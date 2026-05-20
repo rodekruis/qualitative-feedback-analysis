@@ -105,11 +105,20 @@ class TestAnalyzeSuccess:
         assert resp.json()["feedback_record_count"] == 3
 
     @pytest.mark.asyncio
-    async def test_request_id_starts_with_req(self, client):
+    async def test_request_id_is_canonical_uuid(self, client):
+        """``request_id`` in the response body is a canonical UUID string.
+
+        The middleware now emits the UUID directly (no ``req_`` prefix) so
+        ops/SDKs can cast it straight to a UUID and join against
+        ``llm_calls.call_id`` without string manipulation.
+        """
+        from uuid import UUID
+
         resp = await client.post(
             "/v1/analyze", json=_valid_body(), headers=_auth_header()
         )
-        assert resp.json()["request_id"].startswith("req_")
+        # Raises ValueError if the string isn't a valid UUID.
+        UUID(resp.json()["request_id"])
 
     @pytest.mark.asyncio
     async def test_x_request_id_header_present(self, client):
@@ -124,6 +133,43 @@ class TestAnalyzeSuccess:
             "/v1/analyze", json=_valid_body(), headers=_auth_header()
         )
         assert resp.headers["x-request-id"] == resp.json()["request_id"]
+
+    @pytest.mark.asyncio
+    async def test_x_request_id_propagates_into_call_scope_as_call_id(self, test_app):
+        """The X-Request-ID UUID is the same value seen as ``ctx.call_id``.
+
+        Unit-level proof of the unification across the full middleware →
+        dependency → orchestrator chain: the route's
+        ``Depends(call_scope_for(Operation.ANALYZE))`` enters call_scope
+        before the orchestrator runs, so the orchestrator can read
+        ``current_call_context`` directly without entering scope itself.
+        Catches a broken middleware/dep/ContextVar wiring at unit-test
+        speed, before the e2e tier even runs.
+        """
+        from uuid import UUID
+
+        from qfa.domain.models import AnalysisResultModel, Operation
+        from qfa.services.call_context import current_call_context
+
+        captured: dict = {}
+
+        class CapturingOrchestrator:
+            async def analyze(self, request, deadline, anonymize=True):
+                ctx = current_call_context.get()
+                assert ctx is not None
+                captured["call_id"] = ctx.call_id
+                captured["operation"] = ctx.operation
+                return AnalysisResultModel(result="ok")
+
+        test_app.state.orchestrator = CapturingOrchestrator()
+        async with _make_client(test_app) as c:
+            resp = await c.post(
+                "/v1/analyze", json=_valid_body(), headers=_auth_header()
+            )
+        assert resp.status_code == 200
+        header_uuid = UUID(resp.headers["x-request-id"])
+        assert captured["call_id"] == header_uuid
+        assert captured["operation"] == Operation.ANALYZE
 
 
 class TestSummarizeSuccess:
@@ -150,11 +196,18 @@ class TestSummarizeSuccess:
 
     @pytest.mark.asyncio
     async def test_x_request_id_header_on_summarize(self, client):
+        """``X-Request-ID`` is set on summarize responses as a canonical UUID.
+
+        Guards that every endpoint inherits the unified UUID format —
+        not just ``/analyze`` which gets the more explicit checks above.
+        """
+        from uuid import UUID
+
         resp = await client.post(
             "/v1/summarize", json=_valid_summary_body(), headers=_auth_header()
         )
         assert "x-request-id" in resp.headers
-        assert resp.headers["x-request-id"].startswith("req_")
+        UUID(resp.headers["x-request-id"])
 
 
 class TestDetectSensitiveSuccess:
@@ -416,6 +469,14 @@ class TestErrorMapping:
 
     @pytest.mark.asyncio
     async def test_all_errors_include_request_id(self, test_app):
+        """Error envelopes carry the same canonical-UUID ``request_id``.
+
+        A 4xx/5xx must still include a UUID-format ``request_id`` so
+        clients can quote it back when reporting issues and ops can grep
+        logs / query ``llm_calls`` for the same value.
+        """
+        from uuid import UUID
+
         test_app.state.orchestrator = FakeOrchestrator(
             error=AnalysisError("some error")
         )
@@ -423,7 +484,7 @@ class TestErrorMapping:
             resp = await c.post(
                 "/v1/analyze", json=_valid_body(), headers=_auth_header()
             )
-        assert resp.json()["error"]["request_id"].startswith("req_")
+        UUID(resp.json()["error"]["request_id"])
 
     @pytest.mark.asyncio
     async def test_summary_413_feedback_too_large(self, test_app):

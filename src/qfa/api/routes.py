@@ -5,7 +5,11 @@ from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter, Depends, Request
 
 import qfa
-from qfa.api.dependencies import authenticate_request, get_orchestrator
+from qfa.api.dependencies import (
+    authenticate_request,
+    call_scope_for,
+    get_orchestrator,
+)
 from qfa.api.schemas import (
     ApiAggregateSummary,
     ApiAnalyzeRequest,
@@ -26,8 +30,10 @@ from qfa.api.schemas import (
 )
 from qfa.domain.models import (
     AnalysisRequestModel,
+    CallContext,
     CodingAssignmentRequestModel,
     FeedbackRecordModel,
+    Operation,
     SensitivityAnalysisRequestModel,
     TenantApiKey,
 )
@@ -58,6 +64,7 @@ async def analyze(
     request: Request,
     tenant: TenantApiKey = Depends(authenticate_request),
     orchestrator: Orchestrator = Depends(get_orchestrator),
+    _scope: CallContext = Depends(call_scope_for(Operation.ANALYZE)),
 ) -> ApiAnalyzeResponse:
     """Analyze a batch of feedback records.
 
@@ -108,6 +115,7 @@ async def summarize(
     request: Request,
     tenant: TenantApiKey = Depends(authenticate_request),
     orchestrator: Orchestrator = Depends(get_orchestrator),
+    _scope: CallContext = Depends(call_scope_for(Operation.SUMMARIZE)),
 ) -> ApiSummarizeResponse:
     """Summarize each submitted feedback record individually.
 
@@ -169,6 +177,7 @@ async def assign_codes(
     body: ApiAssignCodesRequest,
     tenant: TenantApiKey = Depends(authenticate_request),
     orchestrator: Orchestrator = Depends(get_orchestrator),
+    _scope: CallContext = Depends(call_scope_for(Operation.ASSIGN_CODES)),
 ) -> ApiAssignCodesResponse:
     """Assign codes via iterative LLM picks at each level of the framework."""
     deadline = datetime.now(UTC) + timedelta(seconds=120)
@@ -221,6 +230,7 @@ async def summarize_aggregate(
     request: Request,
     tenant: TenantApiKey = Depends(authenticate_request),
     orchestrator: Orchestrator = Depends(get_orchestrator),
+    _scope: CallContext = Depends(call_scope_for(Operation.SUMMARIZE_AGGREGATE)),
 ) -> ApiSummarizeAggregateResponse:
     """Summarize all submitted feedback records as a single aggregate summary.
 
@@ -279,6 +289,7 @@ async def detect_sensitive(
     request: Request,
     tenant: TenantApiKey = Depends(authenticate_request),
     orchestrator: Orchestrator = Depends(get_orchestrator),
+    _scope: CallContext = Depends(call_scope_for(Operation.DETECT_SENSITIVE)),
 ) -> ApiDetectSensitiveResponse:
     """Detect sensitive content in feedback items.
 

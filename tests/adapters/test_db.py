@@ -8,6 +8,7 @@ here.
 
 from datetime import UTC, datetime
 from decimal import Decimal
+from uuid import UUID, uuid4
 
 import pytest
 import pytest_asyncio
@@ -37,10 +38,12 @@ def _make_record(
     cost_usd: Decimal = Decimal("0.0001"),
     status: CallStatus = CallStatus.OK,
     error_class: str | None = None,
+    call_id: UUID | None = None,
 ) -> LLMCallRecord:
     return LLMCallRecord(
         tenant_id=tenant_id,
         operation=operation,
+        call_id=call_id if call_id is not None else uuid4(),
         timestamp=datetime.now(UTC),
         call_duration_ms=call_duration_ms,
         model=model,
@@ -85,13 +88,20 @@ async def test_record_call_inserts_row(sqlite_repo):
 
 @pytest.mark.usefixtures("needs_aiosqlite")
 async def test_record_call_round_trips_all_fields(sqlite_repo):
+    """Every field of ``LLMCallRecord`` survives the insert/select round-trip.
+
+    Catches regressions in the SQLAlchemy column mapping or repo write —
+    e.g., a column rename that compiles but silently drops values.
+    """
     repo, engine = sqlite_repo
+    fixed_id = uuid4()
     rec = _make_record(
         tenant_id="my-tenant",
         operation=Operation.ASSIGN_CODES,
         input_tokens=42,
         output_tokens=7,
         cost_usd=Decimal("1.234567"),
+        call_id=fixed_id,
     )
     await repo.record_call(rec)
 
@@ -105,6 +115,47 @@ async def test_record_call_round_trips_all_fields(sqlite_repo):
     assert row.status == "ok"
     assert row.error_class is None
     assert Decimal(str(row.cost_usd)) == Decimal("1.234567")
+    assert row.call_id == fixed_id
+
+
+@pytest.mark.usefixtures("needs_aiosqlite")
+async def test_record_call_persists_distinct_call_ids_across_invocations(sqlite_repo):
+    """Distinct call_ids must persist as distinct rows.
+
+    Two records with the same tenant + operation but different call_ids
+    persist as two distinct rows, each retaining its own call_id.
+    """
+    repo, engine = sqlite_repo
+    id_a = uuid4()
+    id_b = uuid4()
+    await repo.record_call(_make_record(call_id=id_a))
+    await repo.record_call(_make_record(call_id=id_b))
+
+    async with engine.connect() as conn:
+        rows = (
+            await conn.execute(sa.select(llm_calls.c.call_id).order_by(llm_calls.c.id))
+        ).all()
+
+    persisted_ids = {r.call_id for r in rows}
+    assert persisted_ids == {id_a, id_b}
+
+
+@pytest.mark.usefixtures("needs_aiosqlite")
+async def test_record_call_persists_shared_call_id_across_records(sqlite_repo):
+    """Shared call_id is preserved across rows (the fan-out case).
+
+    Two records with the same call_id round-trip as two rows sharing that
+    call_id — the property #91's aggregation needs.
+    """
+    repo, engine = sqlite_repo
+    shared = uuid4()
+    await repo.record_call(_make_record(call_id=shared))
+    await repo.record_call(_make_record(call_id=shared))
+
+    async with engine.connect() as conn:
+        rows = (await conn.execute(sa.select(llm_calls.c.call_id))).all()
+
+    assert [r.call_id for r in rows] == [shared, shared]
 
 
 @pytest.mark.usefixtures("needs_aiosqlite")

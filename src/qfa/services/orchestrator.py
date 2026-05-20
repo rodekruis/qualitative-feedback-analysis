@@ -23,7 +23,6 @@ from qfa.domain.models import (
     CodingAssignmentRequestModel,
     CodingAssignmentResultModel,
     FeedbackRecordModel,
-    Operation,
     SensitivityAnalysisRequestModel,
     SensitivityAnalysisResultModel,
     SensitivityAnalysisResultModelList,
@@ -32,7 +31,6 @@ from qfa.domain.models import (
 )
 from qfa.domain.ports import AnonymizationPort, LLMPort
 from qfa.domain.sensitivity_types import SENSITIVITY_TYPE_DESCRIPTIONS
-from qfa.services.call_context import call_scope
 from qfa.services.coding_classifier import (
     JudgeResponse,
     build_judge_messages,
@@ -249,38 +247,34 @@ class Orchestrator:
         AnalysisError
             For non-recoverable LLM failures or prompt injection.
         """
-        async with call_scope(
-            tenant_id=request.tenant_id,
-            operation=Operation.ANALYZE,
-        ):
-            timeout = self._check_deadline_and_get_timeout(deadline)
-            system_message = _SYSTEM_MESSAGE_TEMPLATE.format(prompt=request.prompt)
-            user_message = self._assemble_feedback_records(request.feedback_records)
+        timeout = self._check_deadline_and_get_timeout(deadline)
+        system_message = _SYSTEM_MESSAGE_TEMPLATE.format(prompt=request.prompt)
+        user_message = self._assemble_feedback_records(request.feedback_records)
 
-            anonymized_user_message = user_message
-            if anonymize:
-                anonymized_user_message, anonymization_mapping = (
-                    self._anonymizer.anonymize(user_message)
-                )
-
-            response = await self._llm.complete(
-                system_message=system_message,
-                user_message=anonymized_user_message,
-                tenant_id=request.tenant_id,
-                response_model=AnalysisResultModel,
-                timeout=timeout,
+        anonymized_user_message = user_message
+        if anonymize:
+            anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
+                user_message
             )
 
-            if anonymize:
-                return_model_as_string = response.structured.model_dump_json()
-                unanonymized_return_model_as_string = self._anonymizer.deanonymize(
-                    return_model_as_string, anonymization_mapping
-                )
-                return AnalysisResultModel.model_validate_json(
-                    unanonymized_return_model_as_string
-                )
+        response = await self._llm.complete(
+            system_message=system_message,
+            user_message=anonymized_user_message,
+            tenant_id=request.tenant_id,
+            response_model=AnalysisResultModel,
+            timeout=timeout,
+        )
 
-            return response.structured
+        if anonymize:
+            return_model_as_string = response.structured.model_dump_json()
+            unanonymized_return_model_as_string = self._anonymizer.deanonymize(
+                return_model_as_string, anonymization_mapping
+            )
+            return AnalysisResultModel.model_validate_json(
+                unanonymized_return_model_as_string
+            )
+
+        return response.structured
 
     async def summarize(
         self,
@@ -308,57 +302,54 @@ class Orchestrator:
             When the LLM returns invalid output or another non-recoverable
             error occurs.
         """
-        async with call_scope(
-            tenant_id=request.tenant_id, operation=Operation.SUMMARIZE
-        ):
-            timeout = self._check_deadline_and_get_timeout(deadline)
-            system_message = _DEFAULT_SUMMARIZATION_PROMPT
-            if request.output_language:
-                system_message += (
-                    f"\nWrite the title and summary in {request.output_language}."
-                )
-            if request.prompt:
-                system_message += f"\nAdditional instructions: {request.prompt}"
+        timeout = self._check_deadline_and_get_timeout(deadline)
+        system_message = _DEFAULT_SUMMARIZATION_PROMPT
+        if request.output_language:
+            system_message += (
+                f"\nWrite the title and summary in {request.output_language}."
+            )
+        if request.prompt:
+            system_message += f"\nAdditional instructions: {request.prompt}"
 
-            user_message = str(request.feedback_records)
-            anonymized_user_message = user_message
-            if anonymize:
-                anonymized_user_message, anonymization_mapping = (
-                    self._anonymizer.anonymize(user_message)
-                )
-
-            llm_completion = await self._llm.complete(
-                system_message=system_message,
-                user_message=anonymized_user_message,
-                tenant_id=request.tenant_id,
-                response_model=SummaryResultModel,
-                timeout=timeout,
+        user_message = str(request.feedback_records)
+        anonymized_user_message = user_message
+        if anonymize:
+            anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
+                user_message
             )
 
-            if anonymize:
-                return_model_as_string = llm_completion.structured.model_dump_json()
-                unanonymized_return_model_as_string = self._anonymizer.deanonymize(
-                    return_model_as_string, anonymization_mapping
-                )
-                result = SummaryResultModel.model_validate_json(
-                    unanonymized_return_model_as_string
-                )
-            else:
-                result = llm_completion.structured
+        llm_completion = await self._llm.complete(
+            system_message=system_message,
+            user_message=anonymized_user_message,
+            tenant_id=request.tenant_id,
+            response_model=SummaryResultModel,
+            timeout=timeout,
+        )
 
-            # Guard against LLM returning a different number of summaries than records
-            # submitted and replace model-provided IDs with authoritative input IDs.
-            aligned_summaries = self._align_record_items(
-                request_records=request.feedback_records,
-                llm_items=result.feedback_record_summaries,
-                align_item=lambda record_id, summary, _index: summary.model_copy(
-                    update={"id": record_id}
-                ),
+        if anonymize:
+            return_model_as_string = llm_completion.structured.model_dump_json()
+            unanonymized_return_model_as_string = self._anonymizer.deanonymize(
+                return_model_as_string, anonymization_mapping
             )
-            result = result.model_copy(
-                update={"feedback_record_summaries": aligned_summaries}
+            result = SummaryResultModel.model_validate_json(
+                unanonymized_return_model_as_string
             )
-            return result
+        else:
+            result = llm_completion.structured
+
+        # Guard against LLM returning a different number of summaries than records
+        # submitted and replace model-provided IDs with authoritative input IDs.
+        aligned_summaries = self._align_record_items(
+            request_records=request.feedback_records,
+            llm_items=result.feedback_record_summaries,
+            align_item=lambda record_id, summary, _index: summary.model_copy(
+                update={"id": record_id}
+            ),
+        )
+        result = result.model_copy(
+            update={"feedback_record_summaries": aligned_summaries}
+        )
+        return result
 
     def _align_record_items(
         self,
@@ -410,70 +401,66 @@ class Orchestrator:
         AggregateSummaryResult
             A single aggregate summary with themes ordered by frequency.
         """
-        async with call_scope(
+        system_message = _DEFAULT_AGGREGATE_SUMMARIZATION_PROMPT
+        if request.output_language:
+            system_message += (
+                f"\nWrite the title and summary in {request.output_language}."
+            )
+        if request.prompt:
+            system_message += f"\nAdditional instructions: {request.prompt}"
+
+        user_message = "\n\n".join(
+            f"{idx}. {record.text}"
+            for idx, record in enumerate(request.feedback_records, start=1)
+        )
+
+        anonymized_user_message = user_message
+        if anonymize:
+            anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
+                user_message
+            )
+
+        timeout = self._check_deadline_and_get_timeout(deadline)
+        response = await self._llm.complete(
+            system_message=system_message,
+            user_message=anonymized_user_message,
             tenant_id=request.tenant_id,
-            operation=Operation.SUMMARIZE_AGGREGATE,
-        ):
-            system_message = _DEFAULT_AGGREGATE_SUMMARIZATION_PROMPT
-            if request.output_language:
-                system_message += (
-                    f"\nWrite the title and summary in {request.output_language}."
-                )
-            if request.prompt:
-                system_message += f"\nAdditional instructions: {request.prompt}"
+            response_model=AggregateSummaryResultModel,
+            timeout=timeout,
+        )
+        total_cost = response.cost
 
-            user_message = "\n\n".join(
-                f"{idx}. {record.text}"
-                for idx, record in enumerate(request.feedback_records, start=1)
+        judge_user_message = anonymized_user_message if anonymize else user_message
+        judge_system = _build_judge_system_message(
+            judge_user_message, response.structured.summary
+        )
+
+        judge_timeout = self._check_deadline_and_get_timeout(deadline)
+        judge_response = await self._llm.complete(
+            system_message=judge_system,
+            user_message=_JUDGE_USER_MESSAGE,
+            tenant_id=request.tenant_id,
+            response_model=str,
+            timeout=judge_timeout,
+        )
+        total_cost += judge_response.cost
+        quality_score = _parse_judge_quality_score(judge_response.structured)
+
+        response.structured.quality_score = quality_score
+        response.structured.ids = tuple(
+            record.id for record in request.feedback_records
+        )
+
+        if anonymize:
+            return_model_as_string = response.structured.model_dump_json()
+            unanonymized_return_model_as_string = self._anonymizer.deanonymize(
+                return_model_as_string, anonymization_mapping
+            )
+            return AggregateSummaryResultModel.model_validate_json(
+                unanonymized_return_model_as_string
             )
 
-            anonymized_user_message = user_message
-            if anonymize:
-                anonymized_user_message, anonymization_mapping = (
-                    self._anonymizer.anonymize(user_message)
-                )
-
-            timeout = self._check_deadline_and_get_timeout(deadline)
-            response = await self._llm.complete(
-                system_message=system_message,
-                user_message=anonymized_user_message,
-                tenant_id=request.tenant_id,
-                response_model=AggregateSummaryResultModel,
-                timeout=timeout,
-            )
-            total_cost = response.cost
-
-            judge_user_message = anonymized_user_message if anonymize else user_message
-            judge_system = _build_judge_system_message(
-                judge_user_message, response.structured.summary
-            )
-
-            judge_timeout = self._check_deadline_and_get_timeout(deadline)
-            judge_response = await self._llm.complete(
-                system_message=judge_system,
-                user_message=_JUDGE_USER_MESSAGE,
-                tenant_id=request.tenant_id,
-                response_model=str,
-                timeout=judge_timeout,
-            )
-            total_cost += judge_response.cost
-            quality_score = _parse_judge_quality_score(judge_response.structured)
-
-            response.structured.quality_score = quality_score
-            response.structured.ids = tuple(
-                record.id for record in request.feedback_records
-            )
-
-            if anonymize:
-                return_model_as_string = response.structured.model_dump_json()
-                unanonymized_return_model_as_string = self._anonymizer.deanonymize(
-                    return_model_as_string, anonymization_mapping
-                )
-                return AggregateSummaryResultModel.model_validate_json(
-                    unanonymized_return_model_as_string
-                )
-
-            return response.structured
+        return response.structured
 
     async def assign_codes(
         self,
@@ -506,138 +493,134 @@ class Orchestrator:
         LLMError
             For other LLM provider failures.
         """
-        async with call_scope(
-            tenant_id=request.tenant_id,
-            operation=Operation.ASSIGN_CODES,
-        ):
-            coded: list[CodedFeedbackRecordModel] = []
-            types = request.coding_framework.get("types") or []
-            threshold = request.confidence_threshold
+        coded: list[CodedFeedbackRecordModel] = []
+        types = request.coding_framework.get("types") or []
+        threshold = request.confidence_threshold
 
-            for feedback_record in request.feedback_records:
-                self._check_coding_deadline(deadline)
+        for feedback_record in request.feedback_records:
+            self._check_coding_deadline(deadline)
 
-                candidates: list[_ScoredCode] = []
+            candidates: list[_ScoredCode] = []
 
-                type_indices = await self._pick_code_indices(
+            type_indices = await self._pick_code_indices(
+                feedback_text=feedback_record.text,
+                current_level="Types",
+                entries=types,
+                hierarchy_path=None,
+                tenant_id=request.tenant_id,
+                deadline=deadline,
+                anonymize=anonymize,
+            )
+
+            for type_index in type_indices:
+                type_entry = types[type_index]
+                type_name = str(type_entry.get("name", ""))
+
+                judge_type = await self._judge_code_level(
                     feedback_text=feedback_record.text,
-                    current_level="Types",
-                    entries=types,
-                    hierarchy_path=None,
+                    level="Type",
+                    path=[("Type", type_name)],
+                    tenant_id=request.tenant_id,
+                    deadline=deadline,
+                    anonymize=anonymize,
+                )
+                if threshold is not None and judge_type.score < threshold:
+                    continue
+
+                categories = type_entry.get("categories") or []
+                category_indices = await self._pick_code_indices(
+                    feedback_text=feedback_record.text,
+                    current_level="Categories",
+                    entries=categories,
+                    hierarchy_path=[("Type", type_name)],
                     tenant_id=request.tenant_id,
                     deadline=deadline,
                     anonymize=anonymize,
                 )
 
-                for type_index in type_indices:
-                    type_entry = types[type_index]
-                    type_name = str(type_entry.get("name", ""))
+                for category_index in category_indices:
+                    category = categories[category_index]
+                    category_name = str(category.get("name", ""))
 
-                    judge_type = await self._judge_code_level(
+                    judge_category = await self._judge_code_level(
                         feedback_text=feedback_record.text,
-                        level="Type",
-                        path=[("Type", type_name)],
+                        level="Category",
+                        path=[("Type", type_name), ("Category", category_name)],
                         tenant_id=request.tenant_id,
                         deadline=deadline,
                         anonymize=anonymize,
                     )
-                    if threshold is not None and judge_type.score < threshold:
+                    if threshold is not None and judge_category.score < threshold:
                         continue
 
-                    categories = type_entry.get("categories") or []
-                    category_indices = await self._pick_code_indices(
+                    codes = category.get("codes") or []
+                    code_indices = await self._pick_code_indices(
                         feedback_text=feedback_record.text,
-                        current_level="Categories",
-                        entries=categories,
-                        hierarchy_path=[("Type", type_name)],
+                        current_level="Codes",
+                        entries=codes,
+                        hierarchy_path=[
+                            ("Type", type_name),
+                            ("Category", category_name),
+                        ],
                         tenant_id=request.tenant_id,
                         deadline=deadline,
                         anonymize=anonymize,
                     )
 
-                    for category_index in category_indices:
-                        category = categories[category_index]
-                        category_name = str(category.get("name", ""))
+                    for code_index in code_indices:
+                        code = codes[code_index]
+                        code_name = str(code.get("name", ""))
 
-                        judge_category = await self._judge_code_level(
+                        judge_code = await self._judge_code_level(
                             feedback_text=feedback_record.text,
-                            level="Category",
-                            path=[("Type", type_name), ("Category", category_name)],
-                            tenant_id=request.tenant_id,
-                            deadline=deadline,
-                            anonymize=anonymize,
-                        )
-                        if threshold is not None and judge_category.score < threshold:
-                            continue
-
-                        codes = category.get("codes") or []
-                        code_indices = await self._pick_code_indices(
-                            feedback_text=feedback_record.text,
-                            current_level="Codes",
-                            entries=codes,
-                            hierarchy_path=[
+                            level="Code",
+                            path=[
                                 ("Type", type_name),
                                 ("Category", category_name),
+                                ("Code", code_name),
                             ],
                             tenant_id=request.tenant_id,
                             deadline=deadline,
                             anonymize=anonymize,
                         )
+                        if threshold is not None and judge_code.score < threshold:
+                            continue
 
-                        for code_index in code_indices:
-                            code = codes[code_index]
-                            code_name = str(code.get("name", ""))
-
-                            judge_code = await self._judge_code_level(
-                                feedback_text=feedback_record.text,
-                                level="Code",
-                                path=[
-                                    ("Type", type_name),
-                                    ("Category", category_name),
-                                    ("Code", code_name),
-                                ],
-                                tenant_id=request.tenant_id,
-                                deadline=deadline,
-                                anonymize=anonymize,
+                        candidates.append(
+                            _ScoredCode(
+                                code_id=str(code.get("code_id", "")),
+                                code_label=code_name,
+                                confidence_type=judge_type.score,
+                                confidence_category=judge_category.score,
+                                confidence_code=judge_code.score,
+                                explanation_type=judge_type.explanation,
+                                explanation_category=judge_category.explanation,
+                                explanation_code=judge_code.explanation,
                             )
-                            if threshold is not None and judge_code.score < threshold:
-                                continue
+                        )
 
-                            candidates.append(
-                                _ScoredCode(
-                                    code_id=str(code.get("code_id", "")),
-                                    code_label=code_name,
-                                    confidence_type=judge_type.score,
-                                    confidence_category=judge_category.score,
-                                    confidence_code=judge_code.score,
-                                    explanation_type=judge_type.explanation,
-                                    explanation_category=judge_category.explanation,
-                                    explanation_code=judge_code.explanation,
-                                )
-                            )
+            candidates.sort(key=lambda c: c.confidence_aggregate, reverse=True)
+            top = candidates[: request.max_codes]
 
-                candidates.sort(key=lambda c: c.confidence_aggregate, reverse=True)
-                top = candidates[: request.max_codes]
-
-                coded.append(
-                    CodedFeedbackRecordModel(
-                        feedback_record_id=feedback_record.id,
-                        assigned_codes=tuple(
-                            AssignedCodeModel(
-                                code_id=c.code_id,
-                                code_label=c.code_label,
-                                confidence_type=c.confidence_type,
-                                confidence_category=c.confidence_category,
-                                confidence_code=c.confidence_code,
-                                confidence_aggregate=c.confidence_aggregate,
-                                explanation=c.explanation,
-                            )
-                            for c in top
-                        ),
-                    )
+            coded.append(
+                CodedFeedbackRecordModel(
+                    feedback_record_id=feedback_record.id,
+                    assigned_codes=tuple(
+                        AssignedCodeModel(
+                            code_id=c.code_id,
+                            code_label=c.code_label,
+                            confidence_type=c.confidence_type,
+                            confidence_category=c.confidence_category,
+                            confidence_code=c.confidence_code,
+                            confidence_aggregate=c.confidence_aggregate,
+                            explanation=c.explanation,
+                        )
+                        for c in top
+                    ),
                 )
+            )
 
-            return CodingAssignmentResultModel(coded_feedback_records=tuple(coded))
+        return CodingAssignmentResultModel(coded_feedback_records=tuple(coded))
 
     async def detect_sensitive_content(
         self,
@@ -657,55 +640,51 @@ class Orchestrator:
         SensitivityAnalysisResultModelList
             The sensitivity analysis results for each feedback record.
         """
-        async with call_scope(
+        timeout = self._check_deadline_and_get_timeout(deadline)
+        system_message = _DEFAULT_SENSITIVITY_DETECTION_PROMPT
+        user_message = str(request.feedback_records)
+
+        anonymized_user_message = user_message
+        if anonymize:
+            anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
+                user_message
+            )
+
+        response = await self._llm.complete(
+            system_message=system_message,
+            user_message=anonymized_user_message,
             tenant_id=request.tenant_id,
-            operation=Operation.DETECT_SENSITIVE,
-        ):
-            timeout = self._check_deadline_and_get_timeout(deadline)
-            system_message = _DEFAULT_SENSITIVITY_DETECTION_PROMPT
-            user_message = str(request.feedback_records)
+            response_model=SensitivityAnalysisResultModelList,
+            timeout=timeout,
+        )
 
-            anonymized_user_message = user_message
-            if anonymize:
-                anonymized_user_message, anonymization_mapping = (
-                    self._anonymizer.anonymize(user_message)
-                )
-
-            response = await self._llm.complete(
-                system_message=system_message,
-                user_message=anonymized_user_message,
-                tenant_id=request.tenant_id,
-                response_model=SensitivityAnalysisResultModelList,
-                timeout=timeout,
+        structured = response.structured
+        if anonymize:
+            return_model_as_string = structured.model_dump_json()
+            unanonymized_return_model_as_string = self._anonymizer.deanonymize(
+                return_model_as_string, anonymization_mapping
+            )
+            structured = SensitivityAnalysisResultModelList.model_validate_json(
+                unanonymized_return_model_as_string
             )
 
-            structured = response.structured
-            if anonymize:
-                return_model_as_string = structured.model_dump_json()
-                unanonymized_return_model_as_string = self._anonymizer.deanonymize(
-                    return_model_as_string, anonymization_mapping
-                )
-                structured = SensitivityAnalysisResultModelList.model_validate_json(
-                    unanonymized_return_model_as_string
-                )
-
-            aligned_results = tuple(
-                SensitivityAnalysisResultModel(
-                    feedback_record_id=record.id,
-                    sensitivity_types=(
-                        structured.results[idx].sensitivity_types
-                        if idx < len(structured.results)
-                        else ()
-                    ),
-                    explanation=(
-                        structured.results[idx].explanation
-                        if idx < len(structured.results)
-                        else "No sensitive content detected."
-                    ),
-                )
-                for idx, record in enumerate(request.feedback_records)
+        aligned_results = tuple(
+            SensitivityAnalysisResultModel(
+                feedback_record_id=record.id,
+                sensitivity_types=(
+                    structured.results[idx].sensitivity_types
+                    if idx < len(structured.results)
+                    else ()
+                ),
+                explanation=(
+                    structured.results[idx].explanation
+                    if idx < len(structured.results)
+                    else "No sensitive content detected."
+                ),
             )
-            return SensitivityAnalysisResultModelList(results=aligned_results)
+            for idx, record in enumerate(request.feedback_records)
+        )
+        return SensitivityAnalysisResultModelList(results=aligned_results)
 
     def _check_deadline_and_get_timeout(self, deadline: datetime) -> float:
         """

@@ -13,8 +13,13 @@ from tenacity import (
     wait_exponential,
 )
 
-from qfa.domain.errors import MissingCallScopeError
-from qfa.domain.models import CallStatus, LLMCallRecord, LLMResponse, T_Response
+from qfa.domain.models import (
+    CallContext,
+    CallStatus,
+    LLMCallRecord,
+    LLMResponse,
+    T_Response,
+)
 from qfa.domain.ports import LLMPort, UsageRepositoryPort
 from qfa.services.call_context import current_call_context
 
@@ -57,24 +62,21 @@ class TrackingLLMAdapter(LLMPort):
     ) -> LLMResponse[T_Response]:
         """Run the inner ``complete`` and record the attempt.
 
-        Raises
-        ------
-        MissingCallScopeError
-            When ``current_call_context`` is unset; indicates a wiring bug
-            (the orchestrator forgot to enter ``call_scope``).
+        If ``current_call_context`` is unset the call still goes through
+        — observability never breaks the use case — but the attempt is
+        not persisted and the missing scope is logged at ERROR. In the
+        current wiring this happens only when the orchestrator is
+        invoked outside an HTTP request (e.g. a CLI or test that forgot
+        to set up scopes); HTTP paths set the scope via
+        ``call_scope_for`` at the route layer.
         """
         ctx = current_call_context.get()
-        if ctx is None:
-            raise MissingCallScopeError(
-                "TrackingLLMAdapter.complete called outside an active call_scope; "
-                "the orchestrator must enter call_scope(...) at each public-method entry."
-            )
-
         started_at = datetime.now(UTC)
         start_monotonic = time.monotonic()
 
+        outcome: LLMResponse[T_Response] | Exception
         try:
-            response = await self._inner.complete(
+            outcome = await self._inner.complete(
                 system_message=system_message,
                 user_message=user_message,
                 tenant_id=tenant_id,
@@ -82,39 +84,26 @@ class TrackingLLMAdapter(LLMPort):
                 timeout=timeout,
             )
         except Exception as exc:
-            duration_ms = int((time.monotonic() - start_monotonic) * 1000)
-            await self._record_safely(
-                LLMCallRecord(
-                    tenant_id=ctx.tenant_id,
-                    operation=ctx.operation,
-                    timestamp=started_at,
-                    call_duration_ms=duration_ms,
-                    model="",
-                    input_tokens=0,
-                    output_tokens=0,
-                    cost_usd=Decimal("0"),
-                    status=CallStatus.ERROR,
-                    error_class=type(exc).__name__,
-                )
-            )
-            raise
+            outcome = exc
 
         duration_ms = int((time.monotonic() - start_monotonic) * 1000)
-        await self._record_safely(
-            LLMCallRecord(
-                tenant_id=ctx.tenant_id,
-                operation=ctx.operation,
-                timestamp=started_at,
-                call_duration_ms=duration_ms,
-                model=response.model,
-                input_tokens=response.prompt_tokens,
-                output_tokens=response.completion_tokens,
-                cost_usd=_to_decimal(response.cost),
-                status=CallStatus.OK,
-                error_class=None,
+
+        if ctx is None:
+            logger.error(
+                "TrackingLLMAdapter.complete called outside an active "
+                "call_scope; bypassing persistence and routing through to "
+                "inner LLM. This indicates a wiring bug — every entry "
+                "into the orchestrator should be wrapped in call_scope "
+                "(routes do this via Depends(call_scope_for(...))).",
             )
-        )
-        return response
+        else:
+            await self._record_safely(
+                _build_record(ctx, started_at, duration_ms, outcome)
+            )
+
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
 
     @retry(
         retry=retry_if_exception_type((OperationalError, InterfaceError)),
@@ -127,6 +116,11 @@ class TrackingLLMAdapter(LLMPort):
         await self._usage_repo.record_call(record)
 
     async def _record_safely(self, record: LLMCallRecord) -> None:
+        """Try to persist to DB, log error on failure (do not raise).
+
+        Rationale: if the usage repository is misbehaving, we don't want the endpoint
+        to fail.
+        """
         try:
             await self._record_with_retry(record)
         except Exception:
@@ -135,6 +129,47 @@ class TrackingLLMAdapter(LLMPort):
                 record.tenant_id,
                 record.operation,
             )
+
+
+def _build_record(
+    ctx: CallContext,
+    started_at: datetime,
+    duration_ms: int,
+    outcome: LLMResponse | Exception,
+) -> LLMCallRecord:
+    """Build an ``LLMCallRecord`` for one inner-LLM attempt.
+
+    ``outcome`` carries either the successful ``LLMResponse`` or the
+    captured exception — same shape on both paths except for the
+    response/error-specific fields.
+    """
+    if isinstance(outcome, Exception):
+        return LLMCallRecord(
+            tenant_id=ctx.tenant_id,
+            operation=ctx.operation,
+            call_id=ctx.call_id,
+            timestamp=started_at,
+            call_duration_ms=duration_ms,
+            model="",
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=Decimal("0"),
+            status=CallStatus.ERROR,
+            error_class=type(outcome).__name__,
+        )
+    return LLMCallRecord(
+        tenant_id=ctx.tenant_id,
+        operation=ctx.operation,
+        call_id=ctx.call_id,
+        timestamp=started_at,
+        call_duration_ms=duration_ms,
+        model=outcome.model,
+        input_tokens=outcome.prompt_tokens,
+        output_tokens=outcome.completion_tokens,
+        cost_usd=_to_decimal(outcome.cost),
+        status=CallStatus.OK,
+        error_class=None,
+    )
 
 
 def _to_decimal(cost: float | None) -> Decimal:
