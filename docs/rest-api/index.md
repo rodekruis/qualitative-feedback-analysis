@@ -20,17 +20,18 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 | `POST` | `/v1/summarize-aggregate` | Single aggregate summary with judge score |
 | `POST` | `/v1/assign_codes` | Hierarchical code assignment |
 | `GET` | `/v1/usage` | Aggregate stats for the caller's tenant |
-| `GET` | `/v1/usage/all` | Cross-tenant stats (requires `is_superuser=true`) |
+| `GET` | `/v1/usage/all/by-tenant` | Cross-tenant stats, tenants top-level with per-operation nested (requires `is_superuser=true`) |
+| `GET` | `/v1/usage/all/by-operation` | Cross-tenant stats, operations top-level with per-tenant nested (requires `is_superuser=true`) |
 | `GET` | `/v1/health` | Liveness probe; no auth |
 
 ## Usage endpoint response shape
 
-Both `GET /v1/usage` and `GET /v1/usage/all` return aggregated stats in two parallel views:
+All usage endpoints return aggregated stats in two parallel views:
 
 - **Per REST API call** (top-level fields): each distinct call to one of the analysis endpoints (`/v1/analyze`, `/v1/summarize`, `/v1/summarize-aggregate`, `/v1/assign_codes`) counts as one. An endpoint like `/v1/assign_codes` that fans out to several LLM calls internally still shows up as a single entry here.
 - **Per LLM call** (`llm_call_stats`): each individual LLM provider call counts as one. Use this view when you want to see raw provider traffic — for example to compute the LLM-calls-per-API-call ratio (`llm_call_stats.total_calls / total_calls`).
 
-`operations` carries a per-operation breakdown of the same data, sorted by `total_cost_usd` desc (ties: operation asc), with operations that had no traffic in the window omitted. Every per-operation entry also carries its own `llm_call_stats`.
+`GET /v1/usage` and `GET /v1/usage/all/by-tenant` carry an `operations` breakdown under each tenant block, sorted by `total_cost_usd` desc (ties: operation asc), with empty operations omitted. `GET /v1/usage/all/by-operation` flips the hierarchy: operations are top-level, each carrying a nested `tenants` breakdown (sorted by `total_cost_usd` desc, ties broken by `tenant_id` asc). Every block — at any level — carries its own `llm_call_stats`.
 
 `total_cost_usd` sums every row in the window — including failed attempts that incurred a real cost — so the figure reflects what was actually spent. Distributions (`avg`/`min`/`max`/`p5`/`p95`) and token totals are computed over successful rows only so failures cannot skew them.
 

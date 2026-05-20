@@ -213,6 +213,78 @@ class TestGetAllUsageStats:
         assert analyze.total_calls == 2
 
 
+class TestGetAllUsageByOperation:
+    async def test_per_operation_plus_grand_total_with_tenants(self, pg_repo):
+        """get_all_usage_by_operation returns per-operation + grand-total with tenants.
+
+        Inverse hierarchy of get_all_usage_stats: top-level keyed by
+        operation, with per-tenant breakdown nested under each. Two
+        operations, overlapping tenants. Verifies:
+        - operations returned sorted by cost desc (ties broken by
+          operation asc)
+        - grand-total entry appended last (operation is None)
+        - grand-total has total_calls summing across operations
+        - per-operation tenants are isolated to that operation and
+          sorted by cost desc
+        """
+        await pg_repo.record_call(
+            _record(
+                tenant_id="a-tenant",
+                operation=Operation.ANALYZE,
+                cost_usd=Decimal("0.3"),
+            )
+        )
+        await pg_repo.record_call(
+            _record(
+                tenant_id="b-tenant",
+                operation=Operation.ANALYZE,
+                cost_usd=Decimal("0.2"),
+            )
+        )
+        await pg_repo.record_call(
+            _record(
+                tenant_id="a-tenant",
+                operation=Operation.SUMMARIZE,
+                cost_usd=Decimal("0.1"),
+            )
+        )
+
+        all_stats = await pg_repo.get_all_usage_by_operation()
+        ops = [s.operation for s in all_stats]
+        # analyze (0.5) > summarize (0.1); grand total last.
+        assert ops == [Operation.ANALYZE, Operation.SUMMARIZE, None]
+
+        analyze = next(s for s in all_stats if s.operation == Operation.ANALYZE)
+        assert [t.tenant_id for t in analyze.tenants] == ["a-tenant", "b-tenant"]
+        assert analyze.total_calls == 2
+
+        summarize = next(s for s in all_stats if s.operation == Operation.SUMMARIZE)
+        assert [t.tenant_id for t in summarize.tenants] == ["a-tenant"]
+
+        grand = next(s for s in all_stats if s.operation is None)
+        assert grand.total_calls == 3
+        # Symmetric to the by-tenant grand total carrying ``operations``
+        # across tenants: the by-operation grand total carries
+        # ``tenants`` rolled up across operations. Two tenants in total,
+        # sorted by cost desc (a-tenant: 0.3+0.1=0.4 > b-tenant: 0.2).
+        assert [t.tenant_id for t in grand.tenants] == ["a-tenant", "b-tenant"]
+        a = next(t for t in grand.tenants if t.tenant_id == "a-tenant")
+        assert a.total_calls == 2
+
+    async def test_empty_window_returns_zero_total(self, pg_repo):
+        """Empty window ⇒ no per-operation rows and a zero grand-total entry.
+
+        Mirrors get_all_usage_stats' empty-window contract: the
+        grand-total entry is always present, never silently dropped.
+        """
+        all_stats = await pg_repo.get_all_usage_by_operation()
+        non_total = [s for s in all_stats if s.operation is not None]
+        assert non_total == []
+        grand = next(s for s in all_stats if s.operation is None)
+        assert grand.total_calls == 0
+        assert grand.tenants == ()
+
+
 class TestPerInvocationAggregation:
     async def test_inherited_metrics_group_by_call_id(self, pg_repo):
         """One call_id with 3 LLM rows aggregates to one invocation.

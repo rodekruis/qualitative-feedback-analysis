@@ -134,15 +134,26 @@ class TestUsageEdgeCases:
         assert resp.status_code == 422
 
 
-class TestUsageAll:
+class TestUsageAllByTenant:
     async def test_403_for_non_superuser(self, e2e_client):
+        """Non-superusers cannot read the cross-tenant by-tenant endpoint.
+
+        Pins the renamed path (was ``/v1/usage/all``) keeps its
+        superuser gating.
+        """
         resp = await e2e_client.get(
-            "/v1/usage/all",
+            "/v1/usage/all/by-tenant",
             headers={"Authorization": f"Bearer {E2E_API_KEY}"},
         )
         assert resp.status_code == 403
 
     async def test_200_for_superuser_with_total_row(self, e2e_client, e2e_engine):
+        """Superuser reads tenants + grand-total over the new path.
+
+        End-to-end check that the renamed path returns the same shape as
+        the pre-rename endpoint did: per-tenant list + ``total`` entry
+        with ``tenant_id=null``.
+        """
         await _seed(
             e2e_engine,
             [
@@ -151,7 +162,7 @@ class TestUsageAll:
             ],
         )
         resp = await e2e_client.get(
-            "/v1/usage/all",
+            "/v1/usage/all/by-tenant",
             headers={"Authorization": f"Bearer {E2E_SUPER_KEY}"},
         )
         assert resp.status_code == 200
@@ -160,6 +171,18 @@ class TestUsageAll:
         assert data["total"]["tenant_id"] is None
         assert data["total"]["total_calls"] == 2
         assert data["total"]["total_cost_usd"] == pytest.approx(0.5)
+
+    async def test_old_path_v1_usage_all_returns_404(self, e2e_client):
+        """The pre-rename ``/v1/usage/all`` is removed (hard move).
+
+        End-to-end guard against accidental re-introduction of the old
+        path. Pre-1.0 release, no consumers depend on a stable URL.
+        """
+        resp = await e2e_client.get(
+            "/v1/usage/all",
+            headers={"Authorization": f"Bearer {E2E_SUPER_KEY}"},
+        )
+        assert resp.status_code == 404
 
 
 class TestPerInvocationE2E:
@@ -237,7 +260,7 @@ class TestOperationsBreakdownE2E:
 
 class TestUsageAllOperationsE2E:
     async def test_grand_total_carries_operations(self, e2e_client, e2e_engine):
-        """``/v1/usage/all`` grand total carries an operations breakdown.
+        """``/v1/usage/all/by-tenant`` grand total carries an operations breakdown.
 
         Two tenants overlapping on ``analyze`` ⇒ grand total ``operations``
         rolls up to a single ``analyze`` entry whose ``total_calls`` sums
@@ -251,7 +274,7 @@ class TestUsageAllOperationsE2E:
             ],
         )
         resp = await e2e_client.get(
-            "/v1/usage/all",
+            "/v1/usage/all/by-tenant",
             headers={"Authorization": f"Bearer {E2E_SUPER_KEY}"},
         )
         assert resp.status_code == 200
@@ -260,3 +283,92 @@ class TestUsageAllOperationsE2E:
         assert total["tenant_id"] is None
         assert [o["operation"] for o in total["operations"]] == ["analyze"]
         assert total["operations"][0]["total_calls"] == 2
+
+
+class TestUsageAllByOperationE2E:
+    async def test_403_for_non_superuser(self, e2e_client):
+        """Non-superusers cannot read cross-tenant by-operation stats.
+
+        Mirrors the by-tenant guard: cross-tenant visibility requires
+        the superuser bit even on the inverse-hierarchy endpoint.
+        """
+        resp = await e2e_client.get(
+            "/v1/usage/all/by-operation",
+            headers={"Authorization": f"Bearer {E2E_API_KEY}"},
+        )
+        assert resp.status_code == 403
+
+    async def test_operations_top_level_with_tenant_breakdown(
+        self, e2e_client, e2e_engine
+    ):
+        """``/v1/usage/all/by-operation`` returns operations top-level with tenants nested.
+
+        Seeds two operations across two tenants and verifies the
+        inverse-hierarchy wire shape: each ``operations[]`` entry
+        carries its own ``tenants`` list (sorted by cost desc) plus
+        ``llm_call_stats``, and the ``total`` entry has
+        ``operation=null`` with ``total_calls`` summing across both
+        operations.
+        """
+        await _seed(
+            e2e_engine,
+            [
+                _record(
+                    tenant_id="t-a",
+                    operation=Operation.ANALYZE,
+                    cost_usd=Decimal("0.3"),
+                ),
+                _record(
+                    tenant_id="t-b",
+                    operation=Operation.ANALYZE,
+                    cost_usd=Decimal("0.2"),
+                ),
+                _record(
+                    tenant_id="t-a",
+                    operation=Operation.SUMMARIZE,
+                    cost_usd=Decimal("0.1"),
+                ),
+            ],
+        )
+        resp = await e2e_client.get(
+            "/v1/usage/all/by-operation",
+            headers={"Authorization": f"Bearer {E2E_SUPER_KEY}"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        # Operations sorted by cost desc: analyze (0.5) before summarize (0.1).
+        ops = data["operations"]
+        assert [o["operation"] for o in ops] == ["analyze", "summarize"]
+        # The analyze block's tenants are sorted by cost desc (t-a 0.3 > t-b 0.2).
+        analyze = ops[0]
+        assert [t["tenant_id"] for t in analyze["tenants"]] == ["t-a", "t-b"]
+        assert analyze["total_calls"] == 2
+        assert "llm_call_stats" in analyze
+        # The summarize block has a single tenant.
+        summarize = ops[1]
+        assert [t["tenant_id"] for t in summarize["tenants"]] == ["t-a"]
+        # Grand total covers everything.
+        total = data["total"]
+        assert total["operation"] is None
+        assert total["total_calls"] == 3
+        assert total["total_cost_usd"] == pytest.approx(0.6)
+
+    async def test_empty_window_returns_zero_total(self, e2e_client):
+        """An empty time window returns no operations and a zero grand total.
+
+        Pins the route's fallback path (``_zero_operation_usage_stats``)
+        end-to-end: even with no rows, ``total`` is present.
+        """
+        resp = await e2e_client.get(
+            "/v1/usage/all/by-operation",
+            params={
+                "from": "1990-01-01T00:00:00Z",
+                "to": "1990-01-02T00:00:00Z",
+            },
+            headers={"Authorization": f"Bearer {E2E_SUPER_KEY}"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["operations"] == []
+        assert data["total"]["operation"] is None
+        assert data["total"]["total_calls"] == 0

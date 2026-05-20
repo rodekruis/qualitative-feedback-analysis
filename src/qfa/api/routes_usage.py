@@ -15,9 +15,14 @@ from qfa.api.dependencies import (
     get_usage_repo,
     require_superuser,
 )
-from qfa.api.schemas_usage import AllUsageStatsResponse, UsageStatsResponse
+from qfa.api.schemas_usage import (
+    AllUsageByOperationResponse,
+    AllUsageStatsResponse,
+    UsageStatsResponse,
+)
 from qfa.domain.models import (
     DistributionStats,
+    OperationUsageStats,
     TenantApiKey,
     TokenStats,
     UsageMetrics,
@@ -45,16 +50,9 @@ _TO_DESCRIPTION = (
 _TIME_FILTER_EXAMPLES = ["2026-04-01T00:00:00Z", "2026-04-15T12:30:00+02:00"]
 
 
-def _zero_usage_stats(tenant_id: str | None) -> UsageStats:
-    """Build a domain ``UsageStats`` representing an empty time window.
-
-    Used as the fallback grand-total in ``/v1/usage/all`` when no rows
-    matched the time filter. Populates both the per-invocation (inherited)
-    fields and the ``llm_call_stats`` block with zeros, and an empty
-    ``operations`` tuple — matching the wire shape clients see in any
-    other empty-window case.
-    """
-    zero_metrics = UsageMetrics(
+def _zero_usage_metrics() -> UsageMetrics:
+    """Build a zero ``UsageMetrics`` (no calls in window) used as a fallback."""
+    return UsageMetrics(
         total_calls=0,
         failed_calls=0,
         total_cost_usd=Decimal("0"),
@@ -62,6 +60,18 @@ def _zero_usage_stats(tenant_id: str | None) -> UsageStats:
         input_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
         output_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
     )
+
+
+def _zero_usage_stats(tenant_id: str | None) -> UsageStats:
+    """Build a domain ``UsageStats`` representing an empty time window.
+
+    Used as the fallback grand-total in ``/v1/usage/all/by-tenant`` when no
+    rows matched the time filter. Populates both the per-invocation
+    (inherited) fields and the ``llm_call_stats`` block with zeros, and an
+    empty ``operations`` tuple — matching the wire shape clients see in
+    any other empty-window case.
+    """
+    zero = _zero_usage_metrics()
     return UsageStats(
         tenant_id=tenant_id,
         total_calls=0,
@@ -70,8 +80,29 @@ def _zero_usage_stats(tenant_id: str | None) -> UsageStats:
         call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0),
         input_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
         output_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
-        llm_call_stats=zero_metrics,
+        llm_call_stats=zero,
         operations=(),
+    )
+
+
+def _zero_operation_usage_stats() -> OperationUsageStats:
+    """Build an ``OperationUsageStats`` representing an empty grand total.
+
+    Used as the fallback grand-total entry in ``/v1/usage/all/by-operation``
+    when no rows matched the time filter. ``operation`` is ``None`` (the
+    grand-total sentinel); ``tenants`` is empty.
+    """
+    zero = _zero_usage_metrics()
+    return OperationUsageStats(
+        operation=None,
+        total_calls=0,
+        failed_calls=0,
+        total_cost_usd=Decimal("0"),
+        call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0),
+        input_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+        output_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+        llm_call_stats=zero,
+        tenants=(),
     )
 
 
@@ -192,12 +223,12 @@ async def usage(
 
 
 @router.get(
-    "/v1/usage/all",
+    "/v1/usage/all/by-tenant",
     response_model=AllUsageStatsResponse,
     status_code=200,
     tags=["Usage Tracking"],
 )
-async def usage_all(
+async def usage_all_by_tenant(
     _tenant: TenantApiKey = Depends(require_superuser),
     usage_repo: UsageRepositoryPort = Depends(get_usage_repo),
     from_: datetime | None = Query(
@@ -229,7 +260,9 @@ async def usage_all(
 
     See ``GET /v1/usage`` for the full per-field semantic contract,
     including the per-invocation ``failed_calls`` rule and the
-    backwards-compatibility note on which numerics changed.
+    backwards-compatibility note on which numerics changed. For the
+    inverse hierarchy (operations top-level, tenants nested), see
+    ``GET /v1/usage/all/by-operation``.
 
     Parameters
     ----------
@@ -256,6 +289,83 @@ async def usage_all(
     )
     return AllUsageStatsResponse(
         tenants=tenants,
+        total=total,
+        from_=from_,  # type: ignore[ty:unknown-argument]  # ty does note support Pydantic fields with an alias
+        to=to,
+    )
+
+
+@router.get(
+    "/v1/usage/all/by-operation",
+    response_model=AllUsageByOperationResponse,
+    status_code=200,
+    tags=["Usage Tracking"],
+)
+async def usage_all_by_operation(
+    _tenant: TenantApiKey = Depends(require_superuser),
+    usage_repo: UsageRepositoryPort = Depends(get_usage_repo),
+    from_: datetime | None = Query(
+        default=None,
+        alias="from",
+        description=_FROM_DESCRIPTION,
+        examples=_TIME_FILTER_EXAMPLES,
+    ),
+    to: datetime | None = Query(
+        default=None,
+        description=_TO_DESCRIPTION,
+        examples=_TIME_FILTER_EXAMPLES,
+    ),
+) -> AllUsageByOperationResponse:
+    """Per-operation and grand-total usage statistics. Requires superuser access.
+
+    Inverse hierarchy of ``GET /v1/usage/all/by-tenant``: top-level
+    aggregation is by orchestrator operation, with a nested ``tenants``
+    breakdown under each operation. Useful for answering "where is the
+    spend going, regardless of tenant" and "which tenants drive each
+    operation".
+
+    Response shape: ``operations`` is a list of per-operation
+    ``OperationUsageStats`` (sorted by ``total_cost_usd`` desc, ties
+    broken by ``operation`` asc); ``total`` is the cross-operation grand
+    total (``operation`` is null). Every entry — per-operation and
+    grand-total — carries per-invocation top-level fields, an
+    ``llm_call_stats`` block with the per-LLM-call view, and a
+    ``tenants`` tuple sorted by cost desc (ties: tenant_id asc, empties
+    omitted).
+
+    Operations with zero calls in the window are filtered from
+    ``operations``. The ``total`` entry is always present (zero-filled
+    when the window is empty).
+
+    See ``GET /v1/usage`` for the full per-field semantic contract,
+    including the per-invocation ``failed_calls`` rule and the
+    backwards-compatibility note on which numerics changed.
+
+    Parameters
+    ----------
+    _tenant : TenantApiKey
+        The authenticated superuser tenant.
+    usage_repo : UsageRepositoryPort
+        The usage repository.
+    from_ : datetime | None
+        Inclusive lower bound (UTC tz-aware), or None.
+    to : datetime | None
+        Exclusive upper bound (UTC tz-aware), or None.
+
+    Returns
+    -------
+    AllUsageByOperationResponse
+        Per-operation and grand total usage statistics within the window.
+    """
+    from_, to = _parse_time_window(from_, to)
+    all_stats = await usage_repo.get_all_usage_by_operation(from_=from_, to=to)
+    operations = [s for s in all_stats if s.operation is not None]
+    total = next(
+        (s for s in all_stats if s.operation is None),
+        _zero_operation_usage_stats(),
+    )
+    return AllUsageByOperationResponse(
+        operations=operations,
         total=total,
         from_=from_,  # type: ignore[ty:unknown-argument]  # ty does note support Pydantic fields with an alias
         to=to,

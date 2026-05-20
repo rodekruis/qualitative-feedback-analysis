@@ -30,6 +30,8 @@ from qfa.domain.models import (
     LLMCallRecord,
     Operation,
     OperationStats,
+    OperationUsageStats,
+    TenantStats,
     TokenStats,
     UsageMetrics,
     UsageStats,
@@ -212,8 +214,78 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
             out.append(stats)
 
         # Grand total (tenant_id=None) — always emitted, even when empty,
-        # matching the existing /v1/usage/all contract.
+        # matching the existing /v1/usage/all/by-tenant contract.
         out.append(self._compose_usage_stats(None, inv_by_key, llm_by_key))
+        return out
+
+    async def get_all_usage_by_operation(
+        self,
+        from_: datetime | None = None,
+        to: datetime | None = None,
+    ) -> list[OperationUsageStats]:
+        """Per-operation + grand-total stats with per-tenant breakdown.
+
+        Inverse of :meth:`get_all_usage_stats`. Issues the same two SELECTs
+        (full ``CUBE(tenant_id, operation)`` grouping sets) but pivots the
+        composition so each top-level entry is keyed by ``operation`` and
+        carries a nested ``tenants`` tuple. The grand-total entry
+        (``operation=None``) is always emitted last, even when empty —
+        matching the convention of :meth:`get_all_usage_stats`.
+        """
+        base_pred: list = []
+        if from_ is not None:
+            base_pred.append(llm_calls.c.timestamp >= from_)
+        if to is not None:
+            base_pred.append(llm_calls.c.timestamp < to)
+
+        async with _translate_db_errors(), self._session_factory() as session:
+            inv_rows = (
+                await session.execute(
+                    self._select_per_invocation(
+                        base_pred,
+                        group_by_tenant=True,
+                        group_by_operation=True,
+                    )
+                )
+            ).all()
+            llm_rows = (
+                await session.execute(
+                    self._select_per_llm_call(
+                        base_pred,
+                        group_by_tenant=True,
+                        group_by_operation=True,
+                    )
+                )
+            ).all()
+
+        inv_by_key: dict[tuple[str | None, str | None], UsageMetrics] = {}
+        for r in inv_rows:
+            m = r._mapping
+            t = m.get("tenant_id") if "tenant_id" in m else None
+            op = m.get("operation") if "operation" in m else None
+            inv_by_key[(t, op)] = self._row_to_usage_metrics(r, suffix="_inv")
+
+        llm_by_key: dict[tuple[str | None, str | None], UsageMetrics] = {}
+        for r in llm_rows:
+            m = r._mapping
+            t = m.get("tenant_id") if "tenant_id" in m else None
+            op = m.get("operation") if "operation" in m else None
+            llm_by_key[(t, op)] = self._row_to_usage_metrics(r, suffix="")
+
+        # Distinct operations appearing in the per-invocation rollup rows.
+        operations = sorted(
+            {op for (t, op) in inv_by_key if op is not None and t is None}
+        )
+
+        out: list[OperationUsageStats] = []
+        for op in operations:
+            stats = self._compose_operation_usage_stats(op, inv_by_key, llm_by_key)
+            if stats.total_calls == 0:
+                continue
+            out.append(stats)
+
+        # Grand total (operation=None) — always emitted, even when empty.
+        out.append(self._compose_operation_usage_stats(None, inv_by_key, llm_by_key))
         return out
 
     # ------------------------------------------------------------------
@@ -593,4 +665,68 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
             output_tokens=tenant_inv.output_tokens,
             llm_call_stats=tenant_llm,
             operations=tuple(operations),
+        )
+
+    @staticmethod
+    def _compose_operation_usage_stats(
+        operation: str | None,
+        inv_by_key: dict[tuple[str | None, str | None], UsageMetrics],
+        llm_by_key: dict[tuple[str | None, str | None], UsageMetrics],
+    ) -> OperationUsageStats:
+        """Assemble an ``OperationUsageStats`` for one operation (or grand total).
+
+        Inverse pivot of :meth:`_compose_usage_stats`: the operation is the
+        top-level discriminator, with tenants nested underneath. The
+        ``(tenant_id IS NULL, operation)`` rollup row from the same
+        ``GROUPING SETS`` query provides the per-operation aggregate;
+        ``(None, None)`` provides the grand total. Per-tenant rows are
+        the ``(tenant_id, operation)`` cells filtered to this operation.
+
+        Parameters
+        ----------
+        operation : str | None
+            The operation to compose. ``None`` for the grand total.
+        inv_by_key : dict
+            Per-invocation metrics keyed by ``(tenant_id, operation)``.
+        llm_by_key : dict
+            Per-LLM-call metrics keyed identically.
+        """
+        zero = SqlAlchemyUsageRepository._zero_usage_metrics
+
+        # Per-tenant rows: (tenant_id, op) where tenant_id is not None and op
+        # matches the requested operation.
+        tenants: list[TenantStats] = []
+        for (t, op), inv in inv_by_key.items():
+            if op != operation or t is None:
+                continue
+            if inv.total_calls == 0:
+                continue
+            llm = llm_by_key.get((t, operation)) or zero()
+            tenants.append(
+                TenantStats(
+                    tenant_id=t,
+                    total_calls=inv.total_calls,
+                    failed_calls=inv.failed_calls,
+                    total_cost_usd=inv.total_cost_usd,
+                    call_duration=inv.call_duration,
+                    input_tokens=inv.input_tokens,
+                    output_tokens=inv.output_tokens,
+                    llm_call_stats=llm,
+                )
+            )
+
+        tenants.sort(key=lambda t: (-t.total_cost_usd, t.tenant_id))
+
+        op_inv = inv_by_key.get((None, operation)) or zero()
+        op_llm = llm_by_key.get((None, operation)) or zero()
+        return OperationUsageStats(
+            operation=Operation(operation) if operation is not None else None,
+            total_calls=op_inv.total_calls,
+            failed_calls=op_inv.failed_calls,
+            total_cost_usd=op_inv.total_cost_usd,
+            call_duration=op_inv.call_duration,
+            input_tokens=op_inv.input_tokens,
+            output_tokens=op_inv.output_tokens,
+            llm_call_stats=op_llm,
+            tenants=tuple(tenants),
         )

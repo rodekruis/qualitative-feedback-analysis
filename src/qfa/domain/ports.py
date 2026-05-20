@@ -13,6 +13,7 @@ from qfa.domain.models import (
     KeyCreationResponse,
     LLMCallRecord,
     LLMResponse,
+    OperationUsageStats,
     T_Response,
     TenantApiKey,
     TenantInfo,
@@ -113,6 +114,33 @@ class UsageRepositoryPort(Protocol):
         -------
         list[UsageStats]
             Per-tenant stats followed by a grand total entry.
+        """
+        ...
+
+    async def get_all_usage_by_operation(
+        self,
+        from_: dt.datetime | None = None,
+        to: dt.datetime | None = None,
+    ) -> list[OperationUsageStats]:
+        """Get per-operation stats with nested per-tenant breakdown plus grand total.
+
+        Inverse hierarchy of :meth:`get_all_usage_stats`: top-level
+        aggregation is by orchestrator operation; each operation block
+        carries a tuple of per-tenant blocks. The grand-total entry
+        (``operation=None``) is always emitted last, matching the
+        convention used by :meth:`get_all_usage_stats`.
+
+        Parameters
+        ----------
+        from_ : datetime | None
+            Inclusive lower bound (UTC tz-aware), or None.
+        to : datetime | None
+            Exclusive upper bound (UTC tz-aware), or None.
+
+        Returns
+        -------
+        list[OperationUsageStats]
+            Per-operation stats followed by a grand total entry.
         """
         ...
 

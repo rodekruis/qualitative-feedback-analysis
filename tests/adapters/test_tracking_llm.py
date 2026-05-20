@@ -70,6 +70,9 @@ class FakeUsageRepository:
     async def get_all_usage_stats(self, from_=None, to=None):
         raise NotImplementedError
 
+    async def get_all_usage_by_operation(self, from_=None, to=None):
+        raise NotImplementedError
+
 
 def _ok_response() -> LLMResponse:
     return LLMResponse(
@@ -230,6 +233,9 @@ class _FlakyRepo:
         raise NotImplementedError
 
     async def get_all_usage_stats(self, from_=None, to=None):
+        raise NotImplementedError
+
+    async def get_all_usage_by_operation(self, from_=None, to=None):
         raise NotImplementedError
 
 

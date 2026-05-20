@@ -12,7 +12,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from qfa.domain.models import UsageStats
+from qfa.domain.models import OperationUsageStats, UsageStats
 
 
 class UsageStatsResponse(UsageStats):
@@ -33,3 +33,20 @@ class AllUsageStatsResponse(BaseModel):
     to: datetime | None = None
     tenants: list[UsageStats]
     total: UsageStats
+
+
+class AllUsageByOperationResponse(BaseModel):
+    """Per-operation + grand total usage with optional echoed time window.
+
+    Inverse hierarchy of :class:`AllUsageStatsResponse`: ``operations`` is
+    the list of per-operation blocks (each with a nested ``tenants``
+    breakdown), and ``total`` is the cross-operation grand total
+    (``operation`` is null).
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    from_: datetime | None = Field(default=None, alias="from")
+    to: datetime | None = None
+    operations: list[OperationUsageStats]
+    total: OperationUsageStats

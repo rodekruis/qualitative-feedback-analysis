@@ -572,7 +572,7 @@ class UsageStats(UsageMetrics):
     Inherits per-invocation metric fields from :class:`UsageMetrics` and
     adds the per-LLM-call view, the per-operation breakdown, and the
     optional ``tenant_id`` (``None`` is the grand-total sentinel used by
-    ``/v1/usage/all``).
+    ``/v1/usage/all/by-tenant``).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -596,6 +596,64 @@ class UsageStats(UsageMetrics):
             "Per-operation breakdown, sorted by ``total_cost_usd`` descending with "
             "ties broken by ``operation`` ascending. Operations with zero calls in "
             "the window are omitted."
+        ),
+    )
+
+
+class TenantStats(UsageMetrics):
+    """Per-tenant usage stats nested inside an operation block.
+
+    Mirrors :class:`OperationStats` but for the inverse hierarchy used by
+    ``/v1/usage/all/by-operation``: each ``OperationUsageStats`` carries a
+    list of these blocks, one per tenant that has activity for that
+    operation in the window. Inherits per-invocation metric fields from
+    :class:`UsageMetrics` and adds the ``tenant_id`` discriminator plus the
+    parallel ``llm_call_stats`` block for the per-LLM-call view of the same
+    (operation, tenant) slice.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    tenant_id: str = Field(
+        description="Tenant identifier this block aggregates.",
+    )
+    llm_call_stats: UsageMetrics = Field(
+        description=(
+            "Per-LLM-call view of the same (operation, tenant) slice. "
+            "``total_calls`` here is raw LLM-call attempts; use the outer "
+            "``total_calls`` for the per-invocation count."
+        ),
+    )
+
+
+class OperationUsageStats(UsageMetrics):
+    """Per-operation (or grand-total) usage stats with nested per-tenant breakdown.
+
+    Inverse hierarchy of :class:`UsageStats`: top-level aggregation is by
+    orchestrator operation, with a list of per-tenant blocks underneath.
+    Used by ``/v1/usage/all/by-operation``. ``operation`` is ``None`` on the
+    grand-total entry (cross-operation, cross-tenant).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    operation: Operation | None = Field(
+        default=None,
+        description="Orchestrator operation; ``None`` for the grand-total entry.",
+    )
+    llm_call_stats: UsageMetrics = Field(
+        description=(
+            "Per-LLM-call view of the same window/operation. ``total_calls`` here "
+            "is raw LLM-call attempts (not invocations); use the outer "
+            "``total_calls`` for the per-invocation count."
+        ),
+    )
+    tenants: tuple[TenantStats, ...] = Field(
+        default=(),
+        description=(
+            "Per-tenant breakdown for this operation, sorted by ``total_cost_usd`` "
+            "descending with ties broken by ``tenant_id`` ascending. Tenants with "
+            "zero calls for this operation in the window are omitted."
         ),
     )
 

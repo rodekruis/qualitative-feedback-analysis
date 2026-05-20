@@ -19,8 +19,10 @@ from qfa.domain.models import (
     LLMResponse,
     Operation,
     OperationStats,
+    OperationUsageStats,
     SensitivityAnalysisResultModelList,
     TenantApiKey,
+    TenantStats,
     TokenStats,
     UsageMetrics,
     UsageStats,
@@ -611,3 +613,156 @@ class TestOperationStats:
         )
         with pytest.raises(ValidationError):
             op.operation = Operation.SUMMARIZE
+
+
+class TestTenantStats:
+    def _llm_metrics(self) -> UsageMetrics:
+        return UsageMetrics(
+            total_calls=2,
+            total_cost_usd=Decimal("0.1"),
+            call_duration=_zero_dist(),
+            input_tokens=_zero_tokens(),
+            output_tokens=_zero_tokens(),
+        )
+
+    def test_inherits_metric_fields(self):
+        """TenantStats carries all UsageMetrics fields plus ``tenant_id`` + ``llm_call_stats``.
+
+        Pins the wire shape of the nested per-tenant block returned under
+        each operation by /v1/usage/all/by-operation.
+        """
+        t = TenantStats(
+            tenant_id="acme",
+            total_calls=1,
+            total_cost_usd=Decimal("0.5"),
+            call_duration=_zero_dist(),
+            input_tokens=_zero_tokens(),
+            output_tokens=_zero_tokens(),
+            llm_call_stats=self._llm_metrics(),
+        )
+        assert t.tenant_id == "acme"
+        assert t.total_calls == 1
+        assert t.llm_call_stats.total_calls == 2
+
+    def test_requires_tenant_id_and_llm_call_stats(self):
+        """``tenant_id`` and ``llm_call_stats`` are mandatory.
+
+        Tenant blocks must always carry their identifier and per-LLM-call
+        view; defaults would mask composition bugs that drop the discriminator.
+        """
+        with pytest.raises(ValidationError):
+            TenantStats(  # type:ignore [ty:missing-argument]
+                total_calls=1,
+                total_cost_usd=Decimal("0"),
+                call_duration=_zero_dist(),
+                input_tokens=_zero_tokens(),
+                output_tokens=_zero_tokens(),
+                llm_call_stats=self._llm_metrics(),
+            )
+
+    def test_frozen(self):
+        """TenantStats is frozen — reassignment after construction raises."""
+        t = TenantStats(
+            tenant_id="acme",
+            total_calls=1,
+            total_cost_usd=Decimal("0"),
+            call_duration=_zero_dist(),
+            input_tokens=_zero_tokens(),
+            output_tokens=_zero_tokens(),
+            llm_call_stats=self._llm_metrics(),
+        )
+        with pytest.raises(ValidationError):
+            t.tenant_id = "other"
+
+
+class TestOperationUsageStats:
+    def _llm_metrics(self) -> UsageMetrics:
+        return UsageMetrics(
+            total_calls=4,
+            total_cost_usd=Decimal("0.2"),
+            call_duration=_zero_dist(),
+            input_tokens=_zero_tokens(),
+            output_tokens=_zero_tokens(),
+        )
+
+    def _tenant(self, tid: str = "acme") -> TenantStats:
+        return TenantStats(
+            tenant_id=tid,
+            total_calls=1,
+            total_cost_usd=Decimal("0.1"),
+            call_duration=_zero_dist(),
+            input_tokens=_zero_tokens(),
+            output_tokens=_zero_tokens(),
+            llm_call_stats=self._llm_metrics(),
+        )
+
+    def test_construct_with_llm_call_stats_and_tenants(self):
+        """OperationUsageStats requires ``llm_call_stats``; ``tenants`` defaults to empty tuple.
+
+        Mirrors the UsageStats invariant for the inverse hierarchy: every
+        operation block must carry the per-LLM-call view, and the absence
+        of per-tenant data is ``()`` — never ``None``.
+        """
+        stats = OperationUsageStats(
+            operation=Operation.ANALYZE,
+            total_calls=5,
+            total_cost_usd=Decimal("1.0"),
+            call_duration=_zero_dist(),
+            input_tokens=_zero_tokens(),
+            output_tokens=_zero_tokens(),
+            llm_call_stats=self._llm_metrics(),
+        )
+        assert stats.operation == Operation.ANALYZE
+        assert stats.tenants == ()
+        assert stats.llm_call_stats.total_calls == 4
+
+    def test_operation_none_allowed_for_grand_total(self):
+        """operation=None is allowed — the grand-total entry of /v1/usage/all/by-operation.
+
+        Parallels the tenant_id=None convention on UsageStats.
+        """
+        stats = OperationUsageStats(
+            operation=None,
+            total_calls=0,
+            total_cost_usd=Decimal("0"),
+            call_duration=_zero_dist(),
+            input_tokens=_zero_tokens(),
+            output_tokens=_zero_tokens(),
+            llm_call_stats=self._llm_metrics(),
+        )
+        assert stats.operation is None
+
+    def test_tenants_is_a_tuple(self):
+        """``tenants`` is a tuple per ADR-001 (frozen + tuples).
+
+        Catches an accidental list typing — would break frozen invariants
+        and dict-like access patterns downstream.
+        """
+        stats = OperationUsageStats(
+            operation=Operation.ANALYZE,
+            total_calls=1,
+            total_cost_usd=Decimal("0.1"),
+            call_duration=_zero_dist(),
+            input_tokens=_zero_tokens(),
+            output_tokens=_zero_tokens(),
+            llm_call_stats=self._llm_metrics(),
+            tenants=(self._tenant("acme"), self._tenant("beta")),
+        )
+        assert isinstance(stats.tenants, tuple)
+        assert stats.tenants[0].tenant_id == "acme"
+
+    def test_requires_llm_call_stats(self):
+        """``llm_call_stats`` is mandatory — omitting it must raise ValidationError.
+
+        Prevents an operation block from being emitted without the
+        per-LLM-call view, which clients rely on for fan-out math.
+        """
+        with pytest.raises(ValidationError):
+            OperationUsageStats(  # type:ignore [ty:missing-argument]
+                operation=Operation.ANALYZE,
+                total_calls=0,
+                total_cost_usd=Decimal("0"),
+                call_duration=_zero_dist(),
+                input_tokens=_zero_tokens(),
+                output_tokens=_zero_tokens(),
+            )
