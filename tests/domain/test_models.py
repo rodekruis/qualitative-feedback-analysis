@@ -18,6 +18,7 @@ from qfa.domain.models import (
     LLMCallRecord,
     LLMResponse,
     Operation,
+    OperationStats,
     TenantApiKey,
     TokenStats,
     UsageMetrics,
@@ -424,3 +425,64 @@ class TestUsageMetrics:
         )
         dumped = m.model_dump()
         assert dumped["total_cost_usd"] == 0.5
+
+
+class TestOperationStats:
+    def _llm_metrics(self) -> UsageMetrics:
+        return UsageMetrics(
+            total_calls=3,
+            total_cost_usd=Decimal("0.1"),
+            call_duration=_zero_dist(),
+            input_tokens=_zero_tokens(),
+            output_tokens=_zero_tokens(),
+        )
+
+    def test_inherits_metric_fields(self):
+        """OperationStats carries all UsageMetrics fields plus ``operation`` + ``llm_call_stats``.
+
+        Guarantees the per-operation block exposes the per-invocation view
+        as its own attributes (not nested) — clients can read
+        ``operations[i].total_cost_usd`` directly.
+        """
+        op = OperationStats(
+            operation=Operation.ANALYZE,
+            total_calls=1,
+            total_cost_usd=Decimal("0.5"),
+            call_duration=_zero_dist(),
+            input_tokens=_zero_tokens(),
+            output_tokens=_zero_tokens(),
+            llm_call_stats=self._llm_metrics(),
+        )
+        assert op.operation == Operation.ANALYZE
+        assert op.total_calls == 1
+        assert op.total_cost_usd == Decimal("0.5")
+        assert op.llm_call_stats.total_calls == 3
+
+    def test_requires_operation_and_llm_call_stats(self):
+        """``operation`` and ``llm_call_stats`` are mandatory.
+
+        Omitting them must raise — otherwise composition could silently
+        forget to attach either, producing structurally invalid responses.
+        """
+        with pytest.raises(ValidationError):
+            OperationStats(  # type:ignore [ty:missing-argument]
+                total_calls=1,
+                total_cost_usd=Decimal("0"),
+                call_duration=_zero_dist(),
+                input_tokens=_zero_tokens(),
+                output_tokens=_zero_tokens(),
+            )
+
+    def test_frozen(self):
+        """OperationStats is frozen — assignment after construction raises."""
+        op = OperationStats(
+            operation=Operation.ANALYZE,
+            total_calls=1,
+            total_cost_usd=Decimal("0"),
+            call_duration=_zero_dist(),
+            input_tokens=_zero_tokens(),
+            output_tokens=_zero_tokens(),
+            llm_call_stats=self._llm_metrics(),
+        )
+        with pytest.raises(ValidationError):
+            op.operation = Operation.SUMMARIZE

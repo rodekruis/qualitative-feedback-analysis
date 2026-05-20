@@ -446,6 +446,38 @@ class UsageMetrics(BaseModel):
         return float(v)
 
 
+class OperationStats(UsageMetrics):
+    """Per-operation usage stats — per-invocation semantics + per-LLM-call view.
+
+    Inherits all metric fields from :class:`UsageMetrics` (per-invocation
+    semantics) and adds the ``operation`` discriminator plus a parallel
+    ``llm_call_stats`` block giving the per-LLM-call view for the same
+    operation.
+
+    Attributes
+    ----------
+    operation : Operation
+        The orchestrator operation this block aggregates.
+    llm_call_stats : UsageMetrics
+        Per-LLM-call view of the same window/operation — i.e. ``total_calls``
+        is raw LLM call attempts, ``call_duration`` is provider latency.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    operation: Operation = Field(
+        description="Orchestrator operation this block aggregates.",
+    )
+    llm_call_stats: UsageMetrics = Field(
+        description=(
+            "Per-LLM-call view of the same window/operation. ``total_calls`` "
+            "here is raw LLM call attempts (not invocations); ``call_duration`` "
+            "is individual provider latency. Use ``llm_call_stats.total_calls "
+            "/ total_calls`` to compute the fan-out factor for this operation."
+        ),
+    )
+
+
 class UsageStats(BaseModel):
     """Aggregated usage statistics for a tenant or grand total.
 
