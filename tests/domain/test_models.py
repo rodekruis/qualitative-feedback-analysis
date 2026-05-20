@@ -347,22 +347,98 @@ class TestLLMCallRecord:
             )
 
 
-# --- UsageStats new fields ---
+# --- UsageStats v2 ---
 
 
-class TestUsageStatsExtensions:
-    def test_has_failed_calls_and_total_cost(self):
+class TestUsageStatsV2:
+    def _metrics(self, total_calls: int = 1) -> UsageMetrics:
+        return UsageMetrics(
+            total_calls=total_calls,
+            total_cost_usd=Decimal("0.5"),
+            call_duration=_zero_dist(),
+            input_tokens=_zero_tokens(),
+            output_tokens=_zero_tokens(),
+        )
+
+    def test_construct_with_llm_call_stats_and_operations(self):
+        """UsageStats requires ``llm_call_stats``; ``operations`` defaults to empty tuple.
+
+        Guards the wire shape: every tenant block must carry the per-LLM-call
+        view, and the absence of per-operation data is represented as ``()``
+        — never ``None``.
+        """
         stats = UsageStats(
             tenant_id="t1",
             total_calls=10,
             failed_calls=1,
             total_cost_usd=Decimal("0.5"),
-            call_duration=DistributionStats(avg=1, min=0, max=2, p5=0, p95=2),
-            input_tokens=TokenStats(avg=1, min=0, max=2, p5=0, p95=2, total=10),
-            output_tokens=TokenStats(avg=1, min=0, max=2, p5=0, p95=2, total=10),
+            call_duration=_zero_dist(),
+            input_tokens=_zero_tokens(),
+            output_tokens=_zero_tokens(),
+            llm_call_stats=self._metrics(total_calls=42),
         )
-        assert stats.total_cost_usd == Decimal("0.5")
-        assert stats.failed_calls == 1
+        assert stats.operations == ()
+        assert stats.llm_call_stats.total_calls == 42
+
+    def test_requires_llm_call_stats(self):
+        """``llm_call_stats`` is mandatory — omitting it must raise ValidationError.
+
+        Prevents an empty per-LLM-call block from sneaking through and
+        leaving clients to special-case None.
+        """
+        with pytest.raises(ValidationError):
+            UsageStats(  # type:ignore [ty:missing-argument]
+                tenant_id="t1",
+                total_calls=0,
+                total_cost_usd=Decimal("0"),
+                call_duration=_zero_dist(),
+                input_tokens=_zero_tokens(),
+                output_tokens=_zero_tokens(),
+            )
+
+    def test_operations_is_a_tuple(self):
+        """``operations`` is a tuple per ADR-001 (frozen + tuples).
+
+        Catches an accidental list typing — would break frozen invariants
+        and dict-like access patterns downstream.
+        """
+        op = OperationStats(
+            operation=Operation.ANALYZE,
+            total_calls=1,
+            total_cost_usd=Decimal("0"),
+            call_duration=_zero_dist(),
+            input_tokens=_zero_tokens(),
+            output_tokens=_zero_tokens(),
+            llm_call_stats=self._metrics(),
+        )
+        stats = UsageStats(
+            tenant_id="t1",
+            total_calls=1,
+            total_cost_usd=Decimal("0"),
+            call_duration=_zero_dist(),
+            input_tokens=_zero_tokens(),
+            output_tokens=_zero_tokens(),
+            llm_call_stats=self._metrics(),
+            operations=(op,),
+        )
+        assert isinstance(stats.operations, tuple)
+        assert stats.operations[0].operation == Operation.ANALYZE
+
+    def test_tenant_id_none_allowed_for_grand_total(self):
+        """tenant_id=None is allowed — the grand-total entry in /v1/usage/all.
+
+        Guards the existing sentinel convention.
+        """
+        stats = UsageStats(
+            tenant_id=None,
+            total_calls=0,
+            total_cost_usd=Decimal("0"),
+            call_duration=_zero_dist(),
+            input_tokens=_zero_tokens(),
+            output_tokens=_zero_tokens(),
+            llm_call_stats=self._metrics(total_calls=0),
+        )
+        assert stats.tenant_id is None
 
 
 class TestUsageMetrics:

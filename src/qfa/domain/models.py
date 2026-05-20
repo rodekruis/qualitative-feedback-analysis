@@ -478,41 +478,47 @@ class OperationStats(UsageMetrics):
     )
 
 
-class UsageStats(BaseModel):
-    """Aggregated usage statistics for a tenant or grand total.
+class UsageStats(UsageMetrics):
+    """Per-tenant (or grand-total) usage stats — per-invocation + per-LLM-call.
 
-    The token and duration distributions and ``total_cost_usd`` are scoped
-    to ``status='ok'`` rows. ``total_calls`` and ``failed_calls`` count all
-    attempts including failures (policy "alpha").
+    Inherits per-invocation metric fields from :class:`UsageMetrics` and
+    adds the per-LLM-call view, the per-operation breakdown, and the
+    optional ``tenant_id`` (``None`` is the grand-total sentinel used by
+    ``/v1/usage/all``).
 
     Attributes
     ----------
     tenant_id : str | None
-        Tenant identifier, or None for grand total.
-    total_calls : int
-        Total attempts (successful + failed).
-    failed_calls : int
-        Attempts with ``status='error'``.
-    total_cost_usd : Decimal
-        Sum of cost over successful attempts only.
-    call_duration : DistributionStats
-        Call duration distribution in milliseconds (successful attempts only).
-    input_tokens : TokenStats
-        Input token distribution (successful attempts only).
-    output_tokens : TokenStats
-        Output token distribution (successful attempts only).
+        Tenant identifier, or ``None`` for the grand-total entry.
+    llm_call_stats : UsageMetrics
+        Per-LLM-call view across the same window/tenant. Use this when
+        you need today's "every row counts as one call" semantics.
+    operations : tuple[OperationStats, ...]
+        Per-operation breakdown, sorted by ``total_cost_usd`` desc with
+        ties broken by ``operation.value`` asc. Operations with zero
+        calls in the window are omitted.
     """
 
     model_config = ConfigDict(frozen=True)
 
-    tenant_id: str | None = None
-    total_calls: int
-    failed_calls: int = 0
-    total_cost_usd: Decimal = Decimal("0")
-    call_duration: DistributionStats
-    input_tokens: TokenStats
-    output_tokens: TokenStats
-
-    @field_serializer("total_cost_usd")
-    def _serialize_total_cost(self, v: Decimal) -> float:
-        return float(v)
+    tenant_id: str | None = Field(
+        default=None,
+        description="Tenant identifier; ``None`` for the grand-total entry.",
+    )
+    llm_call_stats: UsageMetrics = Field(
+        description=(
+            "Per-LLM-call view of the same window/tenant. ``total_calls`` here is "
+            "raw LLM-call attempts (not invocations); use the outer ``total_calls`` "
+            "for the per-invocation count. Numerics: ``total_cost_usd``, "
+            "``input_tokens.total``, ``output_tokens.total`` are identical to the "
+            "outer view; counts and distributions differ for multi-LLM-call operations."
+        ),
+    )
+    operations: tuple[OperationStats, ...] = Field(
+        default=(),
+        description=(
+            "Per-operation breakdown, sorted by ``total_cost_usd`` descending with "
+            "ties broken by ``operation`` ascending. Operations with zero calls in "
+            "the window are omitted."
+        ),
+    )
