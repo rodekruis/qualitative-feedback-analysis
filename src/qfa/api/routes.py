@@ -298,7 +298,10 @@ async def summarize_aggregate(
 
 
 @router.post(
-    "/v1/detect-sensitive", response_model=ApiDetectSensitiveResponse, status_code=200
+    "/v1/detect-sensitive",
+    response_model=ApiDetectSensitiveResponse,
+    status_code=200,
+    tags=["Inference"],
 )
 async def detect_sensitive(
     body: ApiDetectSensitiveRequest,
