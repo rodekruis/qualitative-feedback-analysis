@@ -131,4 +131,5 @@ def test_coding_levels_with_no_children_fail():
 def test_summarize_request_example_uses_ubiquitous_language():
     examples = ApiSummarizeRequest.model_config["json_schema_extra"]["examples"]
     prompt = examples[0]["prompt"]
-    assert prompt == "Focus on operational issues and community-member experience."
+    assert "community-member" in prompt
+    assert "beneficiary" not in prompt
