@@ -28,6 +28,7 @@ from qfa.domain.models import (
     SummaryResultModel,
     TenantApiKey,
     TokenStats,
+    UsageMetrics,
     UsageStats,
 )
 from qfa.domain.ports import UsageRepositoryPort
@@ -36,6 +37,18 @@ FAKE_API_KEY = "test-key-abc123"
 FAKE_SUPERUSER_KEY = "superuser-key-xyz789"
 FAKE_TENANT_ID = "tenant-test"
 FAKE_API_KEY_NAME = "test-key"
+
+
+def _zero_usage_metrics() -> UsageMetrics:
+    """Return a zero-filled UsageMetrics for use in fake repository stubs."""
+    return UsageMetrics(
+        total_calls=0,
+        failed_calls=0,
+        total_cost_usd=Decimal("0"),
+        call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0),
+        input_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+        output_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+    )
 
 
 class FakeOrchestrator:
@@ -149,6 +162,7 @@ class FakeUsageRepository(UsageRepositoryPort):
             call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0),
             input_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
             output_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+            llm_call_stats=_zero_usage_metrics(),
         )
 
     async def get_all_usage_stats(self, from_=None, to=None):
@@ -161,6 +175,7 @@ class FakeUsageRepository(UsageRepositoryPort):
                 call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0),
                 input_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
                 output_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+                llm_call_stats=_zero_usage_metrics(),
             )
         ]
 
