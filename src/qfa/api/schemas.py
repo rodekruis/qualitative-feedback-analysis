@@ -207,7 +207,7 @@ class ApiSummarizeRequest(BaseModel):
                         },
                     ],
                     "output_language": "English",
-                    "prompt": "Focus on operational issues and beneficiary experience.",
+                    "prompt": "Focus on operational issues and community-member experience.",
                 },
             ],
         },
