@@ -16,6 +16,10 @@ def anonymizer() -> PresidioAnonymizer:
         ("Hi my name is Dick Schoof", "<PERSON", "Dick Schoof"),
         ("My number is 212-555-5555", "<PHONE_NUMBER", "212-555-5555"),
         ("I live in The Netherlands", "<LOCATION", "The Netherlands"),
+        ("Je m'appelle Marie Dupont", "<PERSON", "Marie Dupont"),  # French
+        ("Me llamo Carlos García", "<PERSON", "Carlos García"),  # Spanish
+        ("Мене звати Олена Петренко", "<PERSON", "Олена Петренко"),  # Ukrainian
+        ("Меня зовут Иван Иванов", "<PERSON", "Иван Иванов"),  # Russian
     ],
 )
 def test_anonymize_replaces_entity_and_roundtrip_restores_original(
