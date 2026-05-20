@@ -14,7 +14,7 @@ For the design ({py:class}`~qfa.domain.models.TenantApiKey`, `validate_api_key`,
 
 ## API key shape
 
-`AUTH_API_KEYS` is a JSON array of objects. Five fields:
+`AUTH_API_KEYS` is a JSON array of objects used for environment-based (startup) keys. Five fields:
 
 | Field | Type | Notes |
 |---|---|---|
@@ -37,6 +37,33 @@ Example:
     }
 ]
 ```
+
+## Creating keys via the API
+
+Keys can be created at runtime through `POST /v1/auth/keys` (requires a superuser key). The server generates both the key value and its unique identifier — you do **not** supply them:
+
+```http
+POST /v1/auth/keys HTTP/1.1
+Authorization: Bearer <superuser-key>
+Content-Type: application/json
+
+{
+    "key_name": "crm-production",
+    "tenant_id": "tenant-redcross-nl",
+    "is_superuser": false
+}
+```
+
+Response:
+
+```json
+{
+    "key_id": "a1b2c3d4-...",
+    "api_key": "Tx3k8..."
+}
+```
+
+The `api_key` value is the plain secret. **It is shown only once** — copy it and share it with the tenant immediately. It is hashed before storage and cannot be retrieved again. The `key_id` is used for logging and deletion.
 
 ## Production: rotating and adding keys
 

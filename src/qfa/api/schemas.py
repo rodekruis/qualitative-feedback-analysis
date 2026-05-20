@@ -207,7 +207,7 @@ class ApiSummarizeRequest(BaseModel):
                         },
                     ],
                     "output_language": "English",
-                    "prompt": "Focus on operational issues and beneficiary experience.",
+                    "prompt": "Focus on operational issues and community-member experience.",
                 },
             ],
         },
@@ -328,6 +328,62 @@ class ApiCodingLevels(BaseModel):
         return self
 
 
+class ApiDetectSensitiveRequest(BaseModel):
+    """Request body for the ``POST /v1/detect-sensitive`` endpoint.
+
+    Attributes
+    ----------
+        feedback_items : list[ApiFeedbackRecordInput]
+    """
+
+    feedback_items: list[ApiFeedbackRecordInput] = Field(
+        min_length=1,
+        description="List of feedback items to check for sensitive content.",
+    )
+
+    anonymize: bool = Field(
+        default=True,
+        description="If true, the service will anonymize feedback text before sending it to the LLM. Disable only if you are sure that no personally identifiable information (PII) is present in the input.",
+    )
+
+
+class ApiFeedbackItemSensitivityRating(BaseModel):
+    """Represents the sensitivity rating for a single feedback item.
+
+    Attributes
+    ----------
+    id : str
+        Identifier of the source feedback item.
+    is_sensitive : bool
+        Indicates whether the feedback item is considered sensitive.
+    explanation : str
+        Explanation for the sensitivity rating.
+    sensitivity_types : list[str]
+        Sensitivity categories detected for the feedback item.
+    """
+
+    id: str = Field(description="Identifier of the source feedback item.")
+    is_sensitive: bool = Field(
+        description="Indicates whether the feedback item is considered sensitive."
+    )
+    explanation: str = Field(description="Explanation for the sensitivity rating.")
+    sensitivity_types: list[str] = Field(
+        description="Sensitivity categories detected for the feedback item."
+    )
+
+
+class ApiDetectSensitiveResponse(BaseModel):
+    """Response body for the ``POST /v1/detect-sensitive`` endpoint.
+
+    Attributes
+    ----------
+    ratings : list[ApiFeedbackItemSensitivityRating]
+        Sensitivity rating for each submitted feedback item.
+    """
+
+    ratings: list[ApiFeedbackItemSensitivityRating]
+
+
 class ApiFeedbackRecord(BaseModel):
     """Feedback record: ``id`` plus body text (reusable across endpoints)."""
 
@@ -375,6 +431,89 @@ class ApiAssignCodesResponse(BaseModel):
     """Response body for ``POST /v1/assign_codes``."""
 
     coded_feedback_records: list[ApiCodedFeedbackRecord]
+
+
+class ApiAddTenantRequest(BaseModel):
+    """Request body for ``POST /v1/admin/tenants``."""
+
+    tenant_name: str = Field(
+        min_length=1,
+        max_length=255,
+        description="Display name for the tenant to create.",
+    )
+    allows_superusers: bool = Field(
+        default=False,
+        description="Whether this tenant is allowed to own superuser keys.",
+    )
+
+
+class ApiAddTenantResponse(BaseModel):
+    """Response body for ``POST /v1/admin/tenants``."""
+
+    tenant_id: str = Field(description="Unique identifier of the created tenant.")
+
+
+class ApiTenant(BaseModel):
+    """A single tenant metadata item."""
+
+    tenant_id: str = Field(description="Unique identifier for the tenant.")
+    name: str = Field(description="Display name for the tenant.")
+    allows_superusers: bool = Field(
+        description="Whether this tenant is allowed to own superuser keys.",
+    )
+
+
+class ApiTenantsResponse(BaseModel):
+    """Response body for ``GET /v1/admin/tenants``."""
+
+    tenants: list[ApiTenant] = Field(description="Tenant metadata records.")
+
+
+class ApiAddKeyRequest(BaseModel):
+    """Request body for ``POST /v1/admin/keys``."""
+
+    key_name: str = Field(
+        min_length=1,
+        max_length=255,
+        description="Human-readable name for the API key.",
+    )
+    tenant_id: str = Field(
+        min_length=1,
+        max_length=255,
+        description="Tenant identifier this key should belong to.",
+    )
+    is_superuser: bool = Field(
+        default=False,
+        description="Whether this key should have superuser privileges.",
+    )
+
+
+class ApiAddKeyResponse(BaseModel):
+    """Response body for ``POST /v1/admin/keys``."""
+
+    key_id: str = Field(description="Unique identifier of the created API key.")
+    api_key: str = Field(
+        description="Plain API key. Shown once — store it now, it cannot be retrieved again.",
+    )
+
+
+class ApiAuthKey(BaseModel):
+    """A single API key metadata item."""
+
+    key_id: str = Field(description="Unique identifier for the API key.")
+    name: str = Field(description="Human-readable key name.")
+    tenant_id: str = Field(description="Tenant identifier for this key.")
+    is_superuser: bool = Field(
+        description="Whether the key has superuser privileges.",
+    )
+
+
+class ApiAuthKeysResponse(BaseModel):
+    """Response body for ``GET /v1/admin/keys``."""
+
+    auth_keys: list[ApiAuthKey] = Field(
+        description="API key metadata records filtered by tenant when requested.",
+    )
 
 
 class ApiHealthResponse(BaseModel):

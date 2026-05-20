@@ -19,11 +19,13 @@ from qfa.domain.models import (
     LLMResponse,
     Operation,
     OperationStats,
+    SensitivityAnalysisResultModelList,
     TenantApiKey,
     TokenStats,
     UsageMetrics,
     UsageStats,
 )
+from qfa.domain.sensitivity_types import SensitivityType
 
 
 def _zero_dist() -> DistributionStats:
@@ -180,23 +182,47 @@ class TestLLMResponse:
 
 
 class TestTenantApiKey:
-    def test_construct_with_valid_data(self):
+    def test_construct_with_plain_key_hashes_and_discards_key(self):
         key = TenantApiKey(
             key_id="tenant-1-0",
             name="prod-key",
             key="sk-abc123",  # type:ignore [ty:invalid-argument-type]
+            hashed_key=None,  # type:ignore [ty:invalid-argument-type]
             tenant_id="tenant-1",
         )
         assert key.key_id == "tenant-1-0"
         assert key.name == "prod-key"
-        assert key.key.get_secret_value() == "sk-abc123"
+        assert key.key is None
+        assert key.hashed_key.get_secret_value() == TenantApiKey.hash_key("sk-abc123")
         assert key.tenant_id == "tenant-1"
+
+    def test_construct_with_hashed_key(self):
+        key_hash = TenantApiKey.hash_key("sk-abc123")
+        key = TenantApiKey(
+            key_id="tenant-1-0",
+            name="prod-key",
+            hashed_key=key_hash,  # type:ignore [ty:invalid-argument-type]
+            tenant_id="tenant-1",
+        )
+        assert key.key is None
+        assert key.hashed_key.get_secret_value() == key_hash
+
+    def test_rejects_mismatched_key_and_hashed_key(self):
+        with pytest.raises(ValidationError):
+            TenantApiKey(
+                key_id="tenant-1-0",
+                name="prod-key",
+                key="sk-abc123",  # type:ignore [ty:invalid-argument-type]
+                hashed_key="not-the-right-hash",  # type:ignore [ty:invalid-argument-type]
+                tenant_id="tenant-1",
+            )
 
     def test_frozen_raises_on_assignment(self):
         key = TenantApiKey(
             key_id="tenant-1-0",
             name="prod-key",
             key="sk-abc123",  # type:ignore [ty:invalid-argument-type]
+            hashed_key=None,  # type:ignore [ty:invalid-argument-type]
             tenant_id="tenant-1",
         )
         with pytest.raises(ValidationError):
@@ -213,6 +239,29 @@ class TestOperationEnum:
         assert Operation.SUMMARIZE_AGGREGATE == "summarize_aggregate"
         assert Operation.ASSIGN_CODES == "assign_codes"
         assert Operation.UNKNOWN == "unknown"
+
+
+class TestSensitivityModels:
+    def test_sensitive_result_parses_enum_codes_from_json(self):
+        result = SensitivityAnalysisResultModelList.model_validate_json(
+            """
+            {
+                "results": [
+                    {
+                        "feedback_record_id": "doc-1",
+                        "sensitivity_types": ["CORRUPTION"],
+                        "explanation": "Contains a bribery allegation."
+                    }
+                ]
+            }
+            """
+        )
+
+        assert result.results[0].sensitivity_types == (SensitivityType.CORRUPTION,)
+        assert result.results[0].explanation == "Contains a bribery allegation."
+
+    def test_sensitivity_enum_uses_short_stable_values(self):
+        assert SensitivityType.CORRUPTION.value == "CORRUPTION"
 
 
 class TestCallStatusEnum:

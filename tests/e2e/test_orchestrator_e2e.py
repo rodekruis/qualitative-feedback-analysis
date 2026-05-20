@@ -56,7 +56,7 @@ class TestAnalyzeRecordsRow:
             json={
                 "feedback_records": [{"id": "d1", "text": "hello"}],
                 "prompt": "summarize",
-                "deactivate_anonymization": True,
+                "anonymize": False,
             },
             headers={"Authorization": f"Bearer {E2E_API_KEY}"},
         )
@@ -175,7 +175,7 @@ class TestAnalyzeFailureRecordsRow:
             json={
                 "feedback_records": [{"id": "d1", "text": "hello"}],
                 "prompt": "summarize",
-                "deactivate_anonymization": True,
+                "anonymize": False,
             },
             headers={"Authorization": f"Bearer {E2E_API_KEY}"},
         )

@@ -3,6 +3,8 @@
 All models are immutable (frozen) Pydantic models per ADR-001.
 """
 
+import hashlib
+import secrets
 from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
@@ -17,6 +19,8 @@ from pydantic import (
     field_serializer,
     model_validator,
 )
+
+from qfa.domain.sensitivity_types import SensitivityType
 
 
 class FeedbackRecordModel(BaseModel):
@@ -198,6 +202,49 @@ class CodingAssignmentResultModel(BaseModel):
     )
 
 
+class SensitivityAnalysisRequestModel(BaseModel):
+    """A request to analyze feedback records for sensitivity."""
+
+    model_config = ConfigDict(frozen=True)
+
+    feedback_records: tuple[FeedbackRecordModel, ...] = Field(
+        min_length=1,
+        description="Non-empty tuple of feedback records to analyze for sensitivity.",
+    )
+    tenant_id: str = Field(description="Tenant identifier injected by the auth layer.")
+
+
+class SensitivityAnalysisResultModel(BaseModel):
+    """The result of analyzing feedback records for sensitivity."""
+
+    model_config = ConfigDict(frozen=True)
+
+    feedback_record_id: str = Field(
+        description="Identifier of the source feedback record.",
+    )
+    sensitivity_types: tuple[SensitivityType, ...] = Field(
+        description="Sensitivity types identified in the feedback record.",
+    )
+    explanation: str = Field(
+        description="Natural-language explanation for why the record was classified this way."
+    )
+
+    @property
+    def is_sensitive(self) -> bool:
+        """Convenience property indicating whether any sensitivity types were detected."""
+        return len(self.sensitivity_types) > 0
+
+
+class SensitivityAnalysisResultModelList(BaseModel):
+    """The result of analyzing feedback records for sensitivity."""
+
+    model_config = ConfigDict(frozen=True)
+
+    results: tuple[SensitivityAnalysisResultModel, ...] = Field(
+        description="Sensitivity analysis results for each feedback record.",
+    )
+
+
 # Define a TypeVar that must be a Pydantic BaseModel
 T_Response = TypeVar("T_Response", bound=Union[BaseModel, str])
 
@@ -225,9 +272,71 @@ class TenantApiKey(BaseModel):
 
     key_id: str = Field(description="Unique identifier for the API key.")
     name: str = Field(description="Human-readable name for the API key.")
-    key: SecretStr = Field(description="Secret API key value.")
+    key: SecretStr | None = Field(
+        default=None,
+        description="Plain API key accepted at construction time and discarded after hashing.",
+        exclude=True,
+        repr=False,
+    )
+    hashed_key: SecretStr = Field(
+        description="scrypt-derived hash of the API key value."
+    )
     tenant_id: str = Field(description="Tenant identifier this key belongs to.")
     is_superuser: bool = False
+
+    @staticmethod
+    def hash_key(key: str) -> str:
+        """Return a stable scrypt-derived hex digest for an API key."""
+        return hashlib.scrypt(
+            key.encode("utf-8"),
+            salt=b"",
+            n=2**14,
+            r=8,
+            p=1,
+        ).hex()
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_key_inputs(cls, data: Any) -> Any:
+        """Normalize input to accept either 'key' or 'hashed_key' but not both, and compute the hash if only 'key' is provided.
+
+        This allows flexible construction while ensuring that the model instance only retains the hashed key for security.
+        """
+        if not isinstance(data, dict):
+            return data
+
+        raw_key = data.get("key")
+        raw_hashed = data.get("hashed_key")
+        has_key = raw_key is not None
+        has_hashed = raw_hashed is not None
+
+        if not has_key and not has_hashed:
+            raise ValueError("Either 'key' or 'hashed_key' must be provided")
+
+        if has_key and has_hashed:
+            raise ValueError(
+                "Only one of 'key' or 'hashed_key' should be provided, not both"
+            )
+
+        if has_key:
+            if isinstance(raw_key, SecretStr):
+                normalized_key = raw_key.get_secret_value()
+            else:
+                normalized_key = raw_key
+            computed_hash = cls.hash_key(normalized_key)
+
+            data["hashed_key"] = computed_hash
+            # Ensure plaintext keys are not retained on the model instance.
+            data["key"] = None
+
+        return data
+
+    def matches_key(self, provided_key: str) -> bool:
+        """Check whether *provided_key* matches this stored API key hash."""
+        return secrets.compare_digest(
+            self.hashed_key.get_secret_value(),
+            self.hash_key(provided_key),
+        )
 
 
 class Operation(StrEnum):
@@ -243,6 +352,7 @@ class Operation(StrEnum):
     SUMMARIZE = "summarize"
     SUMMARIZE_AGGREGATE = "summarize_aggregate"
     ASSIGN_CODES = "assign_codes"
+    DETECT_SENSITIVE = "detect_sensitive"
     UNKNOWN = "unknown"
 
 
@@ -488,3 +598,27 @@ class UsageStats(UsageMetrics):
             "the window are omitted."
         ),
     )
+
+
+class KeyCreationResponse(BaseModel):
+    """Response model for API key creation."""
+
+    key_id: str
+    api_key: str
+
+
+class AuthKeyInfo(BaseModel):
+    """Metadata for an API key returned by the auth orchestrator."""
+
+    key_id: str
+    name: str
+    tenant_id: str
+    is_superuser: bool
+
+
+class TenantInfo(BaseModel):
+    """Tenant information returned by the auth orchestrator."""
+
+    tenant_id: str
+    name: str
+    allows_superusers: bool

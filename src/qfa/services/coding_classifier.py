@@ -12,7 +12,7 @@ class JudgeResponse(BaseModel):
     explanation: str = Field(description="Reason for this score.")
 
 
-_SYSTEM = """You are a classification agent for beneficiary feedback items.
+_SYSTEM = """You are a classification agent for feedback records from community members.
 
 Your task is to classify the feedback item using only the options provided at the current hierarchy level.
 

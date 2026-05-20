@@ -18,6 +18,9 @@ from qfa.api.schemas import (
     ApiAssignCodesResponse,
     ApiAssignedCode,
     ApiCodedFeedbackRecord,
+    ApiDetectSensitiveRequest,
+    ApiDetectSensitiveResponse,
+    ApiFeedbackItemSensitivityRating,
     ApiFeedbackRecordSummary,
     ApiHealthResponse,
     ApiSummarizeAggregateResponse,
@@ -31,6 +34,7 @@ from qfa.domain.models import (
     CodingAssignmentRequestModel,
     FeedbackRecordModel,
     Operation,
+    SensitivityAnalysisRequestModel,
     TenantApiKey,
 )
 from qfa.domain.models import (
@@ -54,7 +58,12 @@ def _summarize_metadata_to_domain(
     }
 
 
-@router.post("/v1/analyze", response_model=ApiAnalyzeResponse, status_code=200)
+@router.post(
+    "/v1/analyze",
+    response_model=ApiAnalyzeResponse,
+    status_code=200,
+    tags=["Inference"],
+)
 async def analyze(
     body: ApiAnalyzeRequest,
     request: Request,
@@ -105,7 +114,12 @@ async def analyze(
     )
 
 
-@router.post("/v1/summarize", response_model=ApiSummarizeResponse, status_code=200)
+@router.post(
+    "/v1/summarize",
+    response_model=ApiSummarizeResponse,
+    status_code=200,
+    tags=["Inference"],
+)
 async def summarize(
     body: ApiSummarizeRequest,
     request: Request,
@@ -168,7 +182,12 @@ async def summarize(
     )
 
 
-@router.post("/v1/assign_codes", response_model=ApiAssignCodesResponse, status_code=200)
+@router.post(
+    "/v1/assign_codes",
+    response_model=ApiAssignCodesResponse,
+    status_code=200,
+    tags=["Inference"],
+)
 async def assign_codes(
     body: ApiAssignCodesRequest,
     tenant: TenantApiKey = Depends(authenticate_request),
@@ -220,6 +239,7 @@ async def assign_codes(
     "/v1/summarize-aggregate",
     response_model=ApiSummarizeAggregateResponse,
     status_code=200,
+    tags=["Inference"],
 )
 async def summarize_aggregate(
     body: ApiSummarizeRequest,
@@ -277,7 +297,74 @@ async def summarize_aggregate(
     )
 
 
-@router.get("/v1/health", response_model=ApiHealthResponse, status_code=200)
+@router.post(
+    "/v1/detect-sensitive",
+    response_model=ApiDetectSensitiveResponse,
+    status_code=200,
+    tags=["Inference"],
+)
+async def detect_sensitive(
+    body: ApiDetectSensitiveRequest,
+    request: Request,
+    tenant: TenantApiKey = Depends(authenticate_request),
+    orchestrator: Orchestrator = Depends(get_orchestrator),
+    _scope: CallContext = Depends(call_scope_for(Operation.DETECT_SENSITIVE)),
+) -> ApiDetectSensitiveResponse:
+    """Detect sensitive content in feedback items.
+
+    Parameters
+    ----------
+    body : ApiDetectSensitiveRequest
+        The request body containing feedback items to check for sensitive content.
+    request : Request
+        The incoming HTTP request.
+    tenant : TenantApiKey
+        The authenticated tenant, injected via dependency.
+    orchestrator : Orchestrator
+        The orchestrator service, injected via dependency.
+
+    Returns
+    -------
+    ApiDetectSensitiveResponse
+        Sensitivity rating for each submitted feedback item.
+    """
+    deadline = datetime.now(UTC) + timedelta(seconds=120)
+
+    result = await orchestrator.detect_sensitive_content(
+        SensitivityAnalysisRequestModel(
+            feedback_records=tuple(
+                FeedbackRecordModel(
+                    id=record.id, text=record.text, metadata=record.metadata
+                )
+                for record in body.feedback_items
+            ),
+            tenant_id=tenant.tenant_id,
+        ),
+        deadline,
+        anonymize=body.anonymize,
+    )
+
+    return ApiDetectSensitiveResponse(
+        ratings=[
+            ApiFeedbackItemSensitivityRating(
+                id=feedback_item.id,
+                is_sensitive=rating.is_sensitive,
+                explanation=rating.explanation,
+                sensitivity_types=[
+                    sensitivity_type.value
+                    for sensitivity_type in rating.sensitivity_types
+                ],
+            )
+            for feedback_item, rating in zip(
+                body.feedback_items, result.results, strict=False
+            )
+        ]
+    )
+
+
+@router.get(
+    "/v1/health", response_model=ApiHealthResponse, status_code=200, tags=["Default"]
+)
 async def health() -> ApiHealthResponse:
     """Return service health status.
 

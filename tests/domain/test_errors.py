@@ -6,9 +6,11 @@ from qfa.domain.errors import (
     AuthenticationError,
     DomainError,
     FeedbackTooLargeError,
+    KeyNotFoundError,
     LLMError,
     LLMRateLimitError,
     LLMTimeoutError,
+    TenantNotFoundError,
 )
 
 
@@ -87,3 +89,21 @@ class TestAuthenticationError:
     def test_carries_message(self):
         err = AuthenticationError("invalid key")
         assert str(err) == "invalid key"
+
+
+class TestTenantNotFoundError:
+    def test_is_subclass_of_domain_error(self):
+        assert issubclass(TenantNotFoundError, DomainError)
+
+    def test_carries_message(self):
+        err = TenantNotFoundError("missing tenant")
+        assert str(err) == "missing tenant"
+
+
+class TestKeyNotFoundError:
+    def test_is_subclass_of_domain_error(self):
+        assert issubclass(KeyNotFoundError, DomainError)
+
+    def test_carries_message(self):
+        err = KeyNotFoundError("missing key")
+        assert str(err) == "missing key"

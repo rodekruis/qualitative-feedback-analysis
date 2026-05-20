@@ -9,9 +9,13 @@ import datetime as dt
 from typing import Protocol
 
 from qfa.domain.models import (
+    AuthKeyInfo,
+    KeyCreationResponse,
     LLMCallRecord,
     LLMResponse,
     T_Response,
+    TenantApiKey,
+    TenantInfo,
     UsageStats,
 )
 
@@ -155,5 +159,129 @@ class AnonymizationPort(Protocol):
         -------
         str
             The text with placeholders replaced by original values.
+        """
+        ...
+
+
+class AuthLookupPort(Protocol):
+    """Port for authenticating users of the application."""
+
+    async def validate_api_key(self, provided_key: str) -> TenantApiKey | None:
+        """Validate if a key exists in the implemented adapter.
+
+        Parameters
+        ----------
+        provided_key : str
+            The API key value supplied by the caller.
+
+        Returns
+        -------
+        TenantApiKey | None
+            The matching tenant API key, or None if no match was found.
+        """
+        ...
+
+    async def get_auth_keys(self, tenant_id: str | None = None) -> list[AuthKeyInfo]:
+        """Get all API keys for a tenant, or all keys if tenant_id is None.
+
+        Parameters
+        ----------
+        tenant_id : str | None
+            The tenant to query, or None to get keys for all tenants.
+
+        Returns
+        -------
+        list[AuthKeyMetadata]
+            A list of AuthKeyMetadata objects
+        """
+        ...
+
+
+class AuthManagementPort(Protocol):
+    """Port for adding/ removing keys and tenants from the application."""
+
+    async def add_tenant(
+        self, tenant_name: str, allows_superusers: bool = False
+    ) -> str:
+        """Add a new tenant to the implemented adapter and return its unique identifier.
+
+        Parameters
+        ----------
+        tenant_name : str
+            The name of the tenant to create.
+        allows_superusers : bool
+            Whether this tenant allows creation of superuser keys (default False).
+
+        Returns
+        -------
+        str
+            The unique identifier of the created tenant.
+        """
+        ...
+
+    async def delete_tenant(self, tenant_id: str) -> None:
+        """Delete an existing tenant from the implemented adapter.
+
+        Parameters
+        ----------
+        tenant_id : str
+            The unique identifier of the tenant to delete.
+
+        Raises
+        ------
+        TenantNotFoundError:
+            If no tenant with this tenant_id exists
+        """
+        ...
+
+    async def add_key(
+        self,
+        key_name: str,
+        tenant_id: str,
+        is_superuser: bool = False,
+    ) -> KeyCreationResponse:
+        """Generate and persist a new API key in the implemented adapter.
+
+        Parameters
+        ----------
+        key_name : str
+            A human-friendly name for the key.
+        tenant_id : str
+            The tenant this key belongs to.
+        is_superuser : bool
+            Whether this key should have superuser privileges (default False).
+
+        Returns
+        -------
+        tuple[str, str]
+            The created key identifier and plaintext API key as ``(key_id, api_key)``.
+            The plaintext key is returned only once at creation time.
+
+        Raises
+        ------
+        KeyAlreadyExistsError:
+            If key with this key_id already exists
+        TenantDoesNotAllowSuperUsersError:
+            If the tenant does not allow superuser keys and is_superuser is True
+        """
+        ...
+
+    async def delete_key(self, key_id: str) -> None:
+        """Delete an existing API key from the implemented adapter.
+
+        Parameters
+        ----------
+        key_id : str
+            The unique identifier of the API key record to remove.
+        """
+        ...
+
+    async def get_tenants(self) -> list[TenantInfo]:
+        """Return metadata for all tenants in the implemented adapter.
+
+        Returns
+        -------
+        list[TenantInfo]
+            A list of TenantInfo objects with tenant metadata.
         """
         ...

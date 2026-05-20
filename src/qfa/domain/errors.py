@@ -59,6 +59,33 @@ class AuthorizationError(DomainError):
     """Raised when a user lacks permission for the requested operation."""
 
 
+class TenantDoesNotAllowSuperUsersError(DomainError):
+    """Raised when an operation requires superuser privileges but the tenant does not allow superusers."""
+
+
+class KeyAlreadyExistsError(DomainError):
+    """Raised when we try to create a key with an existing id."""
+
+
+class KeyNotFoundError(DomainError):
+    """Raised when we try to access a key that doesn't exist."""
+
+
+class TenantNotFoundError(DomainError):
+    """Raised when we try to access a tenant that doesn't exist."""
+
+
+# --- Tracking errors ---
+
+
+class MissingCallScopeError(RuntimeError):
+    """Raised when an LLM call is recorded without an active CallContext.
+
+    Indicates a wiring bug: the orchestrator forgot to enter a ``call_scope``
+    block before calling the LLM. Should never reach a user.
+    """
+
+
 # --- Repository errors ---
 
 
