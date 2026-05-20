@@ -372,6 +372,80 @@ class TokenStats(DistributionStats):
     total: int
 
 
+class UsageMetrics(BaseModel):
+    """Aggregated stats over a set of records.
+
+    Whether the records are per-LLM-call rows or per-invocation roll-ups is
+    fixed by the containing field, not by this class. ``UsageMetrics`` is
+    used directly for the per-LLM-call ``llm_call_stats`` block on
+    ``UsageStats`` and ``OperationStats``, and as the base class for the
+    per-invocation totals on ``UsageStats`` / ``OperationStats``.
+
+    Attributes
+    ----------
+    total_calls : int
+        Count of records in scope (LLM-call attempts for ``llm_call_stats``;
+        distinct ``call_id`` invocations for the per-invocation view).
+    failed_calls : int
+        Count of failed records (per-LLM-call: ``status='error'`` rows;
+        per-invocation: invocations where *every* row is ``status='error'``).
+    total_cost_usd : Decimal
+        Sum of ``cost_usd`` over OK records (numerically identical between
+        the two views — failed rows already store 0).
+    call_duration : DistributionStats
+        Distribution of durations in milliseconds. Per-invocation view
+        sums ``call_duration_ms`` across the rows of one ``call_id``
+        (failed attempts contribute their real duration). Distribution
+        excludes all-failed invocations.
+    input_tokens : TokenStats
+        Distribution + total of input tokens. ``total`` is identical
+        across both views; distribution scope differs.
+    output_tokens : TokenStats
+        Distribution + total of output tokens. Same parity as ``input_tokens``.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    total_calls: int = Field(
+        description=(
+            "Count of records in scope: LLM-call attempts on ``llm_call_stats``; "
+            "distinct ``call_id`` invocations on the outer (per-invocation) view."
+        ),
+    )
+    failed_calls: int = Field(
+        default=0,
+        description=(
+            "Count of failed records. On ``llm_call_stats`` this is the count "
+            "of rows with ``status='error'``. On the outer view it is the count "
+            "of invocations where *every* row in the ``call_id`` is ``status='error'`` "
+            "— mixed-status invocations do NOT count as failed."
+        ),
+    )
+    total_cost_usd: Decimal = Field(
+        default=Decimal("0"),
+        description="Sum of ``cost_usd``. Identical across both views.",
+    )
+    call_duration: DistributionStats = Field(
+        description=(
+            "Duration distribution in milliseconds. Per-LLM-call view: "
+            "individual LLM call latency. Per-invocation view: SUM of "
+            "``call_duration_ms`` across all rows of one ``call_id`` (i.e. "
+            "total LLM time consumed by the invocation; overestimates "
+            "wall-clock for ``asyncio.gather`` fan-outs)."
+        ),
+    )
+    input_tokens: TokenStats = Field(
+        description="Input token distribution + total.",
+    )
+    output_tokens: TokenStats = Field(
+        description="Output token distribution + total.",
+    )
+
+    @field_serializer("total_cost_usd")
+    def _serialize_total_cost(self, v: Decimal) -> float:
+        return float(v)
+
+
 class UsageStats(BaseModel):
     """Aggregated usage statistics for a tenant or grand total.
 

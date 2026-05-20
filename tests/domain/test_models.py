@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import ValidationError
 
+# --- UsageMetrics / OperationStats / UsageStats v2 ---
 from qfa.domain.models import (
     AnalysisRequestModel,
     AnalysisResultModel,
@@ -19,8 +20,18 @@ from qfa.domain.models import (
     Operation,
     TenantApiKey,
     TokenStats,
+    UsageMetrics,
     UsageStats,
 )
+
+
+def _zero_dist() -> DistributionStats:
+    return DistributionStats(avg=0, min=0, max=0, p5=0, p95=0)
+
+
+def _zero_tokens() -> TokenStats:
+    return TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0)
+
 
 # --- FeedbackRecordModel ---
 
@@ -351,3 +362,65 @@ class TestUsageStatsExtensions:
         )
         assert stats.total_cost_usd == Decimal("0.5")
         assert stats.failed_calls == 1
+
+
+class TestUsageMetrics:
+    def test_construct_with_all_fields(self):
+        """A fully-populated UsageMetrics constructs and exposes all metric fields.
+
+        Pins the field set used by both per-invocation (UsageStats /
+        OperationStats inherit it) and per-LLM-call (llm_call_stats) views.
+        """
+        m = UsageMetrics(
+            total_calls=10,
+            failed_calls=2,
+            total_cost_usd=Decimal("0.25"),
+            call_duration=DistributionStats(avg=1, min=0, max=2, p5=0, p95=2),
+            input_tokens=TokenStats(avg=1, min=0, max=2, p5=0, p95=2, total=10),
+            output_tokens=TokenStats(avg=1, min=0, max=2, p5=0, p95=2, total=10),
+        )
+        assert m.total_calls == 10
+        assert m.failed_calls == 2
+        assert m.total_cost_usd == Decimal("0.25")
+
+    def test_failed_calls_defaults_to_zero(self):
+        """failed_calls defaults to 0 so tenants with no failures need not pass it."""
+        m = UsageMetrics(
+            total_calls=1,
+            total_cost_usd=Decimal("0"),
+            call_duration=_zero_dist(),
+            input_tokens=_zero_tokens(),
+            output_tokens=_zero_tokens(),
+        )
+        assert m.failed_calls == 0
+
+    def test_frozen(self):
+        """UsageMetrics is frozen — reassignment must raise.
+
+        Aligns with ADR-001; mutation would break the response wire copy.
+        """
+        m = UsageMetrics(
+            total_calls=1,
+            total_cost_usd=Decimal("0"),
+            call_duration=_zero_dist(),
+            input_tokens=_zero_tokens(),
+            output_tokens=_zero_tokens(),
+        )
+        with pytest.raises(ValidationError):
+            m.total_calls = 99
+
+    def test_decimal_cost_serializes_as_float(self):
+        """total_cost_usd serialises to a JSON-friendly float, not a Decimal.
+
+        OpenAPI/JSON does not have native Decimal; this matches the existing
+        UsageStats serialisation and prevents quoting as a string.
+        """
+        m = UsageMetrics(
+            total_calls=1,
+            total_cost_usd=Decimal("0.5"),
+            call_duration=_zero_dist(),
+            input_tokens=_zero_tokens(),
+            output_tokens=_zero_tokens(),
+        )
+        dumped = m.model_dump()
+        assert dumped["total_cost_usd"] == 0.5
