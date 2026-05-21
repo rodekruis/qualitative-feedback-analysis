@@ -236,7 +236,7 @@ class FakeUsageRepository(UsageRepositoryPort):
             llm_call_stats=_zero_usage_metrics(),
         )
 
-    async def get_all_usage_stats(self, from_=None, to=None):
+    async def get_all_usage_stats_by_tenant(self, from_=None, to=None):
         return [
             UsageStats(
                 tenant_id="test-tenant-1",

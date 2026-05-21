@@ -96,7 +96,7 @@ class UsageRepositoryPort(Protocol):
         """
         ...
 
-    async def get_all_usage_stats(
+    async def get_all_usage_stats_by_tenant(
         self,
         from_: dt.datetime | None = None,
         to: dt.datetime | None = None,
@@ -124,11 +124,11 @@ class UsageRepositoryPort(Protocol):
     ) -> list[OperationUsageStats]:
         """Get per-operation stats with nested per-tenant breakdown plus grand total.
 
-        Inverse hierarchy of :meth:`get_all_usage_stats`: top-level
+        Inverse hierarchy of :meth:`get_all_usage_stats_by_tenant`: top-level
         aggregation is by orchestrator operation; each operation block
         carries a tuple of per-tenant blocks. The grand-total entry
         (``operation=None``) is always emitted last, matching the
-        convention used by :meth:`get_all_usage_stats`.
+        convention used by :meth:`get_all_usage_stats_by_tenant`.
 
         Parameters
         ----------

@@ -16,8 +16,8 @@ single round-trip.
 Internally, both views share one SELECT builder, one row parser, and
 one pivot — only the SQL *source* differs (raw ``llm_calls`` vs a CTE
 pre-aggregated by ``call_id``). The duality is expressed once as a
-``view: Literal["llm", "inv"]`` parameter rather than carried through
-as parallel code paths.
+``view: Literal["llm_call", "invocation"]`` parameter rather than
+carried through as parallel code paths.
 """
 
 from collections.abc import AsyncIterator, Callable, Sequence
@@ -113,15 +113,18 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         Single-tenant SELECT pair grouped by operation only. Returns a
         zero ``UsageStats`` when no rows match the window.
         """
-        base_pred = self._base_predicates(tenant_id=tenant_id, from_=from_, to=to)
-        inv, llm = await self._fetch_views(
-            base_pred, group_by_tenant=False, group_by_operation=True
+        predicates = self._base_predicates(tenant_id=tenant_id, from_=from_, to=to)
+        invocation_by_key, llm_call_by_key = await self._fetch_views(
+            predicates, group_by_tenant=False, group_by_operation=True
         )
         return self._build_block(
-            top="tenant", top_value=tenant_id, inv_by_key=inv, llm_by_key=llm
+            top_axis="tenant",
+            top_value=tenant_id,
+            invocation_by_key=invocation_by_key,
+            llm_call_by_key=llm_call_by_key,
         )
 
-    async def get_all_usage_stats(
+    async def get_all_usage_stats_by_tenant(
         self,
         from_: datetime | None = None,
         to: datetime | None = None,
@@ -134,27 +137,39 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         Tenants with zero per-invocation calls are filtered; the
         grand-total entry (``tenant_id=None``) is always emitted last.
         """
-        base_pred = self._base_predicates(from_=from_, to=to)
-        inv, llm = await self._fetch_views(
-            base_pred, group_by_tenant=True, group_by_operation=True
+        predicates = self._base_predicates(from_=from_, to=to)
+        invocation_by_key, llm_call_by_key = await self._fetch_views(
+            predicates, group_by_tenant=True, group_by_operation=True
         )
-        tenants = sorted({t for (t, op) in inv if t is not None and op is None})
+        tenants = sorted(
+            {
+                tenant_id
+                for (tenant_id, operation) in invocation_by_key
+                if tenant_id is not None and operation is None
+            }
+        )
 
-        out: list[UsageStats] = []
-        for t in tenants:
+        results: list[UsageStats] = []
+        for tenant_id in tenants:
             block = self._build_block(
-                top="tenant", top_value=t, inv_by_key=inv, llm_by_key=llm
+                top_axis="tenant",
+                top_value=tenant_id,
+                invocation_by_key=invocation_by_key,
+                llm_call_by_key=llm_call_by_key,
             )
             if block.total_calls > 0:
-                out.append(block)
+                results.append(block)
 
         # Grand total — always emitted, even when empty.
-        out.append(
+        results.append(
             self._build_block(
-                top="tenant", top_value=None, inv_by_key=inv, llm_by_key=llm
+                top_axis="tenant",
+                top_value=None,
+                invocation_by_key=invocation_by_key,
+                llm_call_by_key=llm_call_by_key,
             )
         )
-        return out
+        return results
 
     async def get_all_usage_by_operation(
         self,
@@ -163,32 +178,44 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
     ) -> list[OperationUsageStats]:
         """Per-operation + grand-total stats with per-tenant breakdown.
 
-        Inverse hierarchy of :meth:`get_all_usage_stats`: same query
+        Inverse hierarchy of :meth:`get_all_usage_stats_by_tenant`: same query
         pair (full 2-axis cube), but the pivot puts ``operation`` at
         the top level with ``tenants`` nested. The grand-total entry
         (``operation=None``) is always emitted last.
         """
-        base_pred = self._base_predicates(from_=from_, to=to)
-        inv, llm = await self._fetch_views(
-            base_pred, group_by_tenant=True, group_by_operation=True
+        predicates = self._base_predicates(from_=from_, to=to)
+        invocation_by_key, llm_call_by_key = await self._fetch_views(
+            predicates, group_by_tenant=True, group_by_operation=True
         )
-        operations = sorted({op for (t, op) in inv if op is not None and t is None})
+        operations = sorted(
+            {
+                operation
+                for (tenant_id, operation) in invocation_by_key
+                if operation is not None and tenant_id is None
+            }
+        )
 
-        out: list[OperationUsageStats] = []
-        for op in operations:
+        results: list[OperationUsageStats] = []
+        for operation in operations:
             block = self._build_block(
-                top="operation", top_value=op, inv_by_key=inv, llm_by_key=llm
+                top_axis="operation",
+                top_value=operation,
+                invocation_by_key=invocation_by_key,
+                llm_call_by_key=llm_call_by_key,
             )
             if block.total_calls > 0:
-                out.append(block)
+                results.append(block)
 
         # Grand total — always emitted, even when empty.
-        out.append(
+        results.append(
             self._build_block(
-                top="operation", top_value=None, inv_by_key=inv, llm_by_key=llm
+                top_axis="operation",
+                top_value=None,
+                invocation_by_key=invocation_by_key,
+                llm_call_by_key=llm_call_by_key,
             )
         )
-        return out
+        return results
 
     # ------------------------------------------------------------------
     # Predicates
@@ -202,14 +229,14 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         to: datetime | None = None,
     ) -> list:
         """Build the half-open ``[from, to)`` window + optional tenant predicate."""
-        pred: list = []
+        predicates: list = []
         if tenant_id is not None:
-            pred.append(llm_calls.c.tenant_id == tenant_id)
+            predicates.append(llm_calls.c.tenant_id == tenant_id)
         if from_ is not None:
-            pred.append(llm_calls.c.timestamp >= from_)
+            predicates.append(llm_calls.c.timestamp >= from_)
         if to is not None:
-            pred.append(llm_calls.c.timestamp < to)
-        return pred
+            predicates.append(llm_calls.c.timestamp < to)
+        return predicates
 
     # ------------------------------------------------------------------
     # Fetch + index
@@ -217,12 +244,12 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
 
     async def _fetch_views(
         self,
-        base_pred: list,
+        predicates: list,
         *,
         group_by_tenant: bool,
         group_by_operation: bool,
     ) -> tuple[_StatsByKey, _StatsByKey]:
-        """Run both view SELECTs and return ``(inv_by_key, llm_by_key)``.
+        """Run both view SELECTs and return ``(invocation_by_key, llm_call_by_key)``.
 
         Issues two queries — the per-invocation view (CTE on ``call_id``)
         and the per-LLM-call view — against the same predicate set and
@@ -230,27 +257,30 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         with ``None`` marking GROUPING SETS rollup cells.
         """
         async with _translate_db_errors(), self._session_factory() as session:
-            inv_rows = (
+            invocation_rows = (
                 await session.execute(
                     self._select_view(
-                        "inv",
-                        base_pred,
+                        "invocation",
+                        predicates,
                         group_by_tenant=group_by_tenant,
                         group_by_operation=group_by_operation,
                     )
                 )
             ).all()
-            llm_rows = (
+            llm_call_rows = (
                 await session.execute(
                     self._select_view(
-                        "llm",
-                        base_pred,
+                        "llm_call",
+                        predicates,
                         group_by_tenant=group_by_tenant,
                         group_by_operation=group_by_operation,
                     )
                 )
             ).all()
-        return self._index_rows(inv_rows), self._index_rows(llm_rows)
+        return (
+            self._index_rows(invocation_rows),
+            self._index_rows(llm_call_rows),
+        )
 
     @staticmethod
     def _index_rows(rows: Sequence[sa.Row]) -> _StatsByKey:
@@ -261,13 +291,15 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         to ``None`` — the two are indistinguishable from the consumer's
         perspective and that's what the pivot expects.
         """
-        out: _StatsByKey = {}
-        for r in rows:
-            m = r._mapping
-            t = m.get("tenant_id")
-            op = m.get("operation")
-            out[(t, op)] = SqlAlchemyUsageRepository._row_to_usage_metrics(r)
-        return out
+        indexed: _StatsByKey = {}
+        for row in rows:
+            mapping = row._mapping
+            tenant_id = mapping.get("tenant_id")
+            operation = mapping.get("operation")
+            indexed[(tenant_id, operation)] = (
+                SqlAlchemyUsageRepository._row_to_usage_metrics(row)
+            )
+        return indexed
 
     # ------------------------------------------------------------------
     # SELECT builder (single function for both views)
@@ -275,44 +307,45 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
 
     @staticmethod
     def _select_view(
-        view: Literal["llm", "inv"],
-        base_pred: list,
+        view: Literal["llm_call", "invocation"],
+        predicates: list,
         *,
         group_by_tenant: bool,
         group_by_operation: bool,
     ) -> sa.Select:
         """Build the aggregation SELECT for one of the two views.
 
-        ``view='llm'`` aggregates the raw ``llm_calls`` table — one row
-        per LLM call attempt. ``view='inv'`` aggregates a per-invocation
-        CTE (one row per distinct ``call_id``, with token/duration/cost
-        summed across the LLM calls of the invocation and a ``bool_and``
-        flag marking the all-failed case).
+        ``view='llm_call'`` aggregates the raw ``llm_calls`` table — one
+        row per LLM call attempt. ``view='invocation'`` aggregates a
+        per-invocation CTE (one row per distinct ``call_id``, with
+        token/duration/cost summed across the LLM calls of the invocation
+        and a ``bool_and`` flag marking the all-failed case).
 
         Both views emit identical, canonically-labelled aggregate columns
         (``total_calls``, ``failed_calls``, ``total_cost_usd``, plus
-        ``dur_*``/``inp_*``/``out_*`` distributions) so a single row
-        parser consumes either.
+        ``duration_*``/``input_tokens_*``/``output_tokens_*`` distributions)
+        so a single row parser consumes either.
 
         Counts and ``total_cost_usd`` include every row in scope —
         including failures that incurred a real cost. Distributions
         filter to the "ok" subset (single-row ``status='ok'`` for the
-        ``llm`` view; "not all calls in this invocation failed" for the
-        ``inv`` view) so failures cannot skew latency or token quantiles.
+        ``llm_call`` view; "not all calls in this invocation failed" for
+        the ``invocation`` view) so failures cannot skew latency or token
+        quantiles.
         """
-        if view == "inv":
+        if view == "invocation":
             per_invocation = (
                 sa.select(
                     llm_calls.c.tenant_id.label("tenant_id"),
                     llm_calls.c.operation.label("operation"),
                     llm_calls.c.call_id.label("call_id"),
-                    sa.func.sum(llm_calls.c.call_duration_ms).label("dur"),
-                    sa.func.sum(llm_calls.c.input_tokens).label("inp"),
-                    sa.func.sum(llm_calls.c.output_tokens).label("out"),
+                    sa.func.sum(llm_calls.c.call_duration_ms).label("duration"),
+                    sa.func.sum(llm_calls.c.input_tokens).label("input_tokens"),
+                    sa.func.sum(llm_calls.c.output_tokens).label("output_tokens"),
                     sa.func.sum(llm_calls.c.cost_usd).label("cost"),
                     sa.func.bool_and(llm_calls.c.status == "error").label("all_failed"),
                 )
-                .where(*base_pred)
+                .where(*predicates)
                 .group_by(
                     llm_calls.c.tenant_id,
                     llm_calls.c.operation,
@@ -321,59 +354,59 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
                 .cte("per_invocation")
             )
             tenant_col: sa.ColumnElement = per_invocation.c.tenant_id
-            op_col: sa.ColumnElement = per_invocation.c.operation
+            operation_col: sa.ColumnElement = per_invocation.c.operation
             ok_filter: sa.ColumnElement = per_invocation.c.all_failed.is_(False)
             err_filter: sa.ColumnElement = per_invocation.c.all_failed.is_(True)
-            dur_col: sa.ColumnElement = per_invocation.c.dur
-            inp_col: sa.ColumnElement = per_invocation.c.inp
-            out_col: sa.ColumnElement = per_invocation.c.out
+            duration_col: sa.ColumnElement = per_invocation.c.duration
+            input_tokens_col: sa.ColumnElement = per_invocation.c.input_tokens
+            output_tokens_col: sa.ColumnElement = per_invocation.c.output_tokens
             cost_col: sa.ColumnElement = per_invocation.c.cost
             outer_from: sa.FromClause = per_invocation
             outer_where: list = []  # predicates already applied inside the CTE
         else:
             tenant_col = llm_calls.c.tenant_id
-            op_col = llm_calls.c.operation
+            operation_col = llm_calls.c.operation
             ok_filter = llm_calls.c.status == "ok"
             err_filter = llm_calls.c.status == "error"
-            dur_col = llm_calls.c.call_duration_ms
-            inp_col = llm_calls.c.input_tokens
-            out_col = llm_calls.c.output_tokens
+            duration_col = llm_calls.c.call_duration_ms
+            input_tokens_col = llm_calls.c.input_tokens
+            output_tokens_col = llm_calls.c.output_tokens
             cost_col = llm_calls.c.cost_usd
             outer_from = llm_calls
-            outer_where = base_pred
+            outer_where = predicates
 
-        cols: list[sa.ColumnElement] = []
+        columns: list[sa.ColumnElement] = []
         if group_by_tenant:
-            cols.append(tenant_col.label("tenant_id"))
+            columns.append(tenant_col.label("tenant_id"))
         if group_by_operation:
-            cols.append(op_col.label("operation"))
-        cols.extend(
+            columns.append(operation_col.label("operation"))
+        columns.extend(
             [
                 sa.func.count().label("total_calls"),
                 sa.func.count().filter(err_filter).label("failed_calls"),
                 sa.func.coalesce(sa.func.sum(cost_col), 0).label("total_cost_usd"),
                 *SqlAlchemyUsageRepository._build_stats_columns(
-                    dur_col, "dur", where=ok_filter
+                    duration_col, "duration", where=ok_filter
                 ),
                 *SqlAlchemyUsageRepository._build_stats_columns(
-                    inp_col, "inp", where=ok_filter
+                    input_tokens_col, "input_tokens", where=ok_filter
                 ),
                 *SqlAlchemyUsageRepository._build_stats_columns(
-                    out_col, "out", where=ok_filter
+                    output_tokens_col, "output_tokens", where=ok_filter
                 ),
             ]
         )
 
-        stmt = sa.select(*cols).select_from(outer_from)
+        statement = sa.select(*columns).select_from(outer_from)
         if outer_where:
-            stmt = stmt.where(*outer_where)
+            statement = statement.where(*outer_where)
         grouping_sets = SqlAlchemyUsageRepository._grouping_sets_clause(
             group_by_tenant=group_by_tenant,
             group_by_operation=group_by_operation,
         )
         if grouping_sets is not None:
-            stmt = stmt.group_by(grouping_sets)
-        return stmt
+            statement = statement.group_by(grouping_sets)
+        return statement
 
     @staticmethod
     def _grouping_sets_clause(
@@ -391,42 +424,53 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         Returns ``None`` for the degenerate no-grouping case (currently
         unused; kept as a defensive shortcut).
         """
-        sets: list[str] = []
+        set_clauses: list[str] = []
         if group_by_tenant and group_by_operation:
-            sets.extend(["(tenant_id, operation)", "(tenant_id)", "(operation)", "()"])
+            set_clauses.extend(
+                [
+                    "(tenant_id, operation)",
+                    "(tenant_id)",
+                    "(operation)",
+                    "()",
+                ]
+            )
         elif group_by_operation:
-            sets.extend(["(operation)", "()"])
+            set_clauses.extend(["(operation)", "()"])
         elif group_by_tenant:
-            sets.extend(["(tenant_id)", "()"])
+            set_clauses.extend(["(tenant_id)", "()"])
         else:
             return None
-        return sa.text(f"GROUPING SETS ({', '.join(sets)})")
+        return sa.text(f"GROUPING SETS ({', '.join(set_clauses)})")
 
     @staticmethod
     def _build_stats_columns(
-        col: sa.ColumnElement,
+        column: sa.ColumnElement,
         prefix: str,
         *,
         where: sa.ColumnElement | None = None,
     ) -> list[sa.Label]:
-        """Build avg/min/max/sum/count/p5/p95 labelled aggregations for *col*.
+        """Build avg/min/max/sum/count/p5/p95 labelled aggregations for *column*.
 
         When ``where`` is supplied, ``FILTER (WHERE ...)`` is applied to
         every aggregate so the same SELECT can mix all-row counts with
         ok-only distributions.
         """
 
-        def _f(agg: sa.ColumnElement) -> sa.ColumnElement:
-            return agg.filter(where) if where is not None else agg
+        def apply_where(aggregate: sa.ColumnElement) -> sa.ColumnElement:
+            return aggregate.filter(where) if where is not None else aggregate
 
         return [
-            _f(sa.func.avg(col)).label(f"{prefix}_avg"),
-            _f(sa.func.min(col)).label(f"{prefix}_min"),
-            _f(sa.func.max(col)).label(f"{prefix}_max"),
-            _f(sa.func.sum(col)).label(f"{prefix}_sum"),
-            _f(sa.func.count()).label(f"{prefix}_count"),
-            _f(sa.func.percentile_cont(0.05).within_group(col)).label(f"{prefix}_p5"),
-            _f(sa.func.percentile_cont(0.95).within_group(col)).label(f"{prefix}_p95"),
+            apply_where(sa.func.avg(column)).label(f"{prefix}_avg"),
+            apply_where(sa.func.min(column)).label(f"{prefix}_min"),
+            apply_where(sa.func.max(column)).label(f"{prefix}_max"),
+            apply_where(sa.func.sum(column)).label(f"{prefix}_sum"),
+            apply_where(sa.func.count()).label(f"{prefix}_count"),
+            apply_where(sa.func.percentile_cont(0.05).within_group(column)).label(
+                f"{prefix}_p5"
+            ),
+            apply_where(sa.func.percentile_cont(0.95).within_group(column)).label(
+                f"{prefix}_p95"
+            ),
         ]
 
     # ------------------------------------------------------------------
@@ -439,16 +483,16 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
 
         When no ok rows exist, ``avg`` is NULL — return zeros.
         """
-        m = row._mapping
-        avg = m[f"{prefix}_avg"]
+        mapping = row._mapping
+        avg = mapping[f"{prefix}_avg"]
         if avg is None:
             return DistributionStats(avg=0, min=0, max=0, p5=0, p95=0)
         return DistributionStats(
             avg=float(avg),
-            min=float(m[f"{prefix}_min"]),
-            max=float(m[f"{prefix}_max"]),
-            p5=float(m[f"{prefix}_p5"]),
-            p95=float(m[f"{prefix}_p95"]),
+            min=float(mapping[f"{prefix}_min"]),
+            max=float(mapping[f"{prefix}_max"]),
+            p5=float(mapping[f"{prefix}_p5"]),
+            p95=float(mapping[f"{prefix}_p95"]),
         )
 
     @staticmethod
@@ -457,17 +501,17 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
 
         When no ok rows exist, ``avg`` is NULL — return zeros (``total=0``).
         """
-        m = row._mapping
-        avg = m[f"{prefix}_avg"]
+        mapping = row._mapping
+        avg = mapping[f"{prefix}_avg"]
         if avg is None:
             return TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0)
         return TokenStats(
             avg=float(avg),
-            min=float(m[f"{prefix}_min"]),
-            max=float(m[f"{prefix}_max"]),
-            total=int(m[f"{prefix}_sum"] or 0),
-            p5=float(m[f"{prefix}_p5"]),
-            p95=float(m[f"{prefix}_p95"]),
+            min=float(mapping[f"{prefix}_min"]),
+            max=float(mapping[f"{prefix}_max"]),
+            total=int(mapping[f"{prefix}_sum"] or 0),
+            p5=float(mapping[f"{prefix}_p5"]),
+            p95=float(mapping[f"{prefix}_p95"]),
         )
 
     @staticmethod
@@ -475,18 +519,25 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         """Build a ``UsageMetrics`` from a row's canonically-labelled aggregates.
 
         Both views emit the same column names (``total_calls``,
-        ``failed_calls``, ``total_cost_usd``, ``dur_*``/``inp_*``/``out_*``),
-        so the same parser consumes either. NULL aggregates (the all-failed
-        or empty-window case) become zeros.
+        ``failed_calls``, ``total_cost_usd``, ``duration_*``/
+        ``input_tokens_*``/``output_tokens_*``), so the same parser
+        consumes either. NULL aggregates (the all-failed or empty-window
+        case) become zeros.
         """
-        m = row._mapping
+        mapping = row._mapping
         return UsageMetrics(
-            total_calls=int(m["total_calls"] or 0),
-            failed_calls=int(m["failed_calls"] or 0),
-            total_cost_usd=Decimal(str(m["total_cost_usd"] or 0)),
-            call_duration=SqlAlchemyUsageRepository._parse_distribution(row, "dur"),
-            input_tokens=SqlAlchemyUsageRepository._parse_token_stats(row, "inp"),
-            output_tokens=SqlAlchemyUsageRepository._parse_token_stats(row, "out"),
+            total_calls=int(mapping["total_calls"] or 0),
+            failed_calls=int(mapping["failed_calls"] or 0),
+            total_cost_usd=Decimal(str(mapping["total_cost_usd"] or 0)),
+            call_duration=SqlAlchemyUsageRepository._parse_distribution(
+                row, "duration"
+            ),
+            input_tokens=SqlAlchemyUsageRepository._parse_token_stats(
+                row, "input_tokens"
+            ),
+            output_tokens=SqlAlchemyUsageRepository._parse_token_stats(
+                row, "output_tokens"
+            ),
         )
 
     @staticmethod
@@ -509,98 +560,111 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
     @staticmethod
     def _build_block(
         *,
-        top: Literal["tenant"],
+        top_axis: Literal["tenant"],
         top_value: str | None,
-        inv_by_key: _StatsByKey,
-        llm_by_key: _StatsByKey,
+        invocation_by_key: _StatsByKey,
+        llm_call_by_key: _StatsByKey,
     ) -> UsageStats: ...
 
     @overload
     @staticmethod
     def _build_block(
         *,
-        top: Literal["operation"],
+        top_axis: Literal["operation"],
         top_value: str | None,
-        inv_by_key: _StatsByKey,
-        llm_by_key: _StatsByKey,
+        invocation_by_key: _StatsByKey,
+        llm_call_by_key: _StatsByKey,
     ) -> OperationUsageStats: ...
 
     @staticmethod
     def _build_block(
         *,
-        top: Literal["tenant", "operation"],
+        top_axis: Literal["tenant", "operation"],
         top_value: str | None,
-        inv_by_key: _StatsByKey,
-        llm_by_key: _StatsByKey,
+        invocation_by_key: _StatsByKey,
+        llm_call_by_key: _StatsByKey,
     ) -> UsageStats | OperationUsageStats:
         """Pivot the flat (tenant, op) key dicts into one top-level block.
 
         Parameters
         ----------
-        top
+        top_axis
             Which axis is the top-level discriminator. The other axis
             supplies the nested breakdown rows.
         top_value
             The value of the top axis for this block — a tenant id, an
             operation, or ``None`` for the grand total.
-        inv_by_key, llm_by_key
+        invocation_by_key, llm_call_by_key
             Per-invocation and per-LLM-call metrics keyed by
             ``(tenant_id, operation)``; ``None`` in either position marks
             a GROUPING SETS rollup cell.
 
         Returns
         -------
-        ``UsageStats`` when ``top='tenant'``, ``OperationUsageStats`` when
-        ``top='operation'``. Top-level metrics come from the
+        ``UsageStats`` when ``top_axis='tenant'``, ``OperationUsageStats``
+        when ``top_axis='operation'``. Top-level metrics come from the
         ``(top_value, None)`` / ``(None, top_value)`` rollup cell.
-        Breakdown rows come from the (tenant, op) cells where the top
-        axis matches and the other axis is bound (non-None); zero-call
-        cells are omitted and the result is sorted by
+        Breakdown rows come from the ``(tenant_id, operation)`` cells
+        where the top axis matches and the other axis is bound
+        (non-None); zero-call cells are omitted and the result is sorted by
         ``total_cost_usd`` desc, with ties broken by the child
         discriminator asc.
         """
         zero = SqlAlchemyUsageRepository._zero_usage_metrics
         rollup_key: _StatsKey = (
-            (top_value, None) if top == "tenant" else (None, top_value)
+            (top_value, None) if top_axis == "tenant" else (None, top_value)
         )
-        top_inv = inv_by_key.get(rollup_key) or zero()
-        top_llm = llm_by_key.get(rollup_key) or zero()
+        top_invocation = invocation_by_key.get(rollup_key) or zero()
+        top_llm_call = llm_call_by_key.get(rollup_key) or zero()
 
-        if top == "tenant":
+        if top_axis == "tenant":
             operations: list[OperationStats] = []
-            for (t, op), inv in inv_by_key.items():
-                if t != top_value or op is None or inv.total_calls == 0:
+            for (
+                tenant_id,
+                operation,
+            ), invocation in invocation_by_key.items():
+                if (
+                    tenant_id != top_value
+                    or operation is None
+                    or invocation.total_calls == 0
+                ):
                     continue
                 operations.append(
                     OperationStats(
-                        operation=Operation(op),
-                        **dict(inv),
-                        llm_call_stats=llm_by_key.get((t, op)) or zero(),
+                        operation=Operation(operation),
+                        **dict(invocation),
+                        llm_call_stats=llm_call_by_key.get((tenant_id, operation))
+                        or zero(),
                     )
                 )
             operations.sort(key=lambda o: (-o.total_cost_usd, o.operation.value))
             return UsageStats(
                 tenant_id=top_value,
-                **dict(top_inv),
-                llm_call_stats=top_llm,
+                **dict(top_invocation),
+                llm_call_stats=top_llm_call,
                 operations=tuple(operations),
             )
 
         tenants: list[TenantStats] = []
-        for (t, op), inv in inv_by_key.items():
-            if op != top_value or t is None or inv.total_calls == 0:
+        for (tenant_id, operation), invocation in invocation_by_key.items():
+            if (
+                operation != top_value
+                or tenant_id is None
+                or invocation.total_calls == 0
+            ):
                 continue
             tenants.append(
                 TenantStats(
-                    tenant_id=t,
-                    **dict(inv),
-                    llm_call_stats=llm_by_key.get((t, op)) or zero(),
+                    tenant_id=tenant_id,
+                    **dict(invocation),
+                    llm_call_stats=llm_call_by_key.get((tenant_id, operation))
+                    or zero(),
                 )
             )
-        tenants.sort(key=lambda b: (-b.total_cost_usd, b.tenant_id))
+        tenants.sort(key=lambda t: (-t.total_cost_usd, t.tenant_id))
         return OperationUsageStats(
             operation=Operation(top_value) if top_value is not None else None,
-            **dict(top_inv),
-            llm_call_stats=top_llm,
+            **dict(top_invocation),
+            llm_call_stats=top_llm_call,
             tenants=tuple(tenants),
         )

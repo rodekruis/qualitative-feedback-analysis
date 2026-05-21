@@ -110,7 +110,7 @@ class FakeUsageRepository:
         self.last_args = (tenant_id, from_, to)
         return self._stats
 
-    async def get_all_usage_stats(self, from_=None, to=None):
+    async def get_all_usage_stats_by_tenant(self, from_=None, to=None):
         self.last_args = (from_, to)
         return self._all_stats
 
@@ -373,7 +373,7 @@ class _UnavailableUsageRepository:
     async def get_usage_stats(self, tenant_id, from_=None, to=None):
         raise UsageRepositoryUnavailableError("connection refused")
 
-    async def get_all_usage_stats(self, from_=None, to=None):
+    async def get_all_usage_stats_by_tenant(self, from_=None, to=None):
         raise UsageRepositoryUnavailableError("connection refused")
 
     async def get_all_usage_by_operation(self, from_=None, to=None):

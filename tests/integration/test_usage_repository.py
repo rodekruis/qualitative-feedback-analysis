@@ -168,7 +168,7 @@ class TestAlphaPolicy:
 
 class TestGetAllUsageStats:
     async def test_per_tenant_plus_grand_total_with_operations(self, pg_repo):
-        """get_all_usage_stats returns per-tenant + grand-total entries with operations.
+        """get_all_usage_stats_by_tenant returns per-tenant + grand-total entries with operations.
 
         Two tenants, overlapping operations. Verifies:
         - tenants returned alphabetically by tenant_id
@@ -186,7 +186,7 @@ class TestGetAllUsageStats:
             _record(tenant_id="b-tenant", operation=Operation.ANALYZE)
         )
 
-        all_stats = await pg_repo.get_all_usage_stats()
+        all_stats = await pg_repo.get_all_usage_stats_by_tenant()
         ids = [s.tenant_id for s in all_stats]
         assert ids == ["a-tenant", "b-tenant", None]
 
@@ -217,7 +217,7 @@ class TestGetAllUsageByOperation:
     async def test_per_operation_plus_grand_total_with_tenants(self, pg_repo):
         """get_all_usage_by_operation returns per-operation + grand-total with tenants.
 
-        Inverse hierarchy of get_all_usage_stats: top-level keyed by
+        Inverse hierarchy of get_all_usage_stats_by_tenant: top-level keyed by
         operation, with per-tenant breakdown nested under each. Two
         operations, overlapping tenants. Verifies:
         - operations returned sorted by cost desc (ties broken by
@@ -274,7 +274,7 @@ class TestGetAllUsageByOperation:
     async def test_empty_window_returns_zero_total(self, pg_repo):
         """Empty window ⇒ no per-operation rows and a zero grand-total entry.
 
-        Mirrors get_all_usage_stats' empty-window contract: the
+        Mirrors get_all_usage_stats_by_tenant' empty-window contract: the
         grand-total entry is always present, never silently dropped.
         """
         all_stats = await pg_repo.get_all_usage_by_operation()
