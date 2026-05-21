@@ -25,8 +25,8 @@ from qfa.domain.usage_models import (
     OperationStats,
     OperationUsageStats,
     TenantStats,
+    TenantUsageStats,
     UsageMetrics,
-    UsageStats,
 )
 
 
@@ -398,7 +398,7 @@ class TestLLMCallRecord:
             )
 
 
-# --- UsageStats v2 ---
+# --- TenantUsageStats v2 ---
 
 
 class TestUsageStatsV2:
@@ -412,13 +412,13 @@ class TestUsageStatsV2:
         )
 
     def test_construct_with_llm_call_stats_and_operations(self):
-        """UsageStats requires ``llm_call_stats``; ``operations`` defaults to empty tuple.
+        """TenantUsageStats requires ``llm_call_stats``; ``operations`` defaults to empty tuple.
 
         Guards the wire shape: every tenant block must carry the per-LLM-call
         view, and the absence of per-operation data is represented as ``()``
         — never ``None``.
         """
-        stats = UsageStats(
+        stats = TenantUsageStats(
             tenant_id="t1",
             total_calls=10,
             failed_calls=1,
@@ -438,7 +438,7 @@ class TestUsageStatsV2:
         leaving clients to special-case None.
         """
         with pytest.raises(ValidationError):
-            UsageStats(  # type:ignore [ty:missing-argument]
+            TenantUsageStats(  # type:ignore [ty:missing-argument]
                 tenant_id="t1",
                 total_calls=0,
                 total_cost_usd=Decimal("0"),
@@ -462,7 +462,7 @@ class TestUsageStatsV2:
             output_tokens=_zero_tokens(),
             llm_call_stats=self._metrics(),
         )
-        stats = UsageStats(
+        stats = TenantUsageStats(
             tenant_id="t1",
             total_calls=1,
             total_cost_usd=Decimal("0"),
@@ -480,7 +480,7 @@ class TestUsageStatsV2:
 
         Guards the existing sentinel convention.
         """
-        stats = UsageStats(
+        stats = TenantUsageStats(
             tenant_id=None,
             total_calls=0,
             total_cost_usd=Decimal("0"),
@@ -496,7 +496,7 @@ class TestUsageMetrics:
     def test_construct_with_all_fields(self):
         """A fully-populated UsageMetrics constructs and exposes all metric fields.
 
-        Pins the field set used by both per-invocation (UsageStats /
+        Pins the field set used by both per-invocation (TenantUsageStats /
         OperationStats inherit it) and per-LLM-call (llm_call_stats) views.
         """
         m = UsageMetrics(
@@ -541,7 +541,7 @@ class TestUsageMetrics:
         """total_cost_usd serialises to a JSON-friendly float, not a Decimal.
 
         OpenAPI/JSON does not have native Decimal; this matches the existing
-        UsageStats serialisation and prevents quoting as a string.
+        TenantUsageStats serialisation and prevents quoting as a string.
         """
         m = UsageMetrics(
             total_calls=1,
@@ -699,7 +699,7 @@ class TestOperationUsageStats:
     def test_construct_with_llm_call_stats_and_tenants(self):
         """OperationUsageStats requires ``llm_call_stats``; ``tenants`` defaults to empty tuple.
 
-        Mirrors the UsageStats invariant for the inverse hierarchy: every
+        Mirrors the TenantUsageStats invariant for the inverse hierarchy: every
         operation block must carry the per-LLM-call view, and the absence
         of per-tenant data is ``()`` — never ``None``.
         """
@@ -719,7 +719,7 @@ class TestOperationUsageStats:
     def test_operation_none_allowed_for_grand_total(self):
         """operation=None is allowed — the grand-total entry of /v1/usage/all/by-operation.
 
-        Parallels the tenant_id=None convention on UsageStats.
+        Parallels the tenant_id=None convention on TenantUsageStats.
         """
         stats = OperationUsageStats(
             operation=None,

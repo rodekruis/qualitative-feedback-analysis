@@ -19,7 +19,7 @@ from qfa.domain.models import (
 from qfa.domain.usage_models import (
     LLMCallRecord,
     OperationUsageStats,
-    UsageStats,
+    TenantUsageStats,
 )
 
 
@@ -79,7 +79,7 @@ class UsageRepositoryPort(Protocol):
         tenant_id: str,
         from_: dt.datetime | None = None,
         to: dt.datetime | None = None,
-    ) -> UsageStats:
+    ) -> TenantUsageStats:
         """Get aggregated usage stats for a single tenant.
 
         Parameters
@@ -93,7 +93,7 @@ class UsageRepositoryPort(Protocol):
 
         Returns
         -------
-        UsageStats | None
+        TenantUsageStats | None
             Stats for the tenant, or None if no calls in window.
         """
         ...
@@ -102,7 +102,7 @@ class UsageRepositoryPort(Protocol):
         self,
         from_: dt.datetime | None = None,
         to: dt.datetime | None = None,
-    ) -> list[UsageStats]:
+    ) -> list[TenantUsageStats]:
         """Get per-tenant stats plus a grand total entry (tenant_id=None).
 
         Parameters
@@ -114,7 +114,7 @@ class UsageRepositoryPort(Protocol):
 
         Returns
         -------
-        list[UsageStats]
+        list[TenantUsageStats]
             Per-tenant stats followed by a grand total entry.
         """
         ...

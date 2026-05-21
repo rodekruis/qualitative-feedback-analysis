@@ -7,7 +7,7 @@ models separate from the usage-tracking cluster. The cluster has two halves:
   :class:`CallContext`, :class:`LLMCallRecord`. These describe a single
   LLM-call attempt and the context propagated to the tracking adapter.
 - **Aggregations** — :class:`DistributionStats`, :class:`UsageMetrics`,
-  :class:`OperationStats`, :class:`UsageStats`, :class:`TenantStats`,
+  :class:`OperationStats`, :class:`TenantUsageStats`, :class:`TenantStats`,
   :class:`OperationUsageStats`. These are the per-tenant / per-operation
   views returned by ``/v1/usage`` endpoints.
 
@@ -175,8 +175,8 @@ class UsageMetrics(BaseModel):
     Whether the records are per-LLM-call rows or per-invocation roll-ups is
     fixed by the containing field, not by this class. ``UsageMetrics`` is
     used directly for the per-LLM-call ``llm_call_stats`` block on
-    ``UsageStats`` and ``OperationStats``, and as the base class for the
-    per-invocation totals on ``UsageStats`` / ``OperationStats``.
+    ``TenantUsageStats`` and ``OperationStats``, and as the base class for the
+    per-invocation totals on ``TenantUsageStats`` / ``OperationStats``.
 
     Per-field semantics are in the ``Field(description=...)`` below and
     surface in the OpenAPI schema at ``GET /docs``.
@@ -231,7 +231,7 @@ class UsageMetrics(BaseModel):
 
 
 class OperationStats(UsageMetrics):
-    """Per-operation usage stats — per-invocation semantics + per-LLM-call view.
+    """Per-operation usage stats nested inside a tenant block.
 
     Inherits all metric fields from :class:`UsageMetrics` (per-invocation
     semantics) and adds the ``operation`` discriminator plus a parallel
@@ -254,7 +254,7 @@ class OperationStats(UsageMetrics):
     )
 
 
-class UsageStats(UsageMetrics):
+class TenantUsageStats(UsageMetrics):
     """Per-tenant (or grand-total) usage stats — per-invocation + per-LLM-call.
 
     Inherits per-invocation metric fields from :class:`UsageMetrics` and
@@ -317,7 +317,7 @@ class TenantStats(UsageMetrics):
 class OperationUsageStats(UsageMetrics):
     """Per-operation (or grand-total) usage stats with nested per-tenant breakdown.
 
-    Inverse hierarchy of :class:`UsageStats`: top-level aggregation is by
+    Inverse hierarchy of :class:`TenantUsageStats`: top-level aggregation is by
     orchestrator operation, with a list of per-tenant blocks underneath.
     Used by ``/v1/usage/all/by-operation``. ``operation`` is ``None`` on the
     grand-total entry (cross-operation, cross-tenant).

@@ -40,8 +40,8 @@ from qfa.domain.usage_models import (
     OperationStats,
     OperationUsageStats,
     TenantStats,
+    TenantUsageStats,
     UsageMetrics,
-    UsageStats,
 )
 
 # Flat ``(tenant_id, operation) -> metrics`` dict carrying the GROUPING
@@ -106,11 +106,11 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         tenant_id: str,
         from_: datetime | None = None,
         to: datetime | None = None,
-    ) -> UsageStats:
+    ) -> TenantUsageStats:
         """Per-invocation and per-LLM-call stats for one tenant.
 
         Single-tenant SELECT pair grouped by operation only. Returns a
-        zero ``UsageStats`` when no rows match the window.
+        zero ``TenantUsageStats`` when no rows match the window.
         """
         predicates = self._base_predicates(tenant_id=tenant_id, from_=from_, to=to)
         invocation_by_key, llm_call_by_key = await self._fetch_views(
@@ -129,7 +129,7 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         self,
         from_: datetime | None = None,
         to: datetime | None = None,
-    ) -> list[UsageStats]:
+    ) -> list[TenantUsageStats]:
         """Per-tenant + grand-total stats with per-operation breakdown.
 
         Cross-tenant SELECT pair grouping by ``(tenant_id, operation)``,
@@ -150,7 +150,7 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
             }
         )
 
-        results: list[UsageStats] = []
+        results: list[TenantUsageStats] = []
         for tenant_id in tenants:
             block = self._build_block(
                 top_axis="tenant",
@@ -536,7 +536,7 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         top_value: str | None,
         invocation_by_key: _StatsByKey,
         llm_call_by_key: _StatsByKey,
-    ) -> UsageStats: ...
+    ) -> TenantUsageStats: ...
 
     @overload
     @classmethod
@@ -557,7 +557,7 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         top_value: str | None,
         invocation_by_key: _StatsByKey,
         llm_call_by_key: _StatsByKey,
-    ) -> UsageStats | OperationUsageStats:
+    ) -> TenantUsageStats | OperationUsageStats:
         """Pivot the flat (tenant, op) key dicts into one top-level block.
 
         Parameters
@@ -575,7 +575,7 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
 
         Returns
         -------
-        ``UsageStats`` when ``top_axis='tenant'``, ``OperationUsageStats``
+        ``TenantUsageStats`` when ``top_axis='tenant'``, ``OperationUsageStats``
         when ``top_axis='operation'``. Top-level metrics come from the
         ``(top_value, None)`` / ``(None, top_value)`` rollup cell.
         Breakdown rows come from the ``(tenant_id, operation)`` cells
@@ -612,7 +612,7 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
                     )
                 )
             operations.sort(key=lambda o: (-o.total_cost_usd, o.operation.value))
-            return UsageStats(
+            return TenantUsageStats(
                 tenant_id=top_value,
                 **dict(top_invocation),
                 llm_call_stats=top_llm_call,

@@ -39,8 +39,8 @@ from qfa.domain.sensitivity_types import SensitivityType
 from qfa.domain.usage_models import (
     DistributionStats,
     OperationUsageStats,
+    TenantUsageStats,
     UsageMetrics,
-    UsageStats,
 )
 from qfa.services.auth_orchestrator import AuthOrchestrator
 
@@ -226,7 +226,7 @@ class FakeUsageRepository(UsageRepositoryPort):
         return None
 
     async def get_usage_stats(self, tenant_id, from_=None, to=None):
-        return UsageStats(
+        return TenantUsageStats(
             tenant_id=tenant_id,
             total_calls=0,
             failed_calls=0,
@@ -239,7 +239,7 @@ class FakeUsageRepository(UsageRepositoryPort):
 
     async def get_all_usage_by_tenant(self, from_=None, to=None):
         return [
-            UsageStats(
+            TenantUsageStats(
                 tenant_id="test-tenant-1",
                 total_calls=0,
                 failed_calls=0,

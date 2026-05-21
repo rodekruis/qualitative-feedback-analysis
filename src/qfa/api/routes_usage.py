@@ -25,8 +25,8 @@ from qfa.domain.ports import UsageRepositoryPort
 from qfa.domain.usage_models import (
     DistributionStats,
     OperationUsageStats,
+    TenantUsageStats,
     UsageMetrics,
-    UsageStats,
 )
 
 router = APIRouter()
@@ -61,8 +61,8 @@ def _zero_usage_metrics() -> UsageMetrics:
     )
 
 
-def _zero_usage_stats(tenant_id: str | None) -> UsageStats:
-    """Build a domain ``UsageStats`` representing an empty time window.
+def _zero_usage_stats(tenant_id: str | None) -> TenantUsageStats:
+    """Build a domain ``TenantUsageStats`` representing an empty time window.
 
     Used as the fallback grand-total in ``/v1/usage/all/by-tenant`` when no
     rows matched the time filter. Populates both the per-invocation
@@ -71,7 +71,7 @@ def _zero_usage_stats(tenant_id: str | None) -> UsageStats:
     any other empty-window case.
     """
     zero = _zero_usage_metrics()
-    return UsageStats(
+    return TenantUsageStats(
         tenant_id=tenant_id,
         total_calls=0,
         failed_calls=0,
@@ -244,7 +244,7 @@ async def usage_all_by_tenant(
 ) -> AllUsageStatsResponse:
     """Per-tenant and grand-total usage statistics. Requires superuser access.
 
-    Response shape: ``tenants`` is a list of per-tenant ``UsageStats``
+    Response shape: ``tenants`` is a list of per-tenant ``TenantUsageStats``
     (sorted alphabetically by ``tenant_id``); ``total`` is the
     cross-tenant grand total (``tenant_id`` is null). Every entry —
     per-tenant and grand-total — carries the same dual-view shape as

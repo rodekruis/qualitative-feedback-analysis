@@ -2,7 +2,7 @@
 
 ADR-007 keeps API and domain models separate where the API needs to
 hide internal fields or reshape the wire format. The usage endpoints
-don't need either — the domain ``UsageStats`` *is* the aggregate the
+don't need either — the domain ``TenantUsageStats`` *is* the aggregate the
 consumer wants. The only HTTP-specific addition is the echoed
 ``from``/``to`` query window, so this module holds two thin wrappers
 that add those fields and nothing else.
@@ -12,11 +12,11 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from qfa.domain.usage_models import OperationUsageStats, UsageStats
+from qfa.domain.usage_models import OperationUsageStats, TenantUsageStats
 
 
-class UsageStatsResponse(UsageStats):
-    """Domain ``UsageStats`` plus echoed ``from``/``to`` query bounds."""
+class UsageStatsResponse(TenantUsageStats):
+    """Domain ``TenantUsageStats`` plus echoed ``from``/``to`` query bounds."""
 
     model_config = ConfigDict(frozen=True, populate_by_name=True)
 
@@ -31,8 +31,8 @@ class AllUsageStatsResponse(BaseModel):
 
     from_: datetime | None = Field(default=None, alias="from")
     to: datetime | None = None
-    tenants: list[UsageStats]
-    total: UsageStats
+    tenants: list[TenantUsageStats]
+    total: TenantUsageStats
 
 
 class AllUsageByOperationResponse(BaseModel):

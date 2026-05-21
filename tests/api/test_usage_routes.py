@@ -14,8 +14,8 @@ from qfa.domain.usage_models import (
     OperationStats,
     OperationUsageStats,
     TenantStats,
+    TenantUsageStats,
     UsageMetrics,
-    UsageStats,
 )
 
 FAKE_API_KEY = "test-key-abc123"
@@ -58,7 +58,7 @@ def _make_usage_stats(tenant_id: str | None = "tenant-test", total_calls: int = 
         ),
         llm_call_stats=_make_metrics(total_calls=total_calls),
     )
-    return UsageStats(
+    return TenantUsageStats(
         tenant_id=tenant_id,
         total_calls=total_calls,
         failed_calls=1,

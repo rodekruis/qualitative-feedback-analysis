@@ -213,7 +213,7 @@ async def test_resolve_database_url_uses_explicit_url():
 
 
 def test_usage_stats_new_shape_has_llm_call_stats_and_operations():
-    """UsageStats carries the new llm_call_stats and operations fields.
+    """TenantUsageStats carries the new llm_call_stats and operations fields.
 
     Verifies the domain shape directly (not via DB query) so this test
     runs without any database. The per-invocation aggregation correctness
@@ -225,8 +225,8 @@ def test_usage_stats_new_shape_has_llm_call_stats_and_operations():
 
     from qfa.domain.usage_models import (
         DistributionStats,
+        TenantUsageStats,
         UsageMetrics,
-        UsageStats,
     )
 
     zero_metrics = UsageMetrics(
@@ -237,7 +237,7 @@ def test_usage_stats_new_shape_has_llm_call_stats_and_operations():
         input_tokens=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
         output_tokens=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
     )
-    stats = UsageStats(
+    stats = TenantUsageStats(
         tenant_id="tenant-1",
         total_calls=0,
         failed_calls=0,
