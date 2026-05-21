@@ -428,14 +428,14 @@ class TestErrorMapping:
                 headers=_auth_header(),
             )
         assert resp.status_code == 200
-        assert resp.json()["summaries"] == [
-            {
-                "id": "custom-1",
-                "title": "Custom title",
-                "summary": "- Custom point",
-                "quality_score": 0.75,
-            }
-        ]
+        summaries = resp.json()["summaries"]
+        assert len(summaries) == 1
+        s = summaries[0]
+        assert s["id"] == "custom-1"
+        assert s["title"] == "Custom title"
+        assert s["summary"] == "- Custom point"
+        assert s["quality_score"] == 0.75
+        assert "pretty_output" in s
 
 
 # ------------------------------------------------------------------ #
