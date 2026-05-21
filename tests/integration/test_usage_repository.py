@@ -67,7 +67,7 @@ class TestRoundTrip:
         """
         rec = _record(cost_usd=Decimal("12.345678"))
         await pg_repo.record_call(rec)
-        stats = await pg_repo.get_usage_stats("t1")
+        stats = await pg_repo.get_usage_stats_for_one_tenant("t1")
         assert stats is not None
         assert stats.total_cost_usd == Decimal("12.345678")
 
@@ -81,7 +81,7 @@ class TestRoundTrip:
             cost_usd=Decimal("0"),
         )
         await pg_repo.record_call(rec)
-        stats = await pg_repo.get_usage_stats("t1")
+        stats = await pg_repo.get_usage_stats_for_one_tenant("t1")
         assert stats is not None
         assert stats.total_calls == 1
         assert stats.failed_calls == 1
@@ -116,7 +116,7 @@ class TestTimeFilterHalfOpen:
             _record(timestamp=anchor - timedelta(seconds=1))
         )  # excluded — before `from`
 
-        stats = await pg_repo.get_usage_stats(
+        stats = await pg_repo.get_usage_stats_for_one_tenant(
             "t1",
             from_=anchor,
             to=anchor + timedelta(hours=2),
@@ -157,7 +157,7 @@ class TestAlphaPolicy:
                 model="",
             )
         )
-        stats = await pg_repo.get_usage_stats("t1")
+        stats = await pg_repo.get_usage_stats_for_one_tenant("t1")
         assert stats is not None
         assert stats.total_calls == 2
         assert stats.failed_calls == 1
@@ -299,7 +299,7 @@ class TestPerInvocationAggregation:
         await pg_repo.record_call(_record(call_id=shared, call_duration_ms=300))
         await pg_repo.record_call(_record(call_id=shared, call_duration_ms=400))
 
-        stats = await pg_repo.get_usage_stats("t1")
+        stats = await pg_repo.get_usage_stats_for_one_tenant("t1")
 
         # Per-invocation: one invocation with summed duration.
         assert stats.total_calls == 1
@@ -346,7 +346,7 @@ class TestPerInvocationAggregation:
                 )
             )
 
-        stats = await pg_repo.get_usage_stats("t1")
+        stats = await pg_repo.get_usage_stats_for_one_tenant("t1")
 
         assert stats.total_calls == 2  # A and B
         assert stats.failed_calls == 1  # only B is all-failed
@@ -389,7 +389,7 @@ class TestPerInvocationAggregation:
             )
         )
 
-        stats = await pg_repo.get_usage_stats("t1")
+        stats = await pg_repo.get_usage_stats_for_one_tenant("t1")
 
         assert stats.total_calls == 2
         assert stats.failed_calls == 1
@@ -422,7 +422,7 @@ class TestOperationsBreakdown:
             _record(operation=Operation.ASSIGN_CODES, cost_usd=Decimal("0.5"))
         )
 
-        stats = await pg_repo.get_usage_stats("t1")
+        stats = await pg_repo.get_usage_stats_for_one_tenant("t1")
 
         # Expected order: assign_codes (0.5), summarize (0.5), analyze (0.1)
         ops = [op.operation for op in stats.operations]
@@ -441,7 +441,7 @@ class TestOperationsBreakdown:
         """
         await pg_repo.record_call(_record(operation=Operation.ANALYZE))
 
-        stats = await pg_repo.get_usage_stats("t1")
+        stats = await pg_repo.get_usage_stats_for_one_tenant("t1")
 
         assert len(stats.operations) == 1
         assert stats.operations[0].operation == Operation.ANALYZE
@@ -460,7 +460,7 @@ class TestOperationsBreakdown:
                 _record(operation=Operation.ASSIGN_CODES, call_id=shared)
             )
 
-        stats = await pg_repo.get_usage_stats("t1")
+        stats = await pg_repo.get_usage_stats_for_one_tenant("t1")
 
         assert len(stats.operations) == 1
         op = stats.operations[0]

@@ -225,7 +225,7 @@ class FakeUsageRepository(UsageRepositoryPort):
     async def record_call(self, record) -> None:
         return None
 
-    async def get_usage_stats(self, tenant_id, from_=None, to=None):
+    async def get_usage_stats_for_one_tenant(self, tenant_id, from_=None, to=None):
         return TenantUsageStats(
             tenant_id=tenant_id,
             total_calls=0,

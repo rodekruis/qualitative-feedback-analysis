@@ -74,7 +74,7 @@ class UsageRepositoryPort(Protocol):
         """
         ...
 
-    async def get_usage_stats(
+    async def get_usage_stats_for_one_tenant(
         self,
         tenant_id: str,
         from_: dt.datetime | None = None,

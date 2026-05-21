@@ -231,7 +231,7 @@ class UsageMetrics(BaseModel):
 
 
 class OperationStats(UsageMetrics):
-    """Per-operation usage stats nested inside a tenant block.
+    """Per-operation usage stats nested inside :class:`TenantUsageStats`.
 
     Inherits all metric fields from :class:`UsageMetrics` (per-invocation
     semantics) and adds the ``operation`` discriminator plus a parallel

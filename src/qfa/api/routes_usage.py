@@ -213,7 +213,9 @@ async def usage(
         Aggregated usage statistics for the tenant in the time window.
     """
     from_, to = _parse_time_window(from_, to)
-    stats = await usage_repo.get_usage_stats(tenant.tenant_id, from_=from_, to=to)
+    stats = await usage_repo.get_usage_stats_for_one_tenant(
+        tenant.tenant_id, from_=from_, to=to
+    )
     return UsageStatsResponse(
         **stats.model_dump(),
         from_=from_,  # type: ignore[ty:unknown-argument]  # ty does note support Pydantic fields with an alias

@@ -8,6 +8,7 @@ import pytest
 import pytest_asyncio
 
 from qfa.domain.errors import UsageRepositoryUnavailableError
+from qfa.domain.ports import UsageRepositoryPort
 from qfa.domain.usage_models import (
     DistributionStats,
     Operation,
@@ -115,7 +116,7 @@ def _make_operation_usage_stats(
     )
 
 
-class FakeUsageRepository:
+class FakeUsageRepository(UsageRepositoryPort):
     def __init__(self, stats=None, all_stats=None, by_operation=None):
         self._stats = stats
         self._all_stats = all_stats or []
@@ -125,7 +126,7 @@ class FakeUsageRepository:
     async def record_call(self, record):
         pass
 
-    async def get_usage_stats(self, tenant_id, from_=None, to=None):
+    async def get_usage_stats_for_one_tenant(self, tenant_id, from_=None, to=None):
         self.last_args = (tenant_id, from_, to)
         return self._stats
 
@@ -380,7 +381,7 @@ class TestUsageAllByOperationEndpoint:
         assert data["total"]["operation"] is None
 
 
-class _UnavailableUsageRepository:
+class _UnavailableUsageRepository(UsageRepositoryPort):
     """Fake repo whose reads raise ``UsageRepositoryUnavailableError``.
 
     Models the wired-but-unreachable case.
@@ -389,7 +390,7 @@ class _UnavailableUsageRepository:
     async def record_call(self, record):
         pass
 
-    async def get_usage_stats(self, tenant_id, from_=None, to=None):
+    async def get_usage_stats_for_one_tenant(self, tenant_id, from_=None, to=None):
         raise UsageRepositoryUnavailableError("connection refused")
 
     async def get_all_usage_by_tenant(self, from_=None, to=None):
