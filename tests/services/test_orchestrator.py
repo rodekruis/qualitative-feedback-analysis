@@ -888,4 +888,71 @@ class TestAnalyzeAnonymizationOrdering:
 
         assert result.result.count(ANALYZE_DISCLAIMER) == 1
         assert result.result.startswith(ANALYZE_DISCLAIMER)
-        assert "<PERSON_0>" not in result.result
+        # The disclaimer itself mentions ``<PERSON_0>`` as an example; the
+        # assertion targets the analysis body only.
+        body = result.result.removeprefix(ANALYZE_DISCLAIMER)
+        assert "<PERSON_0>" not in body
+
+    @pytest.mark.asyncio
+    async def test_person_placeholders_are_retained_in_output(self, settings):
+        """Analyze leaves ``<PERSON_*>`` placeholders un-restored.
+
+        Defense in depth for the "do not identify individuals" guardrail
+        in ``ANALYZE_GUARDRAILS_PROMPT``: if the LLM echoes a person
+        placeholder we supplied back into its analysis, the analyst must
+        not see the underlying name. Other entity types (here,
+        ``LOCATION`` and ``EMAIL_ADDRESS``) are still deanonymised as
+        before — only PERSON is retained.
+        """
+        from qfa.services.orchestrator import AnalyzeJudgeResult, Orchestrator
+
+        class FakeAnonymizerWithPlaceholders:
+            def anonymize(self, text):
+                return text, {
+                    "<PERSON_0>": "Alice",
+                    "<LOCATION_0>": "Atlanta",
+                    "<EMAIL_ADDRESS_0>": "alice@example.com",
+                }
+
+            def deanonymize(self, text, mapping):
+                for placeholder, real in mapping.items():
+                    text = text.replace(placeholder, real)
+                return text
+
+        analysis_with_placeholders = (
+            "Themes: <PERSON_0> from <LOCATION_0> reports issues; "
+            "contact <EMAIL_ADDRESS_0>."
+        )
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=analysis_with_placeholders),
+                _make_llm_response(
+                    structured=AnalyzeJudgeResult(
+                        quality_score=0.5, uncertainty_explanation="ok"
+                    )
+                ),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizerWithPlaceholders(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        result = await orch.analyze(_make_request(), _future_deadline(), anonymize=True)
+
+        from qfa.services.prompts import ANALYZE_DISCLAIMER
+
+        # Assertions target the analysis body, not the disclaimer (which
+        # mentions ``<PERSON_0>`` as an example token).
+        body = result.result.removeprefix(ANALYZE_DISCLAIMER)
+        # PERSON placeholders remain — analyst never sees the underlying name.
+        assert "<PERSON_0>" in body
+        assert "Alice" not in body
+        # Other entity types are still deanonymised as before.
+        assert "<LOCATION_0>" not in body
+        assert "Atlanta" in body
+        assert "<EMAIL_ADDRESS_0>" not in body
+        assert "alice@example.com" in body

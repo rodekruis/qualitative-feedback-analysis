@@ -7,7 +7,7 @@ manages retries with exponential backoff, and enforces deadlines.
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Callable, TypeVar
+from typing import Callable, ClassVar, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -276,6 +276,17 @@ class Orchestrator:
         Maximum estimated total tokens for a single request.
     """
 
+    # Entity types whose placeholders are NOT restored in `analyze` output.
+    # Defense in depth for the "do not identify individuals" guardrail in
+    # `ANALYZE_GUARDRAILS_PROMPT`: even if the analyse LLM echoes a
+    # placeholder we supplied, the analyst never sees the underlying name.
+    # Scoped to `analyze` only — `summarize`/`assign_codes` still restore
+    # all placeholders because their per-record output is meant to be
+    # faithful to the source.
+    _ANALYZE_RETAINED_PLACEHOLDER_TYPES: ClassVar[frozenset[str]] = frozenset(
+        {"PERSON"}
+    )
+
     def __init__(
         self,
         llm: LLMPort,
@@ -289,6 +300,19 @@ class Orchestrator:
         self._settings = settings
         self._llm_timeout_seconds = llm_timeout_seconds
         self._max_total_tokens = max_total_tokens
+
+    @classmethod
+    def _is_retained_analyze_placeholder(cls, placeholder: str) -> bool:
+        """Return True when ``placeholder`` belongs to a retained entity type.
+
+        Placeholders use the form ``<ENTITY_TYPE_N>`` (e.g. ``<PERSON_0>``,
+        ``<LOCATION_3>``), so a prefix match on ``<TYPE_`` correctly handles
+        any index Presidio chooses.
+        """
+        return any(
+            placeholder.startswith(f"<{entity_type}_")
+            for entity_type in cls._ANALYZE_RETAINED_PLACEHOLDER_TYPES
+        )
 
     async def analyze(
         self,
@@ -338,8 +362,13 @@ class Orchestrator:
         analysis_text: str = analyse_response.structured
 
         if anonymize:
+            restorable_mapping = {
+                placeholder: original
+                for placeholder, original in anonymization_mapping.items()
+                if not self._is_retained_analyze_placeholder(placeholder)
+            }
             analysis_text = self._anonymizer.deanonymize(
-                analysis_text, anonymization_mapping
+                analysis_text, restorable_mapping
             )
 
         quality_score: float | None
