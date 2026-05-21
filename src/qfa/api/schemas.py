@@ -116,7 +116,7 @@ class ApiAnalyzeRequest(BaseModel):
         default="single_pass",
         description=(
             "Analysis mode. ``single_pass`` is the only supported value in this"
-            " version. Other modes (hierarchical / map-reduce) are tracked in #124."
+            " version; additional modes may be added in future versions."
         ),
     )
 

@@ -48,6 +48,7 @@ from qfa.services.prompts import (
     ANALYZE_GUARDRAILS_PROMPT,
     ANALYZE_SYSTEM_PROMPT,
     JUDGE_UNAVAILABLE_EXPLANATION,
+    build_analyze_judge_system_message,
     build_analyze_user_message,
 )
 from qfa.settings import OrchestratorSettings
@@ -136,51 +137,6 @@ Output rules:
 - Example output: 0.82
 """
 
-_ANALYZE_JUDGE_PROMPT = """
-You are evaluating the quality of an analysis produced from feedback records.
-
-Source feedback records:
----
-{source_text}
----
-
-Analyst question:
----
-{analyst_prompt}
----
-
-Analysis to score:
----
-{analysis}
----
-
-Score the analysis using three criteria. Each must be a float between 0 and 1.
-
-Faithfulness:
-1.0 = fully supported by the source records, no fabrications
-0.5 = mostly correct, minor issues
-0.0 = major inaccuracies
-
-Coverage:
-1.0 = answers the analyst question using the records, captures key themes
-0.5 = partial coverage
-0.0 = misses the question or most themes
-
-Clarity:
-1.0 = clear and well-structured
-0.5 = somewhat clear
-0.0 = confusing or poorly written
-
-Compute the final score as:
-quality_score = 0.6 * faithfulness + 0.3 * coverage + 0.1 * clarity
-
-Also produce ``uncertainty_explanation`` — one short paragraph explaining
-which criterion drove the score, calling out unsupported claims if any.
-
-Return strictly the JSON object {{"quality_score": <float>, "uncertainty_explanation": "<text>"}}.
-No prose outside JSON, no markdown fences.
-"""
-
 #: Minimum time (seconds) required for an LLM attempt to be viable.
 _MINIMUM_ATTEMPT_WINDOW = 10.0
 
@@ -218,17 +174,6 @@ def _parse_judge_quality_score(raw: str) -> float:
 def _build_judge_system_message(source_text: str, summary: str) -> str:
     """Fill the judge prompt with the provided source text and summary."""
     return _JUDGE_PROMPT.format(source_text=source_text, summary=summary)
-
-
-def _build_analyze_judge_system_message(
-    source_text: str, analyst_prompt: str, analysis: str
-) -> str:
-    """Fill the analyse-judge prompt with source, question, and analysis."""
-    return _ANALYZE_JUDGE_PROMPT.format(
-        source_text=source_text,
-        analyst_prompt=analyst_prompt,
-        analysis=analysis,
-    )
 
 
 @dataclass
@@ -375,7 +320,7 @@ class Orchestrator:
         uncertainty_explanation: str
         try:
             judge_timeout = self._check_deadline_and_get_timeout(deadline)
-            judge_system = _build_analyze_judge_system_message(
+            judge_system = build_analyze_judge_system_message(
                 source_text=anonymized_user_message,
                 analyst_prompt=request.prompt,
                 analysis=analyse_response.structured,

@@ -11,9 +11,12 @@ XML-style envelope tags. :func:`escape_for_tag_envelope` is applied to
 every piece of untrusted text before it is embedded, so attacker-supplied
 content cannot break out of the envelope.
 
+The second (judge) LLM call uses :data:`ANALYZE_JUDGE_PROMPT` filled in
+by :func:`build_analyze_judge_system_message`.
+
 A server-side :data:`ANALYZE_DISCLAIMER` is prepended to the LLM output;
 :data:`JUDGE_UNAVAILABLE_EXPLANATION` is the substitute uncertainty text
-when the second (judge) LLM call fails.
+when the judge LLM call fails.
 """
 
 from qfa.domain.models import FeedbackRecordModel
@@ -58,6 +61,51 @@ ANALYZE_DISCLAIMER: str = (
 JUDGE_UNAVAILABLE_EXPLANATION: str = (
     "Judge unavailable; the quality score could not be computed for this analysis."
 )
+
+ANALYZE_JUDGE_PROMPT: str = """
+You are evaluating the quality of an analysis produced from feedback records.
+
+Source feedback records:
+---
+{source_text}
+---
+
+Analyst question:
+---
+{analyst_prompt}
+---
+
+Analysis to score:
+---
+{analysis}
+---
+
+Score the analysis using three criteria. Each must be a float between 0 and 1.
+
+Faithfulness:
+1.0 = fully supported by the source records, no fabrications
+0.5 = mostly correct, minor issues
+0.0 = major inaccuracies
+
+Coverage:
+1.0 = answers the analyst question using the records, captures key themes
+0.5 = partial coverage
+0.0 = misses the question or most themes
+
+Clarity:
+1.0 = clear and well-structured
+0.5 = somewhat clear
+0.0 = confusing or poorly written
+
+Compute the final score as:
+quality_score = 0.6 * faithfulness + 0.3 * coverage + 0.1 * clarity
+
+Also produce ``uncertainty_explanation`` — one short paragraph explaining
+which criterion drove the score, calling out unsupported claims if any.
+
+Return strictly the JSON object {{"quality_score": <float>, "uncertainty_explanation": "<text>"}}.
+No prose outside JSON, no markdown fences.
+"""
 
 
 def escape_for_tag_envelope(text: str) -> str:
@@ -110,4 +158,15 @@ def build_analyze_user_message(
         f"<feedback_records>\n"
         f"{records_xml}\n"
         f"</feedback_records>"
+    )
+
+
+def build_analyze_judge_system_message(
+    source_text: str, analyst_prompt: str, analysis: str
+) -> str:
+    """Fill :data:`ANALYZE_JUDGE_PROMPT` with source, question, and analysis."""
+    return ANALYZE_JUDGE_PROMPT.format(
+        source_text=source_text,
+        analyst_prompt=analyst_prompt,
+        analysis=analysis,
     )
