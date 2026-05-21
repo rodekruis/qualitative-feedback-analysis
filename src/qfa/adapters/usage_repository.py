@@ -320,11 +320,6 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         token/duration/cost summed across the LLM calls of the invocation
         and a ``bool_and`` flag marking the all-failed case).
 
-        Both views emit identical, canonically-labelled aggregate columns
-        (``total_calls``, ``failed_calls``, ``total_cost_usd``, plus
-        ``duration_*``/``input_tokens_*``/``output_tokens_*`` distributions)
-        so a single row parser consumes either.
-
         Counts and ``total_cost_usd`` include every row in scope —
         including failures that incurred a real cost. Distributions
         filter to the "ok" subset (single-row ``status='ok'`` for the
@@ -335,11 +330,7 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         src: sa.FromClause
         outer_where: list
         if view == "invocation":
-            # CTE pre-aggregates per call_id and exposes columns under the
-            # same names as ``llm_calls`` so the SELECT below can use
-            # ``src.c.<name>`` uniformly for either view. ``all_failed``
-            # replaces the per-row ``status`` column with a per-invocation
-            # bool ("did every row of this call_id fail?").
+            # create CTE
             per_invocation = (
                 sa.select(
                     llm_calls.c.tenant_id,
@@ -370,10 +361,12 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
             outer_where = predicates
 
         columns: list[sa.ColumnElement] = []
+        # group by columns:
         if group_by_tenant:
             columns.append(src.c.tenant_id.label("tenant_id"))
         if group_by_operation:
             columns.append(src.c.operation.label("operation"))
+        # data columns:
         columns.extend(
             [
                 sa.func.count().label("total_calls"),
@@ -394,13 +387,12 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         )
 
         statement = sa.select(*columns).select_from(src).where(*outer_where)
-        grouping_sets = cls._grouping_sets_clause(
-            group_by_tenant=group_by_tenant,
-            group_by_operation=group_by_operation,
+        return statement.group_by(
+            *cls._grouping_sets_clause(
+                group_by_tenant=group_by_tenant,
+                group_by_operation=group_by_operation,
+            )
         )
-        if grouping_sets is not None:
-            statement = statement.group_by(grouping_sets)
-        return statement
 
     @classmethod
     def _grouping_sets_clause(
@@ -408,26 +400,23 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         *,
         group_by_tenant: bool,
         group_by_operation: bool,
-    ) -> sa.ColumnElement | None:
-        """Build the ``GROUP BY`` expression for the requested grouping.
+    ) -> list[sa.ColumnElement]:
+        """Build the ``GROUP BY`` clauses for the requested grouping.
 
-        Emits ``CUBE(axis, ...)`` over the active axes, which Postgres
-        expands to the full powerset of grouping sets:
-        ``CUBE(t, o)`` ≡ ``GROUPING SETS ((t,o), (t), (o), ())``;
-        ``CUBE(x)`` ≡ ``GROUPING SETS ((x), ())``. Both
-        ``/v1/usage/all/by-operation`` (needs the ``(operation)`` rollup)
-        and ``/v1/usage/all/by-tenant`` (needs the ``(tenant)`` rollup)
-        rely on the full cube. Returns ``None`` for the degenerate
-        no-grouping case (currently unused; kept as a defensive shortcut).
+        Returns a single-element list ``[CUBE(axis, ...)]`` over the
+        active axes — Postgres expands ``CUBE(t, o)`` to the powerset
+        ``GROUPING SETS ((t,o), (t), (o), ())`` and ``CUBE(x)`` to
+        ``((x), ())``. Returns ``[]`` for the degenerate no-grouping
+        case (currently unused; kept as a defensive shortcut) so the
+        caller can unpack into ``group_by(*...)`` unconditionally —
+        ``group_by(*[])`` is a true no-op, same as no GROUP BY at all.
         """
         axes: list[sa.ColumnElement] = []
         if group_by_tenant:
             axes.append(sa.column("tenant_id"))
         if group_by_operation:
             axes.append(sa.column("operation"))
-        if not axes:
-            return None
-        return sa.func.cube(*axes)
+        return [sa.func.cube(*axes)] if axes else []
 
     @classmethod
     def _build_stats_columns(

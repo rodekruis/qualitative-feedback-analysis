@@ -267,12 +267,13 @@ def test_grouping_sets_clause_cross_tenant_emits_full_cube():
     SQLite-backed unit tests because SQLite doesn't support these
     grouping extensions at all.
     """
-    clause = SqlAlchemyUsageRepository._grouping_sets_clause(
+    clauses = SqlAlchemyUsageRepository._grouping_sets_clause(
         group_by_tenant=True, group_by_operation=True
     )
-    assert clause is not None
-    assert clause.name == "cube"
-    arg_names = [str(arg) for arg in clause.clauses]
+    assert len(clauses) == 1
+    cube = clauses[0]
+    assert cube.name == "cube"
+    arg_names = [str(arg) for arg in cube.clauses]
     assert arg_names == ["tenant_id", "operation"]
 
 
@@ -282,13 +283,26 @@ def test_grouping_sets_clause_single_tenant_omits_tenant_axis():
     ``CUBE(operation)`` expands to ``GROUPING SETS ((operation), ())``,
     giving the per-operation rollup plus the grand total for one tenant.
     """
-    clause = SqlAlchemyUsageRepository._grouping_sets_clause(
+    clauses = SqlAlchemyUsageRepository._grouping_sets_clause(
         group_by_tenant=False, group_by_operation=True
     )
-    assert clause is not None
-    assert clause.name == "cube"
-    arg_names = [str(arg) for arg in clause.clauses]
+    assert len(clauses) == 1
+    cube = clauses[0]
+    assert cube.name == "cube"
+    arg_names = [str(arg) for arg in cube.clauses]
     assert arg_names == ["operation"]
+
+
+def test_grouping_sets_clause_no_grouping_returns_empty_list():
+    """Both axes off → ``[]`` so the caller's ``group_by(*[])`` is a no-op.
+
+    Pins the contract that lets ``_select_view`` unconditionally unpack
+    the result into ``.group_by(*...)`` without a None-check branch.
+    """
+    clauses = SqlAlchemyUsageRepository._grouping_sets_clause(
+        group_by_tenant=False, group_by_operation=False
+    )
+    assert clauses == []
 
 
 async def test_resolve_database_url_from_password_parts():
