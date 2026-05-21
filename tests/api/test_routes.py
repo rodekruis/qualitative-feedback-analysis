@@ -22,7 +22,9 @@ def _valid_body(
     prompt="Summarize the feedback.",
 ):
     if feedback_records is None:
-        feedback_records = [{"id": "doc-1", "text": "Great service!", "metadata": {}}]
+        feedback_records = [
+            {"id": "doc-1", "content": "Great service!", "metadata": {}}
+        ]
     return {"feedback_records": feedback_records, "prompt": prompt}
 
 
@@ -33,25 +35,13 @@ def _make_client(app):
     )
 
 
-def _summary_metadata(**overrides):
-    base = {
-        "created": "2024-01-15T10:00:00+00:00",
-        "feedback_record_id": "fi-doc-1",
-        "coding_level_1": "l1",
-        "coding_level_2": "l2",
-        "coding_level_3": "l3",
-    }
-    base.update(overrides)
-    return base
-
-
 def _valid_summary_body(**overrides):
     body = {
         "feedback_records": [
             {
                 "id": "doc-1",
                 "content": "Great service!",
-                "metadata": _summary_metadata(),
+                "metadata": {"region": "North", "year": 2024},
             },
         ],
     }
@@ -61,10 +51,10 @@ def _valid_summary_body(**overrides):
 
 def _valid_detect_sensitive_body(**overrides):
     body = {
-        "feedback_items": [
+        "feedback_records": [
             {
                 "id": "doc-1",
-                "text": "A staff member asked for a bribe.",
+                "content": "A staff member asked for a bribe.",
             },
         ],
     }
@@ -92,9 +82,9 @@ class TestAnalyzeSuccess:
     @pytest.mark.asyncio
     async def test_feedback_record_count_matches_input(self, client):
         docs = [
-            {"id": "1", "text": "Doc one"},
-            {"id": "2", "text": "Doc two"},
-            {"id": "3", "text": "Doc three"},
+            {"id": "1", "content": "Doc one"},
+            {"id": "2", "content": "Doc two"},
+            {"id": "3", "content": "Doc three"},
         ]
         resp = await client.post(
             "/v1/analyze",
@@ -240,10 +230,10 @@ class TestDetectSensitiveSuccess:
     @pytest.mark.asyncio
     async def test_detect_sensitive_forwards_metadata(self, test_app):
         body = _valid_detect_sensitive_body(
-            feedback_items=[
+            feedback_records=[
                 {
                     "id": "doc-1",
-                    "text": "A staff member asked for a bribe.",
+                    "content": "A staff member asked for a bribe.",
                     "metadata": {"region": "North"},
                 }
             ]
@@ -332,7 +322,7 @@ class TestValidation:
     async def test_422_missing_prompt(self, client):
         resp = await client.post(
             "/v1/analyze",
-            json={"feedback_records": [{"id": "1", "text": "data"}]},
+            json={"feedback_records": [{"id": "1", "content": "data"}]},
             headers=_auth_header(),
         )
         assert resp.status_code == 422
@@ -349,10 +339,10 @@ class TestValidation:
         assert resp.json()["error"]["code"] == "validation_error"
 
     @pytest.mark.asyncio
-    async def test_422_empty_feedback_record_text(self, client):
+    async def test_422_empty_feedback_record_content(self, client):
         resp = await client.post(
             "/v1/analyze",
-            json=_valid_body(feedback_records=[{"id": "1", "text": ""}]),
+            json=_valid_body(feedback_records=[{"id": "1", "content": ""}]),
             headers=_auth_header(),
         )
         assert resp.status_code == 422
@@ -386,7 +376,7 @@ class TestValidation:
             "/v1/summarize",
             json=_valid_summary_body(
                 feedback_records=[
-                    {"id": "1", "content": "", "metadata": _summary_metadata()},
+                    {"id": "1", "content": "", "metadata": {}},
                 ],
             ),
             headers=_auth_header(),
@@ -396,10 +386,10 @@ class TestValidation:
         assert resp.json()["error"]["fields"] is not None
 
     @pytest.mark.asyncio
-    async def test_detect_sensitive_422_empty_feedback_items(self, client):
+    async def test_detect_sensitive_422_empty_feedback_records(self, client):
         resp = await client.post(
             "/v1/detect-sensitive",
-            json=_valid_detect_sensitive_body(feedback_items=[]),
+            json=_valid_detect_sensitive_body(feedback_records=[]),
             headers=_auth_header(),
         )
         assert resp.status_code == 422
@@ -566,9 +556,7 @@ class TestErrorMapping:
                         {
                             "id": "custom-1",
                             "content": "Input text",
-                            "metadata": _summary_metadata(
-                                feedback_record_id="fi-custom-1"
-                            ),
+                            "metadata": {"feedback_record_id": "fi-custom-1"},
                         },
                     ],
                 ),

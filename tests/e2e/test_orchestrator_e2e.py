@@ -54,7 +54,7 @@ class TestAnalyzeRecordsRow:
         resp = await e2e_client.post(
             "/v1/analyze",
             json={
-                "feedback_records": [{"id": "d1", "text": "hello"}],
+                "feedback_records": [{"id": "d1", "content": "hello"}],
                 "prompt": "summarize",
                 "anonymize": False,
             },
@@ -98,7 +98,7 @@ class TestRequestIdEqualsCallId:
         resp = await e2e_client.post(
             "/v1/analyze",
             json={
-                "feedback_records": [{"id": "d1", "text": "hello"}],
+                "feedback_records": [{"id": "d1", "content": "hello"}],
                 "prompt": "summarize",
                 "deactivate_anonymization": True,
             },
@@ -173,7 +173,7 @@ class TestAnalyzeFailureRecordsRow:
         resp = await e2e_client.post(
             "/v1/analyze",
             json={
-                "feedback_records": [{"id": "d1", "text": "hello"}],
+                "feedback_records": [{"id": "d1", "content": "hello"}],
                 "prompt": "summarize",
                 "anonymize": False,
             },

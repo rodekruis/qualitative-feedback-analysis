@@ -33,7 +33,7 @@ curl -X POST http://localhost:8000/v1/analyze \
   -H "Content-Type: application/json" \
   -d '{
     "feedback_records": [
-      {"id": "r-1", "text": "The coordination was good but shelter access was difficult."}
+      {"id": "r-1", "content": "The coordination was good but shelter access was difficult."}
     ],
     "prompt": "Identify the top themes."
   }'
@@ -50,7 +50,7 @@ Every error response shares this shape:
     "message": "Request validation failed.",
     "request_id": "550e8400-e29b-41d4-a716-446655440000",
     "fields": [
-      {"field": "feedback_records[0].text", "issue": "..."}
+      {"field": "feedback_records[0].content", "issue": "..."}
     ]
   }
 }

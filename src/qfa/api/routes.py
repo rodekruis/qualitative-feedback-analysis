@@ -24,7 +24,6 @@ from qfa.api.schemas import (
     ApiFeedbackRecordSummary,
     ApiHealthResponse,
     ApiSummarizeAggregateResponse,
-    ApiSummarizeFeedbackMetadata,
     ApiSummarizeRequest,
     ApiSummarizeResponse,
 )
@@ -43,19 +42,6 @@ from qfa.domain.models import (
 from qfa.services.orchestrator import Orchestrator
 
 router = APIRouter()
-
-
-def _summarize_metadata_to_domain(
-    meta: ApiSummarizeFeedbackMetadata,
-) -> dict[str, str | int | float | bool]:
-    """Flatten summarize metadata into the domain feedback metadata dict."""
-    return {
-        "created": meta.model_dump(mode="json")["created"],
-        "feedback_record_id": meta.feedback_record_id,
-        "coding_level_1": meta.coding_level_1,
-        "coding_level_2": meta.coding_level_2,
-        "coding_level_3": meta.coding_level_3,
-    }
 
 
 @router.post(
@@ -92,7 +78,7 @@ async def analyze(
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
     domain_feedback_records = tuple(
-        FeedbackRecordModel(id=doc.id, text=doc.text, metadata=doc.metadata)
+        FeedbackRecordModel(id=doc.id, text=doc.content, metadata=doc.metadata)
         for doc in body.feedback_records
     )
 
@@ -151,7 +137,7 @@ async def summarize(
         FeedbackRecordModel(
             id=record.id,
             text=record.content,
-            metadata=_summarize_metadata_to_domain(record.metadata),
+            metadata=record.metadata,
         )
         for record in body.feedback_records
     )
@@ -272,7 +258,7 @@ async def summarize_aggregate(
         FeedbackRecordModel(
             id=record.id,
             text=record.content,
-            metadata=_summarize_metadata_to_domain(record.metadata),
+            metadata=record.metadata,
         )
         for record in body.feedback_records
     )
@@ -334,9 +320,9 @@ async def detect_sensitive(
         SensitivityAnalysisRequestModel(
             feedback_records=tuple(
                 FeedbackRecordModel(
-                    id=record.id, text=record.text, metadata=record.metadata
+                    id=record.id, text=record.content, metadata=record.metadata
                 )
-                for record in body.feedback_items
+                for record in body.feedback_records
             ),
             tenant_id=tenant.tenant_id,
         ),
@@ -356,7 +342,7 @@ async def detect_sensitive(
                 ],
             )
             for feedback_item, rating in zip(
-                body.feedback_items, result.results, strict=False
+                body.feedback_records, result.results, strict=False
             )
         ]
     )

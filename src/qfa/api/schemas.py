@@ -5,7 +5,6 @@ HTTP contract can evolve independently of the core domain.
 """
 
 import json
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -55,13 +54,13 @@ def _assign_codes_request_examples() -> list[dict[str, Any]]:
 
 
 class ApiFeedbackRecordInput(BaseModel):
-    """A single feedback record in an analysis request."""
+    """A single feedback record in an inference request."""
 
     id: str = Field(description="Unique identifier for the feedback record.")
-    text: str = Field(
+    content: str = Field(
         min_length=1,
         max_length=100_000,
-        description="Feedback text content.",
+        description="Feedback description content.",
     )
     metadata: dict[str, str | int | float | bool] = Field(
         default_factory=dict,
@@ -69,7 +68,20 @@ class ApiFeedbackRecordInput(BaseModel):
     )
 
 
-class ApiAnalyzeRequest(BaseModel):
+class ApiInferenceRequestBase(BaseModel):
+    """Base request for inference endpoints that process feedback records."""
+
+    feedback_records: list[ApiFeedbackRecordInput] = Field(
+        min_length=1,
+        description="Non-empty list of feedback records to process.",
+    )
+    anonymize: bool = Field(
+        default=True,
+        description="If true, the service will anonymize feedback text before sending it to the LLM. Disable only if you are sure that no personally identifiable information (PII) is present in the input.",
+    )
+
+
+class ApiAnalyzeRequest(ApiInferenceRequestBase):
     """Request body for the ``POST /v1/analyze`` endpoint."""
 
     model_config = {
@@ -79,12 +91,12 @@ class ApiAnalyzeRequest(BaseModel):
                     "feedback_records": [
                         {
                             "id": "doc-001",
-                            "text": "The water distribution was well organized but we had to wait for three hours.",
+                            "content": "The water distribution was well organized but we had to wait for three hours.",
                             "metadata": {"region": "Eastern Province", "year": 2024},
                         },
                         {
                             "id": "doc-002",
-                            "text": "Medical staff were very professional. Medicine supply was insufficient.",
+                            "content": "Medical staff were very professional. Medicine supply was insufficient.",
                             "metadata": {"region": "Northern Province", "year": 2024},
                         },
                     ],
@@ -103,10 +115,6 @@ class ApiAnalyzeRequest(BaseModel):
         max_length=4_000,
         description="Analysis instruction for the model.",
     )
-    anonymize: bool = Field(
-        default=True,
-        description="If true, the service will anonymize feedback text before sending it to the LLM. Disable only if you are sure that no personally identifiable information (PII) is present in the input.",
-    )
 
 
 class ApiAnalyzeResponse(BaseModel):
@@ -122,33 +130,7 @@ class ApiAnalyzeResponse(BaseModel):
     )
 
 
-class ApiSummarizeFeedbackMetadata(BaseModel):
-    """Metadata for a feedback record in a summarize request."""
-
-    created: datetime = Field(
-        description="Timestamp when the feedback record was created."
-    )
-    feedback_record_id: str = Field(description="Source feedback record identifier.")
-    coding_level_1: str = Field(description="Level 1 coding label.")
-    coding_level_2: str = Field(description="Level 2 coding label.")
-    coding_level_3: str = Field(description="Level 3 coding label.")
-
-
-class ApiSummarizeFeedbackRecord(BaseModel):
-    """A single feedback record for ``POST /v1/summarize``."""
-
-    id: str = Field(description="Unique identifier for the feedback record.")
-    content: str = Field(
-        min_length=1,
-        max_length=100_000,
-        description="Feedback content to summarize.",
-    )
-    metadata: ApiSummarizeFeedbackMetadata = Field(
-        description="Structured metadata for the feedback record.",
-    )
-
-
-class ApiSummarizeRequest(BaseModel):
+class ApiSummarizeRequest(ApiInferenceRequestBase):
     """Request body for the ``POST /v1/summarize`` endpoint."""
 
     model_config = {
@@ -213,10 +195,6 @@ class ApiSummarizeRequest(BaseModel):
         },
     }
 
-    feedback_records: list[ApiSummarizeFeedbackRecord] = Field(
-        min_length=1,
-        description="Non-empty list of feedback records to summarize individually.",
-    )
     output_language: str | None = Field(
         default=None,
         description="Optional target language for summaries and titles for every feedback record.",
@@ -225,10 +203,6 @@ class ApiSummarizeRequest(BaseModel):
         default=None,
         max_length=4_000,
         description="Optional extra instruction appended to the default summarize prompt.",
-    )
-    anonymize: bool = Field(
-        default=True,
-        description="If true, the service will anonymize feedback text before sending it to the LLM. Disable only if you are sure that no personally identifiable information (PII) is present in the input.",
     )
 
 
@@ -328,23 +302,8 @@ class ApiCodingLevels(BaseModel):
         return self
 
 
-class ApiDetectSensitiveRequest(BaseModel):
-    """Request body for the ``POST /v1/detect-sensitive`` endpoint.
-
-    Attributes
-    ----------
-        feedback_items : list[ApiFeedbackRecordInput]
-    """
-
-    feedback_items: list[ApiFeedbackRecordInput] = Field(
-        min_length=1,
-        description="List of feedback items to check for sensitive content.",
-    )
-
-    anonymize: bool = Field(
-        default=True,
-        description="If true, the service will anonymize feedback text before sending it to the LLM. Disable only if you are sure that no personally identifiable information (PII) is present in the input.",
-    )
+class ApiDetectSensitiveRequest(ApiInferenceRequestBase):
+    """Request body for the ``POST /v1/detect-sensitive`` endpoint."""
 
 
 class ApiFeedbackItemSensitivityRating(BaseModel):
@@ -384,14 +343,7 @@ class ApiDetectSensitiveResponse(BaseModel):
     ratings: list[ApiFeedbackItemSensitivityRating]
 
 
-class ApiFeedbackRecord(BaseModel):
-    """Feedback record: ``id`` plus body text (reusable across endpoints)."""
-
-    id: str
-    content: str = Field(min_length=1, max_length=100_000)
-
-
-class ApiAssignCodesRequest(BaseModel):
+class ApiAssignCodesRequest(ApiInferenceRequestBase):
     """Request body for ``POST /v1/assign_codes``."""
 
     model_config = {
@@ -399,13 +351,8 @@ class ApiAssignCodesRequest(BaseModel):
     }
 
     coding_framework: dict[str, Any]
-    feedback_records: list[ApiFeedbackRecord] = Field(min_length=1)
     max_codes: int = Field(default=1, ge=1, le=50)
     confidence_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
-    anonymize: bool = Field(
-        default=True,
-        description="If true, the service will anonymize feedback text before sending it to the LLM. Disable only if you are sure that no personally identifiable information (PII) is present in the input.",
-    )
 
 
 class ApiAssignedCode(BaseModel):
