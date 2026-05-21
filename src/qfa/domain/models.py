@@ -445,7 +445,12 @@ class LLMCallRecord(BaseModel):
 
 
 class DistributionStats(BaseModel):
-    """Statistical distribution summary.
+    """Statistical distribution summary over a numeric column.
+
+    Used uniformly for ``call_duration`` (milliseconds), ``input_tokens``,
+    and ``output_tokens``. ``total`` is the sum of the underlying values in
+    the window and is identical between the per-invocation and per-LLM-call
+    views — both sum the same raw rows, just regrouped.
 
     Attributes
     ----------
@@ -459,6 +464,10 @@ class DistributionStats(BaseModel):
         5th percentile.
     p95 : float
         95th percentile.
+    total : int
+        Sum of the values in the window (total milliseconds of LLM time
+        for ``call_duration``; total tokens for ``input_tokens`` /
+        ``output_tokens``).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -468,17 +477,6 @@ class DistributionStats(BaseModel):
     max: float
     p5: float
     p95: float
-
-
-class TokenStats(DistributionStats):
-    """Token distribution summary with a total count.
-
-    Attributes
-    ----------
-    total : int
-        Total number of tokens.
-    """
-
     total: int
 
 
@@ -527,14 +525,15 @@ class UsageMetrics(BaseModel):
             "individual LLM call latency. Per-invocation view: SUM of "
             "``call_duration_ms`` across all rows of one ``call_id`` (i.e. "
             "total LLM time consumed by the invocation; overestimates "
-            "wall-clock for ``asyncio.gather`` fan-outs)."
+            "wall-clock for ``asyncio.gather`` fan-outs). ``total`` is the "
+            "total LLM-time consumed in the window (identical between views)."
         ),
     )
-    input_tokens: TokenStats = Field(
-        description="Input token distribution + total.",
+    input_tokens: DistributionStats = Field(
+        description="Input token distribution including ``total``.",
     )
-    output_tokens: TokenStats = Field(
-        description="Output token distribution + total.",
+    output_tokens: DistributionStats = Field(
+        description="Output token distribution including ``total``.",
     )
 
     @field_serializer("total_cost_usd")

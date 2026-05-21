@@ -23,7 +23,6 @@ from qfa.domain.models import (
     SensitivityAnalysisResultModelList,
     TenantApiKey,
     TenantStats,
-    TokenStats,
     UsageMetrics,
     UsageStats,
 )
@@ -31,11 +30,11 @@ from qfa.domain.sensitivity_types import SensitivityType
 
 
 def _zero_dist() -> DistributionStats:
-    return DistributionStats(avg=0, min=0, max=0, p5=0, p95=0)
+    return DistributionStats(avg=0, min=0, max=0, p5=0, p95=0, total=0)
 
 
-def _zero_tokens() -> TokenStats:
-    return TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0)
+def _zero_tokens() -> DistributionStats:
+    return _zero_dist()
 
 
 # --- FeedbackRecordModel ---
@@ -503,9 +502,9 @@ class TestUsageMetrics:
             total_calls=10,
             failed_calls=2,
             total_cost_usd=Decimal("0.25"),
-            call_duration=DistributionStats(avg=1, min=0, max=2, p5=0, p95=2),
-            input_tokens=TokenStats(avg=1, min=0, max=2, p5=0, p95=2, total=10),
-            output_tokens=TokenStats(avg=1, min=0, max=2, p5=0, p95=2, total=10),
+            call_duration=DistributionStats(avg=1, min=0, max=2, p5=0, p95=2, total=3),
+            input_tokens=DistributionStats(avg=1, min=0, max=2, p5=0, p95=2, total=10),
+            output_tokens=DistributionStats(avg=1, min=0, max=2, p5=0, p95=2, total=10),
         )
         assert m.total_calls == 10
         assert m.failed_calls == 2

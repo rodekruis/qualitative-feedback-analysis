@@ -225,7 +225,6 @@ def test_usage_stats_new_shape_has_llm_call_stats_and_operations():
 
     from qfa.domain.models import (
         DistributionStats,
-        TokenStats,
         UsageMetrics,
         UsageStats,
     )
@@ -234,18 +233,18 @@ def test_usage_stats_new_shape_has_llm_call_stats_and_operations():
         total_calls=0,
         failed_calls=0,
         total_cost_usd=Decimal("0"),
-        call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0),
-        input_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
-        output_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+        call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+        input_tokens=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+        output_tokens=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
     )
     stats = UsageStats(
         tenant_id="tenant-1",
         total_calls=0,
         failed_calls=0,
         total_cost_usd=Decimal("0"),
-        call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0),
-        input_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
-        output_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+        call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+        input_tokens=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+        output_tokens=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
         llm_call_stats=zero_metrics,
         operations=(),
     )

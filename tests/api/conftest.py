@@ -35,7 +35,6 @@ from qfa.domain.models import (
     SummaryResultModel,
     TenantApiKey,
     TenantInfo,
-    TokenStats,
     UsageMetrics,
     UsageStats,
 )
@@ -91,9 +90,9 @@ def _zero_usage_metrics() -> UsageMetrics:
         total_calls=0,
         failed_calls=0,
         total_cost_usd=Decimal("0"),
-        call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0),
-        input_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
-        output_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+        call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+        input_tokens=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+        output_tokens=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
     )
 
 
@@ -230,9 +229,9 @@ class FakeUsageRepository(UsageRepositoryPort):
             total_calls=0,
             failed_calls=0,
             total_cost_usd=Decimal("0"),
-            call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0),
-            input_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
-            output_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+            call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+            input_tokens=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+            output_tokens=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
             llm_call_stats=_zero_usage_metrics(),
         )
 
@@ -243,9 +242,15 @@ class FakeUsageRepository(UsageRepositoryPort):
                 total_calls=0,
                 failed_calls=0,
                 total_cost_usd=Decimal("0"),
-                call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0),
-                input_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
-                output_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+                call_duration=DistributionStats(
+                    avg=0, min=0, max=0, p5=0, p95=0, total=0
+                ),
+                input_tokens=DistributionStats(
+                    avg=0, min=0, max=0, p5=0, p95=0, total=0
+                ),
+                output_tokens=DistributionStats(
+                    avg=0, min=0, max=0, p5=0, p95=0, total=0
+                ),
                 llm_call_stats=_zero_usage_metrics(),
             )
         ]
@@ -257,9 +262,15 @@ class FakeUsageRepository(UsageRepositoryPort):
                 total_calls=0,
                 failed_calls=0,
                 total_cost_usd=Decimal("0"),
-                call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0),
-                input_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
-                output_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+                call_duration=DistributionStats(
+                    avg=0, min=0, max=0, p5=0, p95=0, total=0
+                ),
+                input_tokens=DistributionStats(
+                    avg=0, min=0, max=0, p5=0, p95=0, total=0
+                ),
+                output_tokens=DistributionStats(
+                    avg=0, min=0, max=0, p5=0, p95=0, total=0
+                ),
                 llm_call_stats=_zero_usage_metrics(),
             )
         ]

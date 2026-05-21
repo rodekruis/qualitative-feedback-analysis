@@ -14,7 +14,6 @@ from qfa.domain.models import (
     OperationStats,
     OperationUsageStats,
     TenantStats,
-    TokenStats,
     UsageMetrics,
     UsageStats,
 )
@@ -30,11 +29,15 @@ def _make_metrics(total_calls: int = 5) -> UsageMetrics:
         total_calls=total_calls,
         failed_calls=1,
         total_cost_usd=Decimal("0.500000"),
-        call_duration=DistributionStats(avg=100, min=50, max=200, p5=55, p95=190),
-        input_tokens=TokenStats(
+        call_duration=DistributionStats(
+            avg=100, min=50, max=200, p5=55, p95=190, total=500
+        ),
+        input_tokens=DistributionStats(
             avg=500, min=100, max=1000, p5=120, p95=950, total=2500
         ),
-        output_tokens=TokenStats(avg=200, min=50, max=400, p5=60, p95=380, total=1000),
+        output_tokens=DistributionStats(
+            avg=200, min=50, max=400, p5=60, p95=380, total=1000
+        ),
     )
 
 
@@ -44,11 +47,15 @@ def _make_usage_stats(tenant_id: str | None = "tenant-test", total_calls: int = 
         total_calls=total_calls,
         failed_calls=1,
         total_cost_usd=Decimal("0.500000"),
-        call_duration=DistributionStats(avg=100, min=50, max=200, p5=55, p95=190),
-        input_tokens=TokenStats(
+        call_duration=DistributionStats(
+            avg=100, min=50, max=200, p5=55, p95=190, total=500
+        ),
+        input_tokens=DistributionStats(
             avg=500, min=100, max=1000, p5=120, p95=950, total=2500
         ),
-        output_tokens=TokenStats(avg=200, min=50, max=400, p5=60, p95=380, total=1000),
+        output_tokens=DistributionStats(
+            avg=200, min=50, max=400, p5=60, p95=380, total=1000
+        ),
         llm_call_stats=_make_metrics(total_calls=total_calls),
     )
     return UsageStats(
@@ -56,11 +63,15 @@ def _make_usage_stats(tenant_id: str | None = "tenant-test", total_calls: int = 
         total_calls=total_calls,
         failed_calls=1,
         total_cost_usd=Decimal("0.500000"),
-        call_duration=DistributionStats(avg=100, min=50, max=200, p5=55, p95=190),
-        input_tokens=TokenStats(
+        call_duration=DistributionStats(
+            avg=100, min=50, max=200, p5=55, p95=190, total=500
+        ),
+        input_tokens=DistributionStats(
             avg=500, min=100, max=1000, p5=120, p95=950, total=2500
         ),
-        output_tokens=TokenStats(avg=200, min=50, max=400, p5=60, p95=380, total=1000),
+        output_tokens=DistributionStats(
+            avg=200, min=50, max=400, p5=60, p95=380, total=1000
+        ),
         llm_call_stats=_make_metrics(total_calls=total_calls),
         operations=(op,),
     )
@@ -74,11 +85,15 @@ def _make_operation_usage_stats(
         total_calls=total_calls,
         failed_calls=1,
         total_cost_usd=Decimal("0.500000"),
-        call_duration=DistributionStats(avg=100, min=50, max=200, p5=55, p95=190),
-        input_tokens=TokenStats(
+        call_duration=DistributionStats(
+            avg=100, min=50, max=200, p5=55, p95=190, total=500
+        ),
+        input_tokens=DistributionStats(
             avg=500, min=100, max=1000, p5=120, p95=950, total=2500
         ),
-        output_tokens=TokenStats(avg=200, min=50, max=400, p5=60, p95=380, total=1000),
+        output_tokens=DistributionStats(
+            avg=200, min=50, max=400, p5=60, p95=380, total=1000
+        ),
         llm_call_stats=_make_metrics(total_calls=total_calls),
     )
     return OperationUsageStats(
@@ -86,11 +101,15 @@ def _make_operation_usage_stats(
         total_calls=total_calls,
         failed_calls=1,
         total_cost_usd=Decimal("0.500000"),
-        call_duration=DistributionStats(avg=100, min=50, max=200, p5=55, p95=190),
-        input_tokens=TokenStats(
+        call_duration=DistributionStats(
+            avg=100, min=50, max=200, p5=55, p95=190, total=500
+        ),
+        input_tokens=DistributionStats(
             avg=500, min=100, max=1000, p5=120, p95=950, total=2500
         ),
-        output_tokens=TokenStats(avg=200, min=50, max=400, p5=60, p95=380, total=1000),
+        output_tokens=DistributionStats(
+            avg=200, min=50, max=400, p5=60, p95=380, total=1000
+        ),
         llm_call_stats=_make_metrics(total_calls=total_calls),
         tenants=(tenant,),
     )

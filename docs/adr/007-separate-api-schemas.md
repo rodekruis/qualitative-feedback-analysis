@@ -76,7 +76,7 @@ Domain models in `domain/models.py` serve the internal layers.
 
 After observing this ADR being applied uniformly to *every* API response
 — including the usage-tracking endpoints, where the domain aggregates
-({py:class}`~qfa.domain.models.UsageStats`, {py:class}`~qfa.domain.models.DistributionStats`, {py:class}`~qfa.domain.models.TokenStats`) are
+({py:class}`~qfa.domain.models.UsageStats`, {py:class}`~qfa.domain.models.DistributionStats`) are
 already the correct external shape with no internal fields to hide —
 the rule is being narrowed to the cases where its justification actually
 applies.

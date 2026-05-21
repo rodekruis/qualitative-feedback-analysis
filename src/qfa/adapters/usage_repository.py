@@ -39,7 +39,6 @@ from qfa.domain.models import (
     OperationStats,
     OperationUsageStats,
     TenantStats,
-    TokenStats,
     UsageMetrics,
     UsageStats,
 )
@@ -481,37 +480,21 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
     def _parse_distribution(row: sa.Row, prefix: str) -> DistributionStats:
         """Parse ``DistributionStats`` from a row's ok-only aggregates.
 
-        When no ok rows exist, ``avg`` is NULL — return zeros.
+        When no ok rows exist, ``avg`` is NULL — return zeros. ``total``
+        reads ``{prefix}_sum`` which is always emitted by
+        :meth:`_build_stats_columns`.
         """
         mapping = row._mapping
         avg = mapping[f"{prefix}_avg"]
         if avg is None:
-            return DistributionStats(avg=0, min=0, max=0, p5=0, p95=0)
+            return DistributionStats(avg=0, min=0, max=0, p5=0, p95=0, total=0)
         return DistributionStats(
             avg=float(avg),
             min=float(mapping[f"{prefix}_min"]),
             max=float(mapping[f"{prefix}_max"]),
             p5=float(mapping[f"{prefix}_p5"]),
             p95=float(mapping[f"{prefix}_p95"]),
-        )
-
-    @staticmethod
-    def _parse_token_stats(row: sa.Row, prefix: str) -> TokenStats:
-        """Parse ``TokenStats`` from a row's ok-only aggregates.
-
-        When no ok rows exist, ``avg`` is NULL — return zeros (``total=0``).
-        """
-        mapping = row._mapping
-        avg = mapping[f"{prefix}_avg"]
-        if avg is None:
-            return TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0)
-        return TokenStats(
-            avg=float(avg),
-            min=float(mapping[f"{prefix}_min"]),
-            max=float(mapping[f"{prefix}_max"]),
             total=int(mapping[f"{prefix}_sum"] or 0),
-            p5=float(mapping[f"{prefix}_p5"]),
-            p95=float(mapping[f"{prefix}_p95"]),
         )
 
     @staticmethod
@@ -532,10 +515,10 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
             call_duration=SqlAlchemyUsageRepository._parse_distribution(
                 row, "duration"
             ),
-            input_tokens=SqlAlchemyUsageRepository._parse_token_stats(
+            input_tokens=SqlAlchemyUsageRepository._parse_distribution(
                 row, "input_tokens"
             ),
-            output_tokens=SqlAlchemyUsageRepository._parse_token_stats(
+            output_tokens=SqlAlchemyUsageRepository._parse_distribution(
                 row, "output_tokens"
             ),
         )
@@ -547,9 +530,9 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
             total_calls=0,
             failed_calls=0,
             total_cost_usd=Decimal("0"),
-            call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0),
-            input_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
-            output_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+            call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+            input_tokens=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+            output_tokens=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
         )
 
     # ------------------------------------------------------------------
