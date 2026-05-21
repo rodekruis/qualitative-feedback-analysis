@@ -411,34 +411,26 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         *,
         group_by_tenant: bool,
         group_by_operation: bool,
-    ) -> sa.TextClause | None:
-        """Build the ``GROUPING SETS (...)`` clause for the requested grouping.
+    ) -> sa.ColumnElement | None:
+        """Build the ``GROUP BY`` expression for the requested grouping.
 
-        When both axes are requested this emits the full 2-axis cube
-        — equivalent to ``CUBE(tenant_id, operation)`` — because
-        ``/v1/usage/all/by-operation`` needs the ``(operation)`` rollup
-        cell and ``/v1/usage/all/by-tenant`` needs the ``(tenant)`` one.
-
-        Returns ``None`` for the degenerate no-grouping case (currently
-        unused; kept as a defensive shortcut).
+        Emits ``CUBE(axis, ...)`` over the active axes, which Postgres
+        expands to the full powerset of grouping sets:
+        ``CUBE(t, o)`` ≡ ``GROUPING SETS ((t,o), (t), (o), ())``;
+        ``CUBE(x)`` ≡ ``GROUPING SETS ((x), ())``. Both
+        ``/v1/usage/all/by-operation`` (needs the ``(operation)`` rollup)
+        and ``/v1/usage/all/by-tenant`` (needs the ``(tenant)`` rollup)
+        rely on the full cube. Returns ``None`` for the degenerate
+        no-grouping case (currently unused; kept as a defensive shortcut).
         """
-        set_clauses: list[str] = []
-        if group_by_tenant and group_by_operation:
-            set_clauses.extend(
-                [
-                    "(tenant_id, operation)",
-                    "(tenant_id)",
-                    "(operation)",
-                    "()",
-                ]
-            )
-        elif group_by_operation:
-            set_clauses.extend(["(operation)", "()"])
-        elif group_by_tenant:
-            set_clauses.extend(["(tenant_id)", "()"])
-        else:
+        axes: list[sa.ColumnElement] = []
+        if group_by_tenant:
+            axes.append(sa.column("tenant_id"))
+        if group_by_operation:
+            axes.append(sa.column("operation"))
+        if not axes:
             return None
-        return sa.text(f"GROUPING SETS ({', '.join(set_clauses)})")
+        return sa.func.cube(*axes)
 
     @classmethod
     def _build_stats_columns(

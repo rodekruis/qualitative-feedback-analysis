@@ -255,38 +255,40 @@ def test_usage_stats_new_shape_has_llm_call_stats_and_operations():
 
 
 def test_grouping_sets_clause_cross_tenant_emits_full_cube():
-    """All-tenants query must emit the 4-set cube, not 3.
+    """All-tenants query must emit CUBE over both axes (= 4-set powerset).
 
     Why: ``/v1/usage/all`` needs grand-total-per-operation rows
     (``tenant_id IS NULL`` with ``operation`` bound) to populate the
-    ``operations`` list on the grand-total entry. Without
-    ``(operation)`` in the grouping sets, composition has no source for
-    those rows and the grand total's ``operations`` comes back empty —
-    a regression that's invisible to SQLite-backed unit tests because
-    SQLite doesn't support ``GROUPING SETS`` at all, and previously
-    only surfaced in Postgres-backed integration/e2e tests.
+    ``operations`` list on the grand-total entry. ``CUBE(tenant_id,
+    operation)`` expands in Postgres to the four grouping sets
+    ``(tenant_id, operation), (tenant_id), (operation), ()`` — without
+    the ``(operation)`` cell, composition has no source for the
+    grand-total ``operations`` rows, a regression invisible to
+    SQLite-backed unit tests because SQLite doesn't support these
+    grouping extensions at all.
     """
     clause = SqlAlchemyUsageRepository._grouping_sets_clause(
         group_by_tenant=True, group_by_operation=True
     )
     assert clause is not None
-    text = str(clause)
-    assert "(tenant_id, operation)" in text
-    assert "(tenant_id)" in text
-    assert "(operation)" in text
-    assert "()" in text
+    assert clause.name == "cube"
+    arg_names = [str(arg) for arg in clause.clauses]
+    assert arg_names == ["tenant_id", "operation"]
 
 
 def test_grouping_sets_clause_single_tenant_omits_tenant_axis():
-    """Single-tenant query keeps the 2-set rollup (operation, ())."""
+    """Single-tenant query emits CUBE over the operation axis only.
+
+    ``CUBE(operation)`` expands to ``GROUPING SETS ((operation), ())``,
+    giving the per-operation rollup plus the grand total for one tenant.
+    """
     clause = SqlAlchemyUsageRepository._grouping_sets_clause(
         group_by_tenant=False, group_by_operation=True
     )
     assert clause is not None
-    text = str(clause)
-    assert "(operation)" in text
-    assert "()" in text
-    assert "tenant_id" not in text
+    assert clause.name == "cube"
+    arg_names = [str(arg) for arg in clause.clauses]
+    assert arg_names == ["operation"]
 
 
 async def test_resolve_database_url_from_password_parts():
