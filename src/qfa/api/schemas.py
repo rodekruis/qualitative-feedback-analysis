@@ -106,10 +106,6 @@ class ApiAnalyzeRequest(ApiInferenceRequestBase):
         },
     }
 
-    feedback_records: list[ApiFeedbackRecordInput] = Field(
-        min_length=1,
-        description="Non-empty list of feedback records to analyze.",
-    )
     prompt: str = Field(
         min_length=1,
         max_length=4_000,
