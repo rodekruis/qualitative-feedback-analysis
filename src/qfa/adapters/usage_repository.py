@@ -332,16 +332,23 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         the ``invocation`` view) so failures cannot skew latency or token
         quantiles.
         """
+        src: sa.FromClause
+        outer_where: list
         if view == "invocation":
+            # CTE pre-aggregates per call_id and exposes columns under the
+            # same names as ``llm_calls`` so the SELECT below can use
+            # ``src.c.<name>`` uniformly for either view. ``all_failed``
+            # replaces the per-row ``status`` column with a per-invocation
+            # bool ("did every row of this call_id fail?").
             per_invocation = (
                 sa.select(
-                    llm_calls.c.tenant_id.label("tenant_id"),
-                    llm_calls.c.operation.label("operation"),
-                    llm_calls.c.call_id.label("call_id"),
-                    sa.func.sum(llm_calls.c.call_duration_ms).label("duration"),
+                    llm_calls.c.tenant_id,
+                    llm_calls.c.operation,
+                    llm_calls.c.call_id,
+                    sa.func.sum(llm_calls.c.call_duration_ms).label("call_duration_ms"),
                     sa.func.sum(llm_calls.c.input_tokens).label("input_tokens"),
                     sa.func.sum(llm_calls.c.output_tokens).label("output_tokens"),
-                    sa.func.sum(llm_calls.c.cost_usd).label("cost"),
+                    sa.func.sum(llm_calls.c.cost_usd).label("cost_usd"),
                     sa.func.bool_and(llm_calls.c.status == "error").label("all_failed"),
                 )
                 .where(*predicates)
@@ -352,51 +359,41 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
                 )
                 .cte("per_invocation")
             )
-            tenant_col: sa.ColumnElement = per_invocation.c.tenant_id
-            operation_col: sa.ColumnElement = per_invocation.c.operation
+            src = per_invocation
             ok_filter: sa.ColumnElement = per_invocation.c.all_failed.is_(False)
             err_filter: sa.ColumnElement = per_invocation.c.all_failed.is_(True)
-            duration_col: sa.ColumnElement = per_invocation.c.duration
-            input_tokens_col: sa.ColumnElement = per_invocation.c.input_tokens
-            output_tokens_col: sa.ColumnElement = per_invocation.c.output_tokens
-            cost_col: sa.ColumnElement = per_invocation.c.cost
-            outer_from: sa.FromClause = per_invocation
-            outer_where: list = []  # predicates already applied inside the CTE
+            outer_where = []  # predicates already applied inside the CTE
         else:
-            tenant_col = llm_calls.c.tenant_id
-            operation_col = llm_calls.c.operation
+            src = llm_calls
             ok_filter = llm_calls.c.status == "ok"
             err_filter = llm_calls.c.status == "error"
-            duration_col = llm_calls.c.call_duration_ms
-            input_tokens_col = llm_calls.c.input_tokens
-            output_tokens_col = llm_calls.c.output_tokens
-            cost_col = llm_calls.c.cost_usd
-            outer_from = llm_calls
             outer_where = predicates
 
         columns: list[sa.ColumnElement] = []
         if group_by_tenant:
-            columns.append(tenant_col.label("tenant_id"))
+            columns.append(src.c.tenant_id.label("tenant_id"))
         if group_by_operation:
-            columns.append(operation_col.label("operation"))
+            columns.append(src.c.operation.label("operation"))
         columns.extend(
             [
                 sa.func.count().label("total_calls"),
                 sa.func.count().filter(err_filter).label("failed_calls"),
-                sa.func.coalesce(sa.func.sum(cost_col), 0).label("total_cost_usd"),
-                *cls._build_stats_columns(duration_col, "duration", where=ok_filter),
-                *cls._build_stats_columns(
-                    input_tokens_col, "input_tokens", where=ok_filter
+                sa.func.coalesce(sa.func.sum(src.c.cost_usd), 0).label(
+                    "total_cost_usd"
                 ),
                 *cls._build_stats_columns(
-                    output_tokens_col, "output_tokens", where=ok_filter
+                    src.c.call_duration_ms, "duration", where=ok_filter
+                ),
+                *cls._build_stats_columns(
+                    src.c.input_tokens, "input_tokens", where=ok_filter
+                ),
+                *cls._build_stats_columns(
+                    src.c.output_tokens, "output_tokens", where=ok_filter
                 ),
             ]
         )
 
-        statement = sa.select(*columns).select_from(outer_from)
-        if outer_where:
-            statement = statement.where(*outer_where)
+        statement = sa.select(*columns).select_from(src).where(*outer_where)
         grouping_sets = cls._grouping_sets_clause(
             group_by_tenant=group_by_tenant,
             group_by_operation=group_by_operation,
