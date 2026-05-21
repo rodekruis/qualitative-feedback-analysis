@@ -116,6 +116,8 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         invocation_by_key, llm_call_by_key = await self._fetch_views(
             predicates, group_by_tenant=False, group_by_operation=True
         )
+        invocation_by_key = self._rekey_with_tenant(invocation_by_key, tenant_id)
+        llm_call_by_key = self._rekey_with_tenant(llm_call_by_key, tenant_id)
         return self._build_block(
             top_axis="tenant",
             top_value=tenant_id,
@@ -298,6 +300,20 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
             operation = mapping.get("operation")
             indexed[(tenant_id, operation)] = cls._row_to_usage_metrics(row)
         return indexed
+
+    @classmethod
+    def _rekey_with_tenant(cls, indexed: _StatsByKey, tenant_id: str) -> _StatsByKey:
+        """Replace the tenant-id position of every key with ``tenant_id``.
+
+        Single-tenant SELECTs don't include ``tenant_id`` in the
+        projection (the tenant filter is a WHERE predicate, not a GROUP
+        BY axis), so :meth:`_index_rows` keys every row with
+        ``tenant_id=None``. The pivot then misses the ``(tenant_id, None)``
+        rollup cell. Re-stamping the key here restores the original
+        pre-collapse semantic where the single-tenant ``get_usage_stats``
+        path baked the tenant id into the key directly.
+        """
+        return {(tenant_id, op): metrics for (_, op), metrics in indexed.items()}
 
     # ------------------------------------------------------------------
     # SELECT builder (single function for both views)
