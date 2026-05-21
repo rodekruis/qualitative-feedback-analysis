@@ -113,7 +113,7 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         Returns a zero ``TenantUsageStats`` when no rows match the window.
         """
         where_clause = self._base_where_clause(tenant_id=tenant_id, from_=from_, to=to)
-        invocation_by_key, llm_call_by_key = await self._fetch_views(where_clause)
+        invocation_by_key, llm_call_by_key = await self._fetch_stats(where_clause)
         return self._build_block(
             top_axis="tenant",
             top_value=tenant_id,
@@ -126,17 +126,12 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         from_: datetime | None = None,
         to: datetime | None = None,
     ) -> list[TenantUsageStats]:
-        """Per-tenant + grand-total stats with per-operation breakdown.
+        """Per-tenant + grand-total stats with per-operation breakdown."""
+        where_clause = self._base_where_clause(from_=from_, to=to)
+        invocation_by_key, llm_call_by_key = await self._fetch_stats(where_clause)
 
-        Cross-tenant SELECT pair grouping by ``(tenant_id, operation)``,
-        ``(tenant_id)``, ``(operation)``, and ``()`` (the full 2-axis
-        cube) so each view returns every required level in one round-trip.
-        Tenants with zero per-invocation calls are filtered; the
-        grand-total entry (``tenant_id=None``) is always emitted last.
-        """
-        predicates = self._base_where_clause(from_=from_, to=to)
-        invocation_by_key, llm_call_by_key = await self._fetch_views(predicates)
-        tenants = sorted(
+        # find unique tenants with at least one invocation
+        tenant_ids = sorted(
             {
                 tenant_id
                 for (tenant_id, operation) in invocation_by_key
@@ -145,15 +140,14 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         )
 
         results: list[TenantUsageStats] = []
-        for tenant_id in tenants:
+        for tenant_id in tenant_ids:
             block = self._build_block(
                 top_axis="tenant",
                 top_value=tenant_id,
                 invocation_by_key=invocation_by_key,
                 llm_call_by_key=llm_call_by_key,
             )
-            if block.total_calls > 0:
-                results.append(block)
+            results.append(block)
 
         # Grand total — always emitted, even when empty.
         results.append(
@@ -171,15 +165,11 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         from_: datetime | None = None,
         to: datetime | None = None,
     ) -> list[OperationUsageStats]:
-        """Per-operation + grand-total stats with per-tenant breakdown.
+        """Per-operation + grand-total stats with per-tenant breakdown."""
+        where_clause = self._base_where_clause(from_=from_, to=to)
+        invocation_by_key, llm_call_by_key = await self._fetch_stats(where_clause)
 
-        Inverse hierarchy of :meth:`get_all_usage_by_tenant`: same query
-        pair (full 2-axis cube), but the pivot puts ``operation`` at
-        the top level with ``tenants`` nested. The grand-total entry
-        (``operation=None``) is always emitted last.
-        """
-        predicates = self._base_where_clause(from_=from_, to=to)
-        invocation_by_key, llm_call_by_key = await self._fetch_views(predicates)
+        # get unique operations with at least one invocation
         operations = sorted(
             {
                 operation
@@ -196,8 +186,7 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
                 invocation_by_key=invocation_by_key,
                 llm_call_by_key=llm_call_by_key,
             )
-            if block.total_calls > 0:
-                results.append(block)
+            results.append(block)
 
         # Grand total — always emitted, even when empty.
         results.append(
@@ -221,26 +210,28 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         tenant_id: str | None = None,
         from_: datetime | None = None,
         to: datetime | None = None,
-    ) -> list:
+    ) -> list[sa.ColumnElement]:
         """Build the half-open ``[from, to)`` window + optional tenant predicate."""
-        predicates: list = []
+        clauses: list = []
         if tenant_id is not None:
-            predicates.append(llm_calls.c.tenant_id == tenant_id)
+            clauses.append(llm_calls.c.tenant_id == tenant_id)
         if from_ is not None:
-            predicates.append(llm_calls.c.timestamp >= from_)
+            clauses.append(llm_calls.c.timestamp >= from_)
         if to is not None:
-            predicates.append(llm_calls.c.timestamp < to)
-        return predicates
+            clauses.append(llm_calls.c.timestamp < to)
+        return clauses
 
     # ------------------------------------------------------------------
     # Fetch + index
     # ------------------------------------------------------------------
 
-    async def _fetch_views(
+    async def _fetch_stats(
         self,
         where_clause: list,
     ) -> tuple[_StatsByKey, _StatsByKey]:
-        """Run both view SELECTs and return ``(invocation_by_key, llm_call_by_key)``.
+        """Run queries for both stats per LLM call and per invocation.
+
+        Return ``(invocation_by_key, llm_call_by_key)``.
 
         Issues two queries — the per-invocation view (CTE on ``call_id``)
         and the per-LLM-call view — against the same predicate set with
@@ -251,7 +242,7 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         async with _translate_db_errors(), self._session_factory() as session:
             invocation_rows = (
                 await session.execute(
-                    self._select_view(
+                    self._build_query_for_view(
                         "invocation",
                         where_clause,
                     )
@@ -259,7 +250,7 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
             ).all()
             llm_call_rows = (
                 await session.execute(
-                    self._select_view(
+                    self._build_query_for_view(
                         "llm_call",
                         where_clause,
                     )
@@ -291,7 +282,7 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
     # ------------------------------------------------------------------
 
     @classmethod
-    def _select_view(
+    def _build_query_for_view(
         cls,
         view: Literal["llm_call", "invocation"],
         where_clause: list,
@@ -494,7 +485,7 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         invocation_by_key: _StatsByKey,
         llm_call_by_key: _StatsByKey,
     ) -> TenantUsageStats | OperationUsageStats:
-        """Pivot the flat (tenant, op) key dicts into one top-level block.
+        """Pivot the flat (tenant, op) key dicts into one top-level block (domain object).
 
         Parameters
         ----------
@@ -521,13 +512,13 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         discriminator asc.
         """
         zero = cls._zero_usage_metrics
-        rollup_key: _StatsKey = (
-            (top_value, None) if top_axis == "tenant" else (None, top_value)
-        )
-        top_invocation = invocation_by_key.get(rollup_key) or zero()
-        top_llm_call = llm_call_by_key.get(rollup_key) or zero()
 
         if top_axis == "tenant":
+            rollup_key: _StatsKey = (top_value, None)
+            top_invocation = invocation_by_key.get(rollup_key) or zero()
+            top_llm_call = llm_call_by_key.get(rollup_key) or zero()
+
+            # collect operation break-down for this tenant
             operations: list[OperationStats] = []
             for (
                 tenant_id,
@@ -554,27 +545,34 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
                 llm_call_stats=top_llm_call,
                 operations=tuple(operations),
             )
+        elif top_axis == "operation":
+            rollup_key = (None, top_value)
+            top_invocation = invocation_by_key.get(rollup_key) or zero()
+            top_llm_call = llm_call_by_key.get(rollup_key) or zero()
 
-        tenants: list[TenantStats] = []
-        for (tenant_id, operation), invocation in invocation_by_key.items():
-            if (
-                operation != top_value
-                or tenant_id is None
-                or invocation.total_calls == 0
-            ):
-                continue
-            tenants.append(
-                TenantStats(
-                    tenant_id=tenant_id,
-                    **dict(invocation),
-                    llm_call_stats=llm_call_by_key.get((tenant_id, operation))
-                    or zero(),
+            # collect tenant break-down for this operation
+            tenants: list[TenantStats] = []
+            for (tenant_id, operation), invocation in invocation_by_key.items():
+                if (
+                    operation != top_value
+                    or tenant_id is None
+                    or invocation.total_calls == 0
+                ):
+                    continue
+                tenants.append(
+                    TenantStats(
+                        tenant_id=tenant_id,
+                        **dict(invocation),
+                        llm_call_stats=llm_call_by_key.get((tenant_id, operation))
+                        or zero(),
+                    )
                 )
+            tenants.sort(key=lambda t: (-t.total_cost_usd, t.tenant_id))
+            return OperationUsageStats(
+                operation=Operation(top_value) if top_value is not None else None,
+                **dict(top_invocation),
+                llm_call_stats=top_llm_call,
+                tenants=tuple(tenants),
             )
-        tenants.sort(key=lambda t: (-t.total_cost_usd, t.tenant_id))
-        return OperationUsageStats(
-            operation=Operation(top_value) if top_value is not None else None,
-            **dict(top_invocation),
-            llm_call_stats=top_llm_call,
-            tenants=tuple(tenants),
-        )
+        else:
+            raise ValueError(f"Invalid top_axis: {top_axis}")
