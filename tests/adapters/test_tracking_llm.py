@@ -64,7 +64,7 @@ class FakeUsageRepository:
             raise RuntimeError("DB down")
         self.records.append(record)
 
-    async def get_usage_stats(self, tenant_id, from_=None, to=None):
+    async def get_usage_stats_for_one_tenant(self, tenant_id, from_=None, to=None):
         raise NotImplementedError
 
     async def get_all_usage_by_tenant(self, from_=None, to=None):
@@ -229,7 +229,7 @@ class _FlakyRepo:
             raise self._exc
         self.records.append(record)
 
-    async def get_usage_stats(self, tenant_id, from_=None, to=None):
+    async def get_usage_stats_for_one_tenant(self, tenant_id, from_=None, to=None):
         raise NotImplementedError
 
     async def get_all_usage_by_tenant(self, from_=None, to=None):

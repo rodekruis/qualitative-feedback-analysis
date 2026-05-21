@@ -254,57 +254,6 @@ def test_usage_stats_new_shape_has_llm_call_stats_and_operations():
     assert stats.operations == ()
 
 
-def test_grouping_sets_clause_cross_tenant_emits_full_cube():
-    """All-tenants query must emit CUBE over both axes (= 4-set powerset).
-
-    Why: ``/v1/usage/all`` needs grand-total-per-operation rows
-    (``tenant_id IS NULL`` with ``operation`` bound) to populate the
-    ``operations`` list on the grand-total entry. ``CUBE(tenant_id,
-    operation)`` expands in Postgres to the four grouping sets
-    ``(tenant_id, operation), (tenant_id), (operation), ()`` — without
-    the ``(operation)`` cell, composition has no source for the
-    grand-total ``operations`` rows, a regression invisible to
-    SQLite-backed unit tests because SQLite doesn't support these
-    grouping extensions at all.
-    """
-    clauses = SqlAlchemyUsageRepository._grouping_sets_clause(
-        group_by_tenant=True, group_by_operation=True
-    )
-    assert len(clauses) == 1
-    cube = clauses[0]
-    assert cube.name == "cube"
-    arg_names = [str(arg) for arg in cube.clauses]
-    assert arg_names == ["tenant_id", "operation"]
-
-
-def test_grouping_sets_clause_single_tenant_omits_tenant_axis():
-    """Single-tenant query emits CUBE over the operation axis only.
-
-    ``CUBE(operation)`` expands to ``GROUPING SETS ((operation), ())``,
-    giving the per-operation rollup plus the grand total for one tenant.
-    """
-    clauses = SqlAlchemyUsageRepository._grouping_sets_clause(
-        group_by_tenant=False, group_by_operation=True
-    )
-    assert len(clauses) == 1
-    cube = clauses[0]
-    assert cube.name == "cube"
-    arg_names = [str(arg) for arg in cube.clauses]
-    assert arg_names == ["operation"]
-
-
-def test_grouping_sets_clause_no_grouping_returns_empty_list():
-    """Both axes off → ``[]`` so the caller's ``group_by(*[])`` is a no-op.
-
-    Pins the contract that lets ``_select_view`` unconditionally unpack
-    the result into ``.group_by(*...)`` without a None-check branch.
-    """
-    clauses = SqlAlchemyUsageRepository._grouping_sets_clause(
-        group_by_tenant=False, group_by_operation=False
-    )
-    assert clauses == []
-
-
 async def test_resolve_database_url_from_password_parts():
     settings = DatabaseSettings(
         host="db.internal",

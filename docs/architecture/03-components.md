@@ -26,7 +26,7 @@ flowchart LR
     orch -->|complete| tracking
     orch -->|anonymize / deanonymize| presidio
     tracking -.->|record_call| sqlrepo
-    routes_usage["/v1/usage<br/>route"] -->|get_usage_stats| sqlrepo
+    routes_usage["/v1/usage<br/>route"] -->|get_usage_stats_for_one_tenant| sqlrepo
 ```
 
 | Port | Adapter(s) | What it owns |

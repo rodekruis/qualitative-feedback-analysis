@@ -101,7 +101,7 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
             )
             await session.commit()
 
-    async def get_usage_stats(
+    async def get_usage_stats_for_one_tenant(
         self,
         tenant_id: str,
         from_: datetime | None = None,
@@ -109,15 +109,11 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
     ) -> TenantUsageStats:
         """Per-invocation and per-LLM-call stats for one tenant.
 
-        Single-tenant SELECT pair grouped by operation only. Returns a
-        zero ``TenantUsageStats`` when no rows match the window.
+        Single-tenant SELECT pair grouped by both tenant and operation.
+        Returns a zero ``TenantUsageStats`` when no rows match the window.
         """
-        predicates = self._base_predicates(tenant_id=tenant_id, from_=from_, to=to)
-        invocation_by_key, llm_call_by_key = await self._fetch_views(
-            predicates, group_by_tenant=False, group_by_operation=True
-        )
-        invocation_by_key = self._rekey_with_tenant(invocation_by_key, tenant_id)
-        llm_call_by_key = self._rekey_with_tenant(llm_call_by_key, tenant_id)
+        where_clause = self._base_where_clause(tenant_id=tenant_id, from_=from_, to=to)
+        invocation_by_key, llm_call_by_key = await self._fetch_views(where_clause)
         return self._build_block(
             top_axis="tenant",
             top_value=tenant_id,
@@ -138,10 +134,8 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         Tenants with zero per-invocation calls are filtered; the
         grand-total entry (``tenant_id=None``) is always emitted last.
         """
-        predicates = self._base_predicates(from_=from_, to=to)
-        invocation_by_key, llm_call_by_key = await self._fetch_views(
-            predicates, group_by_tenant=True, group_by_operation=True
-        )
+        predicates = self._base_where_clause(from_=from_, to=to)
+        invocation_by_key, llm_call_by_key = await self._fetch_views(predicates)
         tenants = sorted(
             {
                 tenant_id
@@ -184,10 +178,8 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         the top level with ``tenants`` nested. The grand-total entry
         (``operation=None``) is always emitted last.
         """
-        predicates = self._base_predicates(from_=from_, to=to)
-        invocation_by_key, llm_call_by_key = await self._fetch_views(
-            predicates, group_by_tenant=True, group_by_operation=True
-        )
+        predicates = self._base_where_clause(from_=from_, to=to)
+        invocation_by_key, llm_call_by_key = await self._fetch_views(predicates)
         operations = sorted(
             {
                 operation
@@ -223,7 +215,7 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
     # ------------------------------------------------------------------
 
     @classmethod
-    def _base_predicates(
+    def _base_where_clause(
         cls,
         *,
         tenant_id: str | None = None,
@@ -246,26 +238,22 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
 
     async def _fetch_views(
         self,
-        predicates: list,
-        *,
-        group_by_tenant: bool,
-        group_by_operation: bool,
+        where_clause: list,
     ) -> tuple[_StatsByKey, _StatsByKey]:
         """Run both view SELECTs and return ``(invocation_by_key, llm_call_by_key)``.
 
         Issues two queries — the per-invocation view (CTE on ``call_id``)
-        and the per-LLM-call view — against the same predicate set and
-        grouping, and indexes their rows by ``(tenant_id, operation)``
-        with ``None`` marking GROUPING SETS rollup cells.
+        and the per-LLM-call view — against the same predicate set with
+        ``CUBE(tenant_id, operation)``, and indexes their rows by
+        ``(tenant_id, operation)`` with ``None`` marking GROUPING SETS
+        rollup cells.
         """
         async with _translate_db_errors(), self._session_factory() as session:
             invocation_rows = (
                 await session.execute(
                     self._select_view(
                         "invocation",
-                        predicates,
-                        group_by_tenant=group_by_tenant,
-                        group_by_operation=group_by_operation,
+                        where_clause,
                     )
                 )
             ).all()
@@ -273,9 +261,7 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
                 await session.execute(
                     self._select_view(
                         "llm_call",
-                        predicates,
-                        group_by_tenant=group_by_tenant,
-                        group_by_operation=group_by_operation,
+                        where_clause,
                     )
                 )
             ).all()
@@ -288,10 +274,9 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
     def _index_rows(cls, rows: Sequence[sa.Row]) -> _StatsByKey:
         """Index aggregate rows by ``(tenant_id, operation)``.
 
-        Missing columns (e.g. ``tenant_id`` on a single-tenant SELECT
-        that doesn't group by tenant) and NULL rollup values both map
-        to ``None`` — the two are indistinguishable from the consumer's
-        perspective and that's what the pivot expects.
+        NULL in either position marks a GROUPING SETS rollup cell
+        (e.g. ``(tenant_id, None)`` is the per-tenant subtotal;
+        ``(None, None)`` is the grand total).
         """
         indexed: _StatsByKey = {}
         for row in rows:
@@ -301,20 +286,6 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
             indexed[(tenant_id, operation)] = cls._row_to_usage_metrics(row)
         return indexed
 
-    @classmethod
-    def _rekey_with_tenant(cls, indexed: _StatsByKey, tenant_id: str) -> _StatsByKey:
-        """Replace the tenant-id position of every key with ``tenant_id``.
-
-        Single-tenant SELECTs don't include ``tenant_id`` in the
-        projection (the tenant filter is a WHERE predicate, not a GROUP
-        BY axis), so :meth:`_index_rows` keys every row with
-        ``tenant_id=None``. The pivot then misses the ``(tenant_id, None)``
-        rollup cell. Re-stamping the key here restores the original
-        pre-collapse semantic where the single-tenant ``get_usage_stats``
-        path baked the tenant id into the key directly.
-        """
-        return {(tenant_id, op): metrics for (_, op), metrics in indexed.items()}
-
     # ------------------------------------------------------------------
     # SELECT builder (single function for both views)
     # ------------------------------------------------------------------
@@ -323,10 +294,7 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
     def _select_view(
         cls,
         view: Literal["llm_call", "invocation"],
-        predicates: list,
-        *,
-        group_by_tenant: bool,
-        group_by_operation: bool,
+        where_clause: list,
     ) -> sa.Select:
         """Build the aggregation SELECT for one of the two views.
 
@@ -335,6 +303,10 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         per-invocation CTE (one row per distinct ``call_id``, with
         token/duration/cost summed across the LLM calls of the invocation
         and a ``bool_and`` flag marking the all-failed case).
+
+        Both views group by ``CUBE(tenant_id, operation)`` for the full
+        2-axis rollup (per-tenant per-operation, per-tenant, per-operation,
+        and grand-total).
 
         Counts and ``total_cost_usd`` include every row in scope —
         including failures that incurred a real cost. Distributions
@@ -358,7 +330,7 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
                     sa.func.sum(llm_calls.c.cost_usd).label("cost_usd"),
                     sa.func.bool_and(llm_calls.c.status == "error").label("all_failed"),
                 )
-                .where(*predicates)
+                .where(*where_clause)
                 .group_by(
                     llm_calls.c.tenant_id,
                     llm_calls.c.operation,
@@ -374,65 +346,29 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
             src = llm_calls
             ok_filter = llm_calls.c.status == "ok"
             err_filter = llm_calls.c.status == "error"
-            outer_where = predicates
+            outer_where = where_clause
 
-        columns: list[sa.ColumnElement] = []
-        # group by columns:
-        if group_by_tenant:
-            columns.append(src.c.tenant_id.label("tenant_id"))
-        if group_by_operation:
-            columns.append(src.c.operation.label("operation"))
-        # data columns:
-        columns.extend(
-            [
-                sa.func.count().label("total_calls"),
-                sa.func.count().filter(err_filter).label("failed_calls"),
-                sa.func.coalesce(sa.func.sum(src.c.cost_usd), 0).label(
-                    "total_cost_usd"
-                ),
-                *cls._build_stats_columns(
-                    src.c.call_duration_ms, "duration", where=ok_filter
-                ),
-                *cls._build_stats_columns(
-                    src.c.input_tokens, "input_tokens", where=ok_filter
-                ),
-                *cls._build_stats_columns(
-                    src.c.output_tokens, "output_tokens", where=ok_filter
-                ),
-            ]
-        )
+        columns: list[sa.ColumnElement] = [
+            src.c.tenant_id.label("tenant_id"),
+            src.c.operation.label("operation"),
+            sa.func.count().label("total_calls"),
+            sa.func.count().filter(err_filter).label("failed_calls"),
+            sa.func.coalesce(sa.func.sum(src.c.cost_usd), 0).label("total_cost_usd"),
+            *cls._build_stats_columns(
+                src.c.call_duration_ms, "duration", where=ok_filter
+            ),
+            *cls._build_stats_columns(
+                src.c.input_tokens, "input_tokens", where=ok_filter
+            ),
+            *cls._build_stats_columns(
+                src.c.output_tokens, "output_tokens", where=ok_filter
+            ),
+        ]
 
         statement = sa.select(*columns).select_from(src).where(*outer_where)
         return statement.group_by(
-            *cls._grouping_sets_clause(
-                group_by_tenant=group_by_tenant,
-                group_by_operation=group_by_operation,
-            )
+            sa.func.cube(sa.column("tenant_id"), sa.column("operation"))
         )
-
-    @classmethod
-    def _grouping_sets_clause(
-        cls,
-        *,
-        group_by_tenant: bool,
-        group_by_operation: bool,
-    ) -> list[sa.ColumnElement]:
-        """Build the ``GROUP BY`` clauses for the requested grouping.
-
-        Returns a single-element list ``[CUBE(axis, ...)]`` over the
-        active axes — Postgres expands ``CUBE(t, o)`` to the powerset
-        ``GROUPING SETS ((t,o), (t), (o), ())`` and ``CUBE(x)`` to
-        ``((x), ())``. Returns ``[]`` for the degenerate no-grouping
-        case (currently unused; kept as a defensive shortcut) so the
-        caller can unpack into ``group_by(*...)`` unconditionally —
-        ``group_by(*[])`` is a true no-op, same as no GROUP BY at all.
-        """
-        axes: list[sa.ColumnElement] = []
-        if group_by_tenant:
-            axes.append(sa.column("tenant_id"))
-        if group_by_operation:
-            axes.append(sa.column("operation"))
-        return [sa.func.cube(*axes)] if axes else []
 
     @classmethod
     def _build_stats_columns(
