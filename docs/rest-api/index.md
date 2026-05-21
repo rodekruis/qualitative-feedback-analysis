@@ -18,7 +18,7 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 | `POST` | `/v1/analyze` | Free-text analysis of submitted feedback records |
 | `POST` | `/v1/summarize` | Per-record summaries with quality scores |
 | `POST` | `/v1/summarize-aggregate` | Single aggregate summary with judge score |
-| `POST` | `/v1/assign_codes` | Hierarchical code assignment |
+| `POST` | `/v1/assign-codes` | Hierarchical code assignment |
 | `GET` | `/v1/usage` | Aggregate stats for the caller's tenant |
 | `GET` | `/v1/usage/all` | Cross-tenant stats (requires `is_superuser=true`) |
 | `GET` | `/v1/health` | Liveness probe; no auth |

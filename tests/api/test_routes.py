@@ -614,7 +614,7 @@ class TestAssignCodesSuccess:
     @pytest.mark.asyncio
     async def test_response_includes_confidence_fields_and_explanation(self, client):
         resp = await client.post(
-            "/v1/assign_codes", json=_CODING_BODY, headers=_auth_header()
+            "/v1/assign-codes", json=_CODING_BODY, headers=_auth_header()
         )
         assert resp.status_code == 200
         code_item = resp.json()["coded_feedback_records"][0]["assigned_codes"][0]
@@ -627,7 +627,7 @@ class TestAssignCodesSuccess:
     @pytest.mark.asyncio
     async def test_422_on_invalid_confidence_threshold(self, client):
         resp = await client.post(
-            "/v1/assign_codes",
+            "/v1/assign-codes",
             json={**_CODING_BODY, "confidence_threshold": 1.5},
             headers=_auth_header(),
         )

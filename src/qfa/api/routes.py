@@ -183,7 +183,7 @@ async def summarize(
 
 
 @router.post(
-    "/v1/assign_codes",
+    "/v1/assign-codes",
     response_model=ApiAssignCodesResponse,
     status_code=200,
     tags=["Inference"],
