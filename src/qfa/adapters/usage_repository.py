@@ -9,11 +9,12 @@ declared in :mod:`qfa.adapters.db`. The repository exposes two views:
   attempt.
 
 Both views are produced from the same row set in one ``SELECT`` per
-view, using a Postgres CTE (for per-invocation) plus ``GROUPING SETS``
-to roll up to ``(tenant, operation)`` / ``(tenant)`` / ``()`` in a
-single round-trip.
+view, using a Postgres CTE (for per-invocation) plus
+``CUBE(tenant_id, operation)`` — which yields the four grouping-sets
+rollup cells ``(tenant, operation)`` / ``(tenant)`` / ``(operation)``
+/ ``()`` in a single round-trip.
 
-Internally, both views share one SELECT builder, one row parser, and
+Internally, both views share one query builder, one row parser, and
 one pivot — only the SQL *source* differs (raw ``llm_calls`` vs a CTE
 pre-aggregated by ``call_id``). The duality is expressed once as a
 ``view: Literal["llm_call", "invocation"]`` parameter rather than
@@ -278,7 +279,7 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         return indexed
 
     # ------------------------------------------------------------------
-    # SELECT builder (single function for both views)
+    # Query builder (single function for both views)
     # ------------------------------------------------------------------
 
     @classmethod
