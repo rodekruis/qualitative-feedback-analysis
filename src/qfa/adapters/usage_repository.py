@@ -32,7 +32,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from qfa.adapters.db import llm_calls
 from qfa.domain.errors import UsageRepositoryUnavailableError
-from qfa.domain.models import (
+from qfa.domain.ports import UsageRepositoryPort
+from qfa.domain.usage_models import (
     DistributionStats,
     LLMCallRecord,
     Operation,
@@ -42,7 +43,6 @@ from qfa.domain.models import (
     UsageMetrics,
     UsageStats,
 )
-from qfa.domain.ports import UsageRepositoryPort
 
 # Flat ``(tenant_id, operation) -> metrics`` dict carrying the GROUPING
 # SETS rollup rows from the SQL layer into the pivot. ``None`` in either

@@ -20,14 +20,14 @@ from qfa.api.schemas_usage import (
     AllUsageStatsResponse,
     UsageStatsResponse,
 )
-from qfa.domain.models import (
+from qfa.domain.models import TenantApiKey
+from qfa.domain.ports import UsageRepositoryPort
+from qfa.domain.usage_models import (
     DistributionStats,
     OperationUsageStats,
-    TenantApiKey,
     UsageMetrics,
     UsageStats,
 )
-from qfa.domain.ports import UsageRepositoryPort
 
 router = APIRouter()
 

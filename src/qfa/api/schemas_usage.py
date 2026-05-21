@@ -12,7 +12,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from qfa.domain.models import OperationUsageStats, UsageStats
+from qfa.domain.usage_models import OperationUsageStats, UsageStats
 
 
 class UsageStatsResponse(UsageStats):

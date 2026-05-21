@@ -22,7 +22,7 @@ from qfa.adapters.db import (
     resolve_database_url,
 )
 from qfa.adapters.usage_repository import SqlAlchemyUsageRepository
-from qfa.domain.models import CallStatus, LLMCallRecord, Operation
+from qfa.domain.usage_models import CallStatus, LLMCallRecord, Operation
 from qfa.settings import DatabaseSettings
 
 pytestmark = pytest.mark.asyncio
@@ -223,7 +223,7 @@ def test_usage_stats_new_shape_has_llm_call_stats_and_operations():
     """
     from decimal import Decimal
 
-    from qfa.domain.models import (
+    from qfa.domain.usage_models import (
         DistributionStats,
         UsageMetrics,
         UsageStats,

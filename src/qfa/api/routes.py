@@ -30,16 +30,15 @@ from qfa.api.schemas import (
 )
 from qfa.domain.models import (
     AnalysisRequestModel,
-    CallContext,
     CodingAssignmentRequestModel,
     FeedbackRecordModel,
-    Operation,
     SensitivityAnalysisRequestModel,
     TenantApiKey,
 )
 from qfa.domain.models import (
     SummaryRequestModel as DomainSummaryRequest,
 )
+from qfa.domain.usage_models import CallContext, Operation
 from qfa.services.orchestrator import Orchestrator
 
 router = APIRouter()

@@ -8,7 +8,7 @@ import pytest
 import pytest_asyncio
 
 from qfa.domain.errors import UsageRepositoryUnavailableError
-from qfa.domain.models import (
+from qfa.domain.usage_models import (
     DistributionStats,
     Operation,
     OperationStats,

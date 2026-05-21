@@ -20,7 +20,7 @@ import pytest
 import sqlalchemy as sa
 
 from qfa.adapters.db import llm_calls
-from qfa.domain.models import CallStatus, LLMCallRecord, Operation
+from qfa.domain.usage_models import CallStatus, LLMCallRecord, Operation
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 

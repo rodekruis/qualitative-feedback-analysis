@@ -24,10 +24,8 @@ from qfa.domain.models import (
     CodedFeedbackRecordModel,
     CodingAssignmentRequestModel,
     CodingAssignmentResultModel,
-    DistributionStats,
     FeedbackRecordSummaryModel,
     KeyCreationResponse,
-    OperationUsageStats,
     SensitivityAnalysisRequestModel,
     SensitivityAnalysisResultModel,
     SensitivityAnalysisResultModelList,
@@ -35,11 +33,15 @@ from qfa.domain.models import (
     SummaryResultModel,
     TenantApiKey,
     TenantInfo,
-    UsageMetrics,
-    UsageStats,
 )
 from qfa.domain.ports import UsageRepositoryPort
 from qfa.domain.sensitivity_types import SensitivityType
+from qfa.domain.usage_models import (
+    DistributionStats,
+    OperationUsageStats,
+    UsageMetrics,
+    UsageStats,
+)
 from qfa.services.auth_orchestrator import AuthOrchestrator
 
 

@@ -7,26 +7,27 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import ValidationError
 
-# --- UsageMetrics / OperationStats / UsageStats v2 ---
 from qfa.domain.models import (
     AnalysisRequestModel,
     AnalysisResultModel,
+    FeedbackRecordModel,
+    LLMResponse,
+    SensitivityAnalysisResultModelList,
+    TenantApiKey,
+)
+from qfa.domain.sensitivity_types import SensitivityType
+from qfa.domain.usage_models import (
     CallContext,
     CallStatus,
     DistributionStats,
-    FeedbackRecordModel,
     LLMCallRecord,
-    LLMResponse,
     Operation,
     OperationStats,
     OperationUsageStats,
-    SensitivityAnalysisResultModelList,
-    TenantApiKey,
     TenantStats,
     UsageMetrics,
     UsageStats,
 )
-from qfa.domain.sensitivity_types import SensitivityType
 
 
 def _zero_dist() -> DistributionStats:

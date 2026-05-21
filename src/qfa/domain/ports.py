@@ -11,12 +11,14 @@ from typing import Protocol
 from qfa.domain.models import (
     AuthKeyInfo,
     KeyCreationResponse,
-    LLMCallRecord,
     LLMResponse,
-    OperationUsageStats,
     T_Response,
     TenantApiKey,
     TenantInfo,
+)
+from qfa.domain.usage_models import (
+    LLMCallRecord,
+    OperationUsageStats,
     UsageStats,
 )
 
