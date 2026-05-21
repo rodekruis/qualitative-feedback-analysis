@@ -13,6 +13,7 @@ from qfa.domain.models import (
     TokenStats,
     UsageStats,
 )
+from qfa.domain.ports import UsageRepositoryPort
 
 FAKE_API_KEY = "test-key-abc123"
 FAKE_SUPERUSER_KEY = "superuser-key-xyz789"
@@ -34,7 +35,7 @@ def _make_usage_stats(tenant_id: str | None = "tenant-test", total_calls: int = 
     )
 
 
-class FakeUsageRepository:
+class FakeUsageRepository(UsageRepositoryPort):
     def __init__(self, stats=None, all_stats=None):
         self._stats = stats
         self._all_stats = all_stats or []
@@ -152,7 +153,7 @@ class TestUsageAllEndpoint:
         assert resp.status_code == 403
 
 
-class _UnavailableUsageRepository:
+class _UnavailableUsageRepository(UsageRepositoryPort):
     """Fake repo whose reads raise ``UsageRepositoryUnavailableError``.
 
     Models the wired-but-unreachable case.

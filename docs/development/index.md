@@ -93,7 +93,7 @@ uv run pytest tests/integration/test_db_postgres.py   # specific file
 ## Coding style and conventions
 
 - **Follow the [project guidelines](https://github.com/rodekruis/qualitative-feedback-analysis/blob/main/AGENTS.md).** They cover package management (`uv`, not `pip`), commit messages (conventional commits), and the hexagonal layer rules.
-- **Every adapter explicitly inherits from its port.** Even though Python `Protocol`s support structural typing, we require `class LiteLLMClient(LLMPort):` and `class PresidioAnonymizer(AnonymizationPort):` so that "go to definition" in an IDE jumps from adapter to contract. Structural conformance is reserved for ad-hoc test fakes. See [Components](../architecture/03-components.md) for the full ports/adapters layout.
+- **Every class that implements a port explicitly inherits from it — production adapters *and* test doubles.** Even though Python `Protocol`s support structural typing, we require `class LiteLLMClient(LLMPort):`, `class PresidioAnonymizer(AnonymizationPort):`, and `class FakeLLMPort(LLMPort):` so that "go to definition" in an IDE jumps from any port impl to its contract. Skipping the inheritance is reserved for genuinely ad-hoc cases (e.g. one-shot `MagicMock(spec=Port)` instances, where `spec=` already enforces conformance). See [Components](../architecture/03-components.md) for the full ports/adapters layout.
 - **Import directions are enforced.** `qfa.domain` must not import third-party infra (`litellm`, `presidio_*`, `fastapi`, ...); `qfa.services` may only import `qfa.domain`; the composition root in `qfa.api.app` is the only place that wires concrete adapters into ports. `make lint` runs `lint-imports` to enforce this.
 
 ## Where to go next

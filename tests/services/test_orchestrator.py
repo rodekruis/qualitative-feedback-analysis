@@ -21,6 +21,7 @@ from qfa.domain.models import (
     SummaryRequestModel,
     SummaryResultModel,
 )
+from qfa.domain.ports import AnonymizationPort, LLMPort
 from qfa.domain.sensitivity_types import SensitivityType
 from qfa.services.orchestrator import Orchestrator
 from qfa.settings import OrchestratorSettings
@@ -144,7 +145,7 @@ def _past_deadline():
     return datetime.now(tz=UTC) - timedelta(seconds=10)
 
 
-class FakeLLMPort:
+class FakeLLMPort(LLMPort):
     """A fake LLM port that returns configurable responses or raises errors."""
 
     def __init__(self, responses=None, errors=None):
@@ -182,7 +183,7 @@ class FakeLLMPort:
         return _make_llm_response(structured=_make_analysis_result())
 
 
-class FakeAnonymizer:
+class FakeAnonymizer(AnonymizationPort):
     """No-op anonymiser for tests: returns text unchanged with empty mapping."""
 
     def anonymize(self, text):

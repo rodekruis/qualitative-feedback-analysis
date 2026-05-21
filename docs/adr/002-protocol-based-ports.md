@@ -20,8 +20,12 @@ method.
 
 ## Decision
 
-Use `typing.Protocol` for both `LLMPort` and `OrchestratorPort`.
-Implementation explicitly inherit the Port protocol class.
+Use `typing.Protocol` for port declarations. **Every class that
+implements a port — production adapter or test double — must
+explicitly inherit from the Port protocol class.** Skipping the
+inheritance is reserved for genuinely ad-hoc cases such as
+`unittest.mock.MagicMock(spec=LLMPort)`, where `spec=` already
+enforces conformance.
 
 ## Options Considered
 
@@ -48,9 +52,13 @@ Implementation explicitly inherit the Port protocol class.
 ## Consequences
 
 - Port definitions in `domain/ports.py` are `Protocol` classes.
-- Adapter classes DO inherit from ports.
+- Adapter classes (production) **and test doubles** that implement a
+  port DO inherit from it.
 - Type checkers verify conformance. Tests verify behavior.
-- Adding a new adapter requires matching the protocol's method signature.
+- Adding a new port implementation requires matching the protocol's
+  method signatures and declaring the inheritance.
+- `MagicMock(spec=Port)` remains the recommended ad-hoc exception
+  when a one-shot mock is clearer than a named class.
 
 ## Participants
 
