@@ -124,7 +124,7 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
             llm_call_by_key=llm_call_by_key,
         )
 
-    async def get_all_usage_stats_by_tenant(
+    async def get_all_usage_by_tenant(
         self,
         from_: datetime | None = None,
         to: datetime | None = None,
@@ -178,7 +178,7 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
     ) -> list[OperationUsageStats]:
         """Per-operation + grand-total stats with per-tenant breakdown.
 
-        Inverse hierarchy of :meth:`get_all_usage_stats_by_tenant`: same query
+        Inverse hierarchy of :meth:`get_all_usage_by_tenant`: same query
         pair (full 2-axis cube), but the pivot puts ``operation`` at
         the top level with ``tenants`` nested. The grand-total entry
         (``operation=None``) is always emitted last.

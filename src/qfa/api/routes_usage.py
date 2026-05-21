@@ -281,7 +281,7 @@ async def usage_all_by_tenant(
         Per-tenant and grand total usage statistics within the window.
     """
     from_, to = _parse_time_window(from_, to)
-    all_stats = await usage_repo.get_all_usage_stats_by_tenant(from_=from_, to=to)
+    all_stats = await usage_repo.get_all_usage_by_tenant(from_=from_, to=to)
     tenants = [s for s in all_stats if s.tenant_id is not None]
     total = next(
         (s for s in all_stats if s.tenant_id is None),

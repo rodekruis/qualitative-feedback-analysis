@@ -67,7 +67,7 @@ class FakeUsageRepository:
     async def get_usage_stats(self, tenant_id, from_=None, to=None):
         raise NotImplementedError
 
-    async def get_all_usage_stats_by_tenant(self, from_=None, to=None):
+    async def get_all_usage_by_tenant(self, from_=None, to=None):
         raise NotImplementedError
 
     async def get_all_usage_by_operation(self, from_=None, to=None):
@@ -232,7 +232,7 @@ class _FlakyRepo:
     async def get_usage_stats(self, tenant_id, from_=None, to=None):
         raise NotImplementedError
 
-    async def get_all_usage_stats_by_tenant(self, from_=None, to=None):
+    async def get_all_usage_by_tenant(self, from_=None, to=None):
         raise NotImplementedError
 
     async def get_all_usage_by_operation(self, from_=None, to=None):

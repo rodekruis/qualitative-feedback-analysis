@@ -5,7 +5,7 @@ Covers the parts of ``qfa.adapters.db`` whose behaviour is database-level
 which therefore can't be exercised against SQLite.
 
 Repository-level tests (``SqlAlchemyUsageRepository.record_call`` /
-``get_usage_stats`` / ``get_all_usage_stats_by_tenant``) live alongside the class
+``get_usage_stats`` / ``get_all_usage_by_tenant``) live alongside the class
 they exercise, in ``tests/integration/test_usage_repository.py``.
 """
 
