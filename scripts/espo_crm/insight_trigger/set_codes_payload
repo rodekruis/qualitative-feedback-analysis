@@ -52,4 +52,4 @@ while($i < array\length($ids1), (
     $i = $i + 1
 ));
 
-$payload = string\concatenate('{"root_codes": [', array\join($nodes1, ','), ']}');
+$$codesString = string\concatenate('[', array\join($nodes1, ','), ']');
