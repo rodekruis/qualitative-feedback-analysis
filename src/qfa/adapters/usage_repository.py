@@ -220,8 +220,9 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
     # Predicates
     # ------------------------------------------------------------------
 
-    @staticmethod
+    @classmethod
     def _base_predicates(
+        cls,
         *,
         tenant_id: str | None = None,
         from_: datetime | None = None,
@@ -281,8 +282,8 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
             self._index_rows(llm_call_rows),
         )
 
-    @staticmethod
-    def _index_rows(rows: Sequence[sa.Row]) -> _StatsByKey:
+    @classmethod
+    def _index_rows(cls, rows: Sequence[sa.Row]) -> _StatsByKey:
         """Index aggregate rows by ``(tenant_id, operation)``.
 
         Missing columns (e.g. ``tenant_id`` on a single-tenant SELECT
@@ -295,17 +296,16 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
             mapping = row._mapping
             tenant_id = mapping.get("tenant_id")
             operation = mapping.get("operation")
-            indexed[(tenant_id, operation)] = (
-                SqlAlchemyUsageRepository._row_to_usage_metrics(row)
-            )
+            indexed[(tenant_id, operation)] = cls._row_to_usage_metrics(row)
         return indexed
 
     # ------------------------------------------------------------------
     # SELECT builder (single function for both views)
     # ------------------------------------------------------------------
 
-    @staticmethod
+    @classmethod
     def _select_view(
+        cls,
         view: Literal["llm_call", "invocation"],
         predicates: list,
         *,
@@ -384,13 +384,11 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
                 sa.func.count().label("total_calls"),
                 sa.func.count().filter(err_filter).label("failed_calls"),
                 sa.func.coalesce(sa.func.sum(cost_col), 0).label("total_cost_usd"),
-                *SqlAlchemyUsageRepository._build_stats_columns(
-                    duration_col, "duration", where=ok_filter
-                ),
-                *SqlAlchemyUsageRepository._build_stats_columns(
+                *cls._build_stats_columns(duration_col, "duration", where=ok_filter),
+                *cls._build_stats_columns(
                     input_tokens_col, "input_tokens", where=ok_filter
                 ),
-                *SqlAlchemyUsageRepository._build_stats_columns(
+                *cls._build_stats_columns(
                     output_tokens_col, "output_tokens", where=ok_filter
                 ),
             ]
@@ -399,7 +397,7 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         statement = sa.select(*columns).select_from(outer_from)
         if outer_where:
             statement = statement.where(*outer_where)
-        grouping_sets = SqlAlchemyUsageRepository._grouping_sets_clause(
+        grouping_sets = cls._grouping_sets_clause(
             group_by_tenant=group_by_tenant,
             group_by_operation=group_by_operation,
         )
@@ -407,8 +405,9 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
             statement = statement.group_by(grouping_sets)
         return statement
 
-    @staticmethod
+    @classmethod
     def _grouping_sets_clause(
+        cls,
         *,
         group_by_tenant: bool,
         group_by_operation: bool,
@@ -441,8 +440,9 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
             return None
         return sa.text(f"GROUPING SETS ({', '.join(set_clauses)})")
 
-    @staticmethod
+    @classmethod
     def _build_stats_columns(
+        cls,
         column: sa.ColumnElement,
         prefix: str,
         *,
@@ -476,8 +476,8 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
     # Row → domain parsing
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _parse_distribution(row: sa.Row, prefix: str) -> DistributionStats:
+    @classmethod
+    def _parse_distribution(cls, row: sa.Row, prefix: str) -> DistributionStats:
         """Parse ``DistributionStats`` from a row's ok-only aggregates.
 
         When no ok rows exist, ``avg`` is NULL — return zeros. ``total``
@@ -497,8 +497,8 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
             total=int(mapping[f"{prefix}_sum"] or 0),
         )
 
-    @staticmethod
-    def _row_to_usage_metrics(row: sa.Row) -> UsageMetrics:
+    @classmethod
+    def _row_to_usage_metrics(cls, row: sa.Row) -> UsageMetrics:
         """Build a ``UsageMetrics`` from a row's canonically-labelled aggregates.
 
         Both views emit the same column names (``total_calls``,
@@ -512,19 +512,13 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
             total_calls=int(mapping["total_calls"] or 0),
             failed_calls=int(mapping["failed_calls"] or 0),
             total_cost_usd=Decimal(str(mapping["total_cost_usd"] or 0)),
-            call_duration=SqlAlchemyUsageRepository._parse_distribution(
-                row, "duration"
-            ),
-            input_tokens=SqlAlchemyUsageRepository._parse_distribution(
-                row, "input_tokens"
-            ),
-            output_tokens=SqlAlchemyUsageRepository._parse_distribution(
-                row, "output_tokens"
-            ),
+            call_duration=cls._parse_distribution(row, "duration"),
+            input_tokens=cls._parse_distribution(row, "input_tokens"),
+            output_tokens=cls._parse_distribution(row, "output_tokens"),
         )
 
-    @staticmethod
-    def _zero_usage_metrics() -> UsageMetrics:
+    @classmethod
+    def _zero_usage_metrics(cls) -> UsageMetrics:
         """Zero ``UsageMetrics`` used as the fallback for missing roll-up rows."""
         return UsageMetrics(
             total_calls=0,
@@ -540,8 +534,9 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
     # ------------------------------------------------------------------
 
     @overload
-    @staticmethod
+    @classmethod
     def _build_block(
+        cls,
         *,
         top_axis: Literal["tenant"],
         top_value: str | None,
@@ -550,8 +545,9 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
     ) -> UsageStats: ...
 
     @overload
-    @staticmethod
+    @classmethod
     def _build_block(
+        cls,
         *,
         top_axis: Literal["operation"],
         top_value: str | None,
@@ -559,8 +555,9 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         llm_call_by_key: _StatsByKey,
     ) -> OperationUsageStats: ...
 
-    @staticmethod
+    @classmethod
     def _build_block(
+        cls,
         *,
         top_axis: Literal["tenant", "operation"],
         top_value: str | None,
@@ -593,7 +590,7 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         ``total_cost_usd`` desc, with ties broken by the child
         discriminator asc.
         """
-        zero = SqlAlchemyUsageRepository._zero_usage_metrics
+        zero = cls._zero_usage_metrics
         rollup_key: _StatsKey = (
             (top_value, None) if top_axis == "tenant" else (None, top_value)
         )
