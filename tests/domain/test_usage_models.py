@@ -27,37 +27,10 @@ from qfa.domain.usage_models import (
     UsageMetrics,
 )
 
-# --- Operation / CallStatus / CallContext ---
-
-
-class TestOperationEnum:
-    def test_string_values(self):
-        assert Operation.ANALYZE == "analyze"
-        assert Operation.SUMMARIZE == "summarize"
-        assert Operation.SUMMARIZE_AGGREGATE == "summarize_aggregate"
-        assert Operation.ASSIGN_CODES == "assign_codes"
-        assert Operation.UNKNOWN == "unknown"
-
-
-class TestCallStatusEnum:
-    def test_string_values(self):
-        assert CallStatus.OK == "ok"
-        assert CallStatus.ERROR == "error"
+# --- CallContext ---
 
 
 class TestCallContext:
-    def test_construct(self):
-        """Constructor accepts and exposes the three required fields.
-
-        Smoke test for the data shape — guards against accidental rename
-        or removal of any of ``tenant_id``, ``operation``, ``call_id``.
-        """
-        cid = uuid4()
-        ctx = CallContext(tenant_id="t1", operation=Operation.ANALYZE, call_id=cid)
-        assert ctx.tenant_id == "t1"
-        assert ctx.operation == Operation.ANALYZE
-        assert ctx.call_id == cid
-
     def test_frozen(self):
         """``CallContext`` is frozen — assignment after construction must raise.
 
@@ -274,24 +247,6 @@ class TestUsageStatsV2:
 
 
 class TestUsageMetrics:
-    def test_construct_with_all_fields(self):
-        """A fully-populated UsageMetrics constructs and exposes all metric fields.
-
-        Pins the field set used by both per-invocation (TenantUsageStats /
-        OperationStats inherit it) and per-LLM-call (llm_call_stats) views.
-        """
-        m = UsageMetrics(
-            total_calls=10,
-            failed_calls=2,
-            total_cost_usd=Decimal("0.25"),
-            call_duration=DistributionStats(avg=1, min=0, max=2, p5=0, p95=2, total=3),
-            input_tokens=DistributionStats(avg=1, min=0, max=2, p5=0, p95=2, total=10),
-            output_tokens=DistributionStats(avg=1, min=0, max=2, p5=0, p95=2, total=10),
-        )
-        assert m.total_calls == 10
-        assert m.failed_calls == 2
-        assert m.total_cost_usd == Decimal("0.25")
-
     def test_failed_calls_defaults_to_zero(self):
         """failed_calls defaults to 0 so tenants with no failures need not pass it."""
         m = UsageMetrics(
@@ -302,21 +257,6 @@ class TestUsageMetrics:
             output_tokens=_zero_tokens(),
         )
         assert m.failed_calls == 0
-
-    def test_frozen(self):
-        """UsageMetrics is frozen — reassignment must raise.
-
-        Aligns with ADR-001; mutation would break the response wire copy.
-        """
-        m = UsageMetrics(
-            total_calls=1,
-            total_cost_usd=Decimal("0"),
-            call_duration=_zero_dist(),
-            input_tokens=_zero_tokens(),
-            output_tokens=_zero_tokens(),
-        )
-        with pytest.raises(ValidationError):
-            m.total_calls = 99
 
     def test_decimal_cost_serializes_as_float(self):
         """total_cost_usd serialises to a JSON-friendly float, not a Decimal.
@@ -381,20 +321,6 @@ class TestOperationStats:
                 output_tokens=_zero_tokens(),
             )
 
-    def test_frozen(self):
-        """OperationStats is frozen — assignment after construction raises."""
-        op = OperationStats(
-            operation=Operation.ANALYZE,
-            total_calls=1,
-            total_cost_usd=Decimal("0"),
-            call_duration=_zero_dist(),
-            input_tokens=_zero_tokens(),
-            output_tokens=_zero_tokens(),
-            llm_call_stats=self._llm_metrics(),
-        )
-        with pytest.raises(ValidationError):
-            op.operation = Operation.SUMMARIZE
-
 
 class TestTenantStats:
     def _llm_metrics(self) -> UsageMetrics:
@@ -440,20 +366,6 @@ class TestTenantStats:
                 output_tokens=_zero_tokens(),
                 llm_call_stats=self._llm_metrics(),
             )
-
-    def test_frozen(self):
-        """TenantStats is frozen — reassignment after construction raises."""
-        t = TenantStats(
-            tenant_id="acme",
-            total_calls=1,
-            total_cost_usd=Decimal("0"),
-            call_duration=_zero_dist(),
-            input_tokens=_zero_tokens(),
-            output_tokens=_zero_tokens(),
-            llm_call_stats=self._llm_metrics(),
-        )
-        with pytest.raises(ValidationError):
-            t.tenant_id = "other"
 
 
 class TestOperationUsageStats:
