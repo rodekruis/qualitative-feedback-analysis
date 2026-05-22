@@ -1,3 +1,4 @@
+<?php // Do not copy this tag into EspoCRM
 // Script for settings payload containing all codes in EspoCRM
 // Works with the CodingLevels model
 
@@ -5,7 +6,7 @@ $ids1 = record\findMany('CCodingLevel1', 20, 'name', 'asc');
 $nodes1 = list();
 $i = 0;
 
-while($i < array\length($ids1), (
+while($i < array\length($ids1)(
     $id1 = array\at($ids1, $i);
     
     // FIX: Use record\attribute to get the name of the specific ID from Level 1

@@ -1,3 +1,4 @@
+<?php // Do not copy this tag into EspoCRM
 // Script for translating reponse to output string for summarize per record feature in EspoCRM
 
 $response = $_lastHttpResponseBody;
@@ -50,4 +51,4 @@ while ($i < $count) {
 }
 
 // Output the result to your field
-modelResponse = $finalString;
+$modelResponse = $finalString;

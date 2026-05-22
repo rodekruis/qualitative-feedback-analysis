@@ -1,3 +1,4 @@
+<?php // Do not copy this tag into EspoCRM
 // Script for translating reponse to output string for summarize aggregate feature in EspoCRM
 
 $response = $_lastHttpResponseBody;
@@ -41,4 +42,4 @@ $finalString = string\concatenate(
 );                                                                                      
                 
 // Output the result to your field
-modelResponse = $finalString;
+$modelResponse = $finalString;

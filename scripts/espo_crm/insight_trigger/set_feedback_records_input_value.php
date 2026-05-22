@@ -1,4 +1,4 @@
-
+<?php // Do not copy this tag into EspoCRM
 // Find the related feedback records
 $$backendIDs = record\findRelatedMany('CInsight', id, 'feedbackDatas', 9999,'createdAt', 'desc');
 
@@ -50,7 +50,7 @@ while($i < $count) {
   $i = $i + 1;
 }
 
-$$recordsString = string\concatenate('[', $$recordsString, ']')
+$$recordsString = string\concatenate('[', $$recordsString, ']');
 
 // Ussage:
 //$$payload = string\concatenate(
@@ -58,3 +58,4 @@ $$recordsString = string\concatenate('[', $$recordsString, ']')
 //    '"feedback_records": ', $$recordsString, ''
 //    '}'
 //);
+

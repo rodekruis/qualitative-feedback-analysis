@@ -1,4 +1,5 @@
-// Script for settings summarize aggregate feature payload in EspoCRM
+<?php // Do not copy this tag into EspoCRM
+// Script for settings summarize per record feature payload in EspoCRM
 
 // Find the related feedback records
 $$backendIDs = record\findRelatedMany('CInsight', id, 'feedbackDatas', 9999,'createdAt', 'desc');
@@ -59,7 +60,7 @@ while($i < $count) {
 $$payload = string\concatenate(
     '{',
     '"feedback_records": [', $recordsString, '],',
-    '"output_language": "'$outputLanguage'",',
+    '"output_language": "', $outputLanguage, '",',
     '"prompt": "', $additionalPrompt, '"',
     '}'
 );
