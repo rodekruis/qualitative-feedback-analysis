@@ -4,7 +4,7 @@ $$backendIDs = record\findRelatedMany('CInsight', id, 'feedbackDatas', 9999,'cre
 
 // Initialize loop variables
 $i = 0;
-$$recordsString = '';
+$recordsString = '';
 $count = array\length($$backendIDs);
 
 // Loop through real records
@@ -42,20 +42,20 @@ while($i < $count) {
 
   // Add a comma between records, except first one
   if ($i == 0) {
-      $$recordsString = $record;
+      $recordsString = $record;
   } else {
-      $$recordsString = string\concatenate($recordsString, ',', $record);
+      $recordsString = string\concatenate($recordsString, ',', $record);
   }
 
   $i = $i + 1;
 }
 
-$$recordsString = string\concatenate('[', $$recordsString, ']');
+$$recordsString = string\concatenate('[', $recordsString, ']');
 
 // Ussage:
 //$$payload = string\concatenate(
 //    '{',
-//    '"feedback_records": ', $$recordsString, ''
+//    '"feedback_records": ', $recordsString, ''
 //    '}'
 //);
 
