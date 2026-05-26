@@ -290,11 +290,13 @@ class Orchestrator:
         )
 
         anonymized_user_message = user_message
+        anonymized_prompt = request.prompt
         anonymization_mapping: dict[str, str] = {}
         if anonymize:
             anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
                 user_message
             )
+            anonymized_prompt, _ = self._anonymizer.anonymize(request.prompt)
 
         analyse_timeout = self._check_deadline_and_get_timeout(deadline)
         analyse_response = await self._llm.complete(
@@ -322,7 +324,7 @@ class Orchestrator:
             judge_timeout = self._check_deadline_and_get_timeout(deadline)
             judge_system = build_analyze_judge_system_message(
                 source_text=anonymized_user_message,
-                analyst_prompt=request.prompt,
+                analyst_prompt=anonymized_prompt,
                 analysis=analyse_response.structured,
             )
             judge_response = await self._llm.complete(

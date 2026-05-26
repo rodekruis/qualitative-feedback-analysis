@@ -111,11 +111,20 @@ No prose outside JSON, no markdown fences.
 def escape_for_tag_envelope(text: str) -> str:
     """Escape characters that could break an XML-style tag envelope.
 
-    Replaces ``&`` → ``&amp;``, ``<`` → ``&lt;``, ``>`` → ``&gt;``.
+    Replaces ``&`` → ``&amp;``, ``<`` → ``&lt;``, ``>`` → ``&gt;``,
+    ``"`` → ``&quot;``, ``'`` → ``&apos;``. The quote escapes keep
+    attribute values such as ``<feedback_record id="...">`` intact
+    when an untrusted id or value would otherwise close the attribute.
     Apply to any untrusted text before embedding it inside the
     envelope tags used by :func:`build_analyze_user_message`.
     """
-    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&apos;")
+    )
 
 
 def build_analyze_user_message(

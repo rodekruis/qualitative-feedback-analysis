@@ -84,10 +84,6 @@ async def analyze(
     returns 200 with ``quality_score=null`` and a constant unavailable
     message in ``uncertainty_explanation``.
 
-    ``ai_generated`` and ``requires_human_review`` are always ``true``
-    on this endpoint — treat them as documentation flags, not
-    toggleable fields.
-
     **Edge cases**:
 
     - ``mode`` other than ``"single_pass"`` → 422
@@ -114,8 +110,7 @@ async def analyze(
     -------
     AnalyzeResponse
         The analysis result with quality score, uncertainty explanation,
-        constant AI-generated/human-review flags, feedback record count,
-        and request ID.
+        feedback record count, and request ID.
     """
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
@@ -139,8 +134,6 @@ async def analyze(
         analysis=result.result,
         quality_score=result.quality_score,
         uncertainty_explanation=result.uncertainty_explanation,
-        ai_generated=True,
-        requires_human_review=True,
         feedback_record_count=len(body.feedback_records),
         request_id=request.state.request_id,
         used_anonymization=body.anonymize,

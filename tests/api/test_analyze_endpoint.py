@@ -1,9 +1,9 @@
 """Tests for POST /v1/analyze — mode field validation and new response fields.
 
 These tests are focused on the spec-117 additions (mode, quality_score,
-uncertainty_explanation, ai_generated, requires_human_review).  Pre-existing
-per-endpoint contract tests (request_id, feedback_record_count, error
-handling) live in test_routes.py::TestAnalyzeSuccess.
+uncertainty_explanation).  Pre-existing per-endpoint contract tests
+(request_id, feedback_record_count, error handling) live in
+test_routes.py::TestAnalyzeSuccess.
 """
 
 import pytest
@@ -72,35 +72,6 @@ class TestModeField:
 
 class TestResponseShape:
     @pytest.mark.asyncio
-    async def test_ai_generated_is_always_true(self, client):
-        """``ai_generated`` must be ``true`` on every successful analyse response.
-
-        This is a constant flag documenting that the output is AI-generated;
-        it is not configurable by the client.
-        """
-        resp = await client.post(
-            "/v1/analyze",
-            json=_valid_body(),
-            headers=_auth_header(),
-        )
-        assert resp.status_code == 200
-        assert resp.json()["ai_generated"] is True
-
-    @pytest.mark.asyncio
-    async def test_requires_human_review_is_always_true(self, client):
-        """``requires_human_review`` must be ``true`` on every successful analyse response.
-
-        Constant by design — all AI analysis outputs require human review.
-        """
-        resp = await client.post(
-            "/v1/analyze",
-            json=_valid_body(),
-            headers=_auth_header(),
-        )
-        assert resp.status_code == 200
-        assert resp.json()["requires_human_review"] is True
-
-    @pytest.mark.asyncio
     async def test_quality_score_present_in_response(self, client):
         """``quality_score`` is present in the response on the happy path.
 
@@ -168,6 +139,25 @@ class TestResponseShape:
         data = resp.json()
         assert data["quality_score"] is None
         assert data["uncertainty_explanation"] == JUDGE_UNAVAILABLE_EXPLANATION
+
+    @pytest.mark.asyncio
+    async def test_response_omits_constant_review_flags(self, client):
+        """The response must not carry constant ``ai_generated``/``requires_human_review``.
+
+        Reason: both flags were always ``true`` on this endpoint and absent
+        from every other endpoint, so they carried zero information per
+        call. The disclaimer prepended to ``analysis`` already conveys the
+        "AI-generated, human review required" invariant.
+        """
+        resp = await client.post(
+            "/v1/analyze",
+            json=_valid_body(),
+            headers=_auth_header(),
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "ai_generated" not in data
+        assert "requires_human_review" not in data
 
     @pytest.mark.asyncio
     async def test_analysis_text_has_disclaimer_prefix(self, client):

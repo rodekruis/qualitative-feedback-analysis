@@ -956,3 +956,97 @@ class TestAnalyzeAnonymizationOrdering:
         assert "Atlanta" in body
         assert "<EMAIL_ADDRESS_0>" not in body
         assert "alice@example.com" in body
+
+    @pytest.mark.asyncio
+    async def test_judge_call_does_not_see_raw_analyst_prompt_when_anonymized(
+        self, settings
+    ):
+        """Judge system message must not leak raw PII from ``request.prompt``.
+
+        When ``anonymize=True`` the analyse call already uses the
+        anonymised envelope, but a previous version of the code passed
+        ``request.prompt`` (raw) straight into the judge call, leaking
+        analyst-question PII to the second LLM hop. The judge prompt
+        must be built from anonymised text only — the analyst's
+        sensitive token should appear as a placeholder, never verbatim.
+        """
+        from qfa.services.orchestrator import AnalyzeJudgeResult, Orchestrator
+
+        sensitive_token = "JaneDoeAnalystPII"
+
+        class PromptAnonymizer:
+            def anonymize(self, text):
+                return (
+                    text.replace(sensitive_token, "<PERSON_0>"),
+                    {"<PERSON_0>": sensitive_token},
+                )
+
+            def deanonymize(self, text, mapping):
+                for placeholder, real in mapping.items():
+                    text = text.replace(placeholder, real)
+                return text
+
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured="analysis text"),
+                _make_llm_response(
+                    structured=AnalyzeJudgeResult(
+                        quality_score=0.5, uncertainty_explanation="ok"
+                    )
+                ),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=PromptAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        await orch.analyze(
+            _make_request(prompt=f"What did {sensitive_token} say about clinics?"),
+            _future_deadline(),
+            anonymize=True,
+        )
+
+        judge_system = fake_llm.calls[1]["system_message"]
+        assert sensitive_token not in judge_system
+        assert "<PERSON_0>" in judge_system
+
+    @pytest.mark.asyncio
+    async def test_judge_call_receives_raw_prompt_when_not_anonymized(self, settings):
+        """When ``anonymize=False`` the judge sees the prompt verbatim.
+
+        The anonymisation policy is the caller's decision; with the flag
+        off, both calls behave identically and the analyst question
+        flows through to the judge unchanged.
+        """
+        from qfa.services.orchestrator import AnalyzeJudgeResult, Orchestrator
+
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured="analysis text"),
+                _make_llm_response(
+                    structured=AnalyzeJudgeResult(
+                        quality_score=0.5, uncertainty_explanation="ok"
+                    )
+                ),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        await orch.analyze(
+            _make_request(prompt="What themes about Alice?"),
+            _future_deadline(),
+            anonymize=False,
+        )
+
+        judge_system = fake_llm.calls[1]["system_message"]
+        assert "What themes about Alice?" in judge_system
