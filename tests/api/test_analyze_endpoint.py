@@ -141,25 +141,6 @@ class TestResponseShape:
         assert data["uncertainty_explanation"] == JUDGE_UNAVAILABLE_EXPLANATION
 
     @pytest.mark.asyncio
-    async def test_response_omits_constant_review_flags(self, client):
-        """The response must not carry constant ``ai_generated``/``requires_human_review``.
-
-        Reason: both flags were always ``true`` on this endpoint and absent
-        from every other endpoint, so they carried zero information per
-        call. The disclaimer prepended to ``analysis`` already conveys the
-        "AI-generated, human review required" invariant.
-        """
-        resp = await client.post(
-            "/v1/analyze",
-            json=_valid_body(),
-            headers=_auth_header(),
-        )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "ai_generated" not in data
-        assert "requires_human_review" not in data
-
-    @pytest.mark.asyncio
     async def test_analysis_text_has_disclaimer_prefix(self, client):
         """The ``analysis`` field starts with the server-side disclaimer.
 

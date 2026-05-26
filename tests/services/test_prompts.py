@@ -93,6 +93,25 @@ class TestBuildAnalyzeUserMessage:
         out = build_analyze_user_message("q", (_rec(rec_id="a<b"),))
         assert 'id="a&lt;b"' in out
 
+    def test_record_id_with_double_quote_uses_safe_attribute_quoting(self):
+        """A record id containing ``"`` must not break out of the attribute.
+
+        ``xml.sax.saxutils.quoteattr`` switches to single-quote wrapping
+        when the value contains a literal ``"``, so the attribute is
+        still a valid XML attribute and no sibling tags can be injected.
+        The exact wrapper form is the stdlib's choice; what matters is
+        that the value renders inside one well-formed attribute and the
+        injection payload is not exposed as XML markup.
+        """
+        attack = 'x"><evil>'
+        out = build_analyze_user_message("q", (_rec(rec_id=attack),))
+        # Injection payload must not appear as actual markup.
+        assert "<evil>" not in out
+        # The id attribute is well-formed (either ``"…"`` or ``'…'``
+        # wrapping, with `<` and `>` always escaped to entities).
+        assert ("id='" in out) or ('id="' in out)
+        assert "&lt;evil&gt;" in out
+
     def test_includes_metadata_as_key_value_lines(self):
         """Metadata renders as one ``key=value`` line per entry inside ``<metadata>``."""
         out = build_analyze_user_message(

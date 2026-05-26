@@ -19,7 +19,12 @@ A server-side :data:`ANALYZE_DISCLAIMER` is prepended to the LLM output;
 when the judge LLM call fails.
 """
 
+from xml.sax.saxutils import escape as _xml_escape
+from xml.sax.saxutils import quoteattr as _xml_quoteattr
+
 from qfa.domain.models import FeedbackRecordModel
+
+_ENVELOPE_QUOTE_ENTITIES = {'"': "&quot;", "'": "&apos;"}
 
 ANALYZE_SYSTEM_PROMPT: str = (
     "You are an analytical assistant for a humanitarian organisation "
@@ -111,20 +116,13 @@ No prose outside JSON, no markdown fences.
 def escape_for_tag_envelope(text: str) -> str:
     """Escape characters that could break an XML-style tag envelope.
 
-    Replaces ``&`` → ``&amp;``, ``<`` → ``&lt;``, ``>`` → ``&gt;``,
-    ``"`` → ``&quot;``, ``'`` → ``&apos;``. The quote escapes keep
-    attribute values such as ``<feedback_record id="...">`` intact
-    when an untrusted id or value would otherwise close the attribute.
-    Apply to any untrusted text before embedding it inside the
-    envelope tags used by :func:`build_analyze_user_message`.
+    Wraps :func:`xml.sax.saxutils.escape` with quote escaping so an
+    untrusted ``record.id`` or metadata value cannot break out of
+    ``<feedback_record id="...">`` and inject sibling tags. Replaces
+    ``&`` → ``&amp;``, ``<`` → ``&lt;``, ``>`` → ``&gt;``,
+    ``"`` → ``&quot;``, ``'`` → ``&apos;``.
     """
-    return (
-        text.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
-        .replace("'", "&apos;")
-    )
+    return _xml_escape(text, _ENVELOPE_QUOTE_ENTITIES)
 
 
 def build_analyze_user_message(
@@ -141,7 +139,7 @@ def build_analyze_user_message(
     """
     record_blocks: list[str] = []
     for record in feedback_records:
-        rec_id = escape_for_tag_envelope(record.id)
+        rec_id_attr = _xml_quoteattr(record.id)
         rec_text = escape_for_tag_envelope(record.text)
         metadata_lines = "\n".join(
             f"      {escape_for_tag_envelope(str(k))}={escape_for_tag_envelope(str(v))}"
@@ -153,7 +151,7 @@ def build_analyze_user_message(
             else ""
         )
         record_blocks.append(
-            f'  <feedback_record id="{rec_id}">\n'
+            f"  <feedback_record id={rec_id_attr}>\n"
             f"    <text>{rec_text}</text>\n"
             f"{metadata_block}"
             f"  </feedback_record>"
