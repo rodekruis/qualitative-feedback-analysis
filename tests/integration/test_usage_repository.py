@@ -219,7 +219,11 @@ class TestGetAllUsageByOperation:
 
         Inverse hierarchy of get_all_usage_by_tenant: top-level keyed by
         operation, with per-tenant breakdown nested under each. Two
-        operations, overlapping tenants. Verifies:
+        operations, overlapping tenants. Costs are chosen so cost-desc
+        and alphabetical orderings *disagree* on the top-level operations
+        list (summarize is cheaper alphabetically but more expensive in
+        total) — otherwise the assertion would pass even if the sort
+        fell back to alphabetical. Verifies:
         - operations returned sorted by cost desc (ties broken by
           operation asc)
         - grand-total entry appended last (operation is None)
@@ -231,28 +235,30 @@ class TestGetAllUsageByOperation:
             _record(
                 tenant_id="a-tenant",
                 operation=Operation.ANALYZE,
-                cost_usd=Decimal("0.3"),
+                cost_usd=Decimal("0.10"),
             )
         )
         await pg_repo.record_call(
             _record(
                 tenant_id="b-tenant",
                 operation=Operation.ANALYZE,
-                cost_usd=Decimal("0.2"),
+                cost_usd=Decimal("0.05"),
             )
         )
         await pg_repo.record_call(
             _record(
                 tenant_id="a-tenant",
                 operation=Operation.SUMMARIZE,
-                cost_usd=Decimal("0.1"),
+                cost_usd=Decimal("0.40"),
             )
         )
 
         all_stats = await pg_repo.get_all_usage_by_operation()
         ops = [s.operation for s in all_stats]
-        # analyze (0.5) > summarize (0.1); grand total last.
-        assert ops == [Operation.ANALYZE, Operation.SUMMARIZE, None]
+        # summarize (0.40) > analyze (0.15); grand total last. Note the
+        # inversion vs alphabetical: this is the bit the implementation
+        # used to get wrong.
+        assert ops == [Operation.SUMMARIZE, Operation.ANALYZE, None]
 
         analyze = next(s for s in all_stats if s.operation == Operation.ANALYZE)
         assert [t.tenant_id for t in analyze.tenants] == ["a-tenant", "b-tenant"]
@@ -266,7 +272,7 @@ class TestGetAllUsageByOperation:
         # Symmetric to the by-tenant grand total carrying ``operations``
         # across tenants: the by-operation grand total carries
         # ``tenants`` rolled up across operations. Two tenants in total,
-        # sorted by cost desc (a-tenant: 0.3+0.1=0.4 > b-tenant: 0.2).
+        # sorted by cost desc (a-tenant: 0.10+0.40=0.50 > b-tenant: 0.05).
         assert [t.tenant_id for t in grand.tenants] == ["a-tenant", "b-tenant"]
         a = next(t for t in grand.tenants if t.tenant_id == "a-tenant")
         assert a.total_calls == 2

@@ -170,24 +170,22 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
         where_clause = self._base_where_clause(from_=from_, to=to)
         invocation_by_key, llm_call_by_key = await self._fetch_stats(where_clause)
 
-        # get unique operations with at least one invocation
-        operations = sorted(
-            {
-                operation
-                for (tenant_id, operation) in invocation_by_key
-                if operation is not None and tenant_id is None
-            }
-        )
-
-        results: list[OperationUsageStats] = []
-        for operation in operations:
-            block = self._build_block(
+        operations = {
+            operation
+            for (tenant_id, operation) in invocation_by_key
+            if operation is not None and tenant_id is None
+        }
+        results: list[OperationUsageStats] = [
+            self._build_block(
                 top_axis="operation",
                 top_value=operation,
                 invocation_by_key=invocation_by_key,
                 llm_call_by_key=llm_call_by_key,
             )
-            results.append(block)
+            for operation in operations
+        ]
+        # Cost desc, ties by operation asc — by-tenant sorts alphabetically.
+        results.sort(key=lambda block: (-block.total_cost_usd, block.operation.value))
 
         # Grand total — always emitted, even when empty.
         results.append(

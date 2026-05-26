@@ -308,7 +308,9 @@ class TestUsageAllByOperationE2E:
         carries its own ``tenants`` list (sorted by cost desc) plus
         ``llm_call_stats``, and the ``total`` entry has
         ``operation=null`` with ``total_calls`` summing across both
-        operations.
+        operations. Costs are chosen so the top-level cost-desc order
+        and alphabetical order *disagree* — summarize comes after
+        analyze alphabetically but spends more in total.
         """
         await _seed(
             e2e_engine,
@@ -316,17 +318,17 @@ class TestUsageAllByOperationE2E:
                 _record(
                     tenant_id="t-a",
                     operation=Operation.ANALYZE,
-                    cost_usd=Decimal("0.3"),
+                    cost_usd=Decimal("0.10"),
                 ),
                 _record(
                     tenant_id="t-b",
                     operation=Operation.ANALYZE,
-                    cost_usd=Decimal("0.2"),
+                    cost_usd=Decimal("0.05"),
                 ),
                 _record(
                     tenant_id="t-a",
                     operation=Operation.SUMMARIZE,
-                    cost_usd=Decimal("0.1"),
+                    cost_usd=Decimal("0.40"),
                 ),
             ],
         )
@@ -336,22 +338,23 @@ class TestUsageAllByOperationE2E:
         )
         assert resp.status_code == 200
         data = resp.json()
-        # Operations sorted by cost desc: analyze (0.5) before summarize (0.1).
+        # Operations sorted by cost desc: summarize (0.40) before
+        # analyze (0.15). Note the inversion vs alphabetical.
         ops = data["operations"]
-        assert [o["operation"] for o in ops] == ["analyze", "summarize"]
-        # The analyze block's tenants are sorted by cost desc (t-a 0.3 > t-b 0.2).
-        analyze = ops[0]
+        assert [o["operation"] for o in ops] == ["summarize", "analyze"]
+        # The summarize block has a single tenant.
+        summarize = ops[0]
+        assert [t["tenant_id"] for t in summarize["tenants"]] == ["t-a"]
+        assert "llm_call_stats" in summarize
+        # The analyze block's tenants are sorted by cost desc (t-a 0.10 > t-b 0.05).
+        analyze = ops[1]
         assert [t["tenant_id"] for t in analyze["tenants"]] == ["t-a", "t-b"]
         assert analyze["total_calls"] == 2
-        assert "llm_call_stats" in analyze
-        # The summarize block has a single tenant.
-        summarize = ops[1]
-        assert [t["tenant_id"] for t in summarize["tenants"]] == ["t-a"]
         # Grand total covers everything.
         total = data["total"]
         assert total["operation"] is None
         assert total["total_calls"] == 3
-        assert total["total_cost_usd"] == pytest.approx(0.6)
+        assert total["total_cost_usd"] == pytest.approx(0.55)
 
     async def test_empty_window_returns_zero_total(self, e2e_client):
         """An empty time window returns no operations and a zero grand total.
