@@ -4,7 +4,7 @@ Two surfaces: the in-memory domain models, and the on-disk usage table.
 
 ## Domain models
 
-All domain entities live in {py:mod}`qfa.domain.models` and are Pydantic `BaseModel(frozen=True)` per [ADR-001](../adr/001-pydantic-domain-models.md). One exception is {py:class}`~qfa.domain.models.AggregateSummaryResultModel`, which is mutable so the orchestrator can attach a quality score after the judge call.
+Domain entities live in {py:mod}`qfa.domain.models`, with usage-tracking entities split into {py:mod}`qfa.domain.usage_models`. All are Pydantic `BaseModel(frozen=True)` per [ADR-001](../adr/001-pydantic-domain-models.md). One exception is {py:class}`~qfa.domain.models.AggregateSummaryResultModel`, which is mutable so the orchestrator can attach a quality score after the judge call.
 
 | Model | Purpose |
 |---|---|

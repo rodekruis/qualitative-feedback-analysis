@@ -218,7 +218,7 @@ async def usage(
     )
     return UsageStatsResponse(
         **stats.model_dump(),
-        from_=from_,  # type: ignore[ty:unknown-argument]  # ty does note support Pydantic fields with an alias
+        from_=from_,  # type: ignore[ty:unknown-argument]  # ty does not support Pydantic fields with an alias
         to=to,
     )
 
@@ -291,7 +291,7 @@ async def usage_all_by_tenant(
     return AllUsageStatsResponse(
         tenants=tenants,
         total=total,
-        from_=from_,  # type: ignore[ty:unknown-argument]  # ty does note support Pydantic fields with an alias
+        from_=from_,  # type: ignore[ty:unknown-argument]  # ty does not support Pydantic fields with an alias
         to=to,
     )
 
@@ -368,6 +368,6 @@ async def usage_all_by_operation(
     return AllUsageByOperationResponse(
         operations=operations,
         total=total,
-        from_=from_,  # type: ignore[ty:unknown-argument]  # ty does note support Pydantic fields with an alias
+        from_=from_,  # type: ignore[ty:unknown-argument]  # ty does not support Pydantic fields with an alias
         to=to,
     )

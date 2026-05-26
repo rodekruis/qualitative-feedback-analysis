@@ -93,8 +93,9 @@ class UsageRepositoryPort(Protocol):
 
         Returns
         -------
-        TenantUsageStats | None
-            Stats for the tenant, or None if no calls in window.
+        TenantUsageStats
+            Stats for the tenant. When no calls match the window, a
+            zero-valued ``TenantUsageStats`` is returned (never None).
         """
         ...
 

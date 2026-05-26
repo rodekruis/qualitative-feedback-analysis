@@ -218,7 +218,7 @@ def test_usage_stats_new_shape_has_llm_call_stats_and_operations():
     Verifies the domain shape directly (not via DB query) so this test
     runs without any database. The per-invocation aggregation correctness
     and the zero-window path against a real Postgres are covered in
-    tests/integration/test_db_postgres.py. (SQLite does not support
+    tests/integration/test_usage_repository.py. (SQLite does not support
     GROUPING SETS so the DB-backed zero-window path cannot be tested here.)
     """
     from decimal import Decimal
