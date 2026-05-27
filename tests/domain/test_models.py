@@ -126,6 +126,45 @@ class TestAnalysisResultModel:
             result.result = "changed"
 
 
+def test_analysis_request_accepts_hierarchical_mode() -> None:
+    """``AnalysisRequestModel.mode`` accepts ``"hierarchical"`` (and defaults to single_pass).
+
+    Why: #124 introduces the second mode; omitting ``mode`` must still
+    default to ``single_pass`` so existing callers are unaffected.
+    """
+    record = FeedbackRecordModel(id="r1", text="x", metadata={})
+    default = AnalysisRequestModel(
+        feedback_records=(record,), prompt="p", tenant_id="t"
+    )
+    assert default.mode == "single_pass"
+    hierarchical = AnalysisRequestModel(
+        feedback_records=(record,), prompt="p", tenant_id="t", mode="hierarchical"
+    )
+    assert hierarchical.mode == "hierarchical"
+
+
+def test_analysis_result_carries_optional_hierarchical_fields() -> None:
+    """``AnalysisResultModel`` exposes optional confidence and coding_trends fields.
+
+    Why: the hierarchical path reports a coverage-weighted ``confidence``
+    and the trend table; single_pass leaves them None/default so the
+    response is unchanged.
+    """
+    from qfa.domain.clustering_models import CodingTrendTable
+
+    result = AnalysisResultModel(
+        result="text",
+        confidence=0.83,
+        coding_trends=CodingTrendTable(periods=(), cells=()),
+    )
+    assert result.confidence == 0.83
+    assert result.coding_trends is not None
+    # Defaults for the single_pass path:
+    default = AnalysisResultModel(result="text")
+    assert default.confidence is None
+    assert default.coding_trends is None
+
+
 # --- LLMResponse ---
 
 
@@ -250,7 +289,11 @@ class TestAnalysisRequestMode:
         assert req.mode == "single_pass"
 
     def test_invalid_mode_rejected(self):
-        """Any other ``mode`` value raises a validation error."""
+        """An unknown ``mode`` value raises a validation error.
+
+        Why: the Literal type must enforce the allowlist so callers cannot
+        pass arbitrary strings; guards against future misrouting.
+        """
         from pydantic import ValidationError
 
         with pytest.raises(ValidationError):
@@ -258,8 +301,22 @@ class TestAnalysisRequestMode:
                 feedback_records=(FeedbackRecordModel(id="d", text="t"),),
                 prompt="x",
                 tenant_id="t",
-                mode="hierarchical",  # ty: ignore[invalid-argument-type]
+                mode="batch",  # ty: ignore[invalid-argument-type]  # intentionally invalid
             )
+
+    def test_hierarchical_mode_accepted(self):
+        """``mode=hierarchical`` is accepted after #124 widens the Literal.
+
+        Why: ensures the widening did not accidentally break the Literal
+        constraint for the new valid value.
+        """
+        req = AnalysisRequestModel(
+            feedback_records=(FeedbackRecordModel(id="d", text="t"),),
+            prompt="x",
+            tenant_id="t",
+            mode="hierarchical",
+        )
+        assert req.mode == "hierarchical"
 
 
 class TestAnalysisResultModelExtended:
