@@ -191,6 +191,38 @@ class TestAuthSettings:
             AuthSettings()
 
 
+def test_embedding_settings_defaults_and_env_prefix(monkeypatch) -> None:
+    """``EmbeddingSettings`` reads ``EMBEDDING_*`` env vars with sane defaults.
+
+    Why: the hierarchical path needs the model artifact path, pinned hash,
+    and thread count to be configurable per-environment without code change.
+    """
+    from qfa.settings import EmbeddingSettings
+
+    monkeypatch.setenv("EMBEDDING_MODEL_PATH", "/srv/models/bge-m3/model.onnx")
+    monkeypatch.setenv("EMBEDDING_TOKENIZER_PATH", "/srv/models/bge-m3/tokenizer.json")
+    monkeypatch.setenv("EMBEDDING_REVISION_HASH", "sha256:abc123")
+    settings = EmbeddingSettings()
+    assert settings.model_path == "/srv/models/bge-m3/model.onnx"
+    assert settings.revision_hash == "sha256:abc123"
+    # Default thread count is None (leave onnxruntime core-count default).
+    assert settings.intra_op_num_threads is None
+
+
+def test_orchestrator_settings_have_clustering_and_trend_fields() -> None:
+    """``OrchestratorSettings`` exposes clustering params and trend field mapping.
+
+    Why: clustering parameters and the date/code metadata-field mapping
+    must be tunable without code changes, per the design spec.
+    """
+    from qfa.settings import OrchestratorSettings
+
+    settings = OrchestratorSettings()
+    assert settings.min_cluster_size >= 2
+    assert isinstance(settings.coding_trend_date_field, str)
+    assert isinstance(settings.coding_trend_code_fields, list)
+
+
 class TestAppSettings:
     def test_composes_all_sub_settings(self, monkeypatch):
         monkeypatch.setenv("LLM_API_KEY", "sk-test")

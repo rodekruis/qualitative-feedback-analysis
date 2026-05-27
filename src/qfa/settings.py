@@ -65,6 +65,21 @@ class LLMSettings(BaseSettings):
     chars_per_token: int = 4
 
 
+class EmbeddingSettings(BaseSettings):
+    """Configuration for the self-hosted embedding model.
+
+    The artifact is mirrored locally and pinned by hash; production never
+    fetches it from HuggingFace at runtime.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="EMBEDDING_")
+
+    model_path: str = ""
+    tokenizer_path: str = ""
+    revision_hash: str = ""
+    intra_op_num_threads: int | None = None
+
+
 class OrchestratorSettings(BaseSettings):
     """Configuration for the orchestrator service."""
 
@@ -76,6 +91,24 @@ class OrchestratorSettings(BaseSettings):
     retry_jitter_factor: float = 0.5
     retry_cap_seconds: float = 10.0
     chars_per_token: int = 4
+    # Hierarchical-analysis (mode="hierarchical") tuning:
+    min_cluster_size: int = Field(
+        default=5,
+        ge=2,
+        description="HDBSCAN min_cluster_size for the map-step chunking.",
+    )
+    clustering_metric: str = Field(
+        default="euclidean",
+        description="HDBSCAN distance metric over dense embedding vectors.",
+    )
+    coding_trend_date_field: str = Field(
+        default="created",
+        description="Metadata key holding the record date for the coding-trend table.",
+    )
+    coding_trend_code_fields: list[str] = Field(
+        default_factory=lambda: ["codes"],
+        description="Metadata keys holding coding labels (comma-separated strings).",
+    )
 
 
 class AuthSettings(BaseSettings):
@@ -139,6 +172,7 @@ class AppSettings(BaseSettings):
     """Root configuration composing all sub-settings groups."""
 
     llm: LLMSettings = Field(default_factory=LLMSettings)
+    embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
     orchestrator: OrchestratorSettings = Field(default_factory=OrchestratorSettings)
     auth: AuthSettings = Field(default_factory=AuthSettings)
     log: LogSettings = Field(default_factory=LogSettings)
