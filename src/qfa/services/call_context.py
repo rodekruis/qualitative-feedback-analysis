@@ -23,7 +23,7 @@ from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from uuid import UUID
 
-from qfa.domain.models import CallContext, Operation
+from qfa.domain.usage_models import CallContext, Operation
 
 current_call_context: ContextVar[CallContext | None] = ContextVar(
     "current_call_context",

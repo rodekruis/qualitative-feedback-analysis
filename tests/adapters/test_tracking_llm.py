@@ -8,13 +8,13 @@ import pytest
 
 from qfa.adapters.tracking_llm import TrackingLLMAdapter
 from qfa.domain.errors import LLMError
-from qfa.domain.models import (
+from qfa.domain.models import LLMResponse
+from qfa.domain.ports import LLMPort, UsageRepositoryPort
+from qfa.domain.usage_models import (
     CallStatus,
     LLMCallRecord,
-    LLMResponse,
     Operation,
 )
-from qfa.domain.ports import LLMPort, UsageRepositoryPort
 from qfa.services.call_context import call_scope
 
 pytestmark = pytest.mark.asyncio
@@ -65,10 +65,13 @@ class FakeUsageRepository(UsageRepositoryPort):
             raise RuntimeError("DB down")
         self.records.append(record)
 
-    async def get_usage_stats(self, tenant_id, from_=None, to=None):
+    async def get_usage_stats_for_one_tenant(self, tenant_id, from_=None, to=None):
         raise NotImplementedError
 
-    async def get_all_usage_stats(self, from_=None, to=None):
+    async def get_all_usage_by_tenant(self, from_=None, to=None):
+        raise NotImplementedError
+
+    async def get_all_usage_by_operation(self, from_=None, to=None):
         raise NotImplementedError
 
 
@@ -227,10 +230,13 @@ class _FlakyRepo(UsageRepositoryPort):
             raise self._exc
         self.records.append(record)
 
-    async def get_usage_stats(self, tenant_id, from_=None, to=None):
+    async def get_usage_stats_for_one_tenant(self, tenant_id, from_=None, to=None):
         raise NotImplementedError
 
-    async def get_all_usage_stats(self, from_=None, to=None):
+    async def get_all_usage_by_tenant(self, from_=None, to=None):
+        raise NotImplementedError
+
+    async def get_all_usage_by_operation(self, from_=None, to=None):
         raise NotImplementedError
 
 

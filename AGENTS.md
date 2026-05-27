@@ -3,6 +3,7 @@
 ## Package Management
 
 Use `uv` for all dependency management (not `pip`). Examples:
+
 - `uv add <package>` to add a dependency
 - `uv pip install -e .` to install the project
 - `uv run <command>` to run commands in the project environment
@@ -11,7 +12,8 @@ Use `uv` for all dependency management (not `pip`). Examples:
 
 - Github repo: `rodekruis/qualitative-feedback-analysis`
 - use conventional commits (https://www.conventionalcommits.org/en/v1.0.0/)
-- Commit messages must contain ONLY a conventional commit subject line and optional body. No trailers of any kind.
+- Commit messages must contain ONLY a conventional commit subject line and optional
+  body. No trailers of any kind.
 
 ### Workflow
 
@@ -25,6 +27,7 @@ Use `uv` for all dependency management (not `pip`). Examples:
 ## Architecture
 
 Hexagonal architecture. Key concepts:
+
 - Flow: API call(documents) -> Orchestrator -> LLM API -> return result
 - The Orchestrator is a single application service composed of multiple
   use cases (analyze, summarize, summarize_aggregate, assign_codes).
@@ -75,7 +78,16 @@ layout is:
 
 ## Documentation
 
-Keep `docs/` in sync with code changes. When a change touches anything documented under `docs/` — architecture, ports/adapters, settings, endpoints, operational procedures, the developer workflow — update the relevant page in the same PR. Doc rot is harder to catch in review than code drift; the cheapest moment to fix it is while the change is fresh.
+Keep `docs/` in sync with code changes. When a change touches anything documented under
+`docs/` — architecture, ports/adapters, settings, endpoints, operational procedures, the
+developer workflow — update the relevant page in the same PR. This also applies to
+*additions*: if you introduce a new concept or behavior that's similar in kind to what
+`docs/` already covers, add or extend the relevant page in the same PR -- start from
+the [documentation index](docs/README.md) to see what's covered. Doc rot is harder to
+catch in review than code drift; the cheapest moment to fix it is while the change is
+fresh.
 
-- Section indexes live at `docs/<section>/index.md` (with thin `README.md` stubs as github.com folder landing pages).
-- The Sphinx site is built via `make docs` at the repo root; output lands at `docs/_build/html/`.
+- Section indexes live at `docs/<section>/index.md` (with thin `README.md` stubs as
+  github.com folder landing pages).
+- The Sphinx site is built via `make docs` at the repo root; output lands at
+  `docs/_build/html/`.

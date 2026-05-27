@@ -192,6 +192,7 @@ ignore_imports = [
     "qfa.api.app -> qfa.adapters.presidio_anonymizer",
     "qfa.api.app -> qfa.adapters.tracking_llm",
     "qfa.api.app -> qfa.adapters.db",
+    "qfa.api.app -> qfa.adapters.usage_repository",
     "qfa.api.app -> qfa.adapters.env_auth",
 ]
 

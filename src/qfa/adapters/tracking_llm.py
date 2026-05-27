@@ -13,14 +13,9 @@ from tenacity import (
     wait_exponential,
 )
 
-from qfa.domain.models import (
-    CallContext,
-    CallStatus,
-    LLMCallRecord,
-    LLMResponse,
-    T_Response,
-)
+from qfa.domain.models import LLMResponse, T_Response
 from qfa.domain.ports import LLMPort, UsageRepositoryPort
+from qfa.domain.usage_models import CallContext, CallStatus, LLMCallRecord
 from qfa.services.call_context import current_call_context
 
 logger = logging.getLogger(__name__)

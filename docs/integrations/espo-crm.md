@@ -11,7 +11,7 @@ Server-side EspoCRM scripts in `scripts/espo_crm/` compose request bodies and ca
 | `set_analyze_*` | `POST /v1/analyze` |
 | `set_summarize_*` | `POST /v1/summarize` |
 | `set_summarize_aggregate_*` | `POST /v1/summarize-aggregate` |
-| `set_assign_codes_*` | `POST /v1/assign_codes` |
+| `set_assign_codes_*` | `POST /v1/assign-codes` |
 
 Each script reads the relevant EspoCRM fields, builds the JSON body, sends it with an `Authorization: Bearer <key>` header, and writes the response back to a target EspoCRM field.
 

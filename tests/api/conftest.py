@@ -24,7 +24,6 @@ from qfa.domain.models import (
     CodedFeedbackRecordModel,
     CodingAssignmentRequestModel,
     CodingAssignmentResultModel,
-    DistributionStats,
     FeedbackRecordSummaryModel,
     KeyCreationResponse,
     SensitivityAnalysisRequestModel,
@@ -34,11 +33,15 @@ from qfa.domain.models import (
     SummaryResultModel,
     TenantApiKey,
     TenantInfo,
-    TokenStats,
-    UsageStats,
 )
 from qfa.domain.ports import AuthManagementPort, UsageRepositoryPort
 from qfa.domain.sensitivity_types import SensitivityType
+from qfa.domain.usage_models import (
+    DistributionStats,
+    OperationUsageStats,
+    TenantUsageStats,
+    UsageMetrics,
+)
 from qfa.services.auth_orchestrator import AuthOrchestrator
 
 
@@ -81,6 +84,18 @@ FAKE_API_KEY = "test-key-abc123"
 FAKE_SUPERUSER_KEY = "superuser-key-xyz789"
 FAKE_TENANT_ID = "tenant-test"
 FAKE_API_KEY_NAME = "test-key"
+
+
+def _zero_usage_metrics() -> UsageMetrics:
+    """Return a zero-filled UsageMetrics for use in fake repository stubs."""
+    return UsageMetrics(
+        total_calls=0,
+        failed_calls=0,
+        total_cost_usd=Decimal("0"),
+        call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+        input_tokens=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+        output_tokens=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+    )
 
 
 class FakeOrchestrator:
@@ -210,27 +225,55 @@ class FakeUsageRepository(UsageRepositoryPort):
     async def record_call(self, record) -> None:
         return None
 
-    async def get_usage_stats(self, tenant_id, from_=None, to=None):
-        return UsageStats(
+    async def get_usage_stats_for_one_tenant(self, tenant_id, from_=None, to=None):
+        return TenantUsageStats(
             tenant_id=tenant_id,
             total_calls=0,
             failed_calls=0,
             total_cost_usd=Decimal("0"),
-            call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0),
-            input_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
-            output_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+            call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+            input_tokens=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+            output_tokens=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+            llm_call_stats=_zero_usage_metrics(),
         )
 
-    async def get_all_usage_stats(self, from_=None, to=None):
+    async def get_all_usage_by_tenant(self, from_=None, to=None):
         return [
-            UsageStats(
+            TenantUsageStats(
                 tenant_id="test-tenant-1",
                 total_calls=0,
                 failed_calls=0,
                 total_cost_usd=Decimal("0"),
-                call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0),
-                input_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
-                output_tokens=TokenStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+                call_duration=DistributionStats(
+                    avg=0, min=0, max=0, p5=0, p95=0, total=0
+                ),
+                input_tokens=DistributionStats(
+                    avg=0, min=0, max=0, p5=0, p95=0, total=0
+                ),
+                output_tokens=DistributionStats(
+                    avg=0, min=0, max=0, p5=0, p95=0, total=0
+                ),
+                llm_call_stats=_zero_usage_metrics(),
+            )
+        ]
+
+    async def get_all_usage_by_operation(self, from_=None, to=None):
+        return [
+            OperationUsageStats(
+                operation=None,
+                total_calls=0,
+                failed_calls=0,
+                total_cost_usd=Decimal("0"),
+                call_duration=DistributionStats(
+                    avg=0, min=0, max=0, p5=0, p95=0, total=0
+                ),
+                input_tokens=DistributionStats(
+                    avg=0, min=0, max=0, p5=0, p95=0, total=0
+                ),
+                output_tokens=DistributionStats(
+                    avg=0, min=0, max=0, p5=0, p95=0, total=0
+                ),
+                llm_call_stats=_zero_usage_metrics(),
             )
         ]
 

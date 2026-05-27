@@ -32,7 +32,15 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 @pytest_asyncio.fixture
 async def fresh_pg(pg_url: str):
-    """Drop and recreate the ``public`` schema before each test."""
+    """Drop and recreate the ``public`` schema; restore HEAD after the test.
+
+    Setup wipes the schema so each migration test starts from a known
+    empty state. Teardown wipes again and re-runs migrations so the
+    session-shared ``pg_engine`` fixture sees HEAD again — without this
+    restore, any test file collected after ``test_migrations.py`` (e.g.
+    ``test_usage_repository.py``) inherits an empty ``public`` schema and
+    fails on its first DB query.
+    """
     engine = create_async_engine(pg_url)
     async with engine.begin() as conn:
         await conn.execute(sa.text("DROP SCHEMA public CASCADE"))
@@ -41,6 +49,7 @@ async def fresh_pg(pg_url: str):
     async with engine.begin() as conn:
         await conn.execute(sa.text("DROP SCHEMA public CASCADE"))
         await conn.execute(sa.text("CREATE SCHEMA public"))
+    await run_migrations(pg_url)
     await engine.dispose()
 
 

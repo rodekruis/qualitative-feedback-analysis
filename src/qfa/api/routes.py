@@ -30,16 +30,15 @@ from qfa.api.schemas import (
 )
 from qfa.domain.models import (
     AnalysisRequestModel,
-    CallContext,
     CodingAssignmentRequestModel,
     FeedbackRecordModel,
-    Operation,
     SensitivityAnalysisRequestModel,
     TenantApiKey,
 )
 from qfa.domain.models import (
     SummaryRequestModel as DomainSummaryRequest,
 )
+from qfa.domain.usage_models import CallContext, Operation
 from qfa.services.orchestrator import Orchestrator
 
 router = APIRouter()
@@ -183,7 +182,7 @@ async def summarize(
 
 
 @router.post(
-    "/v1/assign_codes",
+    "/v1/assign-codes",
     response_model=ApiAssignCodesResponse,
     status_code=200,
     tags=["Inference"],
