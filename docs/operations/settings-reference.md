@@ -16,11 +16,28 @@ Every environment variable the app reads. Settings are loaded by `pydantic-setti
 | `LLM_MAX_TOTAL_TOKENS` | no | `100000` | Token budget guard. Estimated as `len(text) / LLM_CHARS_PER_TOKEN`. |
 | `LLM_CHARS_PER_TOKEN` | no | `4` | Conversion ratio used by the token budget guard. |
 
+## Embedding (`EMBEDDING_*`)
+
+Only required for `mode=hierarchical`. When `EMBEDDING_MODEL_PATH` /
+`EMBEDDING_REVISION_HASH` are unset, hierarchical requests return 502
+`analysis_unavailable`.
+
+| Variable | Required | Default | Notes |
+|---|---|---|---|
+| `EMBEDDING_MODEL_PATH` | for hierarchical | `""` | Path to the mirrored BGE-M3 `model.onnx`. Never a HuggingFace URL in production. |
+| `EMBEDDING_TOKENIZER_PATH` | for hierarchical | `""` | Path to the mirrored tokenizer file. Defaults to `EMBEDDING_MODEL_PATH` when empty. |
+| `EMBEDDING_REVISION_HASH` | for hierarchical | `""` | Pinned artifact revision/content hash. |
+| `EMBEDDING_INTRA_OP_NUM_THREADS` | no | core count | onnxruntime intra-op threads for the batched encode. |
+
 ## Orchestrator (`ORCHESTRATOR_*`)
 
 | Variable | Required | Default | Notes |
 |---|---|---|---|
 | `ORCHESTRATOR_METADATA_FIELDS_TO_INCLUDE` | no | `[]` | JSON list. Metadata keys allowed to reach the LLM. |
+| `ORCHESTRATOR_MIN_CLUSTER_SIZE` | no | `5` | HDBSCAN `min_cluster_size` for the map-step chunking (`mode=hierarchical`). |
+| `ORCHESTRATOR_CLUSTERING_METRIC` | no | `euclidean` | HDBSCAN distance metric. |
+| `ORCHESTRATOR_CODING_TREND_DATE_FIELD` | no | `created` | Metadata key holding the record date for the coding-trend table. |
+| `ORCHESTRATOR_CODING_TREND_CODE_FIELDS` | no | `["codes"]` | JSON list. Metadata keys holding coding labels (comma-separated strings). |
 
 ## Auth (`AUTH_*`)
 
