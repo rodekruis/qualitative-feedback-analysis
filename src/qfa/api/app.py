@@ -550,11 +550,12 @@ def build_llm_client(settings: LLMSettings) -> LiteLLMClient:
 def build_embedder(settings: EmbeddingSettings) -> EmbeddingPort | None:
     """Build the self-hosted embedding adapter, or return None when unconfigured.
 
-    The embedder is optional: when ``EMBEDDING_MODEL_PATH`` is not set, the
-    hierarchical analysis path still works but silently falls back (the
-    orchestrator must handle a ``None`` embedder).  Production deployments
-    set all three path variables; local / CI runs omit them so the normal
-    test suite never downloads a multi-GB model.
+    The embedder is optional: when ``EMBEDDING_MODEL_PATH`` is not set this
+    returns ``None``, and a ``mode=hierarchical`` request then fails with
+    502 ``analysis_unavailable`` (the orchestrator raises ``AnalysisError``
+    when its embedder is ``None``); ``single_pass`` is unaffected.
+    Production deployments set the path variables; local / CI runs omit them
+    so the normal test suite never downloads a multi-GB model.
 
     Parameters
     ----------
