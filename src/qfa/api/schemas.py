@@ -420,7 +420,7 @@ class ApiFeedbackRecord(BaseModel):
 
 
 class ApiAssignCodesRequest(BaseModel):
-    """Request body for ``POST /v1/assign_codes``."""
+    """Request body for ``POST /v1/assign-codes``."""
 
     model_config = {
         "json_schema_extra": {"examples": _assign_codes_request_examples()},
@@ -456,7 +456,7 @@ class ApiCodedFeedbackRecord(BaseModel):
 
 
 class ApiAssignCodesResponse(BaseModel):
-    """Response body for ``POST /v1/assign_codes``."""
+    """Response body for ``POST /v1/assign-codes``."""
 
     coded_feedback_records: list[ApiCodedFeedbackRecord]
 

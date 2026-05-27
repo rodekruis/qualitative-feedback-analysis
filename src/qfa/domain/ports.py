@@ -11,12 +11,15 @@ from typing import Protocol
 from qfa.domain.models import (
     AuthKeyInfo,
     KeyCreationResponse,
-    LLMCallRecord,
     LLMResponse,
     T_Response,
     TenantApiKey,
     TenantInfo,
-    UsageStats,
+)
+from qfa.domain.usage_models import (
+    LLMCallRecord,
+    OperationUsageStats,
+    TenantUsageStats,
 )
 
 
@@ -71,12 +74,12 @@ class UsageRepositoryPort(Protocol):
         """
         ...
 
-    async def get_usage_stats(
+    async def get_usage_stats_for_one_tenant(
         self,
         tenant_id: str,
         from_: dt.datetime | None = None,
         to: dt.datetime | None = None,
-    ) -> UsageStats:
+    ) -> TenantUsageStats:
         """Get aggregated usage stats for a single tenant.
 
         Parameters
@@ -90,16 +93,17 @@ class UsageRepositoryPort(Protocol):
 
         Returns
         -------
-        UsageStats | None
-            Stats for the tenant, or None if no calls in window.
+        TenantUsageStats
+            Stats for the tenant. When no calls match the window, a
+            zero-valued ``TenantUsageStats`` is returned (never None).
         """
         ...
 
-    async def get_all_usage_stats(
+    async def get_all_usage_by_tenant(
         self,
         from_: dt.datetime | None = None,
         to: dt.datetime | None = None,
-    ) -> list[UsageStats]:
+    ) -> list[TenantUsageStats]:
         """Get per-tenant stats plus a grand total entry (tenant_id=None).
 
         Parameters
@@ -111,8 +115,35 @@ class UsageRepositoryPort(Protocol):
 
         Returns
         -------
-        list[UsageStats]
+        list[TenantUsageStats]
             Per-tenant stats followed by a grand total entry.
+        """
+        ...
+
+    async def get_all_usage_by_operation(
+        self,
+        from_: dt.datetime | None = None,
+        to: dt.datetime | None = None,
+    ) -> list[OperationUsageStats]:
+        """Get per-operation stats with nested per-tenant breakdown plus grand total.
+
+        Inverse hierarchy of :meth:`get_all_usage_by_tenant`: top-level
+        aggregation is by orchestrator operation; each operation block
+        carries a tuple of per-tenant blocks. The grand-total entry
+        (``operation=None``) is always emitted last, matching the
+        convention used by :meth:`get_all_usage_by_tenant`.
+
+        Parameters
+        ----------
+        from_ : datetime | None
+            Inclusive lower bound (UTC tz-aware), or None.
+        to : datetime | None
+            Exclusive upper bound (UTC tz-aware), or None.
+
+        Returns
+        -------
+        list[OperationUsageStats]
+            Per-operation stats followed by a grand total entry.
         """
         ...
 

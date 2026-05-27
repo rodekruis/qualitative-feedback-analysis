@@ -13,14 +13,16 @@ from qfa.domain.errors import (
 from qfa.domain.models import (
     AnalysisRequestModel,
     AnalysisResultModel,
-    CallContext,
-    CallStatus,
     FeedbackRecordModel,
     LLMResponse,
-    Operation,
     TenantApiKey,
 )
 from qfa.domain.ports import AnonymizationPort, LLMPort
+from qfa.domain.usage_models import (
+    CallContext,
+    CallStatus,
+    Operation,
+)
 
 __all__ = [
     "AnalysisError",
