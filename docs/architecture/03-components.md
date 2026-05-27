@@ -26,14 +26,14 @@ flowchart LR
     orch -->|complete| tracking
     orch -->|anonymize / deanonymize| presidio
     tracking -.->|record_call| sqlrepo
-    routes_usage["/v1/usage<br/>route"] -->|get_usage_stats| sqlrepo
+    routes_usage["/v1/usage<br/>route"] -->|get_usage_stats_for_one_tenant| sqlrepo
 ```
 
 | Port | Adapter(s) | What it owns |
 |---|---|---|
 | {py:class}`~qfa.domain.ports.LLMPort` | {py:class}`~qfa.adapters.llm_client.LiteLLMClient`; optionally wrapped by {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter` when `DB_TRACK_USAGE=true` | One method, `complete(system_message, user_message, tenant_id, response_model, timeout)`. Returns `LLMResponse[T_Response]` carrying the structured output plus token counts and cost. |
 | {py:class}`~qfa.domain.ports.AnonymizationPort` | {py:class}`~qfa.adapters.presidio_anonymizer.PresidioAnonymizer` | `anonymize(text) -> (text, mapping)` and `deanonymize(text, mapping) -> text`. The mapping is held in memory for the request lifetime, then discarded. |
-| {py:class}`~qfa.domain.ports.UsageRepositoryPort` | {py:class}`~qfa.adapters.db.SqlAlchemyUsageRepository` | Writes one {py:class}`~qfa.domain.models.LLMCallRecord` per LLM call (from {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter`) and reads aggregate stats (from the `/v1/usage` routes). |
+| {py:class}`~qfa.domain.ports.UsageRepositoryPort` | {py:class}`~qfa.adapters.usage_repository.SqlAlchemyUsageRepository` | Writes one {py:class}`~qfa.domain.usage_models.LLMCallRecord` per LLM call (from {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter`) and reads aggregate stats (from the `/v1/usage` routes). |
 
 The tracking decorator is the only place hex's "stack adapters at the composition root" earns its keep — {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter` is itself an {py:class}`~qfa.domain.ports.LLMPort`, so the orchestrator never knows whether tracking is on.
 
@@ -57,7 +57,7 @@ Each method is pure use-case logic — no scope or correlation plumbing. `call_s
 1. Load settings.
 2. Construct the base {py:class}`~qfa.domain.ports.LLMPort` (a {py:class}`~qfa.adapters.llm_client.LiteLLMClient`).
 3. If `DB_TRACK_USAGE` is on:
-   - Construct the {py:class}`~qfa.domain.ports.UsageRepositoryPort` (a {py:class}`~qfa.adapters.db.SqlAlchemyUsageRepository`).
+   - Construct the {py:class}`~qfa.domain.ports.UsageRepositoryPort` (a {py:class}`~qfa.adapters.usage_repository.SqlAlchemyUsageRepository`).
    - Wrap the base {py:class}`~qfa.domain.ports.LLMPort` in a {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter` that delegates to the inner port and records each call to the repository.
 4. Construct the {py:class}`~qfa.domain.ports.AnonymizationPort` (a {py:class}`~qfa.adapters.presidio_anonymizer.PresidioAnonymizer`).
 5. Construct the {py:class}`~qfa.services.orchestrator.Orchestrator` with the (possibly wrapped) ports.

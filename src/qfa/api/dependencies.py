@@ -8,8 +8,9 @@ from fastapi import Depends, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from qfa.domain.errors import AuthenticationError, AuthorizationError
-from qfa.domain.models import CallContext, Operation, TenantApiKey
+from qfa.domain.models import TenantApiKey
 from qfa.domain.ports import UsageRepositoryPort
+from qfa.domain.usage_models import CallContext, Operation
 from qfa.services.auth_orchestrator import AuthOrchestrator
 from qfa.services.call_context import call_scope
 from qfa.services.orchestrator import Orchestrator

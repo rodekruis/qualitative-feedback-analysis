@@ -148,7 +148,8 @@ class TestAnalyzeSuccess:
         """
         from uuid import UUID
 
-        from qfa.domain.models import AnalysisResultModel, Operation
+        from qfa.domain.models import AnalysisResultModel
+        from qfa.domain.usage_models import Operation
         from qfa.services.call_context import current_call_context
 
         captured: dict = {}

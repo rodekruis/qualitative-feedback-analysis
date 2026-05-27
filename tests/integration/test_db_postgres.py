@@ -1,93 +1,31 @@
-"""Tier-2 aggregation tests for the SQLAlchemy usage repository against PostgreSQL.
+"""Tier-2 schema tests for the ``llm_calls`` table against PostgreSQL.
 
-These exercise the queries that ``percentile_cont`` etc. cannot run on
-sqlite. They depend on the session-scoped ``pg_engine`` fixture in
-``tests/integration/conftest.py`` and are gated by ``@pytest.mark.integration``.
+Covers the parts of ``qfa.adapters.db`` whose behaviour is database-level
+— CHECK constraints declared on the table, declared index presence — and
+which therefore can't be exercised against SQLite.
+
+Repository-level tests (``SqlAlchemyUsageRepository.record_call`` /
+``get_usage_stats`` / ``get_all_usage_by_tenant``) live alongside the class
+they exercise, in ``tests/integration/test_usage_repository.py``.
 """
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from decimal import Decimal
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 
 from qfa.adapters.db import llm_calls
-from qfa.domain.models import CallStatus, LLMCallRecord, Operation
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 
 def _now() -> datetime:
     return datetime.now(UTC)
-
-
-def _record(
-    *,
-    tenant_id: str = "t1",
-    operation: Operation = Operation.ANALYZE,
-    timestamp: datetime | None = None,
-    cost_usd: Decimal = Decimal("0.0001"),
-    input_tokens: int = 100,
-    output_tokens: int = 50,
-    call_duration_ms: int = 500,
-    status: CallStatus = CallStatus.OK,
-    error_class: str | None = None,
-    model: str = "gpt-4-test",
-    call_id: UUID | None = None,
-) -> LLMCallRecord:
-    return LLMCallRecord(
-        tenant_id=tenant_id,
-        operation=operation,
-        call_id=call_id if call_id is not None else uuid4(),
-        timestamp=timestamp or _now(),
-        call_duration_ms=call_duration_ms,
-        model=model,
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
-        cost_usd=cost_usd,
-        status=status,
-        error_class=error_class,
-    )
-
-
-class TestRoundTrip:
-    async def test_record_call_round_trips_decimal_at_six_decimals(self, pg_repo):
-        rec = _record(cost_usd=Decimal("12.345678"))
-        await pg_repo.record_call(rec)
-        stats = await pg_repo.get_usage_stats("t1")
-        assert stats is not None
-        assert stats.total_cost_usd == Decimal("12.345678")
-
-    async def test_record_call_persists_failure_with_error_class(self, pg_repo):
-        rec = _record(
-            status=CallStatus.ERROR,
-            error_class="LLMTimeoutError",
-            input_tokens=0,
-            output_tokens=0,
-            cost_usd=Decimal("0"),
-        )
-        await pg_repo.record_call(rec)
-        stats = await pg_repo.get_usage_stats("t1")
-        assert stats is not None
-        assert stats.total_calls == 1
-        assert stats.failed_calls == 1
-        assert stats.total_cost_usd == Decimal("0")
-
-    async def test_call_id_round_trips_through_postgres(self, pg_repo, pg_engine):
-        """A UUID ``call_id`` written via the repo reads back unchanged from PG.
-
-        SQLite uses CHAR(32) for ``sa.Uuid`` whereas Postgres uses the
-        native UUID type; this guards the Postgres path specifically.
-        """
-        fixed = uuid4()
-        await pg_repo.record_call(_record(call_id=fixed))
-        async with pg_engine.connect() as conn:
-            row = (await conn.execute(sa.select(llm_calls.c.call_id))).one()
-        assert row.call_id == fixed
 
 
 class TestCheckConstraint:
@@ -138,73 +76,6 @@ class TestCheckConstraint:
                         error_class=None,
                     )
                 )
-
-
-class TestTimeFilterHalfOpen:
-    async def test_from_inclusive_to_exclusive(self, pg_repo):
-        anchor = datetime(2026, 4, 1, 12, 0, tzinfo=UTC)
-        # Row exactly at `from` is included; row exactly at `to` is excluded.
-        await pg_repo.record_call(_record(timestamp=anchor))  # included
-        await pg_repo.record_call(
-            _record(timestamp=anchor + timedelta(hours=1))
-        )  # included
-        await pg_repo.record_call(
-            _record(timestamp=anchor + timedelta(hours=2))
-        )  # excluded — equal to `to`
-        await pg_repo.record_call(
-            _record(timestamp=anchor - timedelta(seconds=1))
-        )  # excluded — before `from`
-
-        stats = await pg_repo.get_usage_stats(
-            "t1",
-            from_=anchor,
-            to=anchor + timedelta(hours=2),
-        )
-        assert stats is not None
-        assert stats.total_calls == 2
-
-
-class TestAlphaPolicy:
-    async def test_cost_and_tokens_scope_to_ok_only(self, pg_repo):
-        await pg_repo.record_call(
-            _record(
-                cost_usd=Decimal("1.0"),
-                input_tokens=100,
-                output_tokens=50,
-                status=CallStatus.OK,
-            )
-        )
-        await pg_repo.record_call(
-            _record(
-                cost_usd=Decimal("0"),
-                input_tokens=0,
-                output_tokens=0,
-                status=CallStatus.ERROR,
-                error_class="LLMError",
-                model="",
-            )
-        )
-        stats = await pg_repo.get_usage_stats("t1")
-        assert stats is not None
-        assert stats.total_calls == 2
-        assert stats.failed_calls == 1
-        assert stats.total_cost_usd == Decimal("1.0")
-        assert stats.input_tokens.total == 100
-        assert stats.output_tokens.total == 50
-
-
-class TestGetAllUsageStats:
-    async def test_per_tenant_alphabetical_with_grand_total(self, pg_repo):
-        await pg_repo.record_call(_record(tenant_id="b-tenant"))
-        await pg_repo.record_call(_record(tenant_id="a-tenant"))
-        await pg_repo.record_call(_record(tenant_id="a-tenant"))
-
-        all_stats = await pg_repo.get_all_usage_stats()
-        ids = [s.tenant_id for s in all_stats]
-        assert ids == ["a-tenant", "b-tenant", None]
-
-        grand = next(s for s in all_stats if s.tenant_id is None)
-        assert grand.total_calls == 3
 
 
 class TestIndexUsage:

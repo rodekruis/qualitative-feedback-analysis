@@ -18,7 +18,6 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 import qfa
 from qfa.adapters.db import (
     SQLAlchemyAuthAdapter,
-    SqlAlchemyUsageRepository,
     create_async_engine_from_settings,
     create_session_factory,
 )
@@ -26,6 +25,7 @@ from qfa.adapters.env_auth import EnvironmentAuthLookupAdapter
 from qfa.adapters.llm_client import LiteLLMClient
 from qfa.adapters.presidio_anonymizer import PresidioAnonymizer
 from qfa.adapters.tracking_llm import TrackingLLMAdapter
+from qfa.adapters.usage_repository import SqlAlchemyUsageRepository
 from qfa.api.routes import router
 from qfa.api.routes_admin import router as auth_router
 from qfa.api.routes_usage import router as usage_router
