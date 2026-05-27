@@ -11,6 +11,7 @@ from typing import Callable, ClassVar, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from qfa.domain.clustering_models import CodingTrendTable
 from qfa.domain.errors import (
     AnalysisError,
     AnalysisTimeoutError,
@@ -34,13 +35,20 @@ from qfa.domain.models import (
     SummaryRequestModel,
     SummaryResultModel,
 )
-from qfa.domain.ports import AnonymizationPort, LLMPort
+from qfa.domain.ports import AnonymizationPort, EmbeddingPort, LLMPort
 from qfa.domain.sensitivity_types import SENSITIVITY_TYPE_DESCRIPTIONS
+from qfa.services.clustering import cluster_records
 from qfa.services.coding_classifier import (
     JudgeResponse,
     build_judge_messages,
     build_pick_messages,
     parse_selected_indices,
+)
+from qfa.services.coding_trends import build_coding_trend_table
+from qfa.services.hierarchical_prompts import (
+    build_map_system_message,
+    build_reduce_system_message,
+    build_reduce_user_message,
 )
 from qfa.services.prompts import (
     ANALYZE_ACTION_PROMPT,
@@ -239,9 +247,11 @@ class Orchestrator:
         settings: OrchestratorSettings,
         llm_timeout_seconds: float,
         max_total_tokens: int,
+        embedder: EmbeddingPort | None = None,
     ) -> None:
         self._llm = llm
         self._anonymizer: AnonymizationPort = anonymizer
+        self._embedder = embedder
         self._settings = settings
         self._llm_timeout_seconds = llm_timeout_seconds
         self._max_total_tokens = max_total_tokens
@@ -355,6 +365,326 @@ class Orchestrator:
             quality_score=quality_score,
             uncertainty_explanation=uncertainty_explanation,
         )
+
+    async def analyze_hierarchical(
+        self,
+        request: AnalysisRequestModel,
+        deadline: datetime,
+        anonymize: bool = True,
+    ) -> AnalysisResultModel:
+        """Analyse a corpus larger than the single-call token cap.
+
+        Flow: anonymise each record → deterministic coding-trend table →
+        embed record texts (synchronous, CPU-bound) → cluster (HDBSCAN) →
+        MAP each chunk (leaf LLM call + leaf judge) → REDUCE the partials
+        (with the trend table), recursing when a chunk or the partial set
+        overflows the token budget. The returned ``confidence`` is the
+        coverage-weighted mean of the per-chunk judge scores; the minimum
+        chunk score is reported as a floor in ``uncertainty_explanation``.
+
+        Anonymisation happens before embedding and before every LLM call.
+        Guardrails are applied at both the map and reduce prompts.
+
+        Raises
+        ------
+        AnalysisError
+            When no embedder is configured or the corpus cannot be analysed.
+        """
+        if self._embedder is None:
+            raise AnalysisError(
+                "Hierarchical analysis is not available: no embedder configured"
+            )
+
+        # 1. Anonymise each record's text up front (before embed + LLM).
+        anonymized_records, mapping = self._anonymize_records(
+            request.feedback_records, anonymize
+        )
+        if anonymize:
+            _, prompt_map = self._anonymizer.anonymize(request.prompt)
+            mapping = {**mapping, **prompt_map}
+        anonymized_prompt = request.prompt
+        if anonymize:
+            anonymized_prompt, _ = self._anonymizer.anonymize(request.prompt)
+
+        # 2. Deterministic coding-trend table from ORIGINAL metadata
+        #    (metadata is not anonymised; codes/dates are not PII).
+        trend_table = build_coding_trend_table(
+            request.feedback_records,
+            date_field=self._settings.coding_trend_date_field,
+            code_fields=self._settings.coding_trend_code_fields,
+        )
+
+        # 3. Embed (synchronous, CPU-bound) then cluster into budget chunks.
+        texts = tuple(r.text for r in anonymized_records)
+        vectors = self._embedder.embed(texts)
+        chunks = cluster_records(
+            records=anonymized_records,
+            vectors=vectors,
+            min_cluster_size=self._settings.min_cluster_size,
+            max_total_tokens=self._max_total_tokens,
+            chars_per_token=self._settings.chars_per_token,
+            metric=self._settings.clustering_metric,
+        )
+
+        # 4. MAP: one partial analysis + one leaf judge score per chunk.
+        partials: list[str] = []
+        chunk_sizes: list[int] = []
+        chunk_scores: list[float] = []
+        for chunk in chunks:
+            partial, score = await self._map_chunk(
+                anonymized_prompt, chunk.records, request.tenant_id, deadline
+            )
+            partials.append(partial)
+            chunk_sizes.append(len(chunk.records))
+            chunk_scores.append(score)
+
+        # 5. REDUCE the partials (recursively tree-reduce on overflow).
+        synthesis = await self._reduce_partials(
+            anonymized_prompt,
+            tuple(partials),
+            trend_table,
+            request.tenant_id,
+            deadline,
+        )
+
+        # 6. Aggregate per-chunk faithfulness into one confidence.
+        confidence = self._coverage_weighted_mean(chunk_scores, chunk_sizes)
+        floor = min(chunk_scores) if chunk_scores else 0.0
+        uncertainty = (
+            f"Leaf-judged confidence is a coverage-weighted mean over "
+            f"{len(chunks)} chunk(s); the lowest single-chunk faithfulness "
+            f"was {floor:.2f}."
+        )
+
+        # 7. De-anonymise the synthesis (retain PERSON placeholders as in `analyze`).
+        analysis_text = synthesis
+        if anonymize:
+            restorable = {
+                placeholder: original
+                for placeholder, original in mapping.items()
+                if not self._is_retained_analyze_placeholder(placeholder)
+            }
+            analysis_text = self._anonymizer.deanonymize(analysis_text, restorable)
+
+        return AnalysisResultModel(
+            result=f"{ANALYZE_DISCLAIMER}{analysis_text}",
+            confidence=confidence,
+            uncertainty_explanation=uncertainty,
+            coding_trends=trend_table,
+        )
+
+    def _anonymize_records(
+        self,
+        records: tuple[FeedbackRecordModel, ...],
+        anonymize: bool,
+    ) -> tuple[tuple[FeedbackRecordModel, ...], dict[str, str]]:
+        """Anonymise each record's text, returning new records + merged mapping.
+
+        Metadata is left untouched (codes/dates are not PII and feed the
+        deterministic trend table). When ``anonymize`` is False, records are
+        returned unchanged with an empty mapping.
+        """
+        if not anonymize:
+            return records, {}
+        merged: dict[str, str] = {}
+        new_records: list[FeedbackRecordModel] = []
+        for record in records:
+            redacted, mapping = self._anonymizer.anonymize(record.text)
+            merged.update(mapping)
+            new_records.append(record.model_copy(update={"text": redacted}))
+        return tuple(new_records), merged
+
+    async def _map_chunk(
+        self,
+        analyst_prompt: str,
+        records: tuple[FeedbackRecordModel, ...],
+        tenant_id: str,
+        deadline: datetime,
+    ) -> tuple[str, float]:
+        """Produce one partial analysis for a chunk and judge it at the leaf.
+
+        The records are already anonymised. Returns ``(partial_text,
+        faithfulness_score)``; on judge failure the score floors at 0.0 and
+        is still counted in the weighted mean.
+        """
+        system_message = build_map_system_message()
+        user_message = build_analyze_user_message(analyst_prompt, records)
+        timeout = self._check_deadline_and_get_timeout(deadline)
+        response = await self._llm.complete(
+            system_message=system_message,
+            user_message=user_message,
+            tenant_id=tenant_id,
+            response_model=str,
+            timeout=timeout,
+        )
+        partial = response.structured
+
+        # Leaf judge: the judge sees this chunk verbatim.
+        try:
+            judge_timeout = self._check_deadline_and_get_timeout(deadline)
+            judge_system = build_analyze_judge_system_message(
+                source_text=user_message,
+                analyst_prompt=analyst_prompt,
+                analysis=partial,
+            )
+            judge_response = await self._llm.complete(
+                system_message=judge_system,
+                user_message=_JUDGE_USER_MESSAGE,
+                tenant_id=tenant_id,
+                response_model=AnalyzeJudgeResult,
+                timeout=judge_timeout,
+            )
+            score = judge_response.structured.quality_score
+        except (
+            LLMError,
+            LLMTimeoutError,
+            LLMRateLimitError,
+            ValidationError,
+            AnalysisError,
+        ) as exc:
+            logger.warning(
+                "Hierarchical leaf judge failed: error_class=%s", type(exc).__name__
+            )
+            score = 0.0
+        return partial, score
+
+    async def _reduce_partials(
+        self,
+        analyst_prompt: str,
+        partials: tuple[str, ...],
+        trend_table: CodingTrendTable | None,
+        tenant_id: str,
+        deadline: datetime,
+    ) -> str:
+        """Synthesise partials into one analysis, tree-reducing on overflow.
+
+        If the reduce user message would exceed the token budget, the
+        partials are split into budget-sized groups, each reduced to an
+        intermediate synthesis, and the reduce is applied again over those
+        intermediates (recursion trigger 2). The trend table is attached to
+        the FINAL reduce only (intermediates pass ``None``) so it anchors
+        the top-level synthesis without being double-counted.
+
+        Convergence guarantee: when all groups are singletons and the set of
+        intermediates has the same length as the input partials (no progress),
+        we emit a single LLM call on the partials anyway so the recursion
+        always terminates.
+        """
+        system_message = build_reduce_system_message()
+
+        def _fits(items: tuple[str, ...], table: CodingTrendTable | None) -> bool:
+            user = build_reduce_user_message(
+                analyst_prompt=analyst_prompt,
+                partial_analyses=items,
+                trend_table=table,
+            )
+            return (
+                len(system_message + user) // self._settings.chars_per_token
+                <= self._max_total_tokens
+            )
+
+        # Base case: everything fits in one reduce call, or only one partial remains.
+        if len(partials) <= 1 or _fits(partials, trend_table):
+            user_message = build_reduce_user_message(
+                analyst_prompt=analyst_prompt,
+                partial_analyses=partials,
+                trend_table=trend_table,
+            )
+            timeout = self._check_deadline_and_get_timeout(deadline)
+            response = await self._llm.complete(
+                system_message=system_message,
+                user_message=user_message,
+                tenant_id=tenant_id,
+                response_model=str,
+                timeout=timeout,
+            )
+            return response.structured
+
+        # Recursive case: group partials to budget, reduce each group, recurse.
+        groups = self._group_partials_to_budget(
+            analyst_prompt, system_message, partials
+        )
+
+        # Convergence safeguard: if grouping produced all singleton groups
+        # (every partial overflows on its own), we cannot shrink the partial
+        # count further. Emit one reduce call over all partials to terminate.
+        if all(len(g) == 1 for g in groups) and len(groups) == len(partials):
+            user_message = build_reduce_user_message(
+                analyst_prompt=analyst_prompt,
+                partial_analyses=partials,
+                trend_table=trend_table,
+            )
+            timeout = self._check_deadline_and_get_timeout(deadline)
+            response = await self._llm.complete(
+                system_message=system_message,
+                user_message=user_message,
+                tenant_id=tenant_id,
+                response_model=str,
+                timeout=timeout,
+            )
+            return response.structured
+
+        intermediates: list[str] = []
+        for group in groups:
+            intermediate = await self._reduce_partials(
+                analyst_prompt, group, None, tenant_id, deadline
+            )
+            intermediates.append(intermediate)
+        return await self._reduce_partials(
+            analyst_prompt, tuple(intermediates), trend_table, tenant_id, deadline
+        )
+
+    def _group_partials_to_budget(
+        self,
+        analyst_prompt: str,
+        system_message: str,
+        partials: tuple[str, ...],
+    ) -> list[tuple[str, ...]]:
+        """Greedily pack partials into groups whose reduce prompt fits the budget.
+
+        Guarantees progress: a single partial that alone overflows still
+        occupies its own group (the next reduce layer will summarise it,
+        shrinking it). Produces at least two groups when more than one
+        partial is given (so recursion strictly reduces the count).
+        """
+        budget = self._max_total_tokens
+        groups: list[tuple[str, ...]] = []
+        current: list[str] = []
+        for partial in partials:
+            candidate = (*current, partial)
+            user = build_reduce_user_message(
+                analyst_prompt=analyst_prompt,
+                partial_analyses=candidate,
+                trend_table=None,
+            )
+            fits = (
+                len(system_message + user) // self._settings.chars_per_token <= budget
+            )
+            if current and not fits:
+                groups.append(tuple(current))
+                current = [partial]
+            else:
+                current.append(partial)
+        if current:
+            groups.append(tuple(current))
+        # Ensure the recursion shrinks the partial count (avoid 1 group == input).
+        if len(groups) == 1 and len(partials) > 1:
+            mid = len(partials) // 2
+            groups = [partials[:mid], partials[mid:]]
+        return groups
+
+    @staticmethod
+    def _coverage_weighted_mean(scores: list[float], weights: list[int]) -> float:
+        """Coverage-weighted mean of leaf scores (weighted by chunk record count).
+
+        Returns 0.0 for an empty input. Each chunk's faithfulness is weighted
+        by how many records it covers, so a large chunk influences the
+        confidence more than a tiny outlier chunk.
+        """
+        total_weight = sum(weights)
+        if total_weight == 0:
+            return 0.0
+        return sum(s * w for s, w in zip(scores, weights, strict=True)) / total_weight
 
     async def summarize(
         self,
