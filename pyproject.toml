@@ -44,6 +44,8 @@ dependencies = [
     "langdetect>=1.0.9",
     "hdbscan>=0.8.43",
     "numpy>=2.4.4",
+    "onnxruntime>=1.26.0",
+    "tokenizers>=0.22.2",
 ]
 
 [tool.uv.sources] # include spacy models through custom-defined sources https://stackoverflow.com/a/79768491
