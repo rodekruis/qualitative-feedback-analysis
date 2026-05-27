@@ -18,6 +18,8 @@ from qfa.api.schemas import (
     ApiAssignCodesResponse,
     ApiAssignedCode,
     ApiCodedFeedbackRecord,
+    ApiCodingTrendCell,
+    ApiCodingTrends,
     ApiDetectSensitiveRequest,
     ApiDetectSensitiveResponse,
     ApiFeedbackItemSensitivityRating,
@@ -83,13 +85,17 @@ async def analyze(
     returns 200 with ``quality_score=null`` and a constant unavailable
     message in ``uncertainty_explanation``.
 
+    **Modes**:
+
+    - ``single_pass`` (default) — one LLM call within the token cap.
+    - ``hierarchical`` — embed → cluster → map → reduce pipeline for
+      large corpora (> 5x the single-call token cap).  Returns additional
+      ``confidence`` and ``coding_trends`` fields in the response.
+
     **Edge cases**:
 
-    - ``mode`` other than ``"single_pass"`` → 422
-      (see ``mode`` field description for supported modes).
-    - Input that exceeds the token cap → 413 ``payload_too_large``
-      (reduce the batch size; large-corpus analysis is tracked in
-      `#124 <https://github.com/rodekruis/qualitative-feedback-analysis/issues/124>`_).
+    - Input that exceeds the token cap for ``single_pass`` → 413
+      ``payload_too_large`` (use ``mode=hierarchical`` for large corpora).
     - Injection-like text in record content or metadata is neutralised
       structurally by the envelope; regex-based detection is a separate
       guard handled by the LLM adapter.
@@ -109,7 +115,8 @@ async def analyze(
     -------
     AnalyzeResponse
         The analysis result with quality score, uncertainty explanation,
-        feedback record count, and request ID.
+        feedback record count, and request ID.  ``confidence`` and
+        ``coding_trends`` are populated only for ``hierarchical`` mode.
     """
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
@@ -125,9 +132,25 @@ async def analyze(
         mode=body.mode,
     )
 
-    result = await orchestrator.analyze(
-        domain_request, deadline, anonymize=body.anonymize
-    )
+    if body.mode == "hierarchical":
+        result = await orchestrator.analyze_hierarchical(
+            domain_request, deadline, anonymize=body.anonymize
+        )
+    else:
+        result = await orchestrator.analyze(
+            domain_request, deadline, anonymize=body.anonymize
+        )
+
+    # Map coding_trends domain model → API schema when present.
+    api_coding_trends: ApiCodingTrends | None = None
+    if result.coding_trends is not None:
+        api_coding_trends = ApiCodingTrends(
+            periods=list(result.coding_trends.periods),
+            cells=[
+                ApiCodingTrendCell(code=c.code, period=c.period, count=c.count)
+                for c in result.coding_trends.cells
+            ],
+        )
 
     return ApiAnalyzeResponse(
         analysis=result.result,
@@ -136,6 +159,8 @@ async def analyze(
         feedback_record_count=len(body.feedback_records),
         request_id=request.state.request_id,
         used_anonymization=body.anonymize,
+        confidence=result.confidence,
+        coding_trends=api_coding_trends,
     )
 
 

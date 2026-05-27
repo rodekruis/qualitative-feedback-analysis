@@ -112,12 +112,40 @@ class ApiAnalyzeRequest(BaseModel):
             " identifiable information (PII) is present in the input."
         ),
     )
-    mode: Literal["single_pass"] = Field(
+    mode: Literal["single_pass", "hierarchical"] = Field(
         default="single_pass",
         description=(
-            "Analysis mode. ``single_pass`` is the only supported value in this"
-            " version; additional modes may be added in future versions."
+            "Analysis mode. ``single_pass`` (default) runs a single LLM call"
+            " within the token cap. ``hierarchical`` runs embed → cluster → map"
+            " → reduce over corpora larger than the single-call cap (#124)."
         ),
+    )
+
+
+class ApiCodingTrendCell(BaseModel):
+    """One cell in the coding-trend table: a (code, period, count) triple."""
+
+    code: str = Field(description="Coding label extracted from record metadata.")
+    period: str = Field(
+        description="Calendar period (YYYY-MM) extracted from the date field."
+    )
+    count: int = Field(
+        ge=0, description="Number of records with this code in this period."
+    )
+
+
+class ApiCodingTrends(BaseModel):
+    """Deterministic code-by-period frequency table for the hierarchical path.
+
+    Built from record metadata without an LLM call.  ``null`` for
+    ``single_pass`` or when the required metadata fields are absent.
+    """
+
+    periods: list[str] = Field(
+        description="Ordered list of calendar periods (YYYY-MM) present in the corpus."
+    )
+    cells: list[ApiCodingTrendCell] = Field(
+        description="(code, period, count) triples covering the whole corpus."
     )
 
 
@@ -147,6 +175,22 @@ class ApiAnalyzeResponse(BaseModel):
     request_id: str = Field(description="Unique identifier for this request.")
     used_anonymization: bool = Field(
         description="Indicates whether anonymization was applied to the feedback text.",
+    )
+    confidence: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Coverage-weighted mean of per-chunk judge faithfulness scores for"
+            " the ``hierarchical`` path; ``null`` for ``single_pass``."
+        ),
+    )
+    coding_trends: ApiCodingTrends | None = Field(
+        default=None,
+        description=(
+            "Deterministic code-by-period frequency table; ``null`` for"
+            " ``single_pass`` or when metadata is absent."
+        ),
     )
 
 

@@ -198,6 +198,7 @@ ignore_imports = [
     "qfa.api.app -> qfa.adapters.db",
     "qfa.api.app -> qfa.adapters.usage_repository",
     "qfa.api.app -> qfa.adapters.env_auth",
+    "qfa.api.app -> qfa.adapters.embedding",
 ]
 
 [[tool.importlinter.contracts]]
