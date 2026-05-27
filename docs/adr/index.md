@@ -23,6 +23,7 @@ to them, the options considered, and the reasoning behind the chosen approach.
 | [012](012-postgres-mi-as-admin.md) | App Service managed identity as PostgreSQL Entra admin | Accepted |
 | [013](013-keys-in-db-and-environment-vars.md) | Store API keys in both the database and environment variables | Accepted |
 | [014](014-embedding-port-and-self-hosted-model.md) | EmbeddingPort and self-hosted BGE-M3 ONNX embedding model | Accepted |
+| [015](015-hdbscan-clustering.md) | Cluster feedback records with HDBSCAN | Accepted |
 
 ## Obsolete
 
@@ -46,5 +47,6 @@ to them, the options considered, and the reasoning behind the chosen approach.
 012-postgres-mi-as-admin
 013-keys-in-db-and-environment-vars
 014-embedding-port-and-self-hosted-model
+015-hdbscan-clustering
 obsolete/008-keep-orchestrator-port
 ```

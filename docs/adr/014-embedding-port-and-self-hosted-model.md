@@ -47,6 +47,27 @@ execute arbitrary code or exfiltrate data).
    deterministic `services` logic with nothing external to swap, unit-tested
    with hand-built vectors and zero mocks.
 
+### Why BGE-M3 specifically
+
+Multilinguality is the hard requirement, and it is where most strong embedding
+models fall short — many are English-centric and would cluster our feedback by
+language instead of theme. BGE-M3 embeds 100+ languages into one shared vector
+space and is competitive on multilingual retrieval benchmarks at a size we can
+run on CPU. We use only its **dense** 1024-d output; its sparse and multi-vector
+(ColBERT) heads are unused. The official weights are MIT-licensed, which keeps
+the self-conversion escape hatch (Option C) open.
+
+### Why ONNX int8 (not PyTorch / fp32)
+
+Running the ONNX graph through `onnxruntime` means **no PyTorch at runtime** — we
+avoid the ~2 GB torch toolchain in the image and infer on CPU directly. **int8**
+quantisation shrinks the artifact to ~558 MB (from ~2.2 GB fp32) and speeds up
+CPU inference, at roughly ~1% recall loss — acceptable here because clustering
+depends on *relative* similarity between records, not absolute precision. The
+format also underpins the security property in point 4: a standard-op ONNX graph
+is a pure math graph that cannot execute code or perform I/O, unlike a pickle
+`.bin` checkpoint that runs arbitrary code on load.
+
 ## Options considered
 
 ### A. EmbeddingPort + self-hosted ONNX adapter (chosen)

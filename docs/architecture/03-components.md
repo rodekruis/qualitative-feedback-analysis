@@ -46,7 +46,9 @@ in exactly one chunk) and
 {py:func}`~qfa.services.coding_trends.build_coding_trend_table` (a non-LLM
 code-by-period count fed into the reduce prompt as a faithfulness anchor). The
 orchestrator's `analyze_hierarchical` composes embed -> cluster -> map -> reduce,
-recursing when a chunk or the combined partials overflow the token budget.
+recursing when a chunk or the combined partials overflow the token budget. See
+[Hierarchical analysis](07-hierarchical-analysis.md) for the full algorithm,
+the rationale, and flow/sequence diagrams.
 
 ## The orchestrator
 
