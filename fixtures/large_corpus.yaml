@@ -1,3 +1,33 @@
+# ============================================================================
+# large_corpus.yaml — minimal acceptance fixture for issue #124.
+#
+# WHAT IT IS
+#   300 hand-rolled records on five themes (water, shelter, health, food,
+#   protection) in at least three languages. Each record's `text` is the
+#   theme's stock sentence repeated several times so the corpus exceeds the
+#   10_000-token single-call cap by ≥ 5x — enough to force the recursive
+#   hierarchical path in `cluster_records` to actually recurse.
+#
+# WHY IT IS HERE (don't delete without porting its tests first)
+#   `tests/test_large_corpus.py` reads this file to assert four headline
+#   acceptance properties of POST /v1/analyze in `mode=hierarchical`:
+#     1. total tokens ≥ 5 × the single-call cap            (recursion proof)
+#     2. ≥ 3 distinct `metadata.language` values           (multilingual proof)
+#     3. cluster_records covers every record               (no silent loss)
+#     4. coding_trend_table cell counts match a hand count (faithfulness)
+#   Deleting the YAML breaks all four tests; deleting the tests removes the
+#   only automated proof of those #124 acceptance criteria.
+#
+# RELATIONSHIP TO `scripts/generate_corpus.py`
+#   The Python+LLM generator produces a much richer corpus tailored for
+#   *trend-detection* (planted spike/emerging/declining/step/cross-code/
+#   rumour patterns over a year-long timeline). It supersedes this fixture
+#   in scale, realism, and label quality — but it is currently English-only
+#   and its YAML output is not committed. Once a multilingual run from the
+#   new generator has been merged into `fixtures/analyze_corpus.yaml` (or a
+#   sibling) and the four tests above have been ported onto that corpus,
+#   this file can retire.
+# ============================================================================
 - id: water-000
   text: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
