@@ -1,91 +1,178 @@
-# Prompt: generate a richer corpus for trend-planting
+# Prompt: generate text bodies for a deterministic corpus spec
 
-This prompt is intended to be fed to a strong general-purpose LLM (Claude /
-GPT-4-class) **together with `fixtures/coding_framework.json` as an
-attachment** to produce a denser drop-in replacement for
-`fixtures/analyze_corpus.yaml`. The result is then handed to
-`scripts/plant_trends_in_corpus.py`, which injects creation dates and the
-top-of-file benchmark block.
+This prompt drives the **text-generation half** of a two-stage pipeline that
+builds the trend-detection benchmark in `fixtures/analyze_corpus.yaml`.
 
-The current fixture (1000 records, max ~29 records on the busiest leaf code)
-makes single-code patterns — emerging, declining, step — statistically marginal
-because per-month counts are dominated by Poisson noise. Use this prompt when
-you want clean signals on every planted pattern.
+```
+Python:   scripts/generate_corpus_specs.py        →  analyze_corpus.specs.jsonl
+LLM:      scripts/generate_corpus.prompt.md       →  texts.jsonl  (one batch per call)
+Python:   scripts/generate_corpus_specs.py --merge-texts  →  analyze_corpus.yaml
+```
+
+The Python stage is fully deterministic: it allocates leaf-code volumes,
+samples metadata, plants the six designed trends (spike, emerging, declining,
+step, cross-code, rumour) by sampling `creation_date`s from per-pattern
+densities, and emits one JSON object per record on stdout / in
+`fixtures/analyze_corpus.specs.jsonl`. **Each spec carries everything except
+`text` and `sentence_count`.**
+
+This prompt asks an LLM to write only the prose. Hand it one batch of specs
+(50–200 records) and it returns the matching `{id, text, sentence_count}`
+objects. The deterministic part of the corpus — distributions, code
+assignments, trend shape — is unaffected by anything the LLM does or
+hallucinates.
+
+For interactive runs, drive the batches from a Claude Code session: ask
+Claude to read the specs file, slice it into batches, paste each batch into
+itself, and append the returned `texts` arrays to a JSONL file. A 5000-record
+corpus runs in ~50 batches of 100; doing it inside Claude Code keeps the
+work on the existing subscription rather than a metered API.
 
 ---
 
-## Prompt (paste this verbatim to the LLM, with the coding framework attached)
+## Prompt (paste verbatim; attach `fixtures/coding_framework.json`)
 
-You are generating a **synthetic, labelled benchmark corpus** of COVID-19
-community-feedback records for testing trend-detection on a hierarchical-analysis
-backend. The output must be a single YAML file in the schema below.
+You are writing realistic English-language community-feedback records for a
+humanitarian-response benchmark. The dataset is COVID-19-era feedback
+collected by Red Cross / Red Crescent operators in West and Central Africa.
+You are not anonymising or paraphrasing real data — every record is
+synthetic.
 
-### Schema (must match `qfa.domain.models.FeedbackRecordModel`)
+### Inputs
 
-Each record is a YAML mapping:
+You receive a JSON array `specs`, where each element is one record's full
+metadata:
 
-```yaml
-- id: doc-NNNN              # zero-padded sequential, starting at doc-0001
-  text: "2-4 sentences..."  # community feedback, first-person or community voice
-  metadata:
-    dataset: COVID-19
-    feedback_type: <one of: Observation, perception or belief | Encouragement or praise | Request or suggestion | Question | Rumour or hearsay>
-    region: <plausible region name>
-    country: <plausible country name>
-    language: <ISO 639-1 lower, e.g. en, fr, es>
-    source: <community feedback session | focus group | hotline | survey | volunteer report>
-    year: 2020                              # ALL records in calendar year 2020
-    sentence_count: <int matching `text`>
-    sensitive: <bool>
-    codes: <single colon-hierarchical leaf path from coding_framework.json, OR a comma-separated list of such paths>
+```json
+{
+  "id": "doc-0001",
+  "metadata": {
+    "dataset": "COVID-19",
+    "feedback_type": "Observation, perception or belief",
+    "region": "Western Area",
+    "country": "Sierra Leone",
+    "language": "en",            // always "en" in this corpus
+    "source": "hotline",
+    "year": 2020,
+    "sensitive": false,
+    "codes": "covid-19:observation-perception-or-belief:...:..."
+  },
+  "_context": {
+    "code_name": "Belief that COVID-19 is caused by 5G",
+    "code_description": "...",
+    "code_examples": ["...", "..."],
+    "trend_role": "spike|emerging|declining|step|cross_code|rumour|baseline"
+  }
+}
 ```
 
-Metadata values are restricted to **`str | int | float | bool`** only — no
-nested structures, no datetimes.
+The `_context` block is **for your reading only** — do not echo it back. It
+tells you which leaf the record codes for, what that code means, a few
+real-world example utterances, and which planted trend (if any) the record
+belongs to.
 
-### Volume targets
+### Output
 
-- **Total: 5000 records.**
-- **Per-code targets** (codes are from the attached `coding_framework.json`):
-  - Top 5 leaf codes: **≥ 120 records each.**
-  - Next 25 leaf codes: **≥ 50 records each.**
-  - Coverage: use ≥ 100 distinct leaf codes overall, but concentrate volume on
-    the top tier so single-code trends are statistically detectable.
-- One parent node must have **≥ 3 sibling leaves each with ≥ 40 records** (for
-  cross-code trend testing).
-- Include **3-5 low-volume codes with 4-10 records each** (for rumour-style
-  outlier planting).
+Return a JSON array `texts` of the same length and in the same order as
+`specs`. Each element is:
 
-### Content quality
+```json
+{
+  "id": "doc-0001",
+  "text": "Caller, a 58-year-old woman from Freetown, reports that…",
+  "sentence_count": 3
+}
+```
 
-- Records must be **realistic community feedback** in the COVID-era humanitarian
-  context (Sierra Leone, DRC, Senegal, Liberia, Burkina Faso, etc.).
-  2-4 sentences. First-person or quoted community voice.
-- **No PII.** Use generic role labels ("a community elder", "my neighbour") —
-  never proper names.
-- Vary `language` across `en` (~70 %), `fr` (~20 %), `es` (~5 %), plus a small
-  tail in `uk`, `ru`, `xx` (matches Presidio's configured languages).
-- Vary `region` / `country` / `source` realistically.
-- `sentence_count` must equal the actual number of sentences in `text`.
-- `sensitive: true` for ~3 % of records (mentions of death, identifiable
-  household illness, etc.).
-- `codes` must be exact paths from the framework — **do not invent codes.**
+Emit **only** the JSON array. No prose, no preamble, no markdown fences.
 
-### What you do NOT do
+### Style guide
 
-- Do **not** add a `creation_date` field. A separate helper script
-  (`scripts/plant_trends_in_corpus.py`) injects designed creation dates and
-  the top-of-file benchmark block. Your job is to produce the raw record
-  corpus.
-- Do **not** include any preamble, commentary, or YAML comments. Output the
-  bare YAML list (`- id: ...` repeated) and nothing else.
+The reference register is operator-paraphrase casework notes — the same
+register a hotline operator types into a CRM after a call. It is not survey
+prose, not a focus-group quote, and not first-person diary writing (except
+where the `source` field says otherwise; see below).
+
+- **Length.** 100–500 characters, median ~200. Two to four sentences for
+  most records. A small minority (< 5 %) may run longer for complex cases.
+- **Structure.** Most records have two short paragraphs separated by a
+  newline:
+  1. *Caller situation & request* — demographics inline, request paraphrased.
+     `"Woman, 62, IDP from Bo District, reports that her neighbours believe
+      the vaccine causes infertility."`
+  2. *Operator action / referral* — what was offered, explained, or who the
+     caller was referred to. `"Operator clarified WHO guidance and provided
+     hotline number for district health office."`
+- **Voice by `source`**:
+  - `hotline`, `outbound call`, `email`, `web form` → third-person operator
+    paraphrase. Compact, clinical. ~80 % of the corpus.
+  - `survey` → short third-person summary of a respondent's answer.
+  - `focus group`, `community feedback session`, `volunteer report` →
+    third-person summary, but may quote one short utterance ("…said: 'we
+    don't trust the new vaccine'…"). Quoted utterances should appear in
+    ~10 % of records overall.
+- **Acronyms.** Casework notes are dense with acronyms — *use them*: WHO,
+  IFRC, MSF, CDC, MoH, ETC, CHW, IDP, RC (Red Cross), PPE, CHS, RCCE.
+  Expand on first use only when natural.
+- **Realistic PII.** This corpus is the **input** to a downstream
+  anonymisation step; it must give the anonymiser something to detect.
+  Include realistic names (regionally plausible — Mariama Conteh, Jean-Paul
+  Mukendi, not "John Smith"), village/neighbourhood names, phone numbers
+  (`+232 76 543 210`, `+243 81 234 5678`), facility names ("Connaught
+  Hospital", "Goma Health Centre"). **Do not** use placeholders like
+  `[NAME]` or `[ADDRESS]`; write the names out. The downstream Presidio
+  port is what redacts them.
+- **Language.** Always English. `metadata.language` will be `"en"` for every
+  record in this corpus; if you ever see anything else, write the prose in
+  English anyway and ignore the field.
+- **Code fidelity.** The `text` must be a *plausible feedback entry that
+  would be coded under the given leaf*. Re-read `_context.code_name` and
+  `_context.code_description` for each record. Treat `_context.code_examples`
+  as canonical surface realisations: your prose should sit in the same
+  semantic neighbourhood without parroting the examples verbatim.
+- **Sensitive content.** If `metadata.sensitive` is `true`, the prose must
+  warrant the flag — mention of death, identifiable household illness,
+  GBV, child safeguarding, etc. Keep it factual, not graphic.
+- **Comma-separated `codes`.** If `metadata.codes` lists multiple
+  colon-paths (comma-separated), the prose must legitimately cover *all* of
+  them. Use a slightly longer record (~300–500 chars) in that case.
+- **Trend-role neutrality.** Do **not** mention the `_context.trend_role`
+  in the prose. Trends are encoded only by which dates the spec
+  assigned — your job is to write text that, taken on its own, looks
+  organically generated. A `rumour`-role record should not say "rumour".
+- **No template clones.** Vary opening verbs across the batch: *Caller
+  asks…*, *Beneficiary requests…*, *Woman, IDP, reports that…*,
+  *Family member enquires whether…*, *Mother of three calls about…*,
+  *Operator follows up on previous outbound about…*
 
 ### Self-check before emitting
 
-- Each record validates against the schema above.
-- Per-code counts match the volume targets (mental tally on the top codes).
-- At least one parent has 3 sibling leaves with ≥ 40 records each — name them
-  in a final tally line **after** the YAML, then delete that line before
-  final output.
+For each output element:
 
-Begin emitting the YAML now.
+1. `text` runs 100–500 characters and ~2–4 sentences (or longer if `codes`
+   is multi-valued).
+2. `sentence_count` equals the actual number of sentences in `text`.
+3. The prose plausibly fits under the leaf code in `_context`.
+4. Voice matches `metadata.source` per the rules above.
+5. PII shape matches the rule (realistic names, no placeholders).
+6. No mention of `trend_role` or any internal pipeline metadata.
+
+Begin emitting the JSON array now.
+
+---
+
+## Merge step (after all batches return)
+
+Concatenate the per-batch `texts` arrays into a single JSONL file
+(`texts.jsonl`, one `{id, text, sentence_count}` per line), then run:
+
+```bash
+uv run python scripts/generate_corpus_specs.py \
+    --merge-texts texts.jsonl \
+    --output fixtures/analyze_corpus.yaml
+```
+
+The merge script joins on `id`, validates that every spec has a matching
+text and that `sentence_count` is plausible (warns if mismatched by more
+than ±1), prepends the trend-benchmark comment block, and writes the final
+YAML. The trend-plot PNG is re-generated alongside.
