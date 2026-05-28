@@ -1,32 +1,18 @@
 # Prompt: generate text bodies for a deterministic corpus spec
 
-This prompt drives the **text-generation half** of a two-stage pipeline that
-builds the trend-detection benchmark in `fixtures/analyze_corpus.yaml`.
+This prompt is the **LLM half** of the trend-detection corpus pipeline. The
+full end-to-end workflow (where this file fits, how to run the surrounding
+Python, how to batch the LLM calls in Claude Code) is documented in
+[`scripts/README.md`](README.md) — read that first if you're driving the
+pipeline; this file is meant to be pasted into the LLM session itself.
 
-```
-Python:   scripts/generate_corpus_specs.py        →  analyze_corpus.specs.jsonl
-LLM:      scripts/generate_corpus.prompt.md       →  texts.jsonl  (one batch per call)
-Python:   scripts/generate_corpus_specs.py --merge-texts  →  analyze_corpus.yaml
-```
-
-The Python stage is fully deterministic: it allocates leaf-code volumes,
-samples metadata, plants the six designed trends (spike, emerging, declining,
-step, cross-code, rumour) by sampling `creation_date`s from per-pattern
-densities, and emits one JSON object per record on stdout / in
-`fixtures/analyze_corpus.specs.jsonl`. **Each spec carries everything except
-`text` and `sentence_count`.**
-
-This prompt asks an LLM to write only the prose. Hand it one batch of specs
-(50–200 records) and it returns the matching `{id, text, sentence_count}`
-objects. The deterministic part of the corpus — distributions, code
-assignments, trend shape — is unaffected by anything the LLM does or
-hallucinates.
-
-For interactive runs, drive the batches from a Claude Code session: ask
-Claude to read the specs file, slice it into batches, paste each batch into
-itself, and append the returned `texts` arrays to a JSONL file. A 5000-record
-corpus runs in ~50 batches of 100; doing it inside Claude Code keeps the
-work on the existing subscription rather than a metered API.
+In one line: a Python script (`scripts/generate_corpus.py gen-specs`) emits
+one JSON spec per record with full metadata + `creation_date` but no `text`;
+you hand the LLM a batch of specs and this prompt; it returns
+`{id, text, sentence_count}` per record; another Python step
+(`scripts/generate_corpus.py merge`) joins specs + texts into the final
+YAML. The deterministic part — distributions, code assignments, trend
+shape — is unaffected by anything the LLM does or hallucinates.
 
 ---
 
@@ -167,8 +153,9 @@ Concatenate the per-batch `texts` arrays into a single JSONL file
 (`texts.jsonl`, one `{id, text, sentence_count}` per line), then run:
 
 ```bash
-uv run python scripts/generate_corpus_specs.py \
-    --merge-texts texts.jsonl \
+uv run python scripts/generate_corpus.py merge \
+    --specs fixtures/analyze_corpus.specs.jsonl \
+    --texts texts.jsonl \
     --output fixtures/analyze_corpus.yaml
 ```
 
