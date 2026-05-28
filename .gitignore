@@ -181,3 +181,7 @@ config
 **/.terraform.lock.hcl
 /.import_linter_cache/
 *.db
+
+# Scratch + ephemeral
+.corpus_work/
+.uncertainty-*.md

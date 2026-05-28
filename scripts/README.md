@@ -8,10 +8,17 @@ people ask about most: regenerating the `analyze_corpus.yaml` fixture.
 | ------------------------------- | ---------------------------------------------------------------- |
 | `generate_corpus.py`            | Build / regenerate `fixtures/analyze_corpus.yaml` (see below).   |
 | `generate_corpus.prompt.md`     | LLM prompt that fills in `text` during corpus generation.        |
+| `stress_analyze.py`             | Drive `POST /v1/analyze` with a seeded corpus sample, single-call or in parallel (see below). |
 | `translate_csv_uk_en.py`        | One-off translation helper for `fixtures/confidential/`.         |
 | `update_auth_api_keys.py`       | Rotate API keys against a running instance.                      |
 | `test-api.sh`                   | Curl smoke checks against a running instance.                    |
 | `espo_crm/`                     | Adapters / utilities for the EspoCRM integration.                |
+
+For interactive in-process exploration of the same corpus (no server,
+direct `Orchestrator.analyze_hierarchical` calls, results displayed
+inline) see [`notebooks/analyze_corpus.ipynb`](../notebooks/analyze_corpus.ipynb). It uses
+{py:func}`qfa.api.composition.build_orchestrator` to assemble the
+domain object graph against the live LLM.
 
 ---
 
@@ -175,3 +182,67 @@ phantom signal from the repetition rather than from the planted dates.
 LLM-written prose gives genuinely independent sentences that vary across
 the same code — which is what every real-world corpus does and what the
 detector needs to handle.
+
+
+---
+
+## Driving `/v1/analyze` with `stress_analyze.py`
+
+`scripts/stress_analyze.py` posts samples from
+`fixtures/analyze_corpus.yaml` to a running API instance — either one
+request at a time (quality smoke test) or fanned out in parallel
+(stress test). Both use the **production vector**: real HTTP, real
+auth, real serialization. For interactive in-process inspection,
+use `notebooks/analyze_corpus.ipynb` instead.
+
+### Prerequisites
+
+- A server reachable at `--base-url` (default `http://localhost:8000`)
+  with `mode=hierarchical` available — i.e. `EMBEDDING_MODEL_PATH`
+  set on the server side.
+- `AUTH_API_KEYS` set in the shell where you run the script (same
+  JSON the server reads), or pass `--api-key` explicitly. The first
+  key entry is used as the Bearer token.
+
+### Quality smoke test (single request)
+
+```
+uv run python scripts/stress_analyze.py --limit 50 --seed 42
+```
+
+Fires one request with 50 records and prints a summary. The raw
+response lands in `.corpus_work/stress_<UTC-ts>.jsonl` — open it with
+`jq` or load it from a notebook to inspect `analysis`, `quality_score`,
+`confidence`, and `coding_trends`.
+
+### Stress test (parallel requests)
+
+```
+uv run python scripts/stress_analyze.py \
+    --limit 100 --seed 42 \
+    --concurrency 5 --total-calls 20
+```
+
+Maintains up to 5 in-flight requests until 20 have completed. Prints
+p50 / p95 / p99 latency, status-code distribution, and writes raw
+results to `.corpus_work/`.
+
+### Reproducibility
+
+`--seed` controls which records get sampled — same seed picks the same
+subset across runs, so latency comparisons are apples-to-apples. The
+LLM itself is non-deterministic, so the analysis text will vary.
+
+### Why a separate notebook *and* a script?
+
+Two artefacts because the use cases have different shapes:
+
+- **Notebook** (`notebooks/analyze_corpus.ipynb`) — one analysis,
+  fully inspected, interactive iteration, no HTTP. Direct call to
+  `Orchestrator.analyze_hierarchical` via
+  {py:func}`qfa.api.composition.build_orchestrator`.
+- **Script** (this one) — many analyses, only aggregate metrics
+  matter, parallel, exercises the real REST/auth/validation path.
+
+They share the corpus loader (`load_sample`) — the notebook imports
+it from this script.

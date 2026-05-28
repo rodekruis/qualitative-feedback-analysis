@@ -1,6 +1,5 @@
 """Application factory and composition root."""
 
-import importlib.resources
 import logging
 from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
@@ -8,8 +7,6 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-import litellm
-import yaml
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -21,12 +18,11 @@ from qfa.adapters.db import (
     create_async_engine_from_settings,
     create_session_factory,
 )
-from qfa.adapters.embedding import build_bge_m3_embedder
 from qfa.adapters.env_auth import EnvironmentAuthLookupAdapter
 from qfa.adapters.llm_client import LiteLLMClient
-from qfa.adapters.presidio_anonymizer import PresidioAnonymizer
 from qfa.adapters.tracking_llm import TrackingLLMAdapter
 from qfa.adapters.usage_repository import SqlAlchemyUsageRepository
+from qfa.api.composition import build_embedder, build_orchestrator
 from qfa.api.routes import router
 from qfa.api.routes_admin import router as auth_router
 from qfa.api.routes_usage import router as usage_router
@@ -49,10 +45,9 @@ from qfa.domain.errors import (
     TenantNotFoundError,
     UsageRepositoryUnavailableError,
 )
-from qfa.domain.ports import EmbeddingPort, LLMPort
+from qfa.domain.ports import LLMPort
 from qfa.services.auth_orchestrator import AuthOrchestrator
-from qfa.services.orchestrator import Orchestrator
-from qfa.settings import AppSettings, EmbeddingSettings, LLMSettings
+from qfa.settings import AppSettings, LLMSettings
 from qfa.utils import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -547,60 +542,6 @@ def build_llm_client(settings: LLMSettings) -> LiteLLMClient:
     )
 
 
-def build_embedder(settings: EmbeddingSettings) -> EmbeddingPort | None:
-    """Build the self-hosted embedding adapter, or return None when unconfigured.
-
-    The embedder is optional: when ``EMBEDDING_MODEL_PATH`` is not set this
-    returns ``None``, and a ``mode=hierarchical`` request then fails with
-    502 ``analysis_unavailable`` (the orchestrator raises ``AnalysisError``
-    when its embedder is ``None``); ``single_pass`` is unaffected.
-    Production deployments set the path variables; local / CI runs omit them
-    so the normal test suite never downloads a multi-GB model.
-
-    Parameters
-    ----------
-    settings : EmbeddingSettings
-        Embedding configuration loaded from environment variables.
-
-    Returns
-    -------
-    EmbeddingPort | None
-        A fully-constructed ``BgeM3OnnxEmbedder``, or ``None`` when
-        ``model_path`` is empty.
-    """
-    if not settings.model_path:
-        logger.info(
-            "EMBEDDING_MODEL_PATH not set — hierarchical mode requires it at runtime"
-        )
-        return None
-    return build_bge_m3_embedder(
-        model_path=settings.model_path,
-        tokenizer_path=settings.tokenizer_path or settings.model_path,
-        revision_hash=settings.revision_hash,
-        intra_op_num_threads=settings.intra_op_num_threads,
-    )
-
-
-def _register_custom_model_prices() -> None:
-    """Load custom model pricing from the bundled YAML resource.
-
-    Registers models with LiteLLM so that ``completion_cost()`` works
-    for models not in the built-in cost map.
-    """
-    prices_path = importlib.resources.files("qfa.resources").joinpath(
-        "model_prices.yaml"
-    )
-    with importlib.resources.as_file(prices_path) as f:
-        custom_prices = yaml.safe_load(f.read_text())
-    if custom_prices and custom_prices.get("models"):
-        litellm.register_model(custom_prices["models"])
-        logger.info(
-            "Registered %d custom model price(s) for %s",
-            len(custom_prices["models"]),
-            list(custom_prices["models"].keys()),
-        )
-
-
 LLMFactory = Callable[[LLMSettings], LLMPort]
 """Factory that builds an ``LLMPort`` from settings.
 
@@ -658,13 +599,15 @@ def _make_lifespan(llm_factory: LLMFactory):
 
         1. Load ``AppSettings`` and configure logging — must happen
            before anything that might log.
-        2. Register custom LiteLLM model prices — required for
-           ``completion_cost()`` to value any model not in LiteLLM's
-           built-in cost map.
-        3. Build the base ``LLMPort`` via the closed-over factory.
-        4. Create the async DB engine and wrap the base LLM in
+        2. Build the base ``LLMPort`` via the closed-over factory.
+        3. Create the async DB engine and wrap the base LLM in
            ``TrackingLLMAdapter`` so every call attempt is recorded.
-        5. Construct the ``StandardOrchestrator`` over the wrapped LLM.
+        4. Build the embedder here (rather than inside
+           ``build_orchestrator``) so its construction is visible in
+           startup logs before any traffic arrives.
+        5. Delegate to :func:`qfa.api.composition.build_orchestrator`
+           to assemble the orchestrator — it also registers custom
+           LiteLLM model prices needed for ``completion_cost()``.
         6. Publish ``orchestrator``, ``api_keys``, ``settings``, and
            ``usage_repo`` on ``app.state`` for routes/middleware to read.
 
@@ -680,9 +623,6 @@ def _make_lifespan(llm_factory: LLMFactory):
         settings = AppSettings()
         setup_logging(settings.log)
 
-        _register_custom_model_prices()
-
-        anonymizer = PresidioAnonymizer()
         api_keys = settings.auth.api_keys
 
         base_llm = llm_factory(settings.llm)
@@ -696,6 +636,9 @@ def _make_lifespan(llm_factory: LLMFactory):
         )
         logger.info("Usage tracking enabled (per-attempt, per-operation)")
 
+        # Build the embedder here (not inside the factory) so we can log
+        # its construction at startup — operators rely on these lines to
+        # confirm hierarchical mode is available before any traffic hits.
         if settings.embedding.model_path:
             logger.info(
                 "Loading embedding model from %s ...", settings.embedding.model_path
@@ -704,15 +647,7 @@ def _make_lifespan(llm_factory: LLMFactory):
         if embedder is not None:
             logger.info("Embedding model ready (hierarchical analysis available)")
 
-        orchestrator = Orchestrator(
-            llm=llm_for_orch,
-            anonymizer=anonymizer,
-            settings=settings.orchestrator,
-            analyze_settings=settings.analyze,
-            llm_timeout_seconds=settings.llm.timeout_seconds,
-            max_total_tokens=settings.llm.max_total_tokens,
-            embedder=embedder,
-        )
+        orchestrator = build_orchestrator(settings, llm=llm_for_orch, embedder=embedder)
 
         app.state.auth_orchestrator = AuthOrchestrator(
             auth_lookup_ports=[

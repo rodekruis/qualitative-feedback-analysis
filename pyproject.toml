@@ -187,19 +187,20 @@ layers = [
 containers = [
     "qfa",
 ]
-# qfa.api.app is the FastAPI composition root: its lifespan instantiates
-# the driven adapters (LiteLLMClient, PresidioAnonymizer) and injects
-# them into StandardOrchestrator. This is the single allowed exception
-# to the api / adapters sibling rule. If composition moves out of
-# qfa.api.app into a dedicated module, drop these allowlist entries.
+# The composition root spans two files: qfa.api.app owns infrastructure
+# wiring (DB engine, usage tracking, auth lookup, LiteLLM construction)
+# and qfa.api.composition owns the domain-object graph (orchestrator,
+# anonymizer, embedder). Both legitimately instantiate driven adapters
+# and inject them into the application service; this is the single
+# allowed exception to the api / adapters sibling rule.
 ignore_imports = [
     "qfa.api.app -> qfa.adapters.llm_client",
-    "qfa.api.app -> qfa.adapters.presidio_anonymizer",
     "qfa.api.app -> qfa.adapters.tracking_llm",
     "qfa.api.app -> qfa.adapters.db",
     "qfa.api.app -> qfa.adapters.usage_repository",
     "qfa.api.app -> qfa.adapters.env_auth",
-    "qfa.api.app -> qfa.adapters.embedding",
+    "qfa.api.composition -> qfa.adapters.embedding",
+    "qfa.api.composition -> qfa.adapters.presidio_anonymizer",
 ]
 
 [[tool.importlinter.contracts]]
