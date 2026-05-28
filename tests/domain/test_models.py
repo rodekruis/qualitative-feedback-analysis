@@ -227,3 +227,52 @@ class TestSensitivityModels:
 
     def test_sensitivity_enum_uses_short_stable_values(self):
         assert SensitivityType.CORRUPTION.value == "CORRUPTION"
+
+
+class TestAnalysisRequestMode:
+    def test_default_mode_is_single_pass(self):
+        """``mode`` defaults to ``single_pass`` when omitted by callers."""
+        req = AnalysisRequestModel(
+            feedback_records=(FeedbackRecordModel(id="d", text="t"),),
+            prompt="x",
+            tenant_id="t",
+        )
+        assert req.mode == "single_pass"
+
+    def test_explicit_single_pass_accepted(self):
+        """``mode=single_pass`` is the documented explicit value."""
+        req = AnalysisRequestModel(
+            feedback_records=(FeedbackRecordModel(id="d", text="t"),),
+            prompt="x",
+            tenant_id="t",
+            mode="single_pass",
+        )
+        assert req.mode == "single_pass"
+
+    def test_invalid_mode_rejected(self):
+        """Any other ``mode`` value raises a validation error."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            AnalysisRequestModel(
+                feedback_records=(FeedbackRecordModel(id="d", text="t"),),
+                prompt="x",
+                tenant_id="t",
+                mode="hierarchical",  # ty: ignore[invalid-argument-type]
+            )
+
+
+class TestAnalysisResultModelExtended:
+    def test_quality_score_can_be_none(self):
+        """``quality_score=None`` represents judge unavailability."""
+        m = AnalysisResultModel(
+            result="ok", quality_score=None, uncertainty_explanation="why"
+        )
+        assert m.quality_score is None
+
+    def test_quality_score_float_accepted(self):
+        """Floats in ``[0, 1]`` are accepted."""
+        m = AnalysisResultModel(
+            result="ok", quality_score=0.42, uncertainty_explanation="why"
+        )
+        assert m.quality_score == 0.42

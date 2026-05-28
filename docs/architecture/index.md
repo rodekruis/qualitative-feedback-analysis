@@ -9,6 +9,7 @@ How the service is structured and why. Roughly ordered C4-style — start at the
 | [Components](03-components.md) | Ports, adapters, the orchestrator, the composition root |
 | [Cross-cutting concerns](04-crosscutting.md) | Anonymisation, tracking, error handling, logging — concerns that span layers |
 | [Data model](05-data-model.md) | Domain models and persistence schema |
+| [Prompt envelope and guardrails](06-prompt-envelope.md) | Three-constant system message, XML-style envelope, escape helper, judge call contract for `POST /v1/analyze` |
 
 For decision history (why we chose what we chose), see the [architecture decision records](../adr/index.md).
 
@@ -20,5 +21,6 @@ For decision history (why we chose what we chose), see the [architecture decisio
 03-components
 04-crosscutting
 05-data-model
+06-prompt-envelope
 /adr/index
 ```

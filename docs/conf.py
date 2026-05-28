@@ -49,7 +49,6 @@ exclude_patterns = [
     "reviews",
     "architecture-review-*.md",
     "superpowers",
-    "TODO-TOMORROW.md",
     "Thumbs.db",
     ".DS_Store",
     # README.md files in this tree are thin stubs that exist only as the

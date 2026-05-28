@@ -5,7 +5,7 @@ All models are immutable (frozen) Pydantic models per ADR-001.
 
 import hashlib
 import secrets
-from typing import Any, Generic, TypeVar, Union
+from typing import Any, Generic, Literal, TypeVar, Union
 
 from pydantic import (
     BaseModel,
@@ -50,6 +50,13 @@ class AnalysisRequestModel(BaseModel):
         description="Analysis instruction for the model.",
     )
     tenant_id: str = Field(description="Tenant identifier injected by the auth layer.")
+    mode: Literal["single_pass"] = Field(
+        default="single_pass",
+        description=(
+            "Analysis mode. ``single_pass`` is the only supported value in this"
+            " version; other modes (hierarchical/map-reduce) are tracked in #124."
+        ),
+    )
 
 
 class AnalysisResultModel(BaseModel):
@@ -57,7 +64,17 @@ class AnalysisResultModel(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    result: str = Field(description="Analysis output text.")
+    result: str = Field(description="Analysis output text (disclaimer prepended).")
+    quality_score: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Judge model score in [0,1]; ``None`` when the judge call failed.",
+    )
+    uncertainty_explanation: str = Field(
+        default="",
+        description="Natural-language explanation from the judge model.",
+    )
 
 
 class SummaryRequestModel(BaseModel):
