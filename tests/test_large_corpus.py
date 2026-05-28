@@ -95,8 +95,12 @@ def test_coding_trend_table_counts_match_corpus() -> None:
         FeedbackRecordModel(id=item["id"], text=item["text"], metadata=item["metadata"])
         for item in corpus
     )
+    # Pin to monthly buckets so the hand-count assertion below (which
+    # uses ``startswith("2024-01")``) compares like-for-like. The
+    # default granularity is ``week``, but the fixture isn't aligned to
+    # ISO weeks.
     table = build_coding_trend_table(
-        records, date_field="created", code_fields=("codes",)
+        records, date_field="created", code_fields=("codes",), period="month"
     )
     assert table is not None
     # Hand count of one known (code, period) pair from the fixture.

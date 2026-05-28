@@ -696,12 +696,19 @@ def _make_lifespan(llm_factory: LLMFactory):
         )
         logger.info("Usage tracking enabled (per-attempt, per-operation)")
 
+        if settings.embedding.model_path:
+            logger.info(
+                "Loading embedding model from %s ...", settings.embedding.model_path
+            )
         embedder = build_embedder(settings.embedding)
+        if embedder is not None:
+            logger.info("Embedding model ready (hierarchical analysis available)")
 
         orchestrator = Orchestrator(
             llm=llm_for_orch,
             anonymizer=anonymizer,
             settings=settings.orchestrator,
+            analyze_settings=settings.analyze,
             llm_timeout_seconds=settings.llm.timeout_seconds,
             max_total_tokens=settings.llm.max_total_tokens,
             embedder=embedder,

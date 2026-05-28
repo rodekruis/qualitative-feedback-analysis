@@ -89,8 +89,14 @@ async def analyze(
 
     - ``single_pass`` (default) — one LLM call within the token cap.
     - ``hierarchical`` — embed → cluster → map → reduce pipeline for
-      large corpora (> 5x the single-call token cap).  Returns additional
-      ``confidence`` and ``coding_trends`` fields in the response.
+      large corpora (> 5x the single-call token cap). Returns an
+      additional ``confidence`` field in the response.
+
+    The deterministic ``coding_trends`` table is populated for **both**
+    modes — it is built from input metadata and does not depend on the
+    LLM call or chunking. The ``period`` request field controls the
+    table's granularity (``day`` / ``week`` / ``month``); omit it to
+    use the server-side default.
 
     **Edge cases**:
 
@@ -115,8 +121,9 @@ async def analyze(
     -------
     AnalyzeResponse
         The analysis result with quality score, uncertainty explanation,
-        feedback record count, and request ID.  ``confidence`` and
-        ``coding_trends`` are populated only for ``hierarchical`` mode.
+        feedback record count, and request ID. ``coding_trends`` is
+        populated for both modes whenever metadata permits; ``confidence``
+        is populated only for ``hierarchical`` mode.
     """
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
@@ -130,6 +137,7 @@ async def analyze(
         prompt=body.prompt,
         tenant_id=tenant.tenant_id,
         mode=body.mode,
+        period=body.period,
     )
 
     if body.mode == "hierarchical":

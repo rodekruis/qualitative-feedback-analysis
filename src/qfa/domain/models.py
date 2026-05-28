@@ -15,7 +15,7 @@ from pydantic import (
     model_validator,
 )
 
-from qfa.domain.clustering_models import CodingTrendTable
+from qfa.domain.clustering_models import CodingTrendTable, TrendPeriod
 from qfa.domain.sensitivity_types import SensitivityType
 
 
@@ -57,6 +57,15 @@ class AnalysisRequestModel(BaseModel):
             "Analysis mode. ``single_pass`` (default) runs one LLM call under"
             " the token cap. ``hierarchical`` runs embed → cluster → map →"
             " reduce over corpora larger than the single-call cap (#124)."
+        ),
+    )
+    period: TrendPeriod | None = Field(
+        default=None,
+        description=(
+            "Granularity for the deterministic coding-trend table"
+            " (``day`` / ``week`` / ``month``). ``None`` falls back to"
+            " the server-side default in ``AnalyzeSettings``"
+            " (currently ``week``)."
         ),
     )
 

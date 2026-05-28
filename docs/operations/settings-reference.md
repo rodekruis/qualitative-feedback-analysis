@@ -31,13 +31,29 @@ Only required for `mode=hierarchical`. When `EMBEDDING_MODEL_PATH` /
 
 ## Orchestrator (`ORCHESTRATOR_*`)
 
+Cross-cutting orchestrator wiring shared by every endpoint (retry
+policy, token-budget estimation, metadata allow-list). Endpoint-specific
+tuning lives in its own settings group (see *Analyze* below) so the
+eventual per-endpoint orchestrator split (ADR-011) doesn't require
+renaming environment variables in production.
+
 | Variable | Required | Default | Notes |
 |---|---|---|---|
 | `ORCHESTRATOR_METADATA_FIELDS_TO_INCLUDE` | no | `[]` | JSON list. Metadata keys allowed to reach the LLM. |
-| `ORCHESTRATOR_MIN_CLUSTER_SIZE` | no | `5` | HDBSCAN `min_cluster_size` for the map-step chunking (`mode=hierarchical`). |
-| `ORCHESTRATOR_CLUSTERING_METRIC` | no | `euclidean` | HDBSCAN distance metric. |
-| `ORCHESTRATOR_CODING_TREND_DATE_FIELD` | no | `created` | Metadata key holding the record date for the coding-trend table. |
-| `ORCHESTRATOR_CODING_TREND_CODE_FIELDS` | no | `["codes"]` | JSON list. Metadata keys holding coding labels (comma-separated strings). |
+
+## Analyze (`ANALYZE_*`)
+
+Configuration specific to `POST /v1/analyze` (both `mode=single_pass`
+and `mode=hierarchical`). The coding-trend knobs apply to both modes;
+the clustering knobs are only consulted on the hierarchical path.
+
+| Variable | Required | Default | Notes |
+|---|---|---|---|
+| `ANALYZE_MIN_CLUSTER_SIZE` | no | `5` | HDBSCAN `min_cluster_size` for the map-step chunking (`mode=hierarchical`). |
+| `ANALYZE_CLUSTERING_METRIC` | no | `euclidean` | HDBSCAN distance metric (`mode=hierarchical`). |
+| `ANALYZE_CODING_TREND_DATE_FIELD` | no | `created` | Metadata key holding the record date for the coding-trend table. |
+| `ANALYZE_CODING_TREND_CODE_FIELDS` | no | `["codes"]` | JSON list. Metadata keys holding coding labels (comma-separated strings). |
+| `ANALYZE_DEFAULT_CODING_TREND_PERIOD` | no | `week` | Server-side default granularity for the coding-trend table (`day` / `week` / `month`). Overridable per-request via the `period` body field. |
 
 ## Auth (`AUTH_*`)
 

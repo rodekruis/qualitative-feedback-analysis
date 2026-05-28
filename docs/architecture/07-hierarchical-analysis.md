@@ -42,7 +42,12 @@ that specific model and format — is recorded in
    coding labels in the records' metadata per time period, producing a
    code-by-period frequency table. Because it is exact arithmetic over the
    metadata it is fully faithful — it cannot hallucinate. It later anchors the
-   reduce step and is returned to the caller as `coding_trends`.
+   reduce step and is returned to the caller as `coding_trends`. The same
+   table is also built and returned by `mode=single_pass` — it depends only
+   on input metadata, not on the chunking pipeline, so there is no reason to
+   gate it on the mode. Granularity (`day` / `week` / `month`, default `week`)
+   is configurable via the request body's `period` field, with a server-side
+   default from `ANALYZE_DEFAULT_CODING_TREND_PERIOD`.
 4. **Embed.** {py:class}`~qfa.domain.ports.EmbeddingPort` turns the anonymised
    texts into dense vectors. Encoding is synchronous CPU-bound computation, not
    I/O — see the port's design rationale in ADR-014.

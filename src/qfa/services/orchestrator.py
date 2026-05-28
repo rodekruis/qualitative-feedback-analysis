@@ -59,7 +59,7 @@ from qfa.services.prompts import (
     build_analyze_judge_system_message,
     build_analyze_user_message,
 )
-from qfa.settings import OrchestratorSettings
+from qfa.settings import AnalyzeSettings, OrchestratorSettings
 
 logger = logging.getLogger(__name__)
 
@@ -222,11 +222,20 @@ class Orchestrator:
     anonymizer : AnonymizationPort
         The anonymisation adapter used to redact PII before LLM calls.
     settings : OrchestratorSettings
-        Configuration for the orchestrator behaviour.
+        Cross-cutting orchestrator configuration (retry policy, token
+        budget estimation, metadata allow-list).
     llm_timeout_seconds : float
         Maximum time in seconds for a single LLM call.
     max_total_tokens : int
         Maximum estimated total tokens for a single request.
+    analyze_settings : AnalyzeSettings | None
+        Configuration for the ``POST /v1/analyze`` endpoint (clustering
+        knobs, coding-trend table inputs, default period). Defaults to
+        :class:`AnalyzeSettings` with environment-loaded values so tests
+        and callers that don't care about analyze tuning can omit it.
+    embedder : EmbeddingPort | None
+        Optional embedder for ``mode=hierarchical``. ``None`` makes the
+        hierarchical path raise :class:`AnalysisError` at request time.
     """
 
     # Entity types whose placeholders are NOT restored in `analyze` output.
@@ -247,12 +256,18 @@ class Orchestrator:
         settings: OrchestratorSettings,
         llm_timeout_seconds: float,
         max_total_tokens: int,
+        analyze_settings: AnalyzeSettings | None = None,
         embedder: EmbeddingPort | None = None,
     ) -> None:
         self._llm = llm
         self._anonymizer: AnonymizationPort = anonymizer
         self._embedder = embedder
         self._settings = settings
+        # AnalyzeSettings is endpoint-scoped; default-construct when callers
+        # (mostly tests) don't supply one so environment-driven knobs still
+        # apply without forcing every Orchestrator construction site to thread
+        # the extra argument.
+        self._analyze_settings = analyze_settings or AnalyzeSettings()
         self._llm_timeout_seconds = llm_timeout_seconds
         self._max_total_tokens = max_total_tokens
 
@@ -279,6 +294,12 @@ class Orchestrator:
 
         Two LLM calls are issued: the analysis itself, then a judge call
         that produces ``quality_score`` and ``uncertainty_explanation``.
+
+        Also computes the deterministic ``coding_trends`` table from
+        record metadata (no LLM, no chunking) and returns it. The table
+        is a free win for the single-call path: it depends only on
+        metadata and date parsing, not on map-reduce. When metadata is
+        absent the field comes back as ``None`` rather than failing.
 
         Edge cases
         ----------
@@ -360,10 +381,24 @@ class Orchestrator:
             quality_score = None
             uncertainty_explanation = JUDGE_UNAVAILABLE_EXPLANATION
 
+        # Deterministic, non-LLM coding-trend table from ORIGINAL metadata
+        # (metadata is not anonymised; codes/dates are not PII). Built for
+        # single_pass too — it depends only on the input metadata, not on the
+        # chunking/map-reduce pipeline.
+        trend_table = build_coding_trend_table(
+            request.feedback_records,
+            date_field=self._analyze_settings.coding_trend_date_field,
+            code_fields=self._analyze_settings.coding_trend_code_fields,
+            period=(
+                request.period or self._analyze_settings.default_coding_trend_period
+            ),
+        )
+
         return AnalysisResultModel(
             result=f"{ANALYZE_DISCLAIMER}{analysis_text}",
             quality_score=quality_score,
             uncertainty_explanation=uncertainty_explanation,
+            coding_trends=trend_table,
         )
 
     async def analyze_hierarchical(
@@ -410,8 +445,11 @@ class Orchestrator:
         #    (metadata is not anonymised; codes/dates are not PII).
         trend_table = build_coding_trend_table(
             request.feedback_records,
-            date_field=self._settings.coding_trend_date_field,
-            code_fields=self._settings.coding_trend_code_fields,
+            date_field=self._analyze_settings.coding_trend_date_field,
+            code_fields=self._analyze_settings.coding_trend_code_fields,
+            period=(
+                request.period or self._analyze_settings.default_coding_trend_period
+            ),
         )
 
         # 3. Embed (synchronous, CPU-bound) then cluster into budget chunks.
@@ -420,10 +458,10 @@ class Orchestrator:
         chunks = cluster_records(
             records=anonymized_records,
             vectors=vectors,
-            min_cluster_size=self._settings.min_cluster_size,
+            min_cluster_size=self._analyze_settings.min_cluster_size,
             max_total_tokens=self._max_total_tokens,
             chars_per_token=self._settings.chars_per_token,
-            metric=self._settings.clustering_metric,
+            metric=self._analyze_settings.clustering_metric,
         )
 
         # 4. MAP: one partial analysis + one leaf judge score per chunk.

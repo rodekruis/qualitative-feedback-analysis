@@ -11,6 +11,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from qfa.domain.clustering_models import TrendPeriod
+
 
 def _assign_codes_request_examples() -> list[dict[str, Any]]:
     """Build Swagger ``examples`` from ``fixtures/coding_framework.json`` + COVID-19 codebook quotes."""
@@ -120,6 +122,17 @@ class ApiAnalyzeRequest(BaseModel):
             " → reduce over corpora larger than the single-call cap (#124)."
         ),
     )
+    period: TrendPeriod | None = Field(
+        default=None,
+        description=(
+            "Granularity for the deterministic ``coding_trends`` table:"
+            " ``day``, ``week`` (the server default), or ``month``."
+            " A one-month corpus typically wants ``week`` or ``day`` to"
+            " surface trend signal; multi-year corpora typically want"
+            " ``month``. Omit to use the server-side default"
+            " (``ANALYZE_DEFAULT_CODING_TREND_PERIOD``)."
+        ),
+    )
 
 
 class ApiCodingTrendCell(BaseModel):
@@ -127,7 +140,11 @@ class ApiCodingTrendCell(BaseModel):
 
     code: str = Field(description="Coding label extracted from record metadata.")
     period: str = Field(
-        description="Calendar period (YYYY-MM) extracted from the date field."
+        description=(
+            "Period bucket label. Shape depends on the request's"
+            " ``period`` field: ``YYYY-MM-DD`` for ``day``, ``YYYY-Www``"
+            " (ISO week) for ``week``, ``YYYY-MM`` for ``month``."
+        )
     )
     count: int = Field(
         ge=0, description="Number of records with this code in this period."
@@ -135,14 +152,19 @@ class ApiCodingTrendCell(BaseModel):
 
 
 class ApiCodingTrends(BaseModel):
-    """Deterministic code-by-period frequency table for the hierarchical path.
+    """Deterministic code-by-period frequency table.
 
-    Built from record metadata without an LLM call.  ``null`` for
-    ``single_pass`` or when the required metadata fields are absent.
+    Built from record metadata without an LLM call. Populated for both
+    ``single_pass`` and ``hierarchical`` modes (it depends only on
+    metadata, not on the analysis pipeline). ``null`` when the required
+    metadata fields are absent from every record.
     """
 
     periods: list[str] = Field(
-        description="Ordered list of calendar periods (YYYY-MM) present in the corpus."
+        description=(
+            "Ordered list of period buckets present in the corpus."
+            " Bucket shape follows the request's ``period``."
+        )
     )
     cells: list[ApiCodingTrendCell] = Field(
         description="(code, period, count) triples covering the whole corpus."
@@ -188,8 +210,10 @@ class ApiAnalyzeResponse(BaseModel):
     coding_trends: ApiCodingTrends | None = Field(
         default=None,
         description=(
-            "Deterministic code-by-period frequency table; ``null`` for"
-            " ``single_pass`` or when metadata is absent."
+            "Deterministic code-by-period frequency table; populated for"
+            " both ``single_pass`` and ``hierarchical`` whenever the"
+            " configured date + code metadata fields are present."
+            " ``null`` only when no record carries a parseable date."
         ),
     )
 

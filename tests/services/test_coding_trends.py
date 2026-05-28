@@ -27,6 +27,8 @@ def test_counts_codes_per_month_period() -> None:
 
     Why: longitudinal questions ("how did rumours evolve?") need exact
     per-period counts a QFA user can verify independently of the LLM.
+    Monthly buckets are one of three supported granularities (the
+    others being ``week`` and ``day``); this test pins the month path.
     """
     records = (
         _record("r1", "2024-01-05T10:00:00Z", "Water,Health"),
@@ -37,6 +39,7 @@ def test_counts_codes_per_month_period() -> None:
         records,
         date_field="created",
         code_fields=("codes",),
+        period="month",
     )
     assert table is not None
     assert table.periods == ("2024-01", "2024-02")
@@ -44,6 +47,54 @@ def test_counts_codes_per_month_period() -> None:
     assert counts[("Water", "2024-01")] == 2
     assert counts[("Health", "2024-01")] == 1
     assert counts[("Water", "2024-02")] == 1
+
+
+def test_counts_codes_per_week_period_default() -> None:
+    """Week is the default granularity; ISO week labels are ``YYYY-Www``.
+
+    Why: typical operational corpora cover 1-3 months; weekly buckets
+    are the right granularity to surface trend signal without
+    overwhelming the reduce prompt. ISO week labelling avoids the
+    last-week-of-December cross-year off-by-one (2024-12-30 is ISO week
+    1 of 2025), so the assertion below uses the ISO year.
+    """
+    records = (
+        # 2024-01-01 is a Monday — ISO week 2024-W01.
+        _record("r1", "2024-01-01T10:00:00Z", "Water"),
+        # 2024-01-07 is the Sunday of the same ISO week (2024-W01).
+        _record("r2", "2024-01-07T10:00:00Z", "Water"),
+        # 2024-01-08 is the Monday of the next ISO week (2024-W02).
+        _record("r3", "2024-01-08T10:00:00Z", "Water"),
+    )
+    table = build_coding_trend_table(
+        records, date_field="created", code_fields=("codes",)
+    )
+    assert table is not None
+    assert table.periods == ("2024-W01", "2024-W02")
+    counts = {(c.code, c.period): c.count for c in table.cells}
+    assert counts[("Water", "2024-W01")] == 2
+    assert counts[("Water", "2024-W02")] == 1
+
+
+def test_counts_codes_per_day_period() -> None:
+    """Daily buckets use ``YYYY-MM-DD`` labels.
+
+    Why: short-window deep-dives (a single operation day) need the
+    finest granularity. Confirms the day branch parses the full date
+    prefix correctly.
+    """
+    records = (
+        _record("r1", "2024-01-05T10:00:00Z", "Water"),
+        _record("r2", "2024-01-05T22:00:00Z", "Water"),
+        _record("r3", "2024-01-06T08:00:00Z", "Water"),
+    )
+    table = build_coding_trend_table(
+        records, date_field="created", code_fields=("codes",), period="day"
+    )
+    assert table is not None
+    counts = {(c.code, c.period): c.count for c in table.cells}
+    assert counts[("Water", "2024-01-05")] == 2
+    assert counts[("Water", "2024-01-06")] == 1
 
 
 def test_returns_none_when_date_field_absent() -> None:
@@ -71,7 +122,7 @@ def test_records_without_codes_are_skipped_not_errored() -> None:
         ),
     )
     table = build_coding_trend_table(
-        records, date_field="created", code_fields=("codes",)
+        records, date_field="created", code_fields=("codes",), period="month"
     )
     assert table is not None
     counts = {(c.code, c.period): c.count for c in table.cells}

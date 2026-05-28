@@ -25,9 +25,9 @@ record exactly once.
 
 Cluster the dense vectors with **HDBSCAN** (`hdbscan.HDBSCAN`):
 
-1. `min_cluster_size` is configurable (`ORCHESTRATOR_MIN_CLUSTER_SIZE`,
+1. `min_cluster_size` is configurable (`ANALYZE_MIN_CLUSTER_SIZE`,
    default 5) and the distance metric is configurable
-   (`ORCHESTRATOR_CLUSTERING_METRIC`, default `euclidean`).
+   (`ANALYZE_CLUSTERING_METRIC`, default `euclidean`).
 2. HDBSCAN's noise label (`-1`) maps to **uncategorised** chunks — those records
    are still analysed, never dropped.
 3. A corpus smaller than `min_cluster_size` skips clustering and is treated as a

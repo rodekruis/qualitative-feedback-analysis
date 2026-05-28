@@ -18,7 +18,7 @@ from qfa.domain.models import (
 )
 from qfa.services.orchestrator import AnalyzeJudgeResult, Orchestrator
 from qfa.services.prompts import ANALYZE_GUARDRAILS_PROMPT
-from qfa.settings import OrchestratorSettings
+from qfa.settings import AnalyzeSettings, OrchestratorSettings
 
 TENANT_ID = "tenant-42"
 LLM_TIMEOUT = 30.0
@@ -113,7 +113,8 @@ def _build_orchestrator(llm, anonymizer, embedder, max_total_tokens):
         llm=llm,
         anonymizer=anonymizer,
         embedder=embedder,
-        settings=OrchestratorSettings(min_cluster_size=2),
+        settings=OrchestratorSettings(),
+        analyze_settings=AnalyzeSettings(min_cluster_size=2),
         llm_timeout_seconds=LLM_TIMEOUT,
         max_total_tokens=max_total_tokens,
     )

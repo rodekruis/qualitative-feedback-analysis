@@ -9,7 +9,17 @@ which DOES import :class:`~qfa.domain.models.FeedbackRecordModel`, lives in
 All models are immutable (frozen) Pydantic models per ADR-001.
 """
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
+
+#: Supported granularities for the coding-trend table's period bucketing.
+#:
+#: Lives in :mod:`qfa.domain.clustering_models` (rather than alongside
+#: the bucketing logic in :mod:`qfa.services.coding_trends`) so that
+#: settings and request models — which sit outside ``qfa.services`` —
+#: can reference the type without creating a layering loop.
+TrendPeriod = Literal["day", "week", "month"]
 
 
 class CodingTrendCell(BaseModel):
@@ -18,7 +28,13 @@ class CodingTrendCell(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     code: str = Field(description="Coding label (per the coding framework).")
-    period: str = Field(description="Time period bucket, e.g. ``2024-01``.")
+    period: str = Field(
+        description=(
+            "Time period bucket label. Shape depends on the granularity:"
+            " ``YYYY-MM-DD`` for day, ``YYYY-Www`` (ISO week) for week,"
+            " ``YYYY-MM`` for month."
+        )
+    )
     count: int = Field(
         ge=0, description="Number of records coded with this code in this period."
     )

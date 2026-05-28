@@ -209,18 +209,38 @@ def test_embedding_settings_defaults_and_env_prefix(monkeypatch) -> None:
     assert settings.intra_op_num_threads is None
 
 
-def test_orchestrator_settings_have_clustering_and_trend_fields() -> None:
-    """``OrchestratorSettings`` exposes clustering params and trend field mapping.
+def test_analyze_settings_have_clustering_and_trend_fields() -> None:
+    """``AnalyzeSettings`` exposes clustering params, trend mapping, and period.
 
-    Why: clustering parameters and the date/code metadata-field mapping
-    must be tunable without code changes, per the design spec.
+    Why: the analyze-endpoint tuning (clustering parameters and the
+    date/code metadata-field mapping) must be tunable without code
+    changes, per the design spec. ``AnalyzeSettings`` is the
+    endpoint-scoped group so the eventual orchestrator decomposition
+    (ADR-011) doesn't require renaming env vars in production. The
+    default period is ``week`` — week is usually the right granularity
+    for the typical 1-3 month operational corpus.
     """
-    from qfa.settings import OrchestratorSettings
+    from qfa.settings import AnalyzeSettings
 
-    settings = OrchestratorSettings()
+    settings = AnalyzeSettings()
     assert settings.min_cluster_size >= 2
     assert isinstance(settings.coding_trend_date_field, str)
     assert isinstance(settings.coding_trend_code_fields, list)
+    assert settings.default_coding_trend_period == "week"
+
+
+def test_analyze_settings_default_period_overridable_via_env(monkeypatch) -> None:
+    """``ANALYZE_DEFAULT_CODING_TREND_PERIOD`` overrides the server default.
+
+    Why: operators may want to flip the default for a deployment that
+    typically ingests multi-year corpora (where ``month`` is the
+    sensible bucket) without forcing every caller to pass ``period``
+    on every request.
+    """
+    from qfa.settings import AnalyzeSettings
+
+    monkeypatch.setenv("ANALYZE_DEFAULT_CODING_TREND_PERIOD", "month")
+    assert AnalyzeSettings().default_coding_trend_period == "month"
 
 
 class TestAppSettings:
