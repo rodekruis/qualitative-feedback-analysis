@@ -98,22 +98,25 @@ LLM is told never to surface it in prose.
 ### Step 2 — write the prose with an LLM
 
 Drive the batches from a Claude Code session — that keeps the work on the
-existing subscription. The recipe Claude follows in the session:
+existing subscription. To kick it off, open a session in the repo and
+say something like:
 
-1. Read `scripts/generate_corpus.prompt.md` once.
-2. Slice `fixtures/analyze_corpus.specs.jsonl` into batches of 50–100
-   records. (Smaller = safer per call, larger = fewer calls; 100 is the
-   sweet spot.)
-3. For each batch: paste the prompt + the batch JSON into a fresh message,
-   collect the returned `texts` array, append each element as one line to
-   `texts.jsonl`.
-4. When all batches are done, sanity-check that `wc -l texts.jsonl` matches
-   the spec count.
+> Read `scripts/generate_corpus.prompt.md` and run it.
+
+The prompt file is self-contained: its top half is *driver instructions*
+for the orchestrating Claude (count specs, slice into batches of ~100,
+send each batch through the per-batch prompt, append to `texts.jsonl`,
+validate counts at the end), and its bottom half is the *per-batch
+prompt* the driver copies into each LLM call. You do not need to point
+Claude at this README — the prompt knows the full step-2 workflow.
 
 A 5000-record corpus runs in ~50 batches. The most common failure mode is
-the LLM returning a malformed JSON array — the prompt's self-check
-section asks the model to validate before emitting; if a batch still comes
-back broken, regenerate just that batch rather than the whole run.
+the LLM returning a malformed JSON array — the per-batch prompt's
+self-check section asks the model to validate before emitting; if a
+batch still comes back broken, the driver regenerates just that batch
+rather than the whole run. Crashes mid-run are recoverable because
+`texts.jsonl` is append-only and ids already present are skipped on
+resume.
 
 ### Step 3 — merge into the final YAML
 
