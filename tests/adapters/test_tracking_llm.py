@@ -9,6 +9,7 @@ import pytest
 from qfa.adapters.tracking_llm import TrackingLLMAdapter
 from qfa.domain.errors import LLMError
 from qfa.domain.models import LLMResponse
+from qfa.domain.ports import LLMPort, UsageRepositoryPort
 from qfa.domain.usage_models import (
     CallStatus,
     LLMCallRecord,
@@ -19,7 +20,7 @@ from qfa.services.call_context import call_scope
 pytestmark = pytest.mark.asyncio
 
 
-class FakeLLMPort:
+class FakeLLMPort(LLMPort):
     """Test double for LLMPort. Returns a queued response or raises."""
 
     def __init__(self) -> None:
@@ -52,7 +53,7 @@ class FakeLLMPort:
         return self._next_response
 
 
-class FakeUsageRepository:
+class FakeUsageRepository(UsageRepositoryPort):
     """Test double for UsageRepositoryPort.record_call."""
 
     def __init__(self) -> None:
@@ -213,7 +214,7 @@ async def test_recording_failure_during_error_path_still_propagates_original():
             )
 
 
-class _FlakyRepo:
+class _FlakyRepo(UsageRepositoryPort):
     """Fails with ``exc`` for the first ``fail_times`` attempts, then succeeds."""
 
     def __init__(self, exc: Exception, fail_times: int) -> None:

@@ -34,7 +34,7 @@ from qfa.domain.models import (
     TenantApiKey,
     TenantInfo,
 )
-from qfa.domain.ports import UsageRepositoryPort
+from qfa.domain.ports import AuthManagementPort, UsageRepositoryPort
 from qfa.domain.sensitivity_types import SensitivityType
 from qfa.domain.usage_models import (
     DistributionStats,
@@ -45,7 +45,7 @@ from qfa.domain.usage_models import (
 from qfa.services.auth_orchestrator import AuthOrchestrator
 
 
-class FakeAuthManagementPort:
+class FakeAuthManagementPort(AuthManagementPort):
     """Fake auth-management adapter for API tests."""
 
     def __init__(self) -> None:

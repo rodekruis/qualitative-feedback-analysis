@@ -37,14 +37,18 @@ Hexagonal architecture. Key concepts:
 - Driven adapters (LLM provider, anonymisation) sit behind ports
   declared in `qfa.domain.ports` — for example `LLMPort` and
   `AnonymizationPort` — so implementations can be swapped.
-- **Adapter classes must explicitly inherit from their port** (e.g.
-  `class LiteLLMClient(LLMPort):`, `class PresidioAnonymizer(AnonymizationPort):`).
-  Although Python `Protocol`s support structural typing without
-  inheritance, the explicit base class makes the port↔adapter
-  relationship discoverable in IDEs ("go to definition" jumps to the
-  contract) and signals intent to readers. Structural conformance is
-  reserved for ad-hoc test fakes that don't need to be navigable as
-  port implementations.
+- **Every class that implements a port must explicitly inherit from it
+  — by default, this applies to production adapters *and* test
+  doubles** (e.g. `class LiteLLMClient(LLMPort):`,
+  `class PresidioAnonymizer(AnonymizationPort):`,
+  `class FakeLLMPort(LLMPort):`). Although Python `Protocol`s support
+  structural typing without inheritance, the explicit base class makes
+  the port↔adapter relationship discoverable in IDEs ("go to
+  definition" jumps to the contract) and signals intent to readers.
+  Skipping the inheritance is reserved for genuinely ad-hoc cases
+  (e.g. one-line `unittest.mock.MagicMock(spec=LLMPort)` usages, which
+  enforce conformance via `spec=`) and should be the exception, not
+  the default.
 - API calls are authenticated via API keys.
 
 Layer rules are enforced by `import-linter` contracts in
