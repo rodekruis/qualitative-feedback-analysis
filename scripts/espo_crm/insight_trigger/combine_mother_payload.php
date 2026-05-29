@@ -13,6 +13,7 @@ $motherPayload = string\concatenate(
     '"prompt": "', $prompt, '", ',
     '"output_language": "', $outputLanguage, '", ',
     '"max_codes": 10, ',
-    '"confidence_threshold": 0.7',
+    '"confidence_threshold": 0.7, ',
+    '"endpoint": "', $$endpoint, '"',
     '}'
 );
