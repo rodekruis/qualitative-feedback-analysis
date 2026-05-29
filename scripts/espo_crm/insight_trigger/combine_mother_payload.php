@@ -14,6 +14,7 @@ $motherPayload = string\concatenate(
     '"output_language": "', $outputLanguage, '", ',
     '"max_codes": 10, ',
     '"confidence_threshold": 0.7, ',
+    '"selected_method": "', $$selectedMethod, '", ',
     '"endpoint": "', $$endpoint, '"',
     '}'
 );
