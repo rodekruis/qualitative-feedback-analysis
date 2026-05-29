@@ -11,7 +11,7 @@ $motherPayload = string\concatenate(
     '"coding_framework": ', $$codesString, ', ',
     '"anonymize": true, ',
     '"prompt": "', $prompt, '", ',
-    '"output_language": "', $language, '", ',
+    '"output_language": "', $outputLanguage, '", ',
     '"max_codes": 10, ',
     '"confidence_threshold": 0.7',
     '}'
