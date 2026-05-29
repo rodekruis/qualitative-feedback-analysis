@@ -44,6 +44,12 @@ dependencies = [
     "langdetect>=1.0.9",
 ]
 
+[tool.uv]
+constraint-dependencies = [
+    # Starlette vulnerability in starlette >= 0.8.3, < 1.0.1: https://x41-dsec.de/lab/advisories/x41-2026-002-starlette/
+    "starlette>=1.0.1"
+]
+
 [tool.uv.sources] # include spacy models through custom-defined sources https://stackoverflow.com/a/79768491
 en-core-web-sm = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" }
 fr-core-news-sm = { url = "https://github.com/explosion/spacy-models/releases/download/fr_core_news_sm-3.8.0/fr_core_news_sm-3.8.0-py3-none-any.whl" }
