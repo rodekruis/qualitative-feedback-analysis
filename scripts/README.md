@@ -6,6 +6,7 @@ people ask about most: regenerating the `analyze_corpus.yaml` fixture.
 
 | Script                          | What it does                                                     |
 | ------------------------------- | ---------------------------------------------------------------- |
+| `fetch_embedding_model.py`      | Download the BGE-M3 ONNX embedder to a gitignored local path (dev). |
 | `generate_corpus.py`            | Build / regenerate `fixtures/analyze_corpus.yaml` (see below).   |
 | `generate_corpus.prompt.md`     | LLM prompt that fills in `text` during corpus generation.        |
 | `stress_analyze.py`             | Drive `POST /v1/analyze` with a seeded corpus sample, single-call or in parallel (see below). |
@@ -199,7 +200,9 @@ use `notebooks/analyze_corpus.ipynb` instead.
 
 - A server reachable at `--base-url` (default `http://localhost:8000`)
   with `mode=hierarchical` available — i.e. `EMBEDDING_MODEL_PATH`
-  set on the server side.
+  set on the server side. Don't have the model locally? Run
+  `uv run python scripts/fetch_embedding_model.py` and paste the
+  printed `EMBEDDING_*` lines into the server's environment.
 - `AUTH_API_KEYS` set in the shell where you run the script (same
   JSON the server reads), or pass `--api-key` explicitly. The first
   key entry is used as the Bearer token.
