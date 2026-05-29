@@ -1,54 +1,19 @@
 <?php // Do not copy this tag into EspoCRM
-// Script for translating reponse to output string for summarize per record feature in EspoCRM
+// Script for translating response to output string for summarize per record feature in EspoCRM
+// The QFA backend now returns a pre-formatted pretty_output field per summary record.
+// This script concatenates those fields into a single output string.
 
 $response = $_lastHttpResponseBody;
 
-// Get the full list of summaries
 $summariesList = json\retrieve($response, 'summaries');
-
-// Initialize loop variables
+$count = array\length($summariesList);
 $finalString = '';
 $i = 0;
-$count = array\length($summariesList);
 
-// Loop through every summary
 while ($i < $count) {
-    // Extract fields for the current index
-    $backendID = array\at($$backendIDs, $i);
-    $feedbackID = json\retrieve($response, string\concatenate('summaries.', $i, '.id'));
-    $title = json\retrieve($response, string\concatenate('summaries.', $i, '.title'));
-    $summary = json\retrieve($response, string\concatenate('summaries.', $i, '.summary'));
-    $score = json\retrieve($response, string\concatenate('summaries.', $i, '.quality_score'));
-
-    // Determine the Visual Dot Rating
-    $dots = '○○○○○';
-    if ($score >= 0.9) { $dots = '●●●●●'; }
-    else if ($score >= 0.7) { $dots = '●●●●○'; }
-    else if ($score >= 0.5) { $dots = '●●●○○'; }
-    else if ($score >= 0.3) { $dots = '●●○○○'; }
-    else if ($score >= 0.1) { $dots = '●○○○○'; }
-
-    // Format the Percentage
-    $numericScore = $score + 0; // Type casting trick
-    $percentageValue = $numericScore * 100;
-    $percent = string\concatenate(number\format($percentageValue, 0, '.', ''), '%');
-    
-    // Build the "Executive" Block
-    $recordBlock = string\concatenate(
-        "Feedback-ID:             ", $feedbackID, "\n",
-        "Backend-ID:             ", $backendID, "\n",
-        "QUALITY:        ", $dots, " ", $percent, "\n",
-        "TITLE:          ", $title, "\n",
-        "SUMMARY:        \n", $summary, "\n",
-        "------------------------------------------------------------\n\n"
-    );
-
-    // Append to the master string
-    $finalString = string\concatenate($finalString, $recordBlock);
-
-    // Update counter
+    $block = json\retrieve($response, string\concatenate('summaries.', $i, '.pretty_output'));
+    $finalString = string\concatenate($finalString, $block, "\n\n");
     $i = $i + 1;
 }
 
-// Output the result to your field
 $modelResponse = $finalString;

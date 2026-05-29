@@ -16,13 +16,13 @@ import sqlalchemy as sa
 from pydantic import SecretStr
 
 from qfa.adapters.db import (
-    SqlAlchemyUsageRepository,
     create_session_factory,
     llm_calls,
     metadata,
     resolve_database_url,
 )
-from qfa.domain.models import CallStatus, LLMCallRecord, Operation
+from qfa.adapters.usage_repository import SqlAlchemyUsageRepository
+from qfa.domain.usage_models import CallStatus, LLMCallRecord, Operation
 from qfa.settings import DatabaseSettings
 
 pytestmark = pytest.mark.asyncio
@@ -186,7 +186,7 @@ async def test_translate_db_errors_maps_sqlalchemy_exceptions_to_domain():
     """
     from sqlalchemy.exc import InterfaceError, OperationalError
 
-    from qfa.adapters.db import _translate_db_errors
+    from qfa.adapters.usage_repository import _translate_db_errors
     from qfa.domain.errors import UsageRepositoryUnavailableError
 
     with pytest.raises(UsageRepositoryUnavailableError):
@@ -210,6 +210,48 @@ async def test_resolve_database_url_uses_explicit_url():
     assert (
         resolve_database_url(settings) == "postgresql+asyncpg://user:pass@host:5432/qfa"
     )
+
+
+def test_usage_stats_new_shape_has_llm_call_stats_and_operations():
+    """TenantUsageStats carries the new llm_call_stats and operations fields.
+
+    Verifies the domain shape directly (not via DB query) so this test
+    runs without any database. The per-invocation aggregation correctness
+    and the zero-window path against a real Postgres are covered in
+    tests/integration/test_usage_repository.py. (SQLite does not support
+    GROUPING SETS so the DB-backed zero-window path cannot be tested here.)
+    """
+    from decimal import Decimal
+
+    from qfa.domain.usage_models import (
+        DistributionStats,
+        TenantUsageStats,
+        UsageMetrics,
+    )
+
+    zero_metrics = UsageMetrics(
+        total_calls=0,
+        failed_calls=0,
+        total_cost_usd=Decimal("0"),
+        call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+        input_tokens=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+        output_tokens=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+    )
+    stats = TenantUsageStats(
+        tenant_id="tenant-1",
+        total_calls=0,
+        failed_calls=0,
+        total_cost_usd=Decimal("0"),
+        call_duration=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+        input_tokens=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+        output_tokens=DistributionStats(avg=0, min=0, max=0, p5=0, p95=0, total=0),
+        llm_call_stats=zero_metrics,
+        operations=(),
+    )
+    assert stats.tenant_id == "tenant-1"
+    assert stats.total_calls == 0
+    assert stats.llm_call_stats.total_calls == 0
+    assert stats.operations == ()
 
 
 async def test_resolve_database_url_from_password_parts():

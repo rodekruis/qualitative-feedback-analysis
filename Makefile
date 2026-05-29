@@ -15,12 +15,12 @@ clean:
 test: test-unit-tests test-doctest
 
 test-unit-tests:
-	uv run --no-sources pytest tests
+	uv run pytest tests
 
 test-doctest:
 	# Run doctests in src/. Tolerates exit code 5 (no tests collected) so that
 	# `make test` passes on a fresh project before any doctests have been added.
-	uv run --no-sources pytest --doctest-modules src; rc=$$?; [ $$rc -eq 5 ] && exit 0 || exit $$rc
+	uv run pytest --doctest-modules src; rc=$$?; [ $$rc -eq 5 ] && exit 0 || exit $$rc
 
 build:
 	uv build
@@ -29,8 +29,8 @@ ty:
 	uv run ty check
 
 ruff:
-	uv run --no-sources ruff format --target-version py312 src tests
-	uv run --no-sources ruff check --fix --exit-non-zero-on-fix src tests
+	uv run ruff format --target-version py312 src tests
+	uv run ruff check --fix --exit-non-zero-on-fix src tests
 
 type_check: ty
 

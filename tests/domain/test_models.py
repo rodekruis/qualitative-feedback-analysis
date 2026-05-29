@@ -1,8 +1,4 @@
-"""Tests for domain models."""
-
-from datetime import UTC, datetime
-from decimal import Decimal
-from uuid import UUID, uuid4
+"""Tests for non-usage domain models (requests, responses, API keys, sensitivity)."""
 
 import pytest
 from pydantic import ValidationError
@@ -10,17 +6,10 @@ from pydantic import ValidationError
 from qfa.domain.models import (
     AnalysisRequestModel,
     AnalysisResultModel,
-    CallContext,
-    CallStatus,
-    DistributionStats,
     FeedbackRecordModel,
-    LLMCallRecord,
     LLMResponse,
-    Operation,
     SensitivityAnalysisResultModelList,
     TenantApiKey,
-    TokenStats,
-    UsageStats,
 )
 from qfa.domain.sensitivity_types import SensitivityType
 
@@ -217,18 +206,6 @@ class TestTenantApiKey:
             key.name = "changed"
 
 
-# --- Operation / CallStatus / CallContext ---
-
-
-class TestOperationEnum:
-    def test_string_values(self):
-        assert Operation.ANALYZE == "analyze"
-        assert Operation.SUMMARIZE == "summarize"
-        assert Operation.SUMMARIZE_AGGREGATE == "summarize_aggregate"
-        assert Operation.ASSIGN_CODES == "assign_codes"
-        assert Operation.UNKNOWN == "unknown"
-
-
 class TestSensitivityModels:
     def test_sensitive_result_parses_enum_codes_from_json(self):
         result = SensitivityAnalysisResultModelList.model_validate_json(
@@ -252,151 +229,50 @@ class TestSensitivityModels:
         assert SensitivityType.CORRUPTION.value == "CORRUPTION"
 
 
-class TestCallStatusEnum:
-    def test_string_values(self):
-        assert CallStatus.OK == "ok"
-        assert CallStatus.ERROR == "error"
-
-
-class TestCallContext:
-    def test_construct(self):
-        """Constructor accepts and exposes the three required fields.
-
-        Smoke test for the data shape — guards against accidental rename
-        or removal of any of ``tenant_id``, ``operation``, ``call_id``.
-        """
-        cid = uuid4()
-        ctx = CallContext(tenant_id="t1", operation=Operation.ANALYZE, call_id=cid)
-        assert ctx.tenant_id == "t1"
-        assert ctx.operation == Operation.ANALYZE
-        assert ctx.call_id == cid
-
-    def test_frozen(self):
-        """``CallContext`` is frozen — assignment after construction must raise.
-
-        Immutability matters because the context lives in a ContextVar and
-        gets snapshotted across asyncio tasks; mutating it mid-request
-        would silently desynchronise tasks that already captured it.
-        """
-        ctx = CallContext(tenant_id="t1", operation=Operation.ANALYZE, call_id=uuid4())
-        with pytest.raises(ValidationError):
-            ctx.tenant_id = "t2"
-
-    def test_call_id_required(self):
-        """``call_id`` is mandatory — omitting it must raise ValidationError.
-
-        Prevents accidental "context without correlation" — every record
-        persisted through ``TrackingLLMAdapter`` depends on this field.
-        """
-        with pytest.raises(ValidationError):
-            CallContext(tenant_id="t1", operation=Operation.ANALYZE)  # type:ignore [ty:missing-argument]
-
-
-# --- LLMCallRecord ---
-
-
-def _now() -> datetime:
-    return datetime.now(UTC)
-
-
-class TestLLMCallRecord:
-    def test_ok_status(self):
-        """A fully-populated ``status=OK`` record constructs cleanly.
-
-        Covers the happy path: all required fields including ``call_id``
-        accepted, ``error_class`` defaults to None, ``call_id`` is a UUID.
-        """
-        rec = LLMCallRecord(
-            tenant_id="t1",
-            operation=Operation.ANALYZE,
-            call_id=uuid4(),
-            timestamp=_now(),
-            call_duration_ms=100,
-            model="gpt-4",
-            input_tokens=10,
-            output_tokens=20,
-            cost_usd=Decimal("0.0001"),
-            status=CallStatus.OK,
+class TestAnalysisRequestMode:
+    def test_default_mode_is_single_pass(self):
+        """``mode`` defaults to ``single_pass`` when omitted by callers."""
+        req = AnalysisRequestModel(
+            feedback_records=(FeedbackRecordModel(id="d", text="t"),),
+            prompt="x",
+            tenant_id="t",
         )
-        assert rec.status == CallStatus.OK
-        assert rec.error_class is None
-        assert isinstance(rec.call_id, UUID)
+        assert req.mode == "single_pass"
 
-    def test_error_status_requires_error_class(self):
-        """``status=ERROR`` with ``error_class=None`` must be rejected.
-
-        The model validator enforces the ``error_class iff error`` invariant
-        so the DB check-constraint and the application stay in agreement.
-        """
-        with pytest.raises(ValidationError):
-            LLMCallRecord(
-                tenant_id="t1",
-                operation=Operation.ANALYZE,
-                call_id=uuid4(),
-                timestamp=_now(),
-                call_duration_ms=100,
-                model="",
-                input_tokens=0,
-                output_tokens=0,
-                cost_usd=Decimal("0"),
-                status=CallStatus.ERROR,
-                error_class=None,
-            )
-
-    def test_ok_status_rejects_error_class(self):
-        """``status=OK`` with a non-None ``error_class`` must be rejected.
-
-        The other half of the ``error_class iff error`` invariant — keeps
-        success rows from carrying stale error metadata.
-        """
-        with pytest.raises(ValidationError):
-            LLMCallRecord(
-                tenant_id="t1",
-                operation=Operation.ANALYZE,
-                call_id=uuid4(),
-                timestamp=_now(),
-                call_duration_ms=100,
-                model="gpt-4",
-                input_tokens=10,
-                output_tokens=20,
-                cost_usd=Decimal("0.0001"),
-                status=CallStatus.OK,
-                error_class="LLMTimeoutError",
-            )
-
-    def test_call_id_required(self):
-        """``call_id`` is mandatory — omitting it must raise ValidationError.
-
-        Mirror of the ``CallContext`` check at the record level; a record
-        without ``call_id`` would defeat per-invocation aggregation.
-        """
-        with pytest.raises(ValidationError):
-            LLMCallRecord(  # type:ignore [ty:missing-argument]
-                tenant_id="t1",
-                operation=Operation.ANALYZE,
-                timestamp=_now(),
-                call_duration_ms=100,
-                model="gpt-4",
-                input_tokens=10,
-                output_tokens=20,
-                cost_usd=Decimal("0.0001"),
-                status=CallStatus.OK,
-            )
-
-
-# --- UsageStats new fields ---
-
-
-class TestUsageStatsExtensions:
-    def test_has_failed_calls_and_total_cost(self):
-        stats = UsageStats(
-            tenant_id="t1",
-            total_calls=10,
-            failed_calls=1,
-            total_cost_usd=Decimal("0.5"),
-            call_duration=DistributionStats(avg=1, min=0, max=2, p5=0, p95=2),
-            input_tokens=TokenStats(avg=1, min=0, max=2, p5=0, p95=2, total=10),
-            output_tokens=TokenStats(avg=1, min=0, max=2, p5=0, p95=2, total=10),
+    def test_explicit_single_pass_accepted(self):
+        """``mode=single_pass`` is the documented explicit value."""
+        req = AnalysisRequestModel(
+            feedback_records=(FeedbackRecordModel(id="d", text="t"),),
+            prompt="x",
+            tenant_id="t",
+            mode="single_pass",
         )
-        assert stats.total_cost_usd == Decimal("0.5")
-        assert stats.failed_calls == 1
+        assert req.mode == "single_pass"
+
+    def test_invalid_mode_rejected(self):
+        """Any other ``mode`` value raises a validation error."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            AnalysisRequestModel(
+                feedback_records=(FeedbackRecordModel(id="d", text="t"),),
+                prompt="x",
+                tenant_id="t",
+                mode="hierarchical",  # ty: ignore[invalid-argument-type]
+            )
+
+
+class TestAnalysisResultModelExtended:
+    def test_quality_score_can_be_none(self):
+        """``quality_score=None`` represents judge unavailability."""
+        m = AnalysisResultModel(
+            result="ok", quality_score=None, uncertainty_explanation="why"
+        )
+        assert m.quality_score is None
+
+    def test_quality_score_float_accepted(self):
+        """Floats in ``[0, 1]`` are accepted."""
+        m = AnalysisResultModel(
+            result="ok", quality_score=0.42, uncertainty_explanation="why"
+        )
+        assert m.quality_score == 0.42

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "qualitative-feedback-analysis"
-version = "1.0.0"
+version = "1.1.0"
 description = "The feedback analysis tool receives feedback items and analyses trends, topics and their evolution over time."
 readme = "README.md"
 license = "LicenseRef-Proprietary"
@@ -42,6 +42,12 @@ dependencies = [
     "es_core_news_sm",
     "xx_ent_wiki_sm",
     "langdetect>=1.0.9",
+]
+
+[tool.uv]
+constraint-dependencies = [
+    # Starlette vulnerability in starlette >= 0.8.3, < 1.0.1: https://x41-dsec.de/lab/advisories/x41-2026-002-starlette/
+    "starlette>=1.0.1"
 ]
 
 [tool.uv.sources] # include spacy models through custom-defined sources https://stackoverflow.com/a/79768491
@@ -192,6 +198,7 @@ ignore_imports = [
     "qfa.api.app -> qfa.adapters.presidio_anonymizer",
     "qfa.api.app -> qfa.adapters.tracking_llm",
     "qfa.api.app -> qfa.adapters.db",
+    "qfa.api.app -> qfa.adapters.usage_repository",
     "qfa.api.app -> qfa.adapters.env_auth",
 ]
 

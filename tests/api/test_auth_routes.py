@@ -4,16 +4,25 @@ import httpx
 import pytest
 import pytest_asyncio
 
+from qfa.domain import AuthenticationError, TenantApiKey
 from qfa.domain.errors import KeyAlreadyExistsError, TenantNotFoundError
-from qfa.domain.models import AuthKeyInfo, KeyCreationResponse, TenantApiKey, TenantInfo
+from qfa.domain.models import AuthKeyInfo, KeyCreationResponse, TenantInfo
+from qfa.services.auth_orchestrator import AuthOrchestrator
 
 from .conftest import FAKE_API_KEY, FAKE_SUPERUSER_KEY
 
 
-class RecordingAuthOrchestrator:
-    """Auth orchestrator test double with call recording."""
+class RecordingAuthOrchestrator(AuthOrchestrator):
+    """Auth orchestrator test double with call recording.
+
+    Inherits from :class:`AuthOrchestrator` so the type checker enforces
+    LSP-compatible overrides — any signature drift in the real service
+    will fail ``ty check`` here.
+    """
 
     def __init__(self, api_keys: list[TenantApiKey]) -> None:
+        # Deliberately skip super().__init__: the spy does not wire real
+        # auth-lookup or auth-management ports — its methods are overridden.
         self._api_keys = api_keys
         self.add_tenant_calls: list[dict] = []
         self.delete_tenant_calls: list[str] = []
@@ -27,11 +36,11 @@ class RecordingAuthOrchestrator:
         self.raise_on_add_key: Exception | None = None
         self.raise_on_delete_key: Exception | None = None
 
-    async def validate_api_key(self, provided_key: str) -> TenantApiKey | None:
-        for api_key in self._api_keys:
-            if api_key.matches_key(provided_key):
-                return api_key
-        return None
+    async def validate_api_key(self, api_key: str) -> TenantApiKey:
+        for known_key in self._api_keys:
+            if known_key.matches_key(api_key):
+                return known_key
+        raise AuthenticationError("API key does not match any known key.")
 
     async def add_tenant(
         self,

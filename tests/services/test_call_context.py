@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 
-from qfa.domain.models import Operation
+from qfa.domain.usage_models import Operation
 from qfa.services.call_context import call_scope, current_call_context
 
 pytestmark = pytest.mark.asyncio

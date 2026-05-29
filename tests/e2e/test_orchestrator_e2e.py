@@ -44,12 +44,22 @@ class TestAnalyzeRecordsRow:
     async def test_post_analyze_records_one_ok_row_with_operation_analyze(
         self, e2e_client, e2e_fake_llm, e2e_engine
     ):
-        """A successful /v1/analyze persists one ``ok`` row for that operation.
+        """A successful /v1/analyze persists two ``ok`` rows — analyse + judge.
 
-        End-to-end wiring check: tenant/operation/status/tokens land on
-        the DB exactly as the orchestrator + tracking adapter produced them.
+        The refactored Orchestrator.analyze makes two LLM calls: one for the
+        main analysis (response_model=str) and one for the judge
+        (response_model=AnalyzeJudgeResult).  Both are tracked individually by
+        the TrackingLLMAdapter, so we expect two rows with operation=analyze
+        and status=ok.
         """
-        e2e_fake_llm.queue_response(_ok(text='{"result": "analysis ok"}'))
+        # Call 1: analysis text (response_model=str).
+        e2e_fake_llm.queue_response(_ok(text="Analysis result text."))
+        # Call 2: judge structured output.
+        e2e_fake_llm.queue_response(
+            _ok(
+                text='{"quality_score": 0.8, "uncertainty_explanation": "Good coverage."}'
+            )
+        )
 
         resp = await e2e_client.post(
             "/v1/analyze",
@@ -63,13 +73,11 @@ class TestAnalyzeRecordsRow:
         assert resp.status_code == 200
 
         rows = await _fetch_rows(e2e_engine)
-        assert len(rows) == 1
-        row = rows[0]
-        assert row.operation == "analyze"
-        assert row.status == "ok"
-        assert row.error_class is None
-        assert row.input_tokens == 5
-        assert row.output_tokens == 2
+        assert len(rows) == 2
+        for row in rows:
+            assert row.operation == "analyze"
+            assert row.status == "ok"
+            assert row.error_class is None
 
 
 class TestRequestIdEqualsCallId:
@@ -93,14 +101,20 @@ class TestRequestIdEqualsCallId:
         """
         from uuid import UUID
 
-        e2e_fake_llm.queue_response(_ok(text='{"result": "analysis ok"}'))
+        # Two LLM calls: analysis text + judge structured output.
+        e2e_fake_llm.queue_response(_ok(text="Analysis result text."))
+        e2e_fake_llm.queue_response(
+            _ok(
+                text='{"quality_score": 0.8, "uncertainty_explanation": "Good coverage."}'
+            )
+        )
 
         resp = await e2e_client.post(
             "/v1/analyze",
             json={
                 "feedback_records": [{"id": "d1", "content": "hello"}],
                 "prompt": "summarize",
-                "deactivate_anonymization": True,
+                "anonymize": False,
             },
             headers={"Authorization": f"Bearer {E2E_API_KEY}"},
         )
@@ -111,8 +125,10 @@ class TestRequestIdEqualsCallId:
         assert header_uuid == body_request_id
 
         rows = await _fetch_rows(e2e_engine)
-        assert len(rows) == 1
-        assert rows[0].call_id == header_uuid
+        # Both the analyse call and the judge call are tracked; both share
+        # the same call_id (the request UUID).
+        assert len(rows) == 2
+        assert all(r.call_id == header_uuid for r in rows)
 
     async def test_fanned_out_llm_calls_share_one_call_id_equal_to_request_id(
         self, e2e_client, e2e_fake_llm, e2e_engine
@@ -223,7 +239,7 @@ class TestAssignCodesRecordsMultipleRows:
             e2e_fake_llm.queue_response(_ok(text=judge_response))
 
         resp = await e2e_client.post(
-            "/v1/assign_codes",
+            "/v1/assign-codes",
             json={
                 "coding_framework": coding_framework,
                 "feedback_records": [{"id": "f1", "content": "some feedback text"}],

@@ -138,7 +138,8 @@ class TestAnalyzeSuccess:
         """
         from uuid import UUID
 
-        from qfa.domain.models import AnalysisResultModel, Operation
+        from qfa.domain.models import AnalysisResultModel
+        from qfa.domain.usage_models import Operation
         from qfa.services.call_context import current_call_context
 
         captured: dict = {}
@@ -563,14 +564,14 @@ class TestErrorMapping:
                 headers=_auth_header(),
             )
         assert resp.status_code == 200
-        assert resp.json()["summaries"] == [
-            {
-                "id": "custom-1",
-                "title": "Custom title",
-                "summary": "- Custom point",
-                "quality_score": 0.75,
-            }
-        ]
+        summaries = resp.json()["summaries"]
+        assert len(summaries) == 1
+        s = summaries[0]
+        assert s["id"] == "custom-1"
+        assert s["title"] == "Custom title"
+        assert s["summary"] == "- Custom point"
+        assert s["quality_score"] == 0.75
+        assert "pretty_output" in s
 
     @pytest.mark.asyncio
     async def test_detect_sensitive_502_analysis_error(self, test_app):
@@ -594,7 +595,19 @@ class TestErrorMapping:
 
 _CODING_BODY = {
     "feedback_records": [{"id": "custom-1", "content": "Long waiting times"}],
-    "coding_framework": {"types": []},
+    "coding_framework": {
+        "types": [
+            {
+                "name": "Type A",
+                "categories": [
+                    {
+                        "name": "Category A1",
+                        "codes": [{"code_id": "code-1", "name": "Code A1.1"}],
+                    }
+                ],
+            }
+        ]
+    },
 }
 
 
@@ -602,7 +615,7 @@ class TestAssignCodesSuccess:
     @pytest.mark.asyncio
     async def test_response_includes_confidence_fields_and_explanation(self, client):
         resp = await client.post(
-            "/v1/assign_codes", json=_CODING_BODY, headers=_auth_header()
+            "/v1/assign-codes", json=_CODING_BODY, headers=_auth_header()
         )
         assert resp.status_code == 200
         code_item = resp.json()["coded_feedback_records"][0]["assigned_codes"][0]
@@ -615,7 +628,7 @@ class TestAssignCodesSuccess:
     @pytest.mark.asyncio
     async def test_422_on_invalid_confidence_threshold(self, client):
         resp = await client.post(
-            "/v1/assign_codes",
+            "/v1/assign-codes",
             json={**_CODING_BODY, "confidence_threshold": 1.5},
             headers=_auth_header(),
         )

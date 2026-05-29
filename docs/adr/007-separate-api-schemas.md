@@ -76,7 +76,7 @@ Domain models in `domain/models.py` serve the internal layers.
 
 After observing this ADR being applied uniformly to *every* API response
 — including the usage-tracking endpoints, where the domain aggregates
-({py:class}`~qfa.domain.models.UsageStats`, {py:class}`~qfa.domain.models.DistributionStats`, {py:class}`~qfa.domain.models.TokenStats`) are
+({py:class}`~qfa.domain.usage_models.TenantUsageStats`, {py:class}`~qfa.domain.usage_models.DistributionStats`) are
 already the correct external shape with no internal fields to hide —
 the rule is being narrowed to the cases where its justification actually
 applies.
@@ -120,12 +120,12 @@ the two models will track each other in lockstep anyway.
 - `DistributionStatsResponse`, `TokenStatsResponse` — pure mirrors,
   deleted.
 - {py:class}`~qfa.api.schemas_usage.UsageStatsResponse` — was a pure mirror plus two echo fields
-  (`from`, `to`); now a thin subclass of {py:class}`~qfa.domain.models.UsageStats` adding only
+  (`from`, `to`); now a thin subclass of {py:class}`~qfa.domain.usage_models.TenantUsageStats` adding only
   those two fields.
 - {py:class}`~qfa.api.schemas_usage.AllUsageStatsResponse` — was composed of mirror types; now
-  composed of domain {py:class}`~qfa.domain.models.UsageStats` directly, plus the same echo fields.
+  composed of domain {py:class}`~qfa.domain.usage_models.TenantUsageStats` directly, plus the same echo fields.
 - `Decimal → float` JSON serialization moved from the response models
-  onto `UsageStats.total_cost_usd` — JSON serialization is a generic
+  onto `TenantUsageStats.total_cost_usd` — JSON serialization is a generic
   concern of any external boundary, not HTTP-specific.
 
 `AnalyzeResponse`, `SummarizeResponse`, `SummarizeAggregateResponse`,

@@ -4,7 +4,7 @@ Two surfaces: the in-memory domain models, and the on-disk usage table.
 
 ## Domain models
 
-All domain entities live in {py:mod}`qfa.domain.models` and are Pydantic `BaseModel(frozen=True)` per [ADR-001](../adr/001-pydantic-domain-models.md). One exception is {py:class}`~qfa.domain.models.AggregateSummaryResultModel`, which is mutable so the orchestrator can attach a quality score after the judge call.
+Domain entities live in {py:mod}`qfa.domain.models`, with usage-tracking entities split into {py:mod}`qfa.domain.usage_models`. All are Pydantic `BaseModel(frozen=True)` per [ADR-001](../adr/001-pydantic-domain-models.md). One exception is {py:class}`~qfa.domain.models.AggregateSummaryResultModel`, which is mutable so the orchestrator can attach a quality score after the judge call.
 
 | Model | Purpose |
 |---|---|
@@ -15,8 +15,8 @@ All domain entities live in {py:mod}`qfa.domain.models` and are Pydantic `BaseMo
 | {py:class}`~qfa.domain.models.CodingAssignmentRequestModel` / {py:class}`~qfa.domain.models.CodingAssignmentResultModel` | Hierarchical code assignment. `coding_framework` is currently `dict[str, Any]` — a typed model exists in the API schemas but is not yet wired in. |
 | `LLMResponse[T_Response]` | Generic envelope returned from {py:class}`~qfa.domain.ports.LLMPort`'s `complete` method. |
 | {py:class}`~qfa.domain.models.TenantApiKey` | One row in `AUTH_API_KEYS`. |
-| {py:class}`~qfa.domain.models.LLMCallRecord` | One LLM call's worth of tracking data — written by {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter`. |
-| {py:class}`~qfa.domain.models.UsageStats`, {py:class}`~qfa.domain.models.DistributionStats`, {py:class}`~qfa.domain.models.TokenStats` | Aggregate views returned by `/v1/usage`. |
+| {py:class}`~qfa.domain.usage_models.LLMCallRecord` | One LLM call's worth of tracking data — written by {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter`. |
+| {py:class}`~qfa.domain.usage_models.UsageMetrics`, {py:class}`~qfa.domain.usage_models.OperationStats`, {py:class}`~qfa.domain.usage_models.TenantUsageStats`, {py:class}`~qfa.domain.usage_models.TenantStats`, {py:class}`~qfa.domain.usage_models.OperationUsageStats`, {py:class}`~qfa.domain.usage_models.DistributionStats` | Aggregate views returned by `/v1/usage`, `/v1/usage/all/by-tenant`, and `/v1/usage/all/by-operation`. `TenantUsageStats` / `OperationStats` carry the tenant-top-level hierarchy with per-operation nested; `OperationUsageStats` / `TenantStats` carry the inverse operation-top-level hierarchy with per-tenant nested. Every block exposes per-invocation top-level fields plus a per-LLM-call `llm_call_stats`. `UsageMetrics` is the shared leaf class. `DistributionStats` is the shared distribution shape (avg/min/max/p5/p95/total) used for `call_duration`, `input_tokens`, and `output_tokens`. |
 
 ## Persistence — `llm_calls`
 
