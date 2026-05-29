@@ -65,7 +65,21 @@ def _assign_codes_request_examples() -> list[dict[str, Any]]:
     if not path.is_file():
         return [
             {
-                "coding_framework": {"types": []},
+                "coding_framework": {
+                    "root_codes": [
+                        {
+                            "name": "Example type",
+                            "children": [
+                                {
+                                    "name": "Example category",
+                                    "children": [
+                                        {"name": "Example code", "children": []}
+                                    ],
+                                }
+                            ],
+                        }
+                    ]
+                },
                 "feedback_records": [
                     {
                         "id": "no-framework",
@@ -81,6 +95,30 @@ def _assign_codes_request_examples() -> list[dict[str, Any]]:
         ]
     # Dev-only: load JSON for Swagger examples; TODO: link production framework through API
     framework = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(framework.get("root_codes"), list):
+        root_codes = framework["root_codes"]
+    else:
+        root_codes = []
+        for type_entry in framework.get("types") or []:
+            categories = []
+            for category_entry in type_entry.get("categories") or []:
+                codes = [
+                    {"name": str(code.get("name", "")), "children": []}
+                    for code in (category_entry.get("codes") or [])
+                ]
+                categories.append(
+                    {
+                        "name": str(category_entry.get("name", "")),
+                        "children": codes,
+                    }
+                )
+
+            root_codes.append(
+                {
+                    "name": str(type_entry.get("name", "")),
+                    "children": categories,
+                }
+            )
     # Verbatim long examples from the COVID-19 coding framework (Excel export).
     quotes = [
         "they belief now a day covid-19 is as such not big deal, but the ruling party or the government used it as the agenda to divert the political view and opinion of the people towards the election after the coming two months",
@@ -89,7 +127,7 @@ def _assign_codes_request_examples() -> list[dict[str, Any]]:
     ]
     return [
         {
-            "coding_framework": framework,
+            "coding_framework": {"root_codes": root_codes},
             "feedback_records": [
                 {"id": f"covid-example-{i}", "content": text}
                 for i, text in enumerate(quotes)
@@ -447,7 +485,7 @@ class ApiAssignCodesRequest(ApiInferenceRequestBase):
         "json_schema_extra": {"examples": _assign_codes_request_examples()},
     }
 
-    coding_framework: dict[str, Any]
+    coding_framework: ApiCodingLevels
     max_codes: int = Field(default=1, ge=1, le=50)
     confidence_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
 

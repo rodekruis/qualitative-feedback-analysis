@@ -220,13 +220,13 @@ class TestAssignCodesRecordsMultipleRows:
         # pick-Types, judge-Type, pick-Categories, judge-Category,
         # pick-Codes, judge-Code.
         coding_framework = {
-            "types": [
+            "root_codes": [
                 {
                     "name": "Type A",
-                    "categories": [
+                    "children": [
                         {
                             "name": "Cat A1",
-                            "codes": [{"code_id": "code-1", "name": "Code A1.1"}],
+                            "children": [{"name": "Code A1.1", "children": []}],
                         }
                     ],
                 }

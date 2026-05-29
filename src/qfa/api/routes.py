@@ -1,5 +1,6 @@
 """API route handlers for the feedback analysis backend."""
 
+import re
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Request
@@ -18,6 +19,7 @@ from qfa.api.schemas import (
     ApiAssignCodesResponse,
     ApiAssignedCode,
     ApiCodedFeedbackRecord,
+    ApiCodingLevels,
     ApiDetectSensitiveRequest,
     ApiDetectSensitiveResponse,
     ApiFeedbackItemSensitivityRating,
@@ -41,6 +43,33 @@ from qfa.domain.usage_models import CallContext, Operation
 from qfa.services.orchestrator import Orchestrator
 
 router = APIRouter()
+
+
+def _code_id_part(name: str) -> str:
+    """Create a stable code-id segment from a coding name."""
+    normalized = re.sub(r"[^a-zA-Z0-9]+", "-", name.strip().lower()).strip("-")
+    return normalized or "code"
+
+
+def _to_legacy_coding_framework(coding_framework: ApiCodingLevels) -> dict[str, object]:
+    """Adapt validated API coding levels to legacy orchestrator structure."""
+    types: list[dict[str, object]] = []
+    for type_node in coding_framework.root_codes:
+        categories: list[dict[str, object]] = []
+        for category_node in type_node.children:
+            codes: list[dict[str, str]] = []
+            for code_node in category_node.children:
+                code_id = ":".join(
+                    (
+                        _code_id_part(type_node.name),
+                        _code_id_part(category_node.name),
+                        _code_id_part(code_node.name),
+                    )
+                )
+                codes.append({"code_id": code_id, "name": code_node.name})
+            categories.append({"name": category_node.name, "codes": codes})
+        types.append({"name": type_node.name, "categories": categories})
+    return {"types": types}
 
 
 @router.post(
@@ -214,7 +243,7 @@ async def assign_codes(
     )
     domain_request = CodingAssignmentRequestModel(
         feedback_records=domain_feedback_records,
-        coding_framework=body.coding_framework,
+        coding_framework=_to_legacy_coding_framework(body.coding_framework),
         max_codes=body.max_codes,
         confidence_threshold=body.confidence_threshold,
         tenant_id=tenant.tenant_id,
@@ -371,6 +400,13 @@ async def detect_sensitive(
             )
         ]
     )
+
+
+@router.post("/v1/test-print", status_code=200, tags=["Default"])
+async def test_print(body: dict[str, object]) -> dict[str, str]:
+    """Accept any dict payload and print it for testing."""
+    print(body)
+    return {"status": "ok"}
 
 
 @router.get(

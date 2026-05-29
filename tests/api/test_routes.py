@@ -596,13 +596,13 @@ class TestErrorMapping:
 _CODING_BODY = {
     "feedback_records": [{"id": "custom-1", "content": "Long waiting times"}],
     "coding_framework": {
-        "types": [
+        "root_codes": [
             {
                 "name": "Type A",
-                "categories": [
+                "children": [
                     {
                         "name": "Category A1",
-                        "codes": [{"code_id": "code-1", "name": "Code A1.1"}],
+                        "children": [{"name": "Code A1.1", "children": []}],
                     }
                 ],
             }
@@ -630,6 +630,32 @@ class TestAssignCodesSuccess:
         resp = await client.post(
             "/v1/assign-codes",
             json={**_CODING_BODY, "confidence_threshold": 1.5},
+            headers=_auth_header(),
+        )
+        assert resp.status_code == 422
+        assert resp.json()["error"]["code"] == "validation_error"
+
+    @pytest.mark.asyncio
+    async def test_422_on_legacy_coding_framework_shape(self, client):
+        legacy_shape = {
+            **_CODING_BODY,
+            "coding_framework": {
+                "types": [
+                    {
+                        "name": "Type A",
+                        "categories": [
+                            {
+                                "name": "Category A1",
+                                "codes": [{"code_id": "code-1", "name": "Code A1.1"}],
+                            }
+                        ],
+                    }
+                ]
+            },
+        }
+        resp = await client.post(
+            "/v1/assign-codes",
+            json=legacy_shape,
             headers=_auth_header(),
         )
         assert resp.status_code == 422
