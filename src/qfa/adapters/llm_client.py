@@ -6,6 +6,7 @@ from typing import cast
 
 import openai
 from litellm import acompletion, completion_cost
+from litellm.utils import type_to_response_format_param
 from pydantic import BaseModel, ValidationError
 from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_exponential
 
@@ -15,6 +16,62 @@ from qfa.domain.models import LLMResponse, T_Response
 from qfa.domain.ports import LLMPort
 
 logger = logging.getLogger(__name__)
+
+# JSON-Schema validation keywords that some structured-output providers reject
+# in a ``response_format`` schema — Azure AI Mistral, for one, answers a schema
+# carrying ``minimum`` with "Received unsupported keyword `minimum` in schema".
+# They are exactly what Pydantic ``Field`` constraints serialise to (ge/le/gt/lt
+# -> minimum/maximum/exclusive*, min_length/max_length -> minLength/maxLength,
+# pattern, ...). The schema we send the model is only a generation hint — the
+# authoritative validation is ``model_validate_json`` on the response — so
+# stripping these from the *outgoing* schema costs no safety, and lets the
+# domain models keep their constraints (and the OpenAPI docs they produce).
+_UNSUPPORTED_SCHEMA_KEYWORDS: frozenset[str] = frozenset(
+    {
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+        "multipleOf",
+        "minLength",
+        "maxLength",
+        "pattern",
+        "minItems",
+        "maxItems",
+        "uniqueItems",
+        "minProperties",
+        "maxProperties",
+    }
+)
+
+
+def _strip_unsupported_schema_keywords(node: object) -> object:
+    """Return ``node`` with unsupported validation keywords removed, recursively.
+
+    Produces a new structure (the input is not mutated) and walks nested
+    objects, ``$defs`` and array ``items`` so constraints on nested models are
+    stripped too.
+    """
+    if isinstance(node, dict):
+        return {
+            key: _strip_unsupported_schema_keywords(value)
+            for key, value in node.items()
+            if key not in _UNSUPPORTED_SCHEMA_KEYWORDS
+        }
+    if isinstance(node, list):
+        return [_strip_unsupported_schema_keywords(item) for item in node]
+    return node
+
+
+def _provider_safe_response_format(model: type[BaseModel]) -> dict:
+    """Build a ``response_format`` for ``model`` that any provider can ingest.
+
+    Uses LiteLLM's own Pydantic->response_format conversion so the structure
+    matches what already works across providers, then strips the validation
+    keywords some providers reject from the schema it carries.
+    """
+    response_format = type_to_response_format_param(response_format=model)
+    return cast(dict, _strip_unsupported_schema_keywords(response_format))
 
 
 class LiteLLMClient(LLMPort):
@@ -168,7 +225,7 @@ class LiteLLMClient(LLMPort):
                 api_version=self._api_version or None,
                 user=tenant_id,
                 timeout=timeout,
-                response_format=response_model
+                response_format=_provider_safe_response_format(response_model)
                 if issubclass(response_model, BaseModel)
                 else None,
             )
