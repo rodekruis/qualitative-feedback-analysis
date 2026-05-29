@@ -9,3 +9,4 @@ else if ($selected_method == "summarize_per_item") {$$endpoint = "/v1/summarize"
 else if ($selected_method == "analyze") {$$endpoint = "/v1/analyze";}
 else {$$endpoint = "/v1/summarize";}
 
+$fullEndpoint = string\concatenate("https://obsessed-mantra-visible.ngrok-free.dev", $$endpoint);
