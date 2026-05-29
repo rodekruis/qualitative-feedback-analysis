@@ -50,6 +50,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # Community pre-built ONNX-int8 export of ``BAAI/bge-m3`` (see ADR-014). We
 # pin a specific commit so the download is reproducible and its content
 # matches the EMBEDDING_REVISION_HASH printed below; bump deliberately.
+# DEFAULT_REVISION is the tip of the repo's ``main`` as of 2026-05-29,
+# resolved to its commit SHA (``main`` is a moving ref). Keep this in sync
+# with the ARG EMBEDDING_REVISION default in the Dockerfile.
 DEFAULT_REPO_ID = "gpahal/bge-m3-onnx-int8"
 DEFAULT_REVISION = "2b34e84df040034d4b9eabb62383a87c18955822"
 
