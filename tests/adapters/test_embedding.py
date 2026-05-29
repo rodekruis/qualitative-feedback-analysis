@@ -29,7 +29,12 @@ class _FakeTokenizer:
 
 
 class _FakeSession:
-    """Fake onnxruntime session returning a 1024-d dense vector per row."""
+    """Fake onnxruntime session emitting the shipped model's first output.
+
+    Mirrors the BGE-M3 ONNX build, whose first output ``dense_vecs`` is the
+    already-pooled (CLS-pooled internally) dense vector — shape
+    ``(batch, 1024)``, no token dimension.
+    """
 
     def __init__(self) -> None:
         self.run_calls = 0
@@ -37,8 +42,7 @@ class _FakeSession:
     def run(self, output_names, inputs):
         self.run_calls += 1
         batch = inputs["input_ids"].shape[0]
-        # Dense [batch, seq, 1024]; the adapter pools to [batch, 1024].
-        return [np.ones((batch, 4, 1024), dtype=np.float32)]
+        return [np.ones((batch, 1024), dtype=np.float32)]
 
 
 def _make_embedder(
@@ -101,17 +105,23 @@ def test_construction_requires_pinned_revision_hash() -> None:
         _make_embedder(revision_hash="")
 
 
-def test_embed_returns_one_1024d_vector_per_text_in_order() -> None:
-    """``embed`` returns one dense 1024-d vector per input, in input order.
+def test_embed_returns_one_normalised_1024d_vector_per_text_in_order() -> None:
+    """``embed`` returns one L2-normalised dense 1024-d vector per input, in order.
 
-    Why: clustering depends on a fixed-width, order-preserving contract;
-    BGE-M3 sparse/ColBERT outputs are explicitly unused.
+    Why: clustering depends on a fixed-width, order-preserving contract of
+    unit vectors; the shipped build's already-pooled ``dense_vecs`` is taken
+    as-is (no token pooling) and L2-normalised, and BGE-M3's sparse/ColBERT
+    outputs are explicitly unused.
     """
+    import math
+
     embedder = _make_embedder()
     vectors = embedder.embed(("first feedback", "second feedback"))
     assert len(vectors) == 2
     assert all(len(v) == 1024 for v in vectors)
     assert all(isinstance(x, float) for x in vectors[0])
+    # ones/sqrt(1024) is the L2-normalised unit vector -> norm 1.0.
+    assert abs(math.sqrt(sum(x * x for x in vectors[0])) - 1.0) < 1e-5
 
 
 def test_embed_uses_a_single_batched_session_run() -> None:

@@ -31,6 +31,11 @@ logger = logging.getLogger(__name__)
 
 _DENSE_DIM = 1024
 
+# BGE-M3 accepts up to 8192 tokens; longer inputs are truncated. Feedback
+# records are short, so this almost never bites — it's a guardrail against a
+# pathological outlier blowing up the ONNX run.
+_MAX_TOKENS = 8192
+
 
 class BgeM3OnnxEmbedder(EmbeddingPort):
     """BGE-M3 ONNX-int8 dense-only embedder (explicitly inherits the port)."""
@@ -98,10 +103,12 @@ class BgeM3OnnxEmbedder(EmbeddingPort):
     def embed(self, texts: tuple[str, ...]) -> tuple[tuple[float, ...], ...]:
         """Return one dense 1024-d vector per input text, in input order.
 
-        Encodes the whole batch in a single ``session.run`` call. Uses
-        attention-mask mean pooling over the token dimension, then L2
-        normalises each vector (the standard BGE-M3 dense retrieval recipe).
-        Empty input returns ``()`` without touching the model.
+        Encodes the whole batch in a single ``session.run`` call and L2
+        normalises each row of the model's first output. The shipped BGE-M3
+        ONNX build emits its already-pooled ``dense_vecs`` head — shape
+        ``(batch, 1024)`` — as that output, so there is no token-dimension
+        pooling to do here. Empty input returns ``()`` without touching the
+        model.
         """
         if not texts:
             return ()
@@ -113,18 +120,13 @@ class BgeM3OnnxEmbedder(EmbeddingPort):
         outputs = self._session.run(
             None, {"input_ids": input_ids, "attention_mask": attention_mask}
         )
-        token_embeddings = np.asarray(outputs[0], dtype=np.float32)
+        # First output is dense_vecs: a pooled (batch, 1024) dense vector.
+        dense = np.asarray(outputs[0], dtype=np.float32)
 
-        # Mean-pool over tokens using the attention mask.
-        mask = attention_mask[:, :, None].astype(np.float32)
-        summed = (token_embeddings * mask).sum(axis=1)
-        counts = np.clip(mask.sum(axis=1), a_min=1.0, a_max=None)
-        pooled = summed / counts
-
-        # L2 normalise.
-        norms = np.linalg.norm(pooled, axis=1, keepdims=True)
+        # L2 normalise each row (idempotent when the export already normalised).
+        norms = np.linalg.norm(dense, axis=1, keepdims=True)
         norms = np.clip(norms, a_min=1e-12, a_max=None)
-        dense = pooled / norms
+        dense = dense / norms
 
         if dense.shape[1] != _DENSE_DIM:
             raise ValueError(
@@ -172,6 +174,21 @@ def build_bge_m3_embedder(
     )
 
     hf_tokenizer = Tokenizer.from_file(tokenizer_path)
+
+    # The mirrored ``tokenizer.json`` ships with padding and truncation
+    # disabled, so ``encode_batch`` returns ragged sequences and the
+    # ``np.array([...])`` below raises on any batch of differing-length
+    # texts. Enable both explicitly: dynamic padding to the batch's longest
+    # row (no fixed waste) and truncation at the model's context limit.
+    # Mean-pooling already masks the pad positions via ``attention_mask``,
+    # so the pad token id does not affect the output vectors — we still set
+    # the model's real pad token when present for correctness.
+    pad_id = hf_tokenizer.token_to_id("<pad>")
+    if pad_id is None:
+        pad_id = 0
+    pad_token = hf_tokenizer.id_to_token(pad_id) or "<pad>"
+    hf_tokenizer.enable_truncation(max_length=_MAX_TOKENS)
+    hf_tokenizer.enable_padding(pad_id=pad_id, pad_token=pad_token)
 
     def _tokenize(batch: list[str]) -> dict[str, "np.ndarray"]:
         encodings = hf_tokenizer.encode_batch(batch)
