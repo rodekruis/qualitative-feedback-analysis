@@ -3,7 +3,7 @@
 
 // TODO: use fields from UI
 $outputLanguage = "English";
-$prompt = "No prompt provided";
+$prompt = record\attribute('CInsight', id, 'freeTextPrompt');
 
 $motherPayload = string\concatenate(
     '{',
