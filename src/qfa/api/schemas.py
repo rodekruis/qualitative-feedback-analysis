@@ -9,7 +9,54 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, computed_field, model_validator
+
+_SEPARATOR = "------------------------------------------------------------"
+
+
+def _quality_dots(score: float) -> str:
+    if score >= 0.9:
+        return "●●●●●"
+    if 0.7 <= score < 0.9:
+        return "●●●●○"
+    if 0.5 <= score < 0.7:
+        return "●●●○○"
+    if 0.3 <= score < 0.5:
+        return "●●○○○"
+    if 0.1 <= score < 0.3:
+        return "●○○○○"
+    return "○○○○○"
+
+
+def _create_pretty_output(
+    *,
+    id: str | None = None,
+    ids: list[str] | None = None,
+    quality_score: float | None = None,
+    title: str | None = None,
+    summary: str | None = None,
+) -> str:
+    """Build a human-readable text block for display in EspoCRM.
+
+    All arguments are optional because this function is shared across endpoints;
+    each endpoint passes only the fields relevant to it. Omitted fields are
+    excluded from the output.
+    """
+    lines: list[str] = []
+    if id is not None:
+        lines.append(f"Feedback-ID:    {id}")
+    if ids is not None:
+        lines.append(f"IDs:            {', '.join(ids)}")
+    if quality_score is not None:
+        dots = _quality_dots(quality_score)
+        percent = f"{round(quality_score * 100)}%"
+        lines.append(f"QUALITY:        {dots} {percent}")
+    if title is not None:
+        lines.append(f"TITLE:          {title}")
+    if summary is not None:
+        lines.append(f"SUMMARY:\n{summary}")
+    lines.append(_SEPARATOR)
+    return "\n".join(lines)
 
 
 def _assign_codes_request_examples() -> list[dict[str, Any]]:
@@ -274,6 +321,17 @@ class ApiFeedbackRecordSummary(BaseModel):
         description="Judge score for summary quality in the range 0.0-1.0.",
     )
 
+    @computed_field(description="Human-readable formatted output string.")
+    @property
+    def pretty_output(self) -> str:
+        """Human-readable formatted output string."""
+        return _create_pretty_output(
+            id=self.id,
+            quality_score=self.quality_score,
+            title=self.title,
+            summary=self.summary,
+        )
+
 
 class ApiSummarizeResponse(BaseModel):
     """Response body for the ``POST /v1/summarize`` endpoint."""
@@ -299,6 +357,17 @@ class ApiAggregateSummary(BaseModel):
         le=1.0,
         description="Judge score for summary quality in the range 0.0-1.0.",
     )
+
+    @computed_field(description="Human-readable formatted output string.")
+    @property
+    def pretty_output(self) -> str:
+        """Human-readable formatted output string."""
+        return _create_pretty_output(
+            ids=self.ids,
+            quality_score=self.quality_score,
+            title=self.title,
+            summary=self.summary,
+        )
 
 
 class ApiSummarizeAggregateResponse(BaseModel):
