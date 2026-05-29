@@ -18,15 +18,22 @@ Every environment variable the app reads. Settings are loaded by `pydantic-setti
 
 ## Embedding (`EMBEDDING_*`)
 
-Only required for `mode=hierarchical`. When `EMBEDDING_MODEL_PATH` /
-`EMBEDDING_REVISION_HASH` are unset, hierarchical requests return 502
-`analysis_unavailable`.
+Only consumed by `mode=hierarchical`. The model defaults to *empty* at the
+settings layer, but **the official Docker image bakes the BGE-M3 ONNX
+artifact in and sets all three paths as `ENV`** (see the builder stage in
+`Dockerfile`), so a deployed image serves hierarchical out of the box. The
+502 `analysis_unavailable` response only applies where the model is genuinely
+absent — a bare local run, or a deployment that strips these vars.
+
+For **local development**, fetch the artifact and get the matching env lines
+with `uv run python scripts/fetch_embedding_model.py` (downloads to a
+gitignored `.models/` and prints the three `EMBEDDING_*` values to paste).
 
 | Variable | Required | Default | Notes |
 |---|---|---|---|
-| `EMBEDDING_MODEL_PATH` | for hierarchical | `""` | Path to the mirrored BGE-M3 `model.onnx`. Never a HuggingFace URL in production. |
-| `EMBEDDING_TOKENIZER_PATH` | for hierarchical | `""` | Path to the mirrored tokenizer file. Defaults to `EMBEDDING_MODEL_PATH` when empty. |
-| `EMBEDDING_REVISION_HASH` | for hierarchical | `""` | Pinned artifact revision/content hash. |
+| `EMBEDDING_MODEL_PATH` | for hierarchical | `""` (baked: `/app/models/bge-m3-onnx-int8/model_quantized.onnx`) | Path to the mirrored BGE-M3 `model_quantized.onnx`. Never a HuggingFace URL in production. |
+| `EMBEDDING_TOKENIZER_PATH` | for hierarchical | `""` (baked: `…/tokenizer.json`) | Path to the mirrored tokenizer file. Defaults to `EMBEDDING_MODEL_PATH` when empty. |
+| `EMBEDDING_REVISION_HASH` | for hierarchical | `""` (baked: the pinned commit) | Pinned artifact revision/content hash. |
 | `EMBEDDING_INTRA_OP_NUM_THREADS` | no | core count | onnxruntime intra-op threads for the batched encode. |
 
 ## Orchestrator (`ORCHESTRATOR_*`)
