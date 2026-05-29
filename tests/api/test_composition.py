@@ -40,8 +40,17 @@ def auth_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
     ``AuthSettings.api_keys`` is required and has no default; we set
     a single fake tenant key so ``AppSettings()`` instantiates cleanly
-    without touching the LLM, DB, or embedding settings.
+    without touching the LLM, DB, or embedding settings. We also clear any
+    ``EMBEDDING_*`` leaking from a developer's local ``.env`` (loaded via
+    direnv) so the default-components test deterministically sees the
+    no-embedder state rather than building a real embedder.
     """
+    for embedding_var in (
+        "EMBEDDING_MODEL_PATH",
+        "EMBEDDING_TOKENIZER_PATH",
+        "EMBEDDING_REVISION_HASH",
+    ):
+        monkeypatch.delenv(embedding_var, raising=False)
     monkeypatch.setenv("LLM_API_KEY", "sk-test-composition")
     # DatabaseSettings requires DB_HOST when DB_URL is unset; the
     # factory doesn't touch the DB but ``AppSettings()`` validates
