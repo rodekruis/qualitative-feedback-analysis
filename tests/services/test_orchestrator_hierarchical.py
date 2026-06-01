@@ -7,6 +7,7 @@ fire on a large corpus; the coverage-weighted confidence is computed; and a
 single_pass call is byte-identical to before (no regression).
 """
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -295,4 +296,126 @@ async def test_recursion_fires_on_corpus_at_least_five_times_token_cap():
     ]
     assert len(map_calls) >= 3, "cluster was not split into multiple budget sub-chunks"
     assert len(reduce_calls) >= 2, "partials never tree-reduced (single reduce only)"
+    assert result.confidence is not None
+
+
+class ConcurrencyTrackingLLM:
+    """Fake LLM that records the peak number of concurrent ``complete`` calls.
+
+    Each call yields control once via ``asyncio.sleep(0)`` so the event loop
+    can interleave the gathered map tasks — without a real suspension point a
+    coroutine runs to completion before the next starts, which would hide all
+    concurrency and make the peak look like 1 regardless of the fan-out.
+    """
+
+    def __init__(self):
+        self.calls = []
+        self.in_flight = 0
+        self.peak_in_flight = 0
+
+    async def complete(
+        self, system_message, user_message, tenant_id, response_model=str, timeout=20.0
+    ):
+        """Track in-flight depth around a single event-loop yield, then answer."""
+        self.calls.append((system_message, user_message, response_model))
+        self.in_flight += 1
+        self.peak_in_flight = max(self.peak_in_flight, self.in_flight)
+        try:
+            await asyncio.sleep(0)
+        finally:
+            self.in_flight -= 1
+        if response_model is AnalyzeJudgeResult:
+            return LLMResponse(
+                structured=AnalyzeJudgeResult(
+                    quality_score=0.8, uncertainty_explanation="ok"
+                ),
+                model="fake",
+                prompt_tokens=1,
+                completion_tokens=1,
+                cost=0.0,
+            )
+        return LLMResponse(
+            structured="PARTIAL_OR_REDUCE",
+            model="fake",
+            prompt_tokens=1,
+            completion_tokens=1,
+            cost=0.0,
+        )
+
+
+def _multi_chunk_request() -> AnalysisRequestModel:
+    """Build a request whose corpus splits into several budget-sized map chunks.
+
+    20 long single-cluster records against a small token budget force the
+    cluster to split into multiple map sub-chunks (the FakeEmbeddingPort maps
+    every "water" record to one cluster, so the split is purely budget-driven).
+    """
+    per_record = "water access was limited and people waited for hours. " * 19
+    records = _records(20, per_record, "w")
+    return AnalysisRequestModel(
+        feedback_records=records,
+        prompt="trends?",
+        tenant_id=TENANT_ID,
+        mode="hierarchical",
+    )
+
+
+@pytest.mark.asyncio
+async def test_map_chunks_run_concurrently_bounded_by_setting():
+    """The map step runs chunks concurrently, capped at ``max_concurrent_chunks``.
+
+    Why: parallelising the independent, latency-bound map calls is the point of
+    the fan-out, but it must not burst past the provider's rate limit. With the
+    cap at 2 and many chunks, the observed peak in-flight LLM calls must reach
+    exactly 2 — proving both that concurrency happens (>1) and that the
+    semaphore bounds it (never >2).
+    """
+    request = _multi_chunk_request()
+    llm = ConcurrencyTrackingLLM()
+    orch = Orchestrator(
+        llm=llm,
+        anonymizer=RecordingAnonymizer(),
+        embedder=FakeEmbeddingPort(),
+        settings=OrchestratorSettings(),
+        analyze_settings=AnalyzeSettings(min_cluster_size=2, max_concurrent_chunks=2),
+        llm_timeout_seconds=LLM_TIMEOUT,
+        max_total_tokens=700,
+    )
+    deadline = datetime.now(UTC) + timedelta(seconds=120)
+
+    result = await orch.analyze_hierarchical(request, deadline, anonymize=True)
+
+    map_calls = [c for c in llm.calls if c[2] is str and "<feedback_records>" in c[1]]
+    assert len(map_calls) >= 3, "corpus did not split into multiple map chunks"
+    assert llm.peak_in_flight == 2
+    assert result.confidence is not None
+
+
+@pytest.mark.asyncio
+async def test_max_concurrent_chunks_one_is_fully_sequential():
+    """``max_concurrent_chunks=1`` restores fully sequential map behaviour.
+
+    Why: it's the documented escape hatch for rate-limited providers (and for
+    reproducing the old ordering). With the cap at 1, no two ``complete`` calls
+    may overlap, so the observed peak in-flight must stay at 1 even though the
+    corpus produces several chunks.
+    """
+    request = _multi_chunk_request()
+    llm = ConcurrencyTrackingLLM()
+    orch = Orchestrator(
+        llm=llm,
+        anonymizer=RecordingAnonymizer(),
+        embedder=FakeEmbeddingPort(),
+        settings=OrchestratorSettings(),
+        analyze_settings=AnalyzeSettings(min_cluster_size=2, max_concurrent_chunks=1),
+        llm_timeout_seconds=LLM_TIMEOUT,
+        max_total_tokens=700,
+    )
+    deadline = datetime.now(UTC) + timedelta(seconds=120)
+
+    result = await orch.analyze_hierarchical(request, deadline, anonymize=True)
+
+    map_calls = [c for c in llm.calls if c[2] is str and "<feedback_records>" in c[1]]
+    assert len(map_calls) >= 3, "corpus did not split into multiple map chunks"
+    assert llm.peak_in_flight == 1
     assert result.confidence is not None

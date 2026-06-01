@@ -4,6 +4,7 @@ Assembles prompts, enforces token limits, filters prompt injection,
 manages retries with exponential backoff, and enforces deadlines.
 """
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -11,6 +12,7 @@ from typing import Callable, ClassVar, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from qfa.domain.chunk_models import Chunk
 from qfa.domain.clustering_models import CodingTrendTable
 from qfa.domain.errors import (
     AnalysisError,
@@ -60,6 +62,7 @@ from qfa.services.prompts import (
     build_analyze_user_message,
 )
 from qfa.settings import AnalyzeSettings, OrchestratorSettings
+from qfa.utils import timed
 
 logger = logging.getLogger(__name__)
 
@@ -430,16 +433,29 @@ class Orchestrator:
                 "Hierarchical analysis is not available: no embedder configured"
             )
 
-        # 1. Anonymise each record's text up front (before embed + LLM).
-        anonymized_records, mapping = self._anonymize_records(
-            request.feedback_records, anonymize
+        logger.info(
+            "analyze_hierarchical start: %d record(s) tenant=%s anonymize=%s",
+            len(request.feedback_records),
+            request.tenant_id,
+            anonymize,
         )
-        if anonymize:
-            _, prompt_map = self._anonymizer.anonymize(request.prompt)
-            mapping = {**mapping, **prompt_map}
-        anonymized_prompt = request.prompt
-        if anonymize:
-            anonymized_prompt, _ = self._anonymizer.anonymize(request.prompt)
+
+        # 1. Anonymise each record's text up front (before embed + LLM).
+        with timed() as anonymize_sw:
+            anonymized_records, mapping = self._anonymize_records(
+                request.feedback_records, anonymize
+            )
+            if anonymize:
+                _, prompt_map = self._anonymizer.anonymize(request.prompt)
+                mapping = {**mapping, **prompt_map}
+            anonymized_prompt = request.prompt
+            if anonymize:
+                anonymized_prompt, _ = self._anonymizer.anonymize(request.prompt)
+        logger.info(
+            "anonymisation: %d record(s) in %.2fs",
+            len(request.feedback_records),
+            anonymize_sw.elapsed_seconds,
+        )
 
         # 2. Deterministic coding-trend table from ORIGINAL metadata
         #    (metadata is not anonymised; codes/dates are not PII).
@@ -454,35 +470,92 @@ class Orchestrator:
 
         # 3. Embed (synchronous, CPU-bound) then cluster into budget chunks.
         texts = tuple(r.text for r in anonymized_records)
-        vectors = self._embedder.embed(texts)
-        chunks = cluster_records(
-            records=anonymized_records,
-            vectors=vectors,
-            min_cluster_size=self._analyze_settings.min_cluster_size,
-            max_total_tokens=self._max_total_tokens,
-            chars_per_token=self._settings.chars_per_token,
-            metric=self._analyze_settings.clustering_metric,
+        logger.info("starting embedding of %d record(s)", len(texts))
+        with timed() as embed_sw:
+            vectors = self._embedder.embed(texts)
+        logger.info(
+            "embedding: %d record(s) in %.2fs", len(texts), embed_sw.elapsed_seconds
         )
 
-        # 4. MAP: one partial analysis + one leaf judge score per chunk.
-        partials: list[str] = []
-        chunk_sizes: list[int] = []
-        chunk_scores: list[float] = []
-        for chunk in chunks:
-            partial, score = await self._map_chunk(
-                anonymized_prompt, chunk.records, request.tenant_id, deadline
+        logger.info("starting clustering of %d record(s)", len(texts))
+        with timed() as cluster_sw:
+            chunks = cluster_records(
+                records=anonymized_records,
+                vectors=vectors,
+                min_cluster_size=self._analyze_settings.min_cluster_size,
+                max_total_tokens=self._max_total_tokens,
+                chars_per_token=self._settings.chars_per_token,
+                metric=self._analyze_settings.clustering_metric,
             )
-            partials.append(partial)
-            chunk_sizes.append(len(chunk.records))
-            chunk_scores.append(score)
+        logger.info(
+            "clustering: %d record(s) -> %d chunk(s) in %.2fs",
+            len(texts),
+            len(chunks),
+            cluster_sw.elapsed_seconds,
+        )
+
+        # 4. MAP: one partial analysis + one leaf judge score per chunk. The
+        #    chunks are independent and each is dominated by LLM round-trip
+        #    latency, so we run them concurrently rather than sequentially,
+        #    collapsing N serial waits into roughly one. A semaphore bounds the
+        #    fan-out (``max_concurrent_chunks``) so a large corpus does not burst
+        #    past the provider's rate limit; ``asyncio.gather`` preserves chunk
+        #    order, so partials/sizes/scores stay aligned with ``chunks``.
+        max_in_flight = self._analyze_settings.max_concurrent_chunks
+        logger.info(
+            "starting map phase: %d chunk(s), up to %d in flight",
+            len(chunks),
+            max_in_flight,
+        )
+        semaphore = asyncio.Semaphore(max_in_flight)
+
+        async def _map_one(index: int, chunk: Chunk) -> tuple[str, float]:
+            """Map+judge one chunk, holding a semaphore slot for the duration."""
+            async with semaphore:
+                logger.debug(
+                    "starting map chunk %d/%d: %d record(s)",
+                    index,
+                    len(chunks),
+                    len(chunk.records),
+                )
+                with timed() as chunk_sw:
+                    partial, score = await self._map_chunk(
+                        anonymized_prompt, chunk.records, request.tenant_id, deadline
+                    )
+            logger.debug(
+                "map chunk %d/%d done: judge=%.2f in %.2fs",
+                index,
+                len(chunks),
+                score,
+                chunk_sw.elapsed_seconds,
+            )
+            return partial, score
+
+        with timed() as map_sw:
+            map_results = await asyncio.gather(
+                *(_map_one(i, chunk) for i, chunk in enumerate(chunks, start=1))
+            )
+        partials: list[str] = [partial for partial, _ in map_results]
+        chunk_sizes: list[int] = [len(chunk.records) for chunk in chunks]
+        chunk_scores: list[float] = [score for _, score in map_results]
+        logger.info(
+            "map phase: %d chunk(s) in %.2fs", len(chunks), map_sw.elapsed_seconds
+        )
 
         # 5. REDUCE the partials (recursively tree-reduce on overflow).
-        synthesis = await self._reduce_partials(
-            anonymized_prompt,
-            tuple(partials),
-            trend_table,
-            request.tenant_id,
-            deadline,
+        logger.info("starting reduce phase over %d partial(s)", len(partials))
+        with timed() as reduce_sw:
+            synthesis = await self._reduce_partials(
+                anonymized_prompt,
+                tuple(partials),
+                trend_table,
+                request.tenant_id,
+                deadline,
+            )
+        logger.info(
+            "reduce phase: %d partial(s) in %.2fs",
+            len(partials),
+            reduce_sw.elapsed_seconds,
         )
 
         # 6. Aggregate per-chunk faithfulness into one confidence.
@@ -503,6 +576,24 @@ class Orchestrator:
                 if not self._is_retained_analyze_placeholder(placeholder)
             }
             analysis_text = self._anonymizer.deanonymize(analysis_text, restorable)
+
+        # One-line breakdown so a single log line answers "where did the time
+        # go?" without scrolling. The total is the sum of the timed phases
+        # (de-anonymisation and trend-table building are sub-millisecond).
+        logger.info(
+            "analyze_hierarchical done in %.2fs "
+            "(anonymise=%.2fs embed=%.2fs cluster=%.2fs map=%.2fs reduce=%.2fs)",
+            anonymize_sw.elapsed_seconds
+            + embed_sw.elapsed_seconds
+            + cluster_sw.elapsed_seconds
+            + map_sw.elapsed_seconds
+            + reduce_sw.elapsed_seconds,
+            anonymize_sw.elapsed_seconds,
+            embed_sw.elapsed_seconds,
+            cluster_sw.elapsed_seconds,
+            map_sw.elapsed_seconds,
+            reduce_sw.elapsed_seconds,
+        )
 
         return AnalysisResultModel(
             result=f"{ANALYZE_DISCLAIMER}{analysis_text}",

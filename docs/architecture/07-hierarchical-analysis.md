@@ -66,7 +66,12 @@ that specific model and format — is recorded in
    chunk*. Judging at the leaf is deliberate: the top-level synthesis never sees
    the raw records, so it cannot be scored against them — only the leaves can. A
    failed judge call floors that chunk's score at `0.0` and is still counted, so
-   judge failure lowers confidence rather than vanishing.
+   judge failure lowers confidence rather than vanishing. Chunks are independent
+   and dominated by LLM round-trip latency, so they are mapped **concurrently**
+   (`asyncio.gather`), bounded by a semaphore of `ANALYZE_MAX_CONCURRENT_CHUNKS`
+   (default 8) so a large corpus does not burst past the provider's rate limit.
+   `gather` preserves chunk order, so the per-chunk scores stay aligned with
+   their records; set the cap to `1` for fully sequential behaviour.
 7. **Reduce.** The partials are synthesised into one analysis. If they fit in
    one reduce call, a single call is made. If they overflow, they are split into
    budget-sized groups, each group is reduced to an intermediate, and the reduce
@@ -114,7 +119,7 @@ flowchart TD
     anon --> trend[Build coding-trend table<br/>deterministic, no LLM]
     trend --> embed[Embed texts → vectors<br/>EmbeddingPort]
     embed --> cluster[HDBSCAN + budget packing<br/>chunks cover every record]
-    cluster --> map[MAP per chunk:<br/>analysis call + leaf judge]
+    cluster --> map[MAP per chunk concurrently:<br/>analysis call + leaf judge<br/>bounded by max_concurrent_chunks]
     map --> fits{partials fit<br/>one reduce call?}
     fits -- yes --> synth[Single reduce call<br/>+ trend table]
     fits -- no --> tree[Group to budget, reduce each,<br/>recurse over intermediates]
@@ -141,7 +146,7 @@ sequenceDiagram
     orch->>emb: embed(anonymised texts)
     emb-->>orch: dense vectors
     orch->>orch: cluster_records(records, vectors) -> chunks
-    loop per chunk (MAP)
+    loop per chunk (MAP — concurrent, ≤ max_concurrent_chunks in flight)
         orch->>llm: complete(map system msg, chunk records)
         llm-->>orch: partial analysis
         orch->>llm: complete(leaf judge msg, partial)
