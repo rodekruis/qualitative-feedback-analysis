@@ -146,7 +146,6 @@ class FakeOrchestrator:
         self,
         request: AnalysisRequestModel,
         deadline: datetime,
-        anonymize: bool = True,
     ) -> AnalysisResultModel:
         if self._error is not None:
             raise self._error
@@ -156,7 +155,6 @@ class FakeOrchestrator:
         self,
         request: SummaryRequestModel,
         deadline: datetime,
-        anonymize: bool = True,
     ) -> SummaryResultModel:
         if self._error is not None:
             raise self._error
@@ -166,7 +164,6 @@ class FakeOrchestrator:
         self,
         request: SummaryRequestModel,
         deadline: datetime,
-        anonymize: bool = True,
     ) -> AggregateSummaryResultModel:
         if self._error is not None:
             raise self._error
@@ -181,7 +178,6 @@ class FakeOrchestrator:
         self,
         request: CodingAssignmentRequestModel,
         deadline: datetime,
-        anonymize: bool = True,
     ) -> CodingAssignmentResultModel:
         if self._error is not None:
             raise self._error
@@ -209,7 +205,6 @@ class FakeOrchestrator:
         self,
         request: SensitivityAnalysisRequestModel,
         deadline: datetime,
-        anonymize: bool = True,
     ) -> SensitivityAnalysisResultModelList:
         if self._error is not None:
             raise self._error

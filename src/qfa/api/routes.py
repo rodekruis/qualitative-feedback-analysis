@@ -125,9 +125,7 @@ async def analyze(
         mode=body.mode,
     )
 
-    result = await orchestrator.analyze(
-        domain_request, deadline, anonymize=body.anonymize
-    )
+    result = await orchestrator.analyze(domain_request, deadline)
 
     return ApiAnalyzeResponse(
         analysis=result.result,
@@ -135,7 +133,6 @@ async def analyze(
         uncertainty_explanation=result.uncertainty_explanation,
         feedback_record_count=len(body.feedback_records),
         request_id=request.state.request_id,
-        used_anonymization=body.anonymize,
     )
 
 
@@ -190,7 +187,6 @@ async def summarize(
     result = await orchestrator.summarize(
         domain_request,
         deadline,
-        anonymize=body.anonymize,
     )
 
     return ApiSummarizeResponse(
@@ -203,7 +199,6 @@ async def summarize(
             )
             for summary in result.feedback_record_summaries
         ],
-        used_anonymization=body.anonymize,
     )
 
 
@@ -234,9 +229,7 @@ async def assign_codes(
         tenant_id=tenant.tenant_id,
     )
 
-    result = await orchestrator.assign_codes(
-        domain_request, deadline, anonymize=body.anonymize
-    )
+    result = await orchestrator.assign_codes(domain_request, deadline)
 
     return ApiAssignCodesResponse(
         coded_feedback_records=[
@@ -308,9 +301,7 @@ async def summarize_aggregate(
         tenant_id=tenant.tenant_id,
     )
 
-    result = await orchestrator.summarize_aggregate(
-        domain_request, deadline, anonymize=body.anonymize
-    )
+    result = await orchestrator.summarize_aggregate(domain_request, deadline)
 
     return ApiSummarizeAggregateResponse(
         summary=ApiAggregateSummary(
@@ -366,7 +357,6 @@ async def detect_sensitive(
             tenant_id=tenant.tenant_id,
         ),
         deadline,
-        anonymize=body.anonymize,
     )
 
     return ApiDetectSensitiveResponse(

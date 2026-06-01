@@ -151,14 +151,6 @@ class ApiAnalyzeRequest(BaseModel):
         max_length=4_000,
         description="Analysis instruction for the model.",
     )
-    anonymize: bool = Field(
-        default=True,
-        description=(
-            "If true, the service will anonymize feedback text before sending it"
-            " to the LLM. Disable only if you are sure that no personally"
-            " identifiable information (PII) is present in the input."
-        ),
-    )
     mode: Literal["single_pass"] = Field(
         default="single_pass",
         description=(
@@ -192,9 +184,6 @@ class ApiAnalyzeResponse(BaseModel):
         description="Number of feedback records that were analyzed.",
     )
     request_id: str = Field(description="Unique identifier for this request.")
-    used_anonymization: bool = Field(
-        description="Indicates whether anonymization was applied to the feedback text.",
-    )
 
 
 class ApiSummarizeFeedbackMetadata(BaseModel):
@@ -301,10 +290,6 @@ class ApiSummarizeRequest(BaseModel):
         max_length=4_000,
         description="Optional extra instruction appended to the default summarize prompt.",
     )
-    anonymize: bool = Field(
-        default=True,
-        description="If true, the service will anonymize feedback text before sending it to the LLM. Disable only if you are sure that no personally identifiable information (PII) is present in the input.",
-    )
 
 
 class ApiFeedbackRecordSummary(BaseModel):
@@ -338,9 +323,6 @@ class ApiSummarizeResponse(BaseModel):
 
     summaries: list[ApiFeedbackRecordSummary] = Field(
         description="Title and summary for each submitted feedback record.",
-    )
-    used_anonymization: bool = Field(
-        description="Indicates whether anonymization was applied to the feedback text.",
     )
 
 
@@ -438,11 +420,6 @@ class ApiDetectSensitiveRequest(BaseModel):
         description="List of feedback items to check for sensitive content.",
     )
 
-    anonymize: bool = Field(
-        default=True,
-        description="If true, the service will anonymize feedback text before sending it to the LLM. Disable only if you are sure that no personally identifiable information (PII) is present in the input.",
-    )
-
 
 class ApiFeedbackItemSensitivityRating(BaseModel):
     """Represents the sensitivity rating for a single feedback item.
@@ -499,10 +476,6 @@ class ApiAssignCodesRequest(BaseModel):
     feedback_records: list[ApiFeedbackRecord] = Field(min_length=1)
     max_codes: int = Field(default=1, ge=1, le=50)
     confidence_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
-    anonymize: bool = Field(
-        default=True,
-        description="If true, the service will anonymize feedback text before sending it to the LLM. Disable only if you are sure that no personally identifiable information (PII) is present in the input.",
-    )
 
 
 class ApiAssignedCode(BaseModel):

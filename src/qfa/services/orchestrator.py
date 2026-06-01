@@ -263,7 +263,6 @@ class Orchestrator:
         self,
         request: AnalysisRequestModel,
         deadline: datetime,
-        anonymize: bool = True,
     ) -> AnalysisResultModel:
         """Analyze a batch of feedback records.
 
@@ -289,14 +288,10 @@ class Orchestrator:
             request.prompt, request.feedback_records
         )
 
-        anonymized_user_message = user_message
-        anonymized_prompt = request.prompt
-        anonymization_mapping: dict[str, str] = {}
-        if anonymize:
-            anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
-                user_message
-            )
-            anonymized_prompt, _ = self._anonymizer.anonymize(request.prompt)
+        anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
+            user_message
+        )
+        anonymized_prompt, _ = self._anonymizer.anonymize(request.prompt)
 
         analyse_timeout = self._check_deadline_and_get_timeout(deadline)
         analyse_response = await self._llm.complete(
@@ -308,15 +303,12 @@ class Orchestrator:
         )
         analysis_text: str = analyse_response.structured
 
-        if anonymize:
-            restorable_mapping = {
-                placeholder: original
-                for placeholder, original in anonymization_mapping.items()
-                if not self._is_retained_analyze_placeholder(placeholder)
-            }
-            analysis_text = self._anonymizer.deanonymize(
-                analysis_text, restorable_mapping
-            )
+        restorable_mapping = {
+            placeholder: original
+            for placeholder, original in anonymization_mapping.items()
+            if not self._is_retained_analyze_placeholder(placeholder)
+        }
+        analysis_text = self._anonymizer.deanonymize(analysis_text, restorable_mapping)
 
         quality_score: float | None
         uncertainty_explanation: str
@@ -360,7 +352,6 @@ class Orchestrator:
         self,
         request: SummaryRequestModel,
         deadline: datetime,
-        anonymize: bool = True,
     ) -> SummaryResultModel:
         """Summarize each submitted feedback record individually.
 
@@ -392,11 +383,9 @@ class Orchestrator:
             system_message += f"\nAdditional instructions: {request.prompt}"
 
         user_message = str(request.feedback_records)
-        anonymized_user_message = user_message
-        if anonymize:
-            anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
-                user_message
-            )
+        anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
+            user_message
+        )
 
         llm_completion = await self._llm.complete(
             system_message=system_message,
@@ -406,16 +395,13 @@ class Orchestrator:
             timeout=timeout,
         )
 
-        if anonymize:
-            return_model_as_string = llm_completion.structured.model_dump_json()
-            unanonymized_return_model_as_string = self._anonymizer.deanonymize(
-                return_model_as_string, anonymization_mapping
-            )
-            result = SummaryResultModel.model_validate_json(
-                unanonymized_return_model_as_string
-            )
-        else:
-            result = llm_completion.structured
+        return_model_as_string = llm_completion.structured.model_dump_json()
+        unanonymized_return_model_as_string = self._anonymizer.deanonymize(
+            return_model_as_string, anonymization_mapping
+        )
+        result = SummaryResultModel.model_validate_json(
+            unanonymized_return_model_as_string
+        )
 
         # Guard against LLM returning a different number of summaries than records
         # submitted and replace model-provided IDs with authoritative input IDs.
@@ -465,7 +451,6 @@ class Orchestrator:
         self,
         request: SummaryRequestModel,
         deadline: datetime,
-        anonymize: bool = True,
     ) -> AggregateSummaryResultModel:
         """Summarize multiple feedback records as a single aggregate summary.
 
@@ -494,11 +479,9 @@ class Orchestrator:
             for idx, record in enumerate(request.feedback_records, start=1)
         )
 
-        anonymized_user_message = user_message
-        if anonymize:
-            anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
-                user_message
-            )
+        anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
+            user_message
+        )
 
         timeout = self._check_deadline_and_get_timeout(deadline)
         response = await self._llm.complete(
@@ -510,9 +493,8 @@ class Orchestrator:
         )
         total_cost = response.cost
 
-        judge_user_message = anonymized_user_message if anonymize else user_message
         judge_system = _build_judge_system_message(
-            judge_user_message, response.structured.summary
+            anonymized_user_message, response.structured.summary
         )
 
         judge_timeout = self._check_deadline_and_get_timeout(deadline)
@@ -531,22 +513,18 @@ class Orchestrator:
             record.id for record in request.feedback_records
         )
 
-        if anonymize:
-            return_model_as_string = response.structured.model_dump_json()
-            unanonymized_return_model_as_string = self._anonymizer.deanonymize(
-                return_model_as_string, anonymization_mapping
-            )
-            return AggregateSummaryResultModel.model_validate_json(
-                unanonymized_return_model_as_string
-            )
-
-        return response.structured
+        return_model_as_string = response.structured.model_dump_json()
+        unanonymized_return_model_as_string = self._anonymizer.deanonymize(
+            return_model_as_string, anonymization_mapping
+        )
+        return AggregateSummaryResultModel.model_validate_json(
+            unanonymized_return_model_as_string
+        )
 
     async def assign_codes(
         self,
         request: CodingAssignmentRequestModel,
         deadline: datetime,
-        anonymize: bool = True,
     ) -> CodingAssignmentResultModel:
         """Assign hierarchical codes to each feedback record.
 
@@ -589,7 +567,6 @@ class Orchestrator:
                 hierarchy_path=None,
                 tenant_id=request.tenant_id,
                 deadline=deadline,
-                anonymize=anonymize,
             )
 
             for type_index in type_indices:
@@ -602,7 +579,6 @@ class Orchestrator:
                     path=[("Type", type_name)],
                     tenant_id=request.tenant_id,
                     deadline=deadline,
-                    anonymize=anonymize,
                 )
                 if threshold is not None and judge_type.score < threshold:
                     continue
@@ -615,7 +591,6 @@ class Orchestrator:
                     hierarchy_path=[("Type", type_name)],
                     tenant_id=request.tenant_id,
                     deadline=deadline,
-                    anonymize=anonymize,
                 )
 
                 for category_index in category_indices:
@@ -628,7 +603,6 @@ class Orchestrator:
                         path=[("Type", type_name), ("Category", category_name)],
                         tenant_id=request.tenant_id,
                         deadline=deadline,
-                        anonymize=anonymize,
                     )
                     if threshold is not None and judge_category.score < threshold:
                         continue
@@ -644,7 +618,6 @@ class Orchestrator:
                         ],
                         tenant_id=request.tenant_id,
                         deadline=deadline,
-                        anonymize=anonymize,
                     )
 
                     for code_index in code_indices:
@@ -661,7 +634,6 @@ class Orchestrator:
                             ],
                             tenant_id=request.tenant_id,
                             deadline=deadline,
-                            anonymize=anonymize,
                         )
                         if threshold is not None and judge_code.score < threshold:
                             continue
@@ -706,7 +678,6 @@ class Orchestrator:
         self,
         request: SensitivityAnalysisRequestModel,
         deadline: datetime,
-        anonymize: bool = True,
     ) -> SensitivityAnalysisResultModelList:
         """Detect sensitive content in feedback records.
 
@@ -724,11 +695,9 @@ class Orchestrator:
         system_message = _DEFAULT_SENSITIVITY_DETECTION_PROMPT
         user_message = str(request.feedback_records)
 
-        anonymized_user_message = user_message
-        if anonymize:
-            anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
-                user_message
-            )
+        anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
+            user_message
+        )
 
         response = await self._llm.complete(
             system_message=system_message,
@@ -738,15 +707,13 @@ class Orchestrator:
             timeout=timeout,
         )
 
-        structured = response.structured
-        if anonymize:
-            return_model_as_string = structured.model_dump_json()
-            unanonymized_return_model_as_string = self._anonymizer.deanonymize(
-                return_model_as_string, anonymization_mapping
-            )
-            structured = SensitivityAnalysisResultModelList.model_validate_json(
-                unanonymized_return_model_as_string
-            )
+        return_model_as_string = response.structured.model_dump_json()
+        unanonymized_return_model_as_string = self._anonymizer.deanonymize(
+            return_model_as_string, anonymization_mapping
+        )
+        structured = SensitivityAnalysisResultModelList.model_validate_json(
+            unanonymized_return_model_as_string
+        )
 
         aligned_results = tuple(
             SensitivityAnalysisResultModel(
@@ -797,7 +764,6 @@ class Orchestrator:
         hierarchy_path: list[tuple[str, str]] | None,
         tenant_id: str,
         deadline: datetime,
-        anonymize: bool = True,
     ) -> list[int]:
         """Build one coding prompt, call the LLM, and parse selected indices."""
         labels = [str(entry.get("name", "")) for entry in entries]
@@ -813,9 +779,7 @@ class Orchestrator:
         self._check_coding_deadline(deadline)
         self._check_token_limit(system_message, user_message)
 
-        anonymized_user_message = user_message
-        if anonymize:
-            anonymized_user_message, _ = self._anonymizer.anonymize(user_message)
+        anonymized_user_message, _ = self._anonymizer.anonymize(user_message)
 
         response = await self._llm.complete(
             system_message=system_message,
@@ -833,7 +797,6 @@ class Orchestrator:
         path: list[tuple[str, str]],
         tenant_id: str,
         deadline: datetime,
-        anonymize: bool,
     ) -> JudgeResponse:
         """Call the judge LLM for one hierarchy level; return structured score and explanation."""
         system_message, user_message = build_judge_messages(
@@ -843,8 +806,7 @@ class Orchestrator:
         )
         self._check_coding_deadline(deadline)
         self._check_token_limit(system_message, user_message)
-        if anonymize:
-            user_message, _ = self._anonymizer.anonymize(user_message)
+        user_message, _ = self._anonymizer.anonymize(user_message)
         response = await self._llm.complete(
             system_message=system_message,
             user_message=user_message,
