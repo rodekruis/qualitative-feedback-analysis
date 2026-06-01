@@ -35,6 +35,7 @@ gitignored `.models/` and prints the three `EMBEDDING_*` values to paste).
 | `EMBEDDING_TOKENIZER_PATH` | for hierarchical | `""` (baked: `…/tokenizer.json`) | Path to the mirrored tokenizer file. Defaults to `EMBEDDING_MODEL_PATH` when empty. |
 | `EMBEDDING_REVISION_HASH` | for hierarchical | `""` (baked: the pinned commit) | Pinned artifact revision/content hash. |
 | `EMBEDDING_INTRA_OP_NUM_THREADS` | no | core count | onnxruntime intra-op threads for the batched encode. |
+| `EMBEDDING_BATCH_SIZE` | no | `100` | Records encoded per onnxruntime batch. The corpus is embedded in sequential batches of this size to bound peak memory on large inputs (padding is per-batch). Lower it if the embedder is memory-pressured; raise it for throughput on roomy hosts. |
 
 ## Orchestrator (`ORCHESTRATOR_*`)
 
@@ -58,6 +59,7 @@ the clustering knobs are only consulted on the hierarchical path.
 |---|---|---|---|
 | `ANALYZE_MIN_CLUSTER_SIZE` | no | `5` | HDBSCAN `min_cluster_size` for the map-step chunking (`mode=hierarchical`). |
 | `ANALYZE_CLUSTERING_METRIC` | no | `euclidean` | HDBSCAN distance metric (`mode=hierarchical`). |
+| `ANALYZE_MAX_CONCURRENT_CHUNKS` | no | `8` | Max map-step chunks analysed concurrently (`mode=hierarchical`). Each chunk is one analysis call + one leaf-judge call; this bounds the fan-out so a large corpus doesn't burst past the provider's rate limit. `1` = fully sequential. |
 | `ANALYZE_CODING_TREND_DATE_FIELD` | no | `created` | Metadata key holding the record date for the coding-trend table. |
 | `ANALYZE_CODING_TREND_CODE_FIELDS` | no | `["codes"]` | JSON list. Metadata keys holding coding labels (comma-separated strings). |
 | `ANALYZE_DEFAULT_CODING_TREND_PERIOD` | no | `week` | Server-side default granularity for the coding-trend table (`day` / `week` / `month`). Overridable per-request via the `period` body field. |

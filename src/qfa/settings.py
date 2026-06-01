@@ -79,6 +79,15 @@ class EmbeddingSettings(BaseSettings):
     tokenizer_path: str = ""
     revision_hash: str = ""
     intra_op_num_threads: int | None = None
+    batch_size: int = Field(
+        default=100,
+        ge=1,
+        description=(
+            "Records embedded per onnxruntime batch. The corpus is encoded in"
+            " sequential batches of this size to bound peak memory on large"
+            " inputs (padding is per-batch, so smaller batches also waste less)."
+        ),
+    )
 
 
 class OrchestratorSettings(BaseSettings):
@@ -127,6 +136,17 @@ class AnalyzeSettings(BaseSettings):
         description=(
             "HDBSCAN distance metric over dense embedding vectors"
             " (mode=hierarchical only)."
+        ),
+    )
+    max_concurrent_chunks: int = Field(
+        default=8,
+        ge=1,
+        description=(
+            "Maximum map-step chunks analysed concurrently (mode=hierarchical)."
+            " Each chunk is one analysis LLM call plus one leaf-judge call, so"
+            " this bounds the fan-out and keeps a large corpus from bursting"
+            " past the provider's request/token rate limit. Set to 1 for a"
+            " fully sequential map."
         ),
     )
     coding_trend_date_field: str = Field(
