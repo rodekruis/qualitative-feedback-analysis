@@ -8,12 +8,9 @@ $prompt = record\attribute('CInsight', id, 'freeTextPrompt');
 $motherPayload = string\concatenate(
     '{',
     '"feedback_records": ', $$recordsString, ', ',
-    '"coding_framework": {"root_codes": ', $$codesString, '}, ',
     '"anonymize": true, ',
     '"prompt": "', $prompt, '", ',
     '"output_language": "', $outputLanguage, '", ',
-    '"max_codes": 10, ',
-    '"confidence_threshold": 0.7, ',
     '"selected_method": "', $$selectedMethod, '", ',
     '"endpoint": "', $$endpoint, '"',
     '}'

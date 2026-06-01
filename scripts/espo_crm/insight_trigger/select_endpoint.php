@@ -4,8 +4,7 @@
 $$selectedMethod = record\attribute('CInsight', id, 'method');
 
 if ($$selectedMethod == "summarize_aggregate") {$$endpoint = "/v1/summarize-aggregate";}
-else if ($$selectedMethod == "summarize_per_item") {$$endpoint = "/v1/summarize";}
 else if ($$selectedMethod == "analyze") {$$endpoint = "/v1/analyze";}
-else {$$endpoint = "/v1/summarize";}
+else {$$endpoint = "/v1/summarize-aggregate";}
 
 $fullEndpoint = string\concatenate("https://obsessed-mantra-visible.ngrok-free.dev", $$endpoint);
