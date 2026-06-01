@@ -14,6 +14,7 @@ from qfa.domain import AnalysisError, FeedbackTooLargeError
 from qfa.domain.errors import LLMError, LLMRateLimitError, LLMTimeoutError
 from qfa.domain.models import LLMResponse, T_Response
 from qfa.domain.ports import LLMPort
+from qfa.utils import timed
 
 logger = logging.getLogger(__name__)
 
@@ -213,31 +214,32 @@ class LiteLLMClient(LLMPort):
 
         self._check_token_limit(system_message, user_message)
 
-        try:
-            response = await acompletion(
-                model=self._model,
-                messages=[
-                    {"role": "system", "content": system_message},
-                    {"role": "user", "content": user_message},
-                ],
-                api_key=self._api_key,
-                api_base=self._api_base or None,
-                api_version=self._api_version or None,
-                user=tenant_id,
-                timeout=timeout,
-                response_format=_provider_safe_response_format(response_model)
-                if issubclass(response_model, BaseModel)
-                else None,
-            )
-        except openai.APITimeoutError as exc:
-            logger.error(exc)
-            raise LLMTimeoutError(str(exc)) from exc
-        except openai.RateLimitError as exc:
-            logger.error(exc)
-            raise LLMRateLimitError(str(exc)) from exc
-        except openai.APIError as exc:
-            logger.error(exc)
-            raise LLMError(str(exc)) from exc
+        with timed() as call_sw:
+            try:
+                response = await acompletion(
+                    model=self._model,
+                    messages=[
+                        {"role": "system", "content": system_message},
+                        {"role": "user", "content": user_message},
+                    ],
+                    api_key=self._api_key,
+                    api_base=self._api_base or None,
+                    api_version=self._api_version or None,
+                    user=tenant_id,
+                    timeout=timeout,
+                    response_format=_provider_safe_response_format(response_model)
+                    if issubclass(response_model, BaseModel)
+                    else None,
+                )
+            except openai.APITimeoutError as exc:
+                logger.error(exc)
+                raise LLMTimeoutError(str(exc)) from exc
+            except openai.RateLimitError as exc:
+                logger.error(exc)
+                raise LLMRateLimitError(str(exc)) from exc
+            except openai.APIError as exc:
+                logger.error(exc)
+                raise LLMError(str(exc)) from exc
 
         content = response.choices[0].message.content
         if content is None:
@@ -271,6 +273,20 @@ class LiteLLMClient(LLMPort):
             raise ValueError(
                 "The `response_model` is not a string or BaseModel subclass."
             )
+
+        # Per-call latency + usage. All fields here are explicitly safe to log
+        # (see docs/operations/observability.md) — no message text, prompt, or
+        # response content. DEBUG because hierarchical analysis fans out one of
+        # these per chunk plus judges and reduces; INFO would be very chatty.
+        logger.debug(
+            "LLM call: model=%s latency=%.2fs prompt_tokens=%d "
+            "completion_tokens=%d cost=%s",
+            response.model,
+            call_sw.elapsed_seconds,
+            usage.prompt_tokens,
+            usage.completion_tokens,
+            cost,
+        )
 
         return LLMResponse[T_Response](
             structured=parsed_data,
