@@ -34,7 +34,7 @@ import logging
 import litellm
 import yaml
 
-from qfa.adapters.embedding import build_bge_m3_embedder
+from qfa.adapters.embedding import build_onnx_embedder
 from qfa.adapters.presidio_anonymizer import PresidioAnonymizer
 from qfa.domain.ports import EmbeddingPort, LLMPort
 from qfa.services.orchestrator import Orchestrator
@@ -61,18 +61,21 @@ def build_embedder(settings: EmbeddingSettings) -> EmbeddingPort | None:
     Returns
     -------
     EmbeddingPort | None
-        A fully-constructed ``BgeM3OnnxEmbedder``, or ``None`` when
-        ``model_path`` is empty.
+        A fully-constructed ``OnnxEmbedder`` (for the configured
+        ``EMBEDDING_MODEL_KIND``), or ``None`` when ``model_path`` is empty.
     """
     if not settings.model_path:
         logger.info(
             "EMBEDDING_MODEL_PATH not set — hierarchical mode requires it at runtime"
         )
         return None
-    return build_bge_m3_embedder(
+    return build_onnx_embedder(
+        model_kind=settings.model_kind,
         model_path=settings.model_path,
         tokenizer_path=settings.tokenizer_path or settings.model_path,
         revision_hash=settings.revision_hash,
+        dense_dim=settings.dense_dim,
+        max_tokens=settings.max_tokens,
         intra_op_num_threads=settings.intra_op_num_threads,
         batch_size=settings.batch_size,
     )

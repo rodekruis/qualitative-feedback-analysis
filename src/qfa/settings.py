@@ -78,6 +78,44 @@ class EmbeddingSettings(BaseSettings):
     model_path: str = ""
     tokenizer_path: str = ""
     revision_hash: str = ""
+    model_kind: Literal["bge-m3", "e5"] = Field(
+        default="e5",
+        description=(
+            "Embedding model *family*, which selects the adapter's output"
+            " handling: ``e5`` (default) mean-pools the token-level"
+            " ``last_hidden_state`` over the attention mask and prepends the"
+            " ``query: `` prefix every E5 input requires; ``bge-m3`` takes the"
+            " model's already-pooled ``dense_vecs`` head as-is. The dimension"
+            " and token cap are *per-artifact* and set separately"
+            " (``dense_dim`` / ``max_tokens``), so both e5-base (768-d) and"
+            " e5-small (384-d) share ``kind=e5``. Default is e5-base: smaller"
+            " and faster than BGE-M3 for a modest cross-lingual quality trade;"
+            " set ``kind=bge-m3`` + ``dense_dim=1024`` to use the stronger"
+            " model."
+        ),
+    )
+    dense_dim: int = Field(
+        default=768,
+        ge=1,
+        description=(
+            "Expected output dimensionality of the dense vector, validated"
+            " per batch so a mismatched artifact/config fails loud rather"
+            " than silently producing wrong-width vectors. multilingual-e5-base"
+            " (the default) is 768; multilingual-e5-small is 384; BGE-M3 is"
+            " 1024."
+        ),
+    )
+    max_tokens: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Tokenizer truncation cap. ``None`` uses the model family's"
+            " natural context: 8192 for ``bge-m3``, 512 for ``e5`` (its"
+            " XLM-R/MiniLM backbone's positional limit). Set an explicit"
+            " lower value to bound the per-record (and, since padding is to"
+            " the batch's longest row, per-batch) cost from long outliers."
+        ),
+    )
     intra_op_num_threads: int | None = None
     batch_size: int = Field(
         default=100,
