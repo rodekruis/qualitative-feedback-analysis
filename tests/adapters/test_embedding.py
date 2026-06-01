@@ -53,6 +53,7 @@ def _make_embedder(
     trust_remote_code: bool = False,
     custom_op_libraries: tuple[str, ...] = (),
     intra_op_num_threads: int | None = 4,
+    batch_size: int = 100,
 ) -> BgeM3OnnxEmbedder:
     """Build a ``BgeM3OnnxEmbedder`` with sensible defaults for unit tests."""
     return BgeM3OnnxEmbedder(
@@ -63,6 +64,7 @@ def _make_embedder(
         trust_remote_code=trust_remote_code,
         custom_op_libraries=custom_op_libraries,
         intra_op_num_threads=intra_op_num_threads,
+        batch_size=batch_size,
     )
 
 
@@ -124,16 +126,43 @@ def test_embed_returns_one_normalised_1024d_vector_per_text_in_order() -> None:
     assert abs(math.sqrt(sum(x * x for x in vectors[0])) - 1.0) < 1e-5
 
 
-def test_embed_uses_a_single_batched_session_run() -> None:
-    """The whole batch is encoded in one ``session.run`` call.
+def test_embed_uses_one_session_run_when_input_fits_one_batch() -> None:
+    """An input no larger than ``batch_size`` is encoded in one ``session.run``.
 
-    Why: the spec mandates a single batched call (no thread/process pool);
-    onnxruntime saturates cores via intra_op_num_threads instead.
+    Why: batching only splits inputs that exceed ``batch_size``; a small batch
+    must still be a single onnxruntime call (no per-record overhead, cores
+    saturated via intra_op_num_threads rather than a thread/process pool).
     """
     session = _FakeSession()
-    embedder = _make_embedder(session=session)
+    embedder = _make_embedder(session=session, batch_size=100)
     embedder.embed(("a", "b", "c"))
     assert session.run_calls == 1
+
+
+def test_embed_batches_large_input_into_sequential_session_runs() -> None:
+    """Inputs beyond ``batch_size`` are encoded in sequential ``session.run`` calls.
+
+    Why: embedding a whole large corpus in one run materialises one giant
+    padded-token tensor and activation map — the dominant memory cost. Batching
+    caps peak memory; the one-vector-per-text, input-order contract must survive
+    the split, and the call count must be ``ceil(n / batch_size)``.
+    """
+    session = _FakeSession()
+    embedder = _make_embedder(session=session, batch_size=2)
+    vectors = embedder.embed(("a", "b", "c", "d", "e"))
+    assert session.run_calls == 3  # ceil(5 / 2)
+    assert len(vectors) == 5
+    assert all(len(v) == 1024 for v in vectors)
+
+
+def test_construction_rejects_non_positive_batch_size() -> None:
+    """A ``batch_size`` below 1 raises at construction.
+
+    Why: a zero/negative batch would embed no records per run (an infinite or
+    empty loop); the contract requires at least one record per ``session.run``.
+    """
+    with pytest.raises(ValueError, match="batch_size"):
+        _make_embedder(batch_size=0)
 
 
 def test_embed_empty_input_returns_empty_without_calling_session() -> None:

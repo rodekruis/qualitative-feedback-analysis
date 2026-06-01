@@ -74,6 +74,7 @@ def build_embedder(settings: EmbeddingSettings) -> EmbeddingPort | None:
         tokenizer_path=settings.tokenizer_path or settings.model_path,
         revision_hash=settings.revision_hash,
         intra_op_num_threads=settings.intra_op_num_threads,
+        batch_size=settings.batch_size,
     )
 
 
