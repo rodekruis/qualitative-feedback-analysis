@@ -256,7 +256,7 @@ class TestTokenLimit:
             max_total_tokens=100,  # very low limit
         )
 
-        await orch.analyze(request, _future_deadline())
+        await orch.analyze_bulk(request, _future_deadline())
 
         assert len(fake_llm.calls) == 2
 
@@ -302,7 +302,7 @@ class TestNonTransientError:
         )
 
         with pytest.raises(LLMError, match="internal server error"):
-            await orch.analyze(_make_request(), _future_deadline())
+            await orch.analyze_bulk(_make_request(), _future_deadline())
 
         # Verify no retries: only one call was made
         assert len(fake_llm.calls) == 1
@@ -363,7 +363,7 @@ class TestNonTransientError:
             max_total_tokens=MAX_TOKENS,
         )
 
-        result = await orch.summarize_aggregate(
+        result = await orch.summarize_bulk(
             _make_aggregate_request(), _future_deadline()
         )
 
@@ -389,9 +389,7 @@ class TestNonTransientError:
         )
 
         with pytest.raises(AnalysisError, match="invalid quality score"):
-            await orch.summarize_aggregate(
-                _make_aggregate_request(), _future_deadline()
-            )
+            await orch.summarize_bulk(_make_aggregate_request(), _future_deadline())
 
         assert len(fake_llm.calls) == 2
 
@@ -412,9 +410,7 @@ class TestNonTransientError:
         )
 
         with pytest.raises(AnalysisError, match=r"outside 0\.0-1\.0"):
-            await orch.summarize_aggregate(
-                _make_aggregate_request(), _future_deadline()
-            )
+            await orch.summarize_bulk(_make_aggregate_request(), _future_deadline())
 
         assert len(fake_llm.calls) == 2
 
@@ -547,7 +543,7 @@ class TestTenantIdPassedThrough:
             max_total_tokens=MAX_TOKENS,
         )
 
-        await orch.analyze(
+        await orch.analyze_bulk(
             _make_request(tenant_id="special-tenant"),
             _future_deadline(),
         )
@@ -582,7 +578,7 @@ class TestInjectionSystemPrefix:
             max_total_tokens=MAX_TOKENS,
         )
 
-        await orch.analyze(request, _future_deadline())
+        await orch.analyze_bulk(request, _future_deadline())
 
         assert len(fake_llm.calls) == 2
 
@@ -612,7 +608,7 @@ class TestInjectionSystemPrefix:
             max_total_tokens=MAX_TOKENS,
         )
 
-        await orch.analyze(request, _future_deadline())
+        await orch.analyze_bulk(request, _future_deadline())
 
         assert len(fake_llm.calls) == 2
 
@@ -670,7 +666,7 @@ class TestInjectionNullBytes:
             max_total_tokens=MAX_TOKENS,
         )
 
-        await orch.analyze(request, _future_deadline())
+        await orch.analyze_bulk(request, _future_deadline())
 
         assert len(fake_llm.calls) == 2
 
@@ -702,7 +698,7 @@ class TestInjectionRepeatedChars:
             max_total_tokens=MAX_TOKENS,
         )
 
-        await orch.analyze(request, _future_deadline())
+        await orch.analyze_bulk(request, _future_deadline())
 
         assert len(fake_llm.calls) == 2
 
@@ -735,7 +731,7 @@ class TestInjectionErrorNoMatchedText:
             max_total_tokens=MAX_TOKENS,
         )
 
-        await orch.analyze(request, _future_deadline())
+        await orch.analyze_bulk(request, _future_deadline())
 
         assert len(fake_llm.calls) == 2
 
@@ -785,7 +781,7 @@ class TestAnalyzeHappyPath:
             max_total_tokens=MAX_TOKENS,
         )
 
-        result = await orch.analyze(_make_request(), _future_deadline())
+        result = await orch.analyze_bulk(_make_request(), _future_deadline())
 
         assert result.result.startswith(ANALYZE_DISCLAIMER)
         assert "Top themes are A and B." in result.result
@@ -816,7 +812,9 @@ class TestAnalyzeHappyPath:
             max_total_tokens=MAX_TOKENS,
         )
 
-        await orch.analyze(_make_request(prompt="What themes?"), _future_deadline())
+        await orch.analyze_bulk(
+            _make_request(prompt="What themes?"), _future_deadline()
+        )
 
         user_msg = fake_llm.calls[0]["user_message"]
         assert "<analyst_instruction>" in user_msg
@@ -846,7 +844,7 @@ class TestAnalyzeJudgeFailure:
             max_total_tokens=MAX_TOKENS,
         )
 
-        result = await orch.analyze(_make_request(), _future_deadline())
+        result = await orch.analyze_bulk(_make_request(), _future_deadline())
 
         assert result.quality_score is None
         assert result.uncertainty_explanation == JUDGE_UNAVAILABLE_EXPLANATION
@@ -893,7 +891,7 @@ class TestAnalyzeAnonymizationOrdering:
             max_total_tokens=MAX_TOKENS,
         )
 
-        result = await orch.analyze(_make_request(), _future_deadline())
+        result = await orch.analyze_bulk(_make_request(), _future_deadline())
 
         assert result.result.count(ANALYZE_DISCLAIMER) == 1
         assert result.result.startswith(ANALYZE_DISCLAIMER)
@@ -950,7 +948,7 @@ class TestAnalyzeAnonymizationOrdering:
             max_total_tokens=MAX_TOKENS,
         )
 
-        result = await orch.analyze(_make_request(), _future_deadline())
+        result = await orch.analyze_bulk(_make_request(), _future_deadline())
 
         from qfa.services.prompts import ANALYZE_DISCLAIMER
 
@@ -1013,7 +1011,7 @@ class TestAnalyzeAnonymizationOrdering:
             max_total_tokens=MAX_TOKENS,
         )
 
-        await orch.analyze(
+        await orch.analyze_bulk(
             _make_request(prompt=f"What did {sensitive_token} say about clinics?"),
             _future_deadline(),
         )

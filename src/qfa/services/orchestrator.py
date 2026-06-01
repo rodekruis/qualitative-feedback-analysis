@@ -262,7 +262,7 @@ class Orchestrator:
             for entity_type in cls._ANALYZE_RETAINED_PLACEHOLDER_TYPES
         )
 
-    async def analyze(
+    async def analyze_bulk(
         self,
         request: AnalysisRequestModel,
         deadline: datetime,
@@ -351,6 +351,80 @@ class Orchestrator:
             uncertainty_explanation=uncertainty_explanation,
         )
 
+    async def summarize_bulk(
+        self,
+        request: SummaryRequestModel,
+        deadline: datetime,
+    ) -> AggregateSummaryResultModel:
+        """Summarize multiple feedback records as a single aggregate summary.
+
+        Parameters
+        ----------
+        request : SummaryRequest
+            The summarization request containing feedback records and options.
+        deadline : datetime
+            Absolute UTC deadline by which summarization must complete.
+
+        Returns
+        -------
+        AggregateSummaryResult
+            A single aggregate summary with themes ordered by frequency.
+        """
+        system_message = _DEFAULT_AGGREGATE_SUMMARIZATION_PROMPT
+        if request.output_language:
+            system_message += (
+                f"\nWrite the title and summary in {request.output_language}."
+            )
+        if request.prompt:
+            system_message += f"\nAdditional instructions: {request.prompt}"
+
+        user_message = "\n\n".join(
+            f"{idx}. {record.content}"
+            for idx, record in enumerate(request.feedback_records, start=1)
+        )
+
+        anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
+            user_message
+        )
+
+        timeout = self._check_deadline_and_get_timeout(deadline)
+        response = await self._llm.complete(
+            system_message=system_message,
+            user_message=anonymized_user_message,
+            tenant_id=request.tenant_id,
+            response_model=AggregateSummaryResultModel,
+            timeout=timeout,
+        )
+        total_cost = response.cost
+
+        judge_system = _build_judge_system_message(
+            anonymized_user_message, response.structured.summary
+        )
+
+        judge_timeout = self._check_deadline_and_get_timeout(deadline)
+        judge_response = await self._llm.complete(
+            system_message=judge_system,
+            user_message=_JUDGE_USER_MESSAGE,
+            tenant_id=request.tenant_id,
+            response_model=str,
+            timeout=judge_timeout,
+        )
+        total_cost += judge_response.cost
+        quality_score = _parse_judge_quality_score(judge_response.structured)
+
+        response.structured.quality_score = quality_score
+        response.structured.ids = tuple(
+            record.id for record in request.feedback_records
+        )
+
+        return_model_as_string = response.structured.model_dump_json()
+        unanonymized_return_model_as_string = self._anonymizer.deanonymize(
+            return_model_as_string, anonymization_mapping
+        )
+        return AggregateSummaryResultModel.model_validate_json(
+            unanonymized_return_model_as_string
+        )
+
     async def summarize(
         self,
         request: SingleSummaryRequestModel,
@@ -436,86 +510,12 @@ class Orchestrator:
             for idx, record in enumerate(request_records)
         )
 
-    async def summarize_aggregate(
-        self,
-        request: SummaryRequestModel,
-        deadline: datetime,
-    ) -> AggregateSummaryResultModel:
-        """Summarize multiple feedback records as a single aggregate summary.
-
-        Parameters
-        ----------
-        request : SummaryRequest
-            The summarization request containing feedback records and options.
-        deadline : datetime
-            Absolute UTC deadline by which summarization must complete.
-
-        Returns
-        -------
-        AggregateSummaryResult
-            A single aggregate summary with themes ordered by frequency.
-        """
-        system_message = _DEFAULT_AGGREGATE_SUMMARIZATION_PROMPT
-        if request.output_language:
-            system_message += (
-                f"\nWrite the title and summary in {request.output_language}."
-            )
-        if request.prompt:
-            system_message += f"\nAdditional instructions: {request.prompt}"
-
-        user_message = "\n\n".join(
-            f"{idx}. {record.content}"
-            for idx, record in enumerate(request.feedback_records, start=1)
-        )
-
-        anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
-            user_message
-        )
-
-        timeout = self._check_deadline_and_get_timeout(deadline)
-        response = await self._llm.complete(
-            system_message=system_message,
-            user_message=anonymized_user_message,
-            tenant_id=request.tenant_id,
-            response_model=AggregateSummaryResultModel,
-            timeout=timeout,
-        )
-        total_cost = response.cost
-
-        judge_system = _build_judge_system_message(
-            anonymized_user_message, response.structured.summary
-        )
-
-        judge_timeout = self._check_deadline_and_get_timeout(deadline)
-        judge_response = await self._llm.complete(
-            system_message=judge_system,
-            user_message=_JUDGE_USER_MESSAGE,
-            tenant_id=request.tenant_id,
-            response_model=str,
-            timeout=judge_timeout,
-        )
-        total_cost += judge_response.cost
-        quality_score = _parse_judge_quality_score(judge_response.structured)
-
-        response.structured.quality_score = quality_score
-        response.structured.ids = tuple(
-            record.id for record in request.feedback_records
-        )
-
-        return_model_as_string = response.structured.model_dump_json()
-        unanonymized_return_model_as_string = self._anonymizer.deanonymize(
-            return_model_as_string, anonymization_mapping
-        )
-        return AggregateSummaryResultModel.model_validate_json(
-            unanonymized_return_model_as_string
-        )
-
     async def assign_codes(
         self,
         request: CodingAssignmentRequestModel,
         deadline: datetime,
     ) -> CodingAssignmentResultModel:
-        """Assign hierarchical codes to each feedback record.
+        """Assign hierarchical codes to a feedback record.
 
         Parameters
         ----------

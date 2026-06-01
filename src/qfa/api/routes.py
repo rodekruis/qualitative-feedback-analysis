@@ -117,7 +117,7 @@ async def analyze_bulk(
         mode=body.mode,
     )
 
-    result = await orchestrator.analyze(domain_request, deadline)
+    result = await orchestrator.analyze_bulk(domain_request, deadline)
 
     return ApiAnalyzeBulkResponse(
         analysis=result.result,
@@ -125,6 +125,63 @@ async def analyze_bulk(
         uncertainty_explanation=result.uncertainty_explanation,
         feedback_record_count=len(body.feedback_records),
         request_id=request.state.request_id,
+    )
+
+
+@router.post(
+    "/v1/summarize-bulk",
+    response_model=ApiSummarizeBulkResponse,
+    status_code=200,
+    tags=["Bulk Inference"],
+)
+async def summarize_bulk(
+    body: ApiSummarizeBulkRequest,
+    request: Request,
+    tenant: TenantApiKey = Depends(authenticate_request),
+    orchestrator: Orchestrator = Depends(get_orchestrator),
+    _scope: CallContext = Depends(call_scope_for(Operation.SUMMARIZE_AGGREGATE)),
+) -> ApiSummarizeBulkResponse:
+    """Summarize all submitted feedback records as a single aggregate summary.
+
+    Parameters
+    ----------
+    body : ApiSummarizeBulkRequest
+        The request body containing feedback records and summarization options.
+    request : Request
+        The incoming HTTP request.
+    tenant : TenantApiKey
+        The authenticated tenant, injected via dependency.
+    orchestrator : Orchestrator
+        The orchestrator service, injected via dependency.
+
+    Returns
+    -------
+    ApiSummarizeBulkResponse
+        A single summary with themes ordered by frequency across all feedback records.
+    """
+    deadline = datetime.now(UTC) + timedelta(seconds=120)
+
+    feedback_records = tuple(
+        FeedbackRecordModel(
+            id=record.id,
+            content=record.content,
+            metadata=record.metadata,
+        )
+        for record in body.feedback_records
+    )
+    domain_request = SummaryRequestModel(
+        feedback_records=feedback_records,
+        output_language=body.output_language,
+        tenant_id=tenant.tenant_id,
+    )
+
+    result = await orchestrator.summarize_bulk(domain_request, deadline)
+
+    return ApiSummarizeBulkResponse(
+        ids=list(result.ids),
+        title=result.title,
+        summary=result.summary,
+        quality_score=result.quality_score,
     )
 
 
@@ -230,63 +287,6 @@ async def assign_codes(
             )
             for assigned in coded.assigned_codes
         ],
-    )
-
-
-@router.post(
-    "/v1/summarize-bulk",
-    response_model=ApiSummarizeBulkResponse,
-    status_code=200,
-    tags=["Bulk Inference"],
-)
-async def summarize_bulk(
-    body: ApiSummarizeBulkRequest,
-    request: Request,
-    tenant: TenantApiKey = Depends(authenticate_request),
-    orchestrator: Orchestrator = Depends(get_orchestrator),
-    _scope: CallContext = Depends(call_scope_for(Operation.SUMMARIZE_AGGREGATE)),
-) -> ApiSummarizeBulkResponse:
-    """Summarize all submitted feedback records as a single aggregate summary.
-
-    Parameters
-    ----------
-    body : ApiSummarizeBulkRequest
-        The request body containing feedback records and summarization options.
-    request : Request
-        The incoming HTTP request.
-    tenant : TenantApiKey
-        The authenticated tenant, injected via dependency.
-    orchestrator : Orchestrator
-        The orchestrator service, injected via dependency.
-
-    Returns
-    -------
-    ApiSummarizeBulkResponse
-        A single summary with themes ordered by frequency across all feedback records.
-    """
-    deadline = datetime.now(UTC) + timedelta(seconds=120)
-
-    feedback_records = tuple(
-        FeedbackRecordModel(
-            id=record.id,
-            content=record.content,
-            metadata=record.metadata,
-        )
-        for record in body.feedback_records
-    )
-    domain_request = SummaryRequestModel(
-        feedback_records=feedback_records,
-        output_language=body.output_language,
-        tenant_id=tenant.tenant_id,
-    )
-
-    result = await orchestrator.summarize_aggregate(domain_request, deadline)
-
-    return ApiSummarizeBulkResponse(
-        ids=list(result.ids),
-        title=result.title,
-        summary=result.summary,
-        quality_score=result.quality_score,
     )
 
 
