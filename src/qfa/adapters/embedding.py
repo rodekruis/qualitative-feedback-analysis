@@ -30,6 +30,7 @@ from typing import Any
 import numpy as np
 
 from qfa.domain.ports import EmbeddingPort
+from qfa.settings import DEFAULT_EMBEDDING_BATCH_SIZE
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,7 @@ class BgeM3OnnxEmbedder(EmbeddingPort):
         trust_remote_code: bool = False,
         custom_op_libraries: tuple[str, ...] = (),
         intra_op_num_threads: int | None = None,
-        batch_size: int = 100,
+        batch_size: int = DEFAULT_EMBEDDING_BATCH_SIZE,
     ) -> None:
         """Construct the embedder and assert the required security flags.
 
@@ -152,6 +153,20 @@ class BgeM3OnnxEmbedder(EmbeddingPort):
         input_ids = np.asarray(encoded["input_ids"])
         attention_mask = np.asarray(encoded["attention_mask"])
 
+        # Surface otherwise-silent truncation: the tokenizer caps inputs at
+        # _MAX_TOKENS, so a row whose real-token count (its attention-mask sum)
+        # reaches the cap was almost certainly truncated and lost trailing
+        # content. Log only the count and the limit — never the text — per the
+        # content-free logging rule in docs/operations/observability.md.
+        truncated = int(np.count_nonzero(attention_mask.sum(axis=1) >= _MAX_TOKENS))
+        if truncated:
+            logger.warning(
+                "%d record(s) hit the %d-token limit and were truncated before "
+                "embedding",
+                truncated,
+                _MAX_TOKENS,
+            )
+
         outputs = self._session.run(
             None, {"input_ids": input_ids, "attention_mask": attention_mask}
         )
@@ -176,7 +191,7 @@ def build_bge_m3_embedder(
     tokenizer_path: str,
     revision_hash: str,
     intra_op_num_threads: int | None = None,
-    batch_size: int = 100,
+    batch_size: int = DEFAULT_EMBEDDING_BATCH_SIZE,
 ) -> BgeM3OnnxEmbedder:
     """Build a :class:`BgeM3OnnxEmbedder` from the mirrored local artifact.
 

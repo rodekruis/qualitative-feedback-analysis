@@ -7,6 +7,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from qfa.domain.clustering_models import TrendPeriod
 from qfa.domain.models import TenantApiKey
 
+DEFAULT_EMBEDDING_BATCH_SIZE = 100
+"""Default records-per-onnxruntime-batch for the embedder.
+
+Single source of truth shared by ``EmbeddingSettings.batch_size`` and the
+``qfa.adapters.embedding`` constructor/factory defaults, so the configurable
+default and the library default cannot silently drift apart.
+"""
+
 
 class LogSettings(BaseSettings):
     """Define settings for the logger."""
@@ -80,7 +88,7 @@ class EmbeddingSettings(BaseSettings):
     revision_hash: str = ""
     intra_op_num_threads: int | None = None
     batch_size: int = Field(
-        default=100,
+        default=DEFAULT_EMBEDDING_BATCH_SIZE,
         ge=1,
         description=(
             "Records embedded per onnxruntime batch. The corpus is encoded in"
