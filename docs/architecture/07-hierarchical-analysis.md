@@ -22,9 +22,14 @@ near each other. The model must be **multilingual** — humanitarian feedback
 arrives in many languages, and a monolingual model would cluster by language
 rather than theme. The model is the only external, swappable dependency in the
 path, so it sits behind {py:class}`~qfa.domain.ports.EmbeddingPort`. The choice
-of a *self-hosted BGE-M3 ONNX-int8* model over a hosted embedding API — and why
-that specific model and format — is recorded in
-[ADR-014](../adr/014-embedding-port-and-self-hosted-model.md).
+of a *self-hosted ONNX-int8* model over a hosted embedding API — and why that
+format — is recorded in
+[ADR-014](../adr/014-embedding-port-and-self-hosted-model.md). The adapter
+supports two model families, selected by `EMBEDDING_MODEL_KIND`: the default
+**multilingual-e5-base** (768-d, mean-pooled — smaller and faster) and
+**BGE-M3** (1024-d, pre-pooled — stronger cross-lingual quality), both baked
+into the image (see the
+[settings reference](../operations/settings-reference.md)).
 
 ## The pipeline
 

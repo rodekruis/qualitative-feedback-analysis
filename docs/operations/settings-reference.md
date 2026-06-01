@@ -18,22 +18,41 @@ Every environment variable the app reads. Settings are loaded by `pydantic-setti
 
 ## Embedding (`EMBEDDING_*`)
 
-Only consumed by `mode=hierarchical`. The model defaults to *empty* at the
-settings layer, but **the official Docker image bakes the BGE-M3 ONNX
-artifact in and sets all three paths as `ENV`** (see the builder stage in
-`Dockerfile`), so a deployed image serves hierarchical out of the box. The
-502 `analysis_unavailable` response only applies where the model is genuinely
-absent — a bare local run, or a deployment that strips these vars.
+Only consumed by `mode=hierarchical`. The path defaults to *empty* at the
+settings layer, but **the official Docker image bakes two ONNX embedders in
+(multilingual-e5-base and BGE-M3) and sets the `ENV` to the e5-base default**
+(see the builder stage in `Dockerfile`), so a deployed image serves
+hierarchical out of the box. The 502 `analysis_unavailable` response only
+applies where the model is genuinely absent — a bare local run, or a
+deployment that strips these vars.
 
-For **local development**, fetch the artifact and get the matching env lines
-with `uv run python scripts/fetch_embedding_model.py` (downloads to a
-gitignored `.models/` and prints the three `EMBEDDING_*` values to paste).
+Two model **families** are supported, selected by `EMBEDDING_MODEL_KIND`; the
+family fixes the adapter's output handling (pooling + query prefix) while the
+dimension and token cap are per-artifact knobs (`EMBEDDING_DENSE_DIM` /
+`EMBEDDING_MAX_TOKENS`):
+
+- **`e5`** (default, multilingual-e5-base, 768-d) — mean-pools token vectors
+  and prepends the `query: ` prefix. Smaller and faster than BGE-M3 for a
+  modest cross-lingual quality trade. e5-small (384-d) is the same `kind`.
+- **`bge-m3`** (1024-d) — takes the model's already-pooled `dense_vecs` head
+  as-is. The strongest cross-lingual model; select it when quality matters
+  more than latency. Baked into the image and one env override away (see the
+  `Dockerfile` comment for the exact `EMBEDDING_*` values).
+
+For **local development**, fetch an artifact and get the matching env lines
+with `uv run python scripts/fetch_embedding_model.py` (defaults to e5-base;
+`--model bge-m3` / `--model e5-small` for the others). It downloads to a
+gitignored `.models/` and prints every `EMBEDDING_*` value to paste, including
+`EMBEDDING_MODEL_KIND` and `EMBEDDING_DENSE_DIM`.
 
 | Variable | Required | Default | Notes |
 |---|---|---|---|
-| `EMBEDDING_MODEL_PATH` | for hierarchical | `""` (baked: `/app/models/bge-m3-onnx-int8/model_quantized.onnx`) | Path to the mirrored BGE-M3 `model_quantized.onnx`. Never a HuggingFace URL in production. |
-| `EMBEDDING_TOKENIZER_PATH` | for hierarchical | `""` (baked: `…/tokenizer.json`) | Path to the mirrored tokenizer file. Defaults to `EMBEDDING_MODEL_PATH` when empty. |
+| `EMBEDDING_MODEL_PATH` | for hierarchical | `""` (baked: `/app/models/multilingual-e5-base/onnx/model_qint8_avx512_vnni.onnx`) | Path to the mirrored ONNX graph. Never a HuggingFace URL in production. |
+| `EMBEDDING_TOKENIZER_PATH` | for hierarchical | `""` (baked: `…/multilingual-e5-base/tokenizer.json`) | Path to the mirrored tokenizer file. Defaults to `EMBEDDING_MODEL_PATH` when empty. |
 | `EMBEDDING_REVISION_HASH` | for hierarchical | `""` (baked: the pinned commit) | Pinned artifact revision/content hash. |
+| `EMBEDDING_MODEL_KIND` | no | `e5` | Model family: `e5` (mean-pool + `query: ` prefix) or `bge-m3` (pre-pooled). Selects how the ONNX output becomes a vector. |
+| `EMBEDDING_DENSE_DIM` | no | `768` | Expected output dimensionality, validated per batch so a mismatched artifact/config fails loud. e5-base 768; e5-small 384; BGE-M3 1024. |
+| `EMBEDDING_MAX_TOKENS` | no | family default | Tokenizer truncation cap. Unset → the family's natural context (8192 for `bge-m3`, 512 for `e5`). Set lower to bound the per-record (and, since padding is per-batch, per-batch) cost from long outliers. |
 | `EMBEDDING_INTRA_OP_NUM_THREADS` | no | core count | onnxruntime intra-op threads for the batched encode. |
 | `EMBEDDING_BATCH_SIZE` | no | `100` | Records encoded per onnxruntime batch. The corpus is embedded in sequential batches of this size to bound peak memory on large inputs (padding is per-batch). Lower it if the embedder is memory-pressured; raise it for throughput on roomy hosts. |
 
