@@ -24,7 +24,7 @@ class FeedbackRecordModel(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     id: str = Field(description="Unique identifier for the feedback record.")
-    text: str = Field(
+    content: str = Field(
         min_length=1,
         max_length=100_000,
         description="Feedback text content.",
@@ -32,6 +32,29 @@ class FeedbackRecordModel(BaseModel):
     metadata: dict[str, str | int | float | bool] = Field(
         default_factory=dict,
         description="Optional metadata key-value pairs associated with the feedback record.",
+    )
+
+
+class CodingNode(BaseModel):
+    """A node in a hierarchical coding framework."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str = Field(description="Label for this node in the coding hierarchy.")
+    children: list["CodingNode"] = Field(
+        default_factory=list,
+        description="Child nodes. Empty for leaf-level codes.",
+    )
+
+
+class CodingLevels(BaseModel):
+    """A tree of coding nodes defining the full hierarchical coding framework."""
+
+    model_config = ConfigDict(frozen=True)
+
+    root_codes: list[CodingNode] = Field(
+        min_length=1,
+        description="Top-level nodes of the coding hierarchy.",
     )
 
 
@@ -78,7 +101,7 @@ class AnalysisResultModel(BaseModel):
 
 
 class SummaryRequestModel(BaseModel):
-    """A request to summarize one or more feedback records individually."""
+    """A request to summarize multiple feedback records (bulk path)."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -94,6 +117,17 @@ class SummaryRequestModel(BaseModel):
         default=None,
         max_length=4000,
         description="Optional extra instruction appended to the default summarize prompt.",
+    )
+    tenant_id: str = Field(description="Tenant identifier injected by the auth layer.")
+
+
+class SingleSummaryRequestModel(BaseModel):
+    """A request to summarize a single feedback record."""
+
+    model_config = ConfigDict(frozen=True)
+
+    feedback_record: FeedbackRecordModel = Field(
+        description="The feedback record to summarize.",
     )
     tenant_id: str = Field(description="Tenant identifier injected by the auth layer.")
 
@@ -142,16 +176,15 @@ class AggregateSummaryResultModel(BaseModel):
 
 
 class CodingAssignmentRequestModel(BaseModel):
-    """A request to assign hierarchical codes to feedback records."""
+    """A request to assign hierarchical codes to a single feedback record."""
 
     model_config = ConfigDict(frozen=True)
 
-    feedback_records: tuple[FeedbackRecordModel, ...] = Field(
-        min_length=1,
-        description="Non-empty tuple of feedback records to code.",
+    feedback_record: FeedbackRecordModel = Field(
+        description="The feedback record to assign codes to.",
     )
-    coding_framework: dict[str, Any] = Field(
-        description="Hierarchical coding framework with types, categories, and codes.",
+    coding_levels: CodingLevels = Field(
+        description="Hierarchical coding framework defining the assignable codes.",
     )
     max_codes: int = Field(
         ge=1,
@@ -215,13 +248,12 @@ class CodingAssignmentResultModel(BaseModel):
 
 
 class SensitivityAnalysisRequestModel(BaseModel):
-    """A request to analyze feedback records for sensitivity."""
+    """A request to analyze a single feedback record for sensitivity."""
 
     model_config = ConfigDict(frozen=True)
 
-    feedback_records: tuple[FeedbackRecordModel, ...] = Field(
-        min_length=1,
-        description="Non-empty tuple of feedback records to analyze for sensitivity.",
+    feedback_record: FeedbackRecordModel = Field(
+        description="The feedback record to analyze for sensitivity.",
     )
     tenant_id: str = Field(description="Tenant identifier injected by the auth layer.")
 

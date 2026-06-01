@@ -20,7 +20,7 @@ def _auth_header(key=FAKE_API_KEY):
 def _valid_body(**overrides):
     """Return a minimal valid /v1/analyze-bulk request body."""
     body = {
-        "feedback_records": [{"id": "r1", "text": "Water access was limited."}],
+        "feedback_records": [{"id": "r1", "content": "Water access was limited."}],
         "prompt": "What are the main themes?",
     }
     body.update(overrides)

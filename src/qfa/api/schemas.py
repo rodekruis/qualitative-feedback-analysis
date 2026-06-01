@@ -3,9 +3,9 @@
 These Pydantic models are separate from the domain models so that the
 HTTP contract can evolve independently of the core domain.
 """
-from abc import abstractmethod, ABC
 
 import json
+from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Literal, override
 
@@ -61,27 +61,66 @@ def _create_pretty_output(
 
 def _assign_codes_request_examples() -> list[dict[str, Any]]:
     """Build Swagger ``examples`` from ``fixtures/coding_framework.json`` + COVID-19 codebook quotes."""
+
+    def _coding_levels_from_framework(framework: dict[str, Any]) -> dict[str, Any]:
+        """Convert the legacy codebook shape into ``ApiCodingLevels`` example shape."""
+        if isinstance(framework.get("root_codes"), list):
+            return {"root_codes": framework["root_codes"]}
+
+        root_codes: list[dict[str, Any]] = []
+        for code_type in framework.get("types", []):
+            categories = []
+            for category in code_type.get("categories", []):
+                codes = [
+                    {"name": code.get("name", "Unnamed code"), "children": []}
+                    for code in category.get("codes", [])
+                ]
+                categories.append(
+                    {
+                        "name": category.get("name", "Unnamed category"),
+                        "children": codes,
+                    }
+                )
+            root_codes.append(
+                {"name": code_type.get("name", "Unnamed type"), "children": categories}
+            )
+
+        return {"root_codes": root_codes}
+
     root = Path(__file__).resolve().parents[3]
     path = root / "fixtures" / "coding_framework.json"
     if not path.is_file():
         return [
             {
-                "coding_framework": {"types": []},
-                "feedback_records": [
-                    {
-                        "id": "no-framework",
-                        "content": (
-                            "Repository root must contain fixtures/coding_framework.json "
-                            "for full Try-it-out examples."
-                        ),
-                    }
-                ],
+                "coding_levels": {
+                    "root_codes": [
+                        {
+                            "name": "Example type",
+                            "children": [
+                                {
+                                    "name": "Example category",
+                                    "children": [
+                                        {"name": "Example code", "children": []}
+                                    ],
+                                }
+                            ],
+                        }
+                    ]
+                },
+                "feedback_record": {
+                    "id": "no-framework",
+                    "content": (
+                        "Repository root must contain fixtures/coding_framework.json "
+                        "for full Try-it-out examples."
+                    ),
+                },
                 "max_codes": 10,
                 "confidence_threshold": None,
             }
         ]
     # Dev-only: load JSON for Swagger examples; TODO: link production framework through API
     framework = json.loads(path.read_text(encoding="utf-8"))
+    coding_levels = _coding_levels_from_framework(framework)
     # Verbatim long examples from the COVID-19 coding framework (Excel export).
     quotes = [
         "they belief now a day covid-19 is as such not big deal, but the ruling party or the government used it as the agenda to divert the political view and opinion of the people towards the election after the coming two months",
@@ -90,15 +129,14 @@ def _assign_codes_request_examples() -> list[dict[str, Any]]:
     ]
     return [
         {
-            "coding_framework": framework,
-            "feedback_records": [
-                {"id": f"covid-example-{i}", "content": text}
-                for i, text in enumerate(quotes)
-            ],
+            "coding_levels": coding_levels,
+            "feedback_record": {"id": f"covid-example-{i}", "content": text},
             "max_codes": 10,
             "confidence_threshold": None,
         }
+        for i, text in enumerate(quotes)
     ]
+
 
 class ApiFeedbackRecordInput(BaseModel):
     """A single feedback record in an inference request."""
@@ -114,10 +152,13 @@ class ApiFeedbackRecordInput(BaseModel):
         description="Optional metadata key-value pairs associated with the feedback record.",
     )
 
+
 ##### Bulk requests #####
+
 
 class ApiBulkInferenceRequestBase(BaseModel, ABC):
     """Base request for inference endpoints that process bulk feedback records."""
+
     feedback_records: list[ApiFeedbackRecordInput] = Field(
         min_length=1,
         description="Non-empty list of feedback records to process.",
@@ -136,8 +177,10 @@ class ApiBulkInferenceRequestBase(BaseModel, ABC):
         description="Optional target language for the output of this inference request.",
     )
 
+
 class ApiBulkInferenceResponseBase(BaseModel, ABC):
     """Base response for inference endpoints that process bulk feedback records."""
+
     @computed_field
     @property
     @abstractmethod
@@ -145,7 +188,9 @@ class ApiBulkInferenceResponseBase(BaseModel, ABC):
         """Subclasses must implement this to return a human-readable output string."""
         raise NotImplementedError("Subclasses must implement pretty_output.")
 
+
 # analyze-bulk
+
 
 class ApiAnalyzeRequest(ApiBulkInferenceRequestBase):
     """Request body for the ``POST /v1/analyze-bulk`` endpoint."""
@@ -157,12 +202,12 @@ class ApiAnalyzeRequest(ApiBulkInferenceRequestBase):
                     "feedback_records": [
                         {
                             "id": "doc-001",
-                            "text": "The water distribution was well organized but we had to wait for three hours.",
+                            "content": "The water distribution was well organized but we had to wait for three hours.",
                             "metadata": {"region": "Eastern Province", "year": 2024},
                         },
                         {
                             "id": "doc-002",
-                            "text": "Medical staff were very professional. Medicine supply was insufficient.",
+                            "content": "Medical staff were very professional. Medicine supply was insufficient.",
                             "metadata": {"region": "Northern Province", "year": 2024},
                         },
                     ],
@@ -204,7 +249,7 @@ class ApiAnalyzeBulkResponse(ApiBulkInferenceResponseBase):
         description="Number of feedback records that were analyzed.",
     )
     request_id: str = Field(description="Unique identifier for this request.")
-    
+
     @override
     @computed_field(description="Human-readable formatted output string.")
     @property
@@ -216,12 +261,17 @@ class ApiAnalyzeBulkResponse(ApiBulkInferenceResponseBase):
             summary=self.analysis,
         )
 
+
 # summarize-bulk
+
 
 class ApiSummarizeBulkRequest(ApiBulkInferenceRequestBase):
     """Request body for the ``POST /v1/summarize-bulk`` endpoint."""
 
+
 class ApiSummarizeBulkResponse(ApiBulkInferenceResponseBase):
+    """Response body for ``POST /v1/summarize-bulk``."""
+
     ids: list[str] = Field(description="Identifiers of all source feedback records.")
     title: str = Field(description="Generated short title for the aggregate summary.")
     summary: str = Field(
@@ -245,17 +295,22 @@ class ApiSummarizeBulkResponse(ApiBulkInferenceResponseBase):
             summary=self.summary,
         )
 
+
 ##### Per-feedback-record requests #####
+
 
 class ApiSingleInferenceRequestBase(BaseModel, ABC):
     """Base request for inference endpoints that return per-feedback-record outputs."""
+
     feedback_record: ApiFeedbackRecordInput = Field(
         description="Feedback record to process.",
     )
 
+
 # note: no response base model for since these are all different shapes
 
 # summarize
+
 
 class ApiSummarizeRequest(ApiSingleInferenceRequestBase):
     """Request body for the ``POST /v1/summarize`` endpoint."""
@@ -294,6 +349,7 @@ class ApiSummarizeRequest(ApiSingleInferenceRequestBase):
         },
     }
 
+
 class ApiSummarizeResponse(BaseModel):
     """Feedback-record summary response."""
 
@@ -319,7 +375,9 @@ class ApiSummarizeResponse(BaseModel):
             summary=self.summary,
         )
 
+
 # assign-codes
+
 
 class ApiCodingNode(BaseModel):
     """Contains the node of a singular coding and its' children."""
@@ -374,11 +432,10 @@ class ApiAssignCodesRequest(ApiSingleInferenceRequestBase):
     model_config = {
         "json_schema_extra": {"examples": _assign_codes_request_examples()},
     }
-    coding_levels: list[ApiCodingLevels] = Field(
+    coding_levels: ApiCodingLevels = Field(
         description="Hierarchical coding framework. Each item in the list represents a separate coding dimension.",
-        min_length=1,
-        )
-    
+    )
+
     max_codes: int = Field(default=1, ge=1, le=50)
     confidence_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
 
@@ -394,6 +451,7 @@ class ApiAssignedCode(BaseModel):
     confidence_aggregate: float
     explanation: str
 
+
 class ApiAssignCodesResponse(BaseModel):
     """Response body for ``POST /v1/assign-codes``."""
 
@@ -401,6 +459,7 @@ class ApiAssignCodesResponse(BaseModel):
 
 
 # detect-sensitive
+
 
 class ApiDetectSensitiveRequest(ApiSingleInferenceRequestBase):
     """Request body for the ``POST /v1/detect-sensitive`` endpoint."""
@@ -430,7 +489,9 @@ class ApiDetectSensitiveResponse(BaseModel):
         description="Sensitivity categories detected for the feedback item."
     )
 
+
 ##### Non-inference endpoints #####
+
 
 class ApiAddTenantRequest(BaseModel):
     """Request body for ``POST /v1/admin/tenants``."""

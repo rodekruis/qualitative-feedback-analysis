@@ -18,35 +18,35 @@ from qfa.domain.sensitivity_types import SensitivityType
 
 class TestFeedbackRecordModel:
     def test_construct_with_valid_data(self):
-        doc = FeedbackRecordModel(id="doc-1", text="Some feedback")
+        doc = FeedbackRecordModel(id="doc-1", content="Some feedback")
         assert doc.id == "doc-1"
-        assert doc.text == "Some feedback"
+        assert doc.content == "Some feedback"
 
     def test_metadata_defaults_to_empty_dict(self):
-        doc = FeedbackRecordModel(id="doc-1", text="Some feedback")
+        doc = FeedbackRecordModel(id="doc-1", content="Some feedback")
         assert doc.metadata == {}
 
     def test_metadata_with_values(self):
         meta = {"source": "email", "score": 5, "weight": 0.8, "urgent": True}
-        doc = FeedbackRecordModel(id="doc-1", text="feedback", metadata=meta)
+        doc = FeedbackRecordModel(id="doc-1", content="feedback", metadata=meta)
         assert doc.metadata == meta
 
     def test_frozen_raises_on_assignment(self):
-        doc = FeedbackRecordModel(id="doc-1", text="feedback")
+        doc = FeedbackRecordModel(id="doc-1", content="feedback")
         with pytest.raises(ValidationError):
-            doc.text = "changed"
+            doc.content = "changed"
 
     def test_empty_text_raises(self):
         with pytest.raises(ValidationError):
-            FeedbackRecordModel(id="doc-1", text="")
+            FeedbackRecordModel(id="doc-1", content="")
 
     def test_text_exceeding_max_length_raises(self):
         with pytest.raises(ValidationError):
-            FeedbackRecordModel(id="doc-1", text="x" * 100_001)
+            FeedbackRecordModel(id="doc-1", content="x" * 100_001)
 
     def test_text_at_max_length_is_valid(self):
-        doc = FeedbackRecordModel(id="doc-1", text="x" * 100_000)
-        assert len(doc.text) == 100_000
+        doc = FeedbackRecordModel(id="doc-1", content="x" * 100_000)
+        assert len(doc.content) == 100_000
 
 
 # --- AnalysisRequest ---
@@ -54,7 +54,7 @@ class TestFeedbackRecordModel:
 
 class TestAnalysisRequestModel:
     def _make_doc(self, doc_id: str = "doc-1") -> FeedbackRecordModel:
-        return FeedbackRecordModel(id=doc_id, text="feedback text")
+        return FeedbackRecordModel(id=doc_id, content="feedback text")
 
     def test_construct_with_valid_data(self):
         doc = self._make_doc()
@@ -233,7 +233,7 @@ class TestAnalysisRequestMode:
     def test_default_mode_is_single_pass(self):
         """``mode`` defaults to ``single_pass`` when omitted by callers."""
         req = AnalysisRequestModel(
-            feedback_records=(FeedbackRecordModel(id="d", text="t"),),
+            feedback_records=(FeedbackRecordModel(id="d", content="t"),),
             prompt="x",
             tenant_id="t",
         )
@@ -242,7 +242,7 @@ class TestAnalysisRequestMode:
     def test_explicit_single_pass_accepted(self):
         """``mode=single_pass`` is the documented explicit value."""
         req = AnalysisRequestModel(
-            feedback_records=(FeedbackRecordModel(id="d", text="t"),),
+            feedback_records=(FeedbackRecordModel(id="d", content="t"),),
             prompt="x",
             tenant_id="t",
             mode="single_pass",
@@ -255,7 +255,7 @@ class TestAnalysisRequestMode:
 
         with pytest.raises(ValidationError):
             AnalysisRequestModel(
-                feedback_records=(FeedbackRecordModel(id="d", text="t"),),
+                feedback_records=(FeedbackRecordModel(id="d", content="t"),),
                 prompt="x",
                 tenant_id="t",
                 mode="hierarchical",  # ty: ignore[invalid-argument-type]

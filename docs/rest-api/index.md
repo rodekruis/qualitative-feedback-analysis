@@ -30,7 +30,7 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `feedback_records` | list | — | Non-empty list of `{id, text, metadata?}` records. |
+| `feedback_records` | list | — | Non-empty list of `{id, content, metadata?}` records. |
 | `prompt` | string | — | Analyst question (1–4000 chars). |
 | `mode` | `"single_pass"` | `"single_pass"` | Analysis mode. Only `single_pass` is supported; other values → 422. Large-corpus analysis is deferred to [#124](https://github.com/rodekruis/qualitative-feedback-analysis/issues/124). |
 
@@ -69,7 +69,7 @@ curl -X POST http://localhost:8000/v1/analyze-bulk \
   -H "Content-Type: application/json" \
   -d '{
     "feedback_records": [
-      {"id": "r-1", "text": "The coordination was good but shelter access was difficult."}
+      {"id": "r-1", "content": "The coordination was good but shelter access was difficult."}
     ],
     "prompt": "Identify the top themes.",
     "mode": "single_pass"

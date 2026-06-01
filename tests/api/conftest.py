@@ -28,9 +28,8 @@ from qfa.domain.models import (
     KeyCreationResponse,
     SensitivityAnalysisRequestModel,
     SensitivityAnalysisResultModel,
-    SensitivityAnalysisResultModelList,
+    SingleSummaryRequestModel,
     SummaryRequestModel,
-    SummaryResultModel,
     TenantApiKey,
     TenantInfo,
 )
@@ -117,26 +116,18 @@ class FakeOrchestrator:
             quality_score=0.85,
             uncertainty_explanation="Coverage is good; all themes well-supported.",
         )
-        self._summarize_result = summarize_result or SummaryResultModel(
-            feedback_record_summaries=(
-                FeedbackRecordSummaryModel(
-                    id="doc-1",
-                    title="Fake summary title",
-                    summary="- Fake summary point",
-                    quality_score=0.9,
-                ),
-            ),
+        self._summarize_result = summarize_result or FeedbackRecordSummaryModel(
+            id="doc-1",
+            title="Fake summary title",
+            summary="- Fake summary point",
+            quality_score=0.9,
         )
         self._detect_sensitive_result = (
             detect_sensitive_result
-            or SensitivityAnalysisResultModelList(
-                results=(
-                    SensitivityAnalysisResultModel(
-                        feedback_record_id="doc-1",
-                        sensitivity_types=(SensitivityType.CORRUPTION,),
-                        explanation="Contains a bribery allegation.",
-                    ),
-                ),
+            or SensitivityAnalysisResultModel(
+                feedback_record_id="doc-1",
+                sensitivity_types=(SensitivityType.CORRUPTION,),
+                explanation="Contains a bribery allegation.",
             )
         )
         self._error = error
@@ -153,9 +144,9 @@ class FakeOrchestrator:
 
     async def summarize(
         self,
-        request: SummaryRequestModel,
+        request: SingleSummaryRequestModel,
         deadline: datetime,
-    ) -> SummaryResultModel:
+    ) -> FeedbackRecordSummaryModel:
         if self._error is not None:
             raise self._error
         return self._summarize_result
@@ -182,9 +173,9 @@ class FakeOrchestrator:
         if self._error is not None:
             raise self._error
         return CodingAssignmentResultModel(
-            coded_feedback_records=tuple(
+            coded_feedback_records=(
                 CodedFeedbackRecordModel(
-                    feedback_record_id=record.id,
+                    feedback_record_id=request.feedback_record.id,
                     assigned_codes=(
                         AssignedCodeModel(
                             code_id="code-1",
@@ -196,8 +187,7 @@ class FakeOrchestrator:
                             explanation="Type: high. Category: good. Code: good.",
                         ),
                     ),
-                )
-                for record in request.feedback_records
+                ),
             )
         )
 
@@ -205,7 +195,7 @@ class FakeOrchestrator:
         self,
         request: SensitivityAnalysisRequestModel,
         deadline: datetime,
-    ) -> SensitivityAnalysisResultModelList:
+    ) -> SensitivityAnalysisResultModel:
         if self._error is not None:
             raise self._error
         self.last_detect_sensitive_request = request

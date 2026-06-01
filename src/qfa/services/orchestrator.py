@@ -27,10 +27,13 @@ from qfa.domain.models import (
     CodedFeedbackRecordModel,
     CodingAssignmentRequestModel,
     CodingAssignmentResultModel,
+    CodingNode,
     FeedbackRecordModel,
+    FeedbackRecordSummaryModel,
     SensitivityAnalysisRequestModel,
     SensitivityAnalysisResultModel,
     SensitivityAnalysisResultModelList,
+    SingleSummaryRequestModel,
     SummaryRequestModel,
     SummaryResultModel,
 )
@@ -350,22 +353,22 @@ class Orchestrator:
 
     async def summarize(
         self,
-        request: SummaryRequestModel,
+        request: SingleSummaryRequestModel,
         deadline: datetime,
-    ) -> SummaryResultModel:
-        """Summarize each submitted feedback record individually.
+    ) -> FeedbackRecordSummaryModel:
+        """Summarize a single feedback record.
 
         Parameters
         ----------
-        request : SummaryRequest
-            The summarization request containing feedback records and options.
+        request : SingleSummaryRequestModel
+            The summarization request containing a single feedback record.
         deadline : datetime
             Absolute UTC deadline by which summarization must complete.
 
         Returns
         -------
-        SummaryResult
-            The per-feedback-record summaries and titles.
+        FeedbackRecordSummaryModel
+            The summary title and content for the feedback record.
 
         Raises
         ------
@@ -375,14 +378,8 @@ class Orchestrator:
         """
         timeout = self._check_deadline_and_get_timeout(deadline)
         system_message = _DEFAULT_SUMMARIZATION_PROMPT
-        if request.output_language:
-            system_message += (
-                f"\nWrite the title and summary in {request.output_language}."
-            )
-        if request.prompt:
-            system_message += f"\nAdditional instructions: {request.prompt}"
 
-        user_message = str(request.feedback_records)
+        user_message = str(request.feedback_record)
         anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
             user_message
         )
@@ -403,19 +400,11 @@ class Orchestrator:
             unanonymized_return_model_as_string
         )
 
-        # Guard against LLM returning a different number of summaries than records
-        # submitted and replace model-provided IDs with authoritative input IDs.
-        aligned_summaries = self._align_record_items(
-            request_records=request.feedback_records,
-            llm_items=result.feedback_record_summaries,
-            align_item=lambda record_id, summary, _index: summary.model_copy(
-                update={"id": record_id}
-            ),
+        if not result.feedback_record_summaries:
+            raise AnalysisError("LLM returned no summaries for the feedback record.")
+        return result.feedback_record_summaries[0].model_copy(
+            update={"id": request.feedback_record.id}
         )
-        result = result.model_copy(
-            update={"feedback_record_summaries": aligned_summaries}
-        )
-        return result
 
     def _align_record_items(
         self,
@@ -475,7 +464,7 @@ class Orchestrator:
             system_message += f"\nAdditional instructions: {request.prompt}"
 
         user_message = "\n\n".join(
-            f"{idx}. {record.text}"
+            f"{idx}. {record.content}"
             for idx, record in enumerate(request.feedback_records, start=1)
         )
 
@@ -552,125 +541,125 @@ class Orchestrator:
             For other LLM provider failures.
         """
         coded: list[CodedFeedbackRecordModel] = []
-        types = request.coding_framework.get("types") or []
+        type_nodes = request.coding_levels.root_codes
         threshold = request.confidence_threshold
 
-        for feedback_record in request.feedback_records:
-            self._check_coding_deadline(deadline)
+        feedback_record = request.feedback_record
+        self._check_coding_deadline(deadline)
 
-            candidates: list[_ScoredCode] = []
+        candidates: list[_ScoredCode] = []
 
-            type_indices = await self._pick_code_indices(
-                feedback_text=feedback_record.text,
-                current_level="Types",
-                entries=types,
-                hierarchy_path=None,
+        type_indices = await self._pick_code_indices(
+            feedback_text=feedback_record.content,
+            current_level="Types",
+            entries=list(type_nodes),
+            hierarchy_path=None,
+            tenant_id=request.tenant_id,
+            deadline=deadline,
+        )
+
+        for type_index in type_indices:
+            type_node = type_nodes[type_index]
+            type_name = type_node.name
+
+            judge_type = await self._judge_code_level(
+                feedback_text=feedback_record.content,
+                level="Type",
+                path=[("Type", type_name)],
+                tenant_id=request.tenant_id,
+                deadline=deadline,
+            )
+            if threshold is not None and judge_type.score < threshold:
+                continue
+
+            category_nodes = type_node.children
+            category_indices = await self._pick_code_indices(
+                feedback_text=feedback_record.content,
+                current_level="Categories",
+                entries=list(category_nodes),
+                hierarchy_path=[("Type", type_name)],
                 tenant_id=request.tenant_id,
                 deadline=deadline,
             )
 
-            for type_index in type_indices:
-                type_entry = types[type_index]
-                type_name = str(type_entry.get("name", ""))
+            for category_index in category_indices:
+                category_node = category_nodes[category_index]
+                category_name = category_node.name
 
-                judge_type = await self._judge_code_level(
-                    feedback_text=feedback_record.text,
-                    level="Type",
-                    path=[("Type", type_name)],
+                judge_category = await self._judge_code_level(
+                    feedback_text=feedback_record.content,
+                    level="Category",
+                    path=[("Type", type_name), ("Category", category_name)],
                     tenant_id=request.tenant_id,
                     deadline=deadline,
                 )
-                if threshold is not None and judge_type.score < threshold:
+                if threshold is not None and judge_category.score < threshold:
                     continue
 
-                categories = type_entry.get("categories") or []
-                category_indices = await self._pick_code_indices(
-                    feedback_text=feedback_record.text,
-                    current_level="Categories",
-                    entries=categories,
-                    hierarchy_path=[("Type", type_name)],
+                code_nodes = category_node.children
+                code_indices = await self._pick_code_indices(
+                    feedback_text=feedback_record.content,
+                    current_level="Codes",
+                    entries=list(code_nodes),
+                    hierarchy_path=[
+                        ("Type", type_name),
+                        ("Category", category_name),
+                    ],
                     tenant_id=request.tenant_id,
                     deadline=deadline,
                 )
 
-                for category_index in category_indices:
-                    category = categories[category_index]
-                    category_name = str(category.get("name", ""))
+                for code_index in code_indices:
+                    code_node = code_nodes[code_index]
+                    code_name = code_node.name
 
-                    judge_category = await self._judge_code_level(
-                        feedback_text=feedback_record.text,
-                        level="Category",
-                        path=[("Type", type_name), ("Category", category_name)],
-                        tenant_id=request.tenant_id,
-                        deadline=deadline,
-                    )
-                    if threshold is not None and judge_category.score < threshold:
-                        continue
-
-                    codes = category.get("codes") or []
-                    code_indices = await self._pick_code_indices(
-                        feedback_text=feedback_record.text,
-                        current_level="Codes",
-                        entries=codes,
-                        hierarchy_path=[
+                    judge_code = await self._judge_code_level(
+                        feedback_text=feedback_record.content,
+                        level="Code",
+                        path=[
                             ("Type", type_name),
                             ("Category", category_name),
+                            ("Code", code_name),
                         ],
                         tenant_id=request.tenant_id,
                         deadline=deadline,
                     )
+                    if threshold is not None and judge_code.score < threshold:
+                        continue
 
-                    for code_index in code_indices:
-                        code = codes[code_index]
-                        code_name = str(code.get("name", ""))
-
-                        judge_code = await self._judge_code_level(
-                            feedback_text=feedback_record.text,
-                            level="Code",
-                            path=[
-                                ("Type", type_name),
-                                ("Category", category_name),
-                                ("Code", code_name),
-                            ],
-                            tenant_id=request.tenant_id,
-                            deadline=deadline,
+                    candidates.append(
+                        _ScoredCode(
+                            code_id=code_name,
+                            code_label=code_name,
+                            confidence_type=judge_type.score,
+                            confidence_category=judge_category.score,
+                            confidence_code=judge_code.score,
+                            explanation_type=judge_type.explanation,
+                            explanation_category=judge_category.explanation,
+                            explanation_code=judge_code.explanation,
                         )
-                        if threshold is not None and judge_code.score < threshold:
-                            continue
+                    )
 
-                        candidates.append(
-                            _ScoredCode(
-                                code_id=str(code.get("code_id", "")),
-                                code_label=code_name,
-                                confidence_type=judge_type.score,
-                                confidence_category=judge_category.score,
-                                confidence_code=judge_code.score,
-                                explanation_type=judge_type.explanation,
-                                explanation_category=judge_category.explanation,
-                                explanation_code=judge_code.explanation,
-                            )
-                        )
+        candidates.sort(key=lambda c: c.confidence_aggregate, reverse=True)
+        top = candidates[: request.max_codes]
 
-            candidates.sort(key=lambda c: c.confidence_aggregate, reverse=True)
-            top = candidates[: request.max_codes]
-
-            coded.append(
-                CodedFeedbackRecordModel(
-                    feedback_record_id=feedback_record.id,
-                    assigned_codes=tuple(
-                        AssignedCodeModel(
-                            code_id=c.code_id,
-                            code_label=c.code_label,
-                            confidence_type=c.confidence_type,
-                            confidence_category=c.confidence_category,
-                            confidence_code=c.confidence_code,
-                            confidence_aggregate=c.confidence_aggregate,
-                            explanation=c.explanation,
-                        )
-                        for c in top
-                    ),
-                )
+        coded.append(
+            CodedFeedbackRecordModel(
+                feedback_record_id=feedback_record.id,
+                assigned_codes=tuple(
+                    AssignedCodeModel(
+                        code_id=c.code_id,
+                        code_label=c.code_label,
+                        confidence_type=c.confidence_type,
+                        confidence_category=c.confidence_category,
+                        confidence_code=c.confidence_code,
+                        confidence_aggregate=c.confidence_aggregate,
+                        explanation=c.explanation,
+                    )
+                    for c in top
+                ),
             )
+        )
 
         return CodingAssignmentResultModel(coded_feedback_records=tuple(coded))
 
@@ -678,22 +667,22 @@ class Orchestrator:
         self,
         request: SensitivityAnalysisRequestModel,
         deadline: datetime,
-    ) -> SensitivityAnalysisResultModelList:
-        """Detect sensitive content in feedback records.
+    ) -> SensitivityAnalysisResultModel:
+        """Detect sensitive content in a single feedback record.
 
         Parameters
         ----------
         request : SensitivityAnalysisRequestModel
-            The sensitivity analysis request containing feedback records and tenant id.
+            The sensitivity analysis request containing a single feedback record.
 
         Returns
         -------
-        SensitivityAnalysisResultModelList
-            The sensitivity analysis results for each feedback record.
+        SensitivityAnalysisResultModel
+            The sensitivity analysis result for the feedback record.
         """
         timeout = self._check_deadline_and_get_timeout(deadline)
         system_message = _DEFAULT_SENSITIVITY_DETECTION_PROMPT
-        user_message = str(request.feedback_records)
+        user_message = str(request.feedback_record)
 
         anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
             user_message
@@ -715,23 +704,12 @@ class Orchestrator:
             unanonymized_return_model_as_string
         )
 
-        aligned_results = tuple(
-            SensitivityAnalysisResultModel(
-                feedback_record_id=record.id,
-                sensitivity_types=(
-                    structured.results[idx].sensitivity_types
-                    if idx < len(structured.results)
-                    else ()
-                ),
-                explanation=(
-                    structured.results[idx].explanation
-                    if idx < len(structured.results)
-                    else "No sensitive content detected."
-                ),
-            )
-            for idx, record in enumerate(request.feedback_records)
+        raw = structured.results[0] if structured.results else None
+        return SensitivityAnalysisResultModel(
+            feedback_record_id=request.feedback_record.id,
+            sensitivity_types=raw.sensitivity_types if raw else (),
+            explanation=raw.explanation if raw else "No sensitive content detected.",
         )
-        return SensitivityAnalysisResultModelList(results=aligned_results)
 
     def _check_deadline_and_get_timeout(self, deadline: datetime) -> float:
         """Raise if the deadline has passed or too little time remains.
@@ -760,13 +738,13 @@ class Orchestrator:
         *,
         feedback_text: str,
         current_level: str,
-        entries: list[dict],
+        entries: list[CodingNode],
         hierarchy_path: list[tuple[str, str]] | None,
         tenant_id: str,
         deadline: datetime,
     ) -> list[int]:
         """Build one coding prompt, call the LLM, and parse selected indices."""
-        labels = [str(entry.get("name", "")) for entry in entries]
+        labels = [entry.name for entry in entries]
         system_message, user_message = build_pick_messages(
             feedback_text=feedback_text,
             current_level=current_level,

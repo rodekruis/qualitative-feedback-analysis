@@ -56,7 +56,7 @@ class TestEscapeForTagEnvelope:
 
 
 def _rec(rec_id="doc-1", text="hello", metadata=None):
-    return FeedbackRecordModel(id=rec_id, text=text, metadata=metadata or {})
+    return FeedbackRecordModel(id=rec_id, content=text, metadata=metadata or {})
 
 
 class TestBuildAnalyzeUserMessage:

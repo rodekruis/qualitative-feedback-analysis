@@ -64,7 +64,7 @@ class TestAnalyzeRecordsRow:
         resp = await e2e_client.post(
             "/v1/analyze-bulk",
             json={
-                "feedback_records": [{"id": "d1", "text": "hello"}],
+                "feedback_records": [{"id": "d1", "content": "hello"}],
                 "prompt": "summarize",
             },
             headers={"Authorization": f"Bearer {E2E_API_KEY}"},
@@ -111,7 +111,7 @@ class TestRequestIdEqualsCallId:
         resp = await e2e_client.post(
             "/v1/analyze-bulk",
             json={
-                "feedback_records": [{"id": "d1", "text": "hello"}],
+                "feedback_records": [{"id": "d1", "content": "hello"}],
                 "prompt": "summarize",
             },
             headers={"Authorization": f"Bearer {E2E_API_KEY}"},
@@ -165,7 +165,6 @@ class TestRequestIdEqualsCallId:
                         },
                     }
                 ],
-                "prompt": "summarize then aggregate",
             },
             headers={"Authorization": f"Bearer {E2E_API_KEY}"},
         )
@@ -186,7 +185,7 @@ class TestAnalyzeFailureRecordsRow:
         resp = await e2e_client.post(
             "/v1/analyze-bulk",
             json={
-                "feedback_records": [{"id": "d1", "text": "hello"}],
+                "feedback_records": [{"id": "d1", "content": "hello"}],
                 "prompt": "summarize",
             },
             headers={"Authorization": f"Bearer {E2E_API_KEY}"},
@@ -215,14 +214,16 @@ class TestAssignCodesRecordsMultipleRows:
         # type/category/code path it issues 6 LLM calls in this order:
         # pick-Types, judge-Type, pick-Categories, judge-Category,
         # pick-Codes, judge-Code.
-        coding_framework = {
-            "types": [
+        coding_levels = {
+            "root_codes": [
                 {
                     "name": "Type A",
-                    "categories": [
+                    "children": [
                         {
                             "name": "Cat A1",
-                            "codes": [{"code_id": "code-1", "name": "Code A1.1"}],
+                            "children": [
+                                {"name": "Code A1.1", "children": []},
+                            ],
                         }
                     ],
                 }
@@ -237,8 +238,8 @@ class TestAssignCodesRecordsMultipleRows:
         resp = await e2e_client.post(
             "/v1/assign-codes",
             json={
-                "coding_framework": coding_framework,
-                "feedback_records": [{"id": "f1", "content": "some feedback text"}],
+                "coding_levels": coding_levels,
+                "feedback_record": {"id": "f1", "content": "some feedback text"},
                 "max_codes": 5,
             },
             headers={"Authorization": f"Bearer {E2E_API_KEY}"},
