@@ -133,7 +133,7 @@ class FakeOrchestrator:
         self._error = error
         self.last_detect_sensitive_request = None
 
-    async def analyze(
+    async def analyze_bulk(
         self,
         request: AnalysisRequestModel,
         deadline: datetime,
@@ -151,7 +151,7 @@ class FakeOrchestrator:
             raise self._error
         return self._summarize_result
 
-    async def summarize_aggregate(
+    async def summarize_bulk(
         self,
         request: SummaryRequestModel,
         deadline: datetime,

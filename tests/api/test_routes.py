@@ -152,7 +152,7 @@ class TestAnalyzeSuccess:
         captured: dict = {}
 
         class CapturingOrchestrator:
-            async def analyze(self, request, deadline):
+            async def analyze_bulk(self, request, deadline):
                 ctx = current_call_context.get()
                 assert ctx is not None
                 captured["call_id"] = ctx.call_id
