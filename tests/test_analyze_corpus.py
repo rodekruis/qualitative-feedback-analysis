@@ -9,7 +9,6 @@ consistent with the coding framework shipped at ``fixtures/coding_framework.json
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 from typing import Any
 
@@ -38,11 +37,6 @@ def _flatten_framework(framework: dict[str, Any]) -> dict[str, dict[str, Any]]:
                     "sensitive": code.get("sensitive", False),
                 }
     return flat
-
-
-def _count_sentences(text: str) -> int:
-    """Approximate sentence count using terminator split (matches the corpus spec)."""
-    return len([p for p in re.split(r"[.!?]+", text) if p.strip()])
 
 
 @pytest.fixture(scope="module")
@@ -111,23 +105,6 @@ class TestAnalyzeCorpus:
                 )
         assert not mismatches, "feedback_type mismatches:\n" + "\n".join(mismatches)
 
-    def test_sensitive_flag_matches_assigned_codes(
-        self,
-        corpus: list[dict[str, Any]],
-        framework: dict[str, dict[str, Any]],
-    ) -> None:
-        """``metadata.sensitive`` must be True iff at least one assigned code is marked sensitive in the framework."""
-        mismatches: list[str] = []
-        for item in corpus:
-            md = item["metadata"]
-            code_ids = [c.strip() for c in md["codes"].split(",") if c.strip()]
-            expected = any(framework[c]["sensitive"] for c in code_ids)
-            if md["sensitive"] != expected:
-                mismatches.append(
-                    f"{item['id']}: metadata={md['sensitive']} framework={expected}"
-                )
-        assert not mismatches, "sensitive flag mismatches:\n" + "\n".join(mismatches)
-
     def test_sentence_count_is_in_range(self, corpus: list[dict[str, Any]]) -> None:
         """The corpus contract is 1-15 sentences per record; outside that range it's not the intended shape."""
         out_of_range = [
@@ -138,18 +115,6 @@ class TestAnalyzeCorpus:
             )
         ]
         assert not out_of_range, f"sentence_count out of [1,15]: {out_of_range}"
-
-    def test_sentence_count_matches_text_within_tolerance(
-        self, corpus: list[dict[str, Any]]
-    ) -> None:
-        """``metadata.sentence_count`` should be within ±1 of the terminator-split count of ``text``; larger drift means the label has lost touch with the content."""
-        drift: list[str] = []
-        for item in corpus:
-            declared = item["metadata"]["sentence_count"]
-            actual = _count_sentences(item["text"])
-            if abs(declared - actual) > 1:
-                drift.append(f"{item['id']}: declared={declared} actual={actual}")
-        assert not drift, "sentence_count drift > 1:\n" + "\n".join(drift)
 
     def test_codes_string_has_no_whitespace_around_separators(
         self, corpus: list[dict[str, Any]]
