@@ -1,4 +1,4 @@
-"""Tests for POST /v1/analyze — mode field validation and new response fields.
+"""Tests for POST /v1/analyze-bulk — mode field validation and new response fields.
 
 These tests are focused on the spec-117 additions (mode, quality_score,
 uncertainty_explanation).  Pre-existing per-endpoint contract tests
@@ -18,7 +18,7 @@ def _auth_header(key=FAKE_API_KEY):
 
 
 def _valid_body(**overrides):
-    """Return a minimal valid /v1/analyze request body."""
+    """Return a minimal valid /v1/analyze-bulk request body."""
     body = {
         "feedback_records": [{"id": "r1", "text": "Water access was limited."}],
         "prompt": "What are the main themes?",
@@ -36,7 +36,7 @@ class TestModeField:
         ``mode`` must not break after this change.
         """
         resp = await client.post(
-            "/v1/analyze",
+            "/v1/analyze-bulk",
             json=_valid_body(),
             headers=_auth_header(),
         )
@@ -49,7 +49,7 @@ class TestModeField:
         Confirms the only currently-supported mode is accepted without error.
         """
         resp = await client.post(
-            "/v1/analyze",
+            "/v1/analyze-bulk",
             json=_valid_body(mode="single_pass"),
             headers=_auth_header(),
         )
@@ -63,7 +63,7 @@ class TestModeField:
         this confirms the schema is wired into FastAPI validation.
         """
         resp = await client.post(
-            "/v1/analyze",
+            "/v1/analyze-bulk",
             json=_valid_body(mode="hierarchical"),
             headers=_auth_header(),
         )
@@ -79,7 +79,7 @@ class TestResponseShape:
         fake orchestrator returns a non-null score.
         """
         resp = await client.post(
-            "/v1/analyze",
+            "/v1/analyze-bulk",
             json=_valid_body(),
             headers=_auth_header(),
         )
@@ -95,7 +95,7 @@ class TestResponseShape:
         Lets the analyst understand the judge's reasoning for the quality score.
         """
         resp = await client.post(
-            "/v1/analyze",
+            "/v1/analyze-bulk",
             json=_valid_body(),
             headers=_auth_header(),
         )
@@ -130,7 +130,7 @@ class TestResponseShape:
             base_url="http://test",
         ) as c:
             resp = await c.post(
-                "/v1/analyze",
+                "/v1/analyze-bulk",
                 json=_valid_body(),
                 headers=_auth_header(),
             )
@@ -149,7 +149,7 @@ class TestResponseShape:
         the prepend before returning).
         """
         resp = await client.post(
-            "/v1/analyze",
+            "/v1/analyze-bulk",
             json=_valid_body(),
             headers=_auth_header(),
         )

@@ -9,7 +9,7 @@ Domain entities live in {py:mod}`qfa.domain.models`, with usage-tracking entitie
 | Model | Purpose |
 |---|---|
 | {py:class}`~qfa.domain.models.FeedbackRecordModel` | A single beneficiary feedback record submitted by the CRM. |
-| {py:class}`~qfa.domain.models.AnalysisRequestModel` / {py:class}`~qfa.domain.models.AnalysisResultModel` | Request and result for `POST /v1/analyze`. |
+| {py:class}`~qfa.domain.models.AnalysisRequestModel` / {py:class}`~qfa.domain.models.AnalysisResultModel` | Request and result for `POST /v1/analyze-bulk`. |
 | {py:class}`~qfa.domain.models.SummaryRequestModel` / {py:class}`~qfa.domain.models.SummaryResultModel` / {py:class}`~qfa.domain.models.FeedbackRecordSummaryModel` | Per-record summarisation. |
 | {py:class}`~qfa.domain.models.AggregateSummaryResultModel` | Single aggregate summary with judge score. |
 | {py:class}`~qfa.domain.models.CodingAssignmentRequestModel` / {py:class}`~qfa.domain.models.CodingAssignmentResultModel` | Hierarchical code assignment. `coding_framework` is currently `dict[str, Any]` — a typed model exists in the API schemas but is not yet wired in. |

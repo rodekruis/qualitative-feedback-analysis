@@ -58,12 +58,12 @@ def _summarize_metadata_to_domain(
 
 
 @router.post(
-    "/v1/analyze",
+    "/v1/analyze-bulk",
     response_model=ApiAnalyzeResponse,
     status_code=200,
-    tags=["Inference"],
+    tags=["Bulk Inference"],
 )
-async def analyze(
+async def analyze_bulk(
     body: ApiAnalyzeRequest,
     request: Request,
     tenant: TenantApiKey = Depends(authenticate_request),
@@ -254,12 +254,12 @@ async def assign_codes(
 
 
 @router.post(
-    "/v1/summarize-aggregate",
+    "/v1/summarize-bulk",
     response_model=ApiSummarizeAggregateResponse,
     status_code=200,
-    tags=["Inference"],
+    tags=["Bulk Inference"],
 )
-async def summarize_aggregate(
+async def summarize_bulk(
     body: ApiSummarizeRequest,
     request: Request,
     tenant: TenantApiKey = Depends(authenticate_request),

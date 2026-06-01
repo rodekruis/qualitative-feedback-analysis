@@ -81,7 +81,7 @@ class TestAnalyzeSuccess:
     @pytest.mark.asyncio
     async def test_200_on_valid_request(self, client):
         resp = await client.post(
-            "/v1/analyze", json=_valid_body(), headers=_auth_header()
+            "/v1/analyze-bulk", json=_valid_body(), headers=_auth_header()
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -97,7 +97,7 @@ class TestAnalyzeSuccess:
             {"id": "3", "text": "Doc three"},
         ]
         resp = await client.post(
-            "/v1/analyze",
+            "/v1/analyze-bulk",
             json=_valid_body(feedback_records=docs),
             headers=_auth_header(),
         )
@@ -115,7 +115,7 @@ class TestAnalyzeSuccess:
         from uuid import UUID
 
         resp = await client.post(
-            "/v1/analyze", json=_valid_body(), headers=_auth_header()
+            "/v1/analyze-bulk", json=_valid_body(), headers=_auth_header()
         )
         # Raises ValueError if the string isn't a valid UUID.
         UUID(resp.json()["request_id"])
@@ -123,14 +123,14 @@ class TestAnalyzeSuccess:
     @pytest.mark.asyncio
     async def test_x_request_id_header_present(self, client):
         resp = await client.post(
-            "/v1/analyze", json=_valid_body(), headers=_auth_header()
+            "/v1/analyze-bulk", json=_valid_body(), headers=_auth_header()
         )
         assert "x-request-id" in resp.headers
 
     @pytest.mark.asyncio
     async def test_x_request_id_matches_body(self, client):
         resp = await client.post(
-            "/v1/analyze", json=_valid_body(), headers=_auth_header()
+            "/v1/analyze-bulk", json=_valid_body(), headers=_auth_header()
         )
         assert resp.headers["x-request-id"] == resp.json()["request_id"]
 
@@ -165,7 +165,7 @@ class TestAnalyzeSuccess:
         test_app.state.orchestrator = CapturingOrchestrator()
         async with _make_client(test_app) as c:
             resp = await c.post(
-                "/v1/analyze", json=_valid_body(), headers=_auth_header()
+                "/v1/analyze-bulk", json=_valid_body(), headers=_auth_header()
             )
         assert resp.status_code == 200
         header_uuid = UUID(resp.headers["x-request-id"])
@@ -273,14 +273,14 @@ class TestDetectSensitiveSuccess:
 class TestAuthentication:
     @pytest.mark.asyncio
     async def test_401_missing_authorization_header(self, client):
-        resp = await client.post("/v1/analyze", json=_valid_body())
+        resp = await client.post("/v1/analyze-bulk", json=_valid_body())
         assert resp.status_code == 401
         assert resp.json()["error"]["code"] == "authentication_required"
 
     @pytest.mark.asyncio
     async def test_401_invalid_api_key(self, client):
         resp = await client.post(
-            "/v1/analyze",
+            "/v1/analyze-bulk",
             json=_valid_body(),
             headers=_auth_header("wrong-key"),
         )
@@ -290,7 +290,7 @@ class TestAuthentication:
     @pytest.mark.asyncio
     async def test_401_malformed_authorization(self, client):
         resp = await client.post(
-            "/v1/analyze",
+            "/v1/analyze-bulk",
             json=_valid_body(),
             headers={"Authorization": "Basic xyzverysecrettoken123"},
         )
@@ -321,7 +321,7 @@ class TestValidation:
     @pytest.mark.asyncio
     async def test_422_empty_feedback_records(self, client):
         resp = await client.post(
-            "/v1/analyze",
+            "/v1/analyze-bulk",
             json=_valid_body(feedback_records=[]),
             headers=_auth_header(),
         )
@@ -332,7 +332,7 @@ class TestValidation:
     @pytest.mark.asyncio
     async def test_422_missing_prompt(self, client):
         resp = await client.post(
-            "/v1/analyze",
+            "/v1/analyze-bulk",
             json={"feedback_records": [{"id": "1", "text": "data"}]},
             headers=_auth_header(),
         )
@@ -342,7 +342,7 @@ class TestValidation:
     @pytest.mark.asyncio
     async def test_422_prompt_too_long(self, client):
         resp = await client.post(
-            "/v1/analyze",
+            "/v1/analyze-bulk",
             json=_valid_body(prompt="x" * 4001),
             headers=_auth_header(),
         )
@@ -352,7 +352,7 @@ class TestValidation:
     @pytest.mark.asyncio
     async def test_422_empty_feedback_record_text(self, client):
         resp = await client.post(
-            "/v1/analyze",
+            "/v1/analyze-bulk",
             json=_valid_body(feedback_records=[{"id": "1", "text": ""}]),
             headers=_auth_header(),
         )
@@ -423,7 +423,7 @@ class TestErrorMapping:
         )
         async with _make_client(test_app) as c:
             resp = await c.post(
-                "/v1/analyze", json=_valid_body(), headers=_auth_header()
+                "/v1/analyze-bulk", json=_valid_body(), headers=_auth_header()
             )
         assert resp.status_code == 413
         assert resp.json()["error"]["code"] == "payload_too_large"
@@ -436,7 +436,7 @@ class TestErrorMapping:
         )
         async with _make_client(test_app) as c:
             resp = await c.post(
-                "/v1/analyze", json=_valid_body(), headers=_auth_header()
+                "/v1/analyze-bulk", json=_valid_body(), headers=_auth_header()
             )
         assert resp.status_code == 504
         assert resp.json()["error"]["code"] == "analysis_timeout"
@@ -449,7 +449,7 @@ class TestErrorMapping:
         )
         async with _make_client(test_app) as c:
             resp = await c.post(
-                "/v1/analyze", json=_valid_body(), headers=_auth_header()
+                "/v1/analyze-bulk", json=_valid_body(), headers=_auth_header()
             )
         assert resp.status_code == 502
         assert resp.json()["error"]["code"] == "analysis_unavailable"
@@ -462,7 +462,7 @@ class TestErrorMapping:
         )
         async with _make_client(test_app) as c:
             resp = await c.post(
-                "/v1/analyze", json=_valid_body(), headers=_auth_header()
+                "/v1/analyze-bulk", json=_valid_body(), headers=_auth_header()
             )
         assert resp.status_code == 500
         assert resp.json()["error"]["code"] == "internal_error"
@@ -483,7 +483,7 @@ class TestErrorMapping:
         )
         async with _make_client(test_app) as c:
             resp = await c.post(
-                "/v1/analyze", json=_valid_body(), headers=_auth_header()
+                "/v1/analyze-bulk", json=_valid_body(), headers=_auth_header()
             )
         UUID(resp.json()["error"]["request_id"])
 
