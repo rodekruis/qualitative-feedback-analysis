@@ -419,3 +419,87 @@ async def test_max_concurrent_chunks_one_is_fully_sequential():
     assert len(map_calls) >= 3, "corpus did not split into multiple map chunks"
     assert llm.peak_in_flight == 1
     assert result.confidence is not None
+
+
+class OverlapTrackingLLM:
+    """Records whether a leaf-judge call and a reduce call were ever in flight together.
+
+    Each call yields once via ``asyncio.sleep(0)`` so the event loop interleaves
+    the concurrently-gathered judge tasks with the reduce task; the call's kind
+    is inferred from its response model (judge) and user message (reduce).
+    """
+
+    def __init__(self):
+        self.calls = []
+        self._in_flight = []
+        self.judge_reduce_overlap = False
+
+    async def complete(
+        self, system_message, user_message, tenant_id, response_model=str, timeout=20.0
+    ):
+        """Track which call kinds coexist in flight, then return a canned answer."""
+        self.calls.append((system_message, user_message, response_model))
+        if response_model is AnalyzeJudgeResult:
+            kind = "judge"
+        elif "<partial_analyses>" in user_message:
+            kind = "reduce"
+        else:
+            kind = "map"
+        self._in_flight.append(kind)
+        if "judge" in self._in_flight and "reduce" in self._in_flight:
+            self.judge_reduce_overlap = True
+        try:
+            await asyncio.sleep(0)
+        finally:
+            self._in_flight.remove(kind)
+        if response_model is AnalyzeJudgeResult:
+            return LLMResponse(
+                structured=AnalyzeJudgeResult(
+                    quality_score=0.8, uncertainty_explanation="ok"
+                ),
+                model="fake",
+                prompt_tokens=1,
+                completion_tokens=1,
+                cost=0.0,
+            )
+        return LLMResponse(
+            structured="PARTIAL_OR_REDUCE",
+            model="fake",
+            prompt_tokens=1,
+            completion_tokens=1,
+            cost=0.0,
+        )
+
+
+@pytest.mark.asyncio
+async def test_judge_and_reduce_phases_overlap():
+    """Leaf judging runs concurrently with the reduce phase.
+
+    Why: reduce needs only the partials, while the leaf judges score those
+    partials for the confidence — independent work, so overlapping them
+    shortens wall-clock. With a generous concurrency cap (no semaphore
+    contention), a judge call and a reduce call are observed in flight at the
+    same time. The aggregated confidence and synthesis must still be produced.
+    """
+    request = _multi_chunk_request()
+    llm = OverlapTrackingLLM()
+    orch = Orchestrator(
+        llm=llm,
+        anonymizer=RecordingAnonymizer(),
+        embedder=FakeEmbeddingPort(),
+        settings=OrchestratorSettings(),
+        analyze_settings=AnalyzeSettings(min_cluster_size=2, max_concurrent_chunks=50),
+        llm_timeout_seconds=LLM_TIMEOUT,
+        max_total_tokens=700,
+    )
+    deadline = datetime.now(UTC) + timedelta(seconds=120)
+
+    result = await orch.analyze_hierarchical(request, deadline, anonymize=True)
+
+    assert llm.judge_reduce_overlap, "judge and reduce phases did not overlap"
+    reduce_calls = [
+        c for c in llm.calls if c[2] is str and "<partial_analyses>" in c[1]
+    ]
+    assert len(reduce_calls) >= 1
+    assert result.confidence is not None
+    assert result.result

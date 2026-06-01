@@ -39,17 +39,20 @@ slow run can be diagnosed from logs alone — no profiler attach required.
 
 - **Per phase, at INFO** — `Orchestrator.analyze_hierarchical` logs a `starting
   <phase>` line *before* each potentially slow step (embedding, clustering, map,
-  reduce) and a `<phase> … in <seconds>s` line after it, plus a closing one-line
-  breakdown: `analyze_hierarchical done in 87.7s (anonymise=… embed=… cluster=…
-  map=… reduce=…)`. The map line also reports how many chunks run concurrently
-  (`up to N in flight`). These lines carry only record/chunk counts and durations.
+  then judge+reduce) and a `<phase> … in <seconds>s` line after it, plus a closing
+  one-line breakdown: `analyze_hierarchical done in 87.7s (anonymise=… embed=…
+  cluster=… map=… judge+reduce=…)`. The leaf judges and the reduce run
+  concurrently, so they are timed together as one `judge + reduce` phase. The map
+  line reports the concurrency cap (`up to N concurrent LLM call(s)`). These lines
+  carry only record/chunk counts and durations.
 - **Per chunk and per LLM call, at DEBUG** — each map chunk logs a `starting map
-  chunk i/N` line when it begins (after acquiring its concurrency slot) and a
-  `done` line with its leaf judge score and duration; each LLM round-trip logs
-  `model`, `latency`, `prompt_tokens`, `completion_tokens`, and `cost` from the
-  `LiteLLMClient` adapter. DEBUG (not INFO) because hierarchical mode fans out
-  one call per chunk plus judges and reduces — at INFO this would flood the log.
-  Because the map step runs chunks concurrently, these per-chunk lines interleave.
+  chunk i/N` line and a `done` line with its duration; each leaf judge logs a
+  `starting`/`done` line with its score; each LLM round-trip logs `model`,
+  `latency`, `prompt_tokens`, `completion_tokens`, and `cost` from the
+  `LiteLLMClient` adapter. DEBUG (not INFO) because hierarchical mode fans out one
+  call per chunk plus judges and reduces — at INFO this would flood the log.
+  Because map runs concurrently and judging overlaps reducing, these per-chunk
+  lines interleave.
 
 All of these are built from the safe-to-log list above; none interpolate
 feedback text, prompts, or model output. The timing itself comes from
