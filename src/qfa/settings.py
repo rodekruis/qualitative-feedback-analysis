@@ -149,6 +149,24 @@ class AnalyzeSettings(BaseSettings):
             " fully sequential map."
         ),
     )
+    target_chunk_tokens: int = Field(
+        default=4_000,
+        ge=1,
+        description=(
+            "Target size (in estimated tokens) for a single map chunk"
+            " (mode=hierarchical). This is the chunking *granularity* knob,"
+            " deliberately decoupled from the LLM hard cap LLM_MAX_TOTAL_TOKENS:"
+            " HDBSCAN produces uneven clusters, so without a target a single"
+            " dominant theme becomes one fat map call whose latency (it runs"
+            " concurrently with the others) sets the wall-clock tail. A cluster"
+            " larger than this is split into roughly equal, date-ordered"
+            " sub-chunks. The effective split budget is"
+            " min(target_chunk_tokens, LLM_MAX_TOTAL_TOKENS), so a chunk can"
+            " never exceed what one call can hold regardless of this value."
+            " Lower it for more, smaller, more-parallel calls; raise it for"
+            " fewer, larger calls."
+        ),
+    )
     coding_trend_date_field: str = Field(
         default="created",
         description="Metadata key holding the record date for the coding-trend table.",

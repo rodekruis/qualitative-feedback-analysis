@@ -60,6 +60,7 @@ the clustering knobs are only consulted on the hierarchical path.
 | `ANALYZE_MIN_CLUSTER_SIZE` | no | `5` | HDBSCAN `min_cluster_size` for the map-step chunking (`mode=hierarchical`). |
 | `ANALYZE_CLUSTERING_METRIC` | no | `euclidean` | HDBSCAN distance metric (`mode=hierarchical`). |
 | `ANALYZE_MAX_CONCURRENT_CHUNKS` | no | `8` | Max map-step chunks analysed concurrently (`mode=hierarchical`). Each chunk is one analysis call + one leaf-judge call; this bounds the fan-out so a large corpus doesn't burst past the provider's rate limit. `1` = fully sequential. |
+| `ANALYZE_TARGET_CHUNK_TOKENS` | no | `4000` | Target chunk size in estimated tokens — the chunking *granularity* knob (`mode=hierarchical`), decoupled from the LLM hard cap. HDBSCAN clusters are uneven, so a dominant theme can fit the cap whole and become one fat, slow map call; a cluster over this target is split into roughly equal, date-ordered sub-chunks. Effective split budget is `min(this, LLM_MAX_TOTAL_TOKENS)`, so a chunk never overflows a call. Lower for more, smaller, more-parallel calls; raise for fewer, larger ones. |
 | `ANALYZE_CODING_TREND_DATE_FIELD` | no | `created` | Metadata key holding the record date for the coding-trend table. |
 | `ANALYZE_CODING_TREND_CODE_FIELDS` | no | `["codes"]` | JSON list. Metadata keys holding coding labels (comma-separated strings). |
 | `ANALYZE_DEFAULT_CODING_TREND_PERIOD` | no | `week` | Server-side default granularity for the coding-trend table (`day` / `week` / `month`). Overridable per-request via the `period` body field. |

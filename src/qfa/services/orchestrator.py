@@ -488,6 +488,8 @@ class Orchestrator:
                 max_total_tokens=self._max_total_tokens,
                 chars_per_token=self._settings.chars_per_token,
                 metric=self._analyze_settings.clustering_metric,
+                target_chunk_tokens=self._analyze_settings.target_chunk_tokens,
+                date_field=self._analyze_settings.coding_trend_date_field,
             )
         logger.info(
             "clustering: %d record(s) -> %d chunk(s) in %.2fs",

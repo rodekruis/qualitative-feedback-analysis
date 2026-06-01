@@ -53,13 +53,32 @@ that specific model and format — is recorded in
    I/O — see the port's design rationale in ADR-014.
 5. **Cluster into budget chunks.**
    {py:func}`~qfa.services.clustering.cluster_records` runs HDBSCAN over the
-   vectors and packs each resulting cluster into one or more chunks that each
-   fit the token budget. Outliers (HDBSCAN's noise label `-1`) become
-   *uncategorised* chunks rather than being discarded, and a corpus smaller than
-   `min_cluster_size` is treated as one uncategorised group. A coverage
-   invariant is asserted: the chunks partition the input exactly — **every
-   record lands in exactly one chunk, none dropped, none duplicated**. Why
-   HDBSCAN and not k-means/DBSCAN: [ADR-015](../adr/015-hdbscan-clustering.md).
+   vectors and packs each resulting cluster into one or more chunks. Outliers
+   (HDBSCAN's noise label `-1`) become *uncategorised* chunks rather than being
+   discarded, and a corpus smaller than `min_cluster_size` is treated as one
+   uncategorised group. A coverage invariant is asserted: the chunks partition
+   the input exactly — **every record lands in exactly one chunk, none dropped,
+   none duplicated**. Why HDBSCAN and not k-means/DBSCAN:
+   [ADR-015](../adr/015-hdbscan-clustering.md).
+
+   Two refinements keep the chunks balanced and trend-friendly:
+
+   - **Granularity target.** HDBSCAN clusters are intentionally uneven — one
+     dominant theme can hold hundreds of records yet still fit the LLM cap
+     whole, becoming a single fat map call whose latency (it runs concurrently
+     with the others) sets the wall-clock tail. `ANALYZE_TARGET_CHUNK_TOKENS`
+     (default 4000) is a separate, smaller split target: a cluster over it is
+     divided into roughly equal contiguous sub-chunks. The effective split
+     budget is `min(target, max_total_tokens)`, so the LLM cap is still the hard
+     ceiling — the target only ever makes chunks *smaller*. Splitting is
+     count-balanced (not greedy fill-then-remainder), so sub-chunks stay
+     uniform and concurrency is used evenly.
+   - **Date ordering.** Records inside every chunk are sorted by their
+     `ANALYZE_CODING_TREND_DATE_FIELD` date (undated records last, stably).
+     The map and reduce steps look for trends, so a chunk presented
+     chronologically lets the model narrate change over time; and because the
+     sort happens *before* the split, each sub-chunk of a big cluster is a
+     contiguous time-window rather than an arbitrary slice.
 6. **Map.** For each chunk, one analysis LLM call (the same guardrailed envelope
    as `single_pass`, built by `build_map_system_message`) produces a partial.
    Chunks are independent and dominated by LLM round-trip latency, so they are
@@ -127,7 +146,7 @@ flowchart TD
     guard -- yes --> anon[Anonymise record texts + prompt]
     anon --> trend[Build coding-trend table<br/>deterministic, no LLM]
     trend --> embed[Embed texts → vectors<br/>EmbeddingPort]
-    embed --> cluster[HDBSCAN + budget packing<br/>chunks cover every record]
+    embed --> cluster[HDBSCAN + balanced budget packing<br/>date-sorted, ~equal chunks<br/>cover every record]
     cluster --> map[MAP per chunk concurrently:<br/>analysis call only<br/>bounded by max_concurrent_chunks]
     map --> judge[Leaf-judge each partial<br/>concurrent with reduce]
     map --> fits{partials fit<br/>one reduce call?}
