@@ -31,7 +31,7 @@ merge (Python)      →  analyze_corpus.yaml
 
 Step 1 (`uv run python scripts/generate_corpus.py gen-specs`) was already
 run by the operator. It produced a JSONL file of record specs, each with
-full metadata + a `creation_date` (which encodes the planted trend) +
+full metadata + a `created` (which encodes the planted trend) +
 a `_context` block with the leaf code's name, description, and example
 utterances. Your job is to fill in the prose `text` for every spec.
 

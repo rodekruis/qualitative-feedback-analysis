@@ -27,7 +27,7 @@ domain object graph against the live LLM.
 
 `fixtures/analyze_corpus.yaml` is the trend-detection benchmark used by
 `POST /v1/analyze` with `mode=hierarchical`. Every record carries a known
-`creation_date` and a fraction of records sit on auto-selected "carrier"
+`created` and a fraction of records sit on auto-selected "carrier"
 codes whose dates trace a designed temporal pattern (spike, emerging,
 declining, step, cross-code, rumour). The detector's job is to recover
 those patterns; the fixture's job is to give it a ground truth to be
@@ -41,7 +41,7 @@ The fixture is built in two halves so that *statistics stay in Python* and
 │  1. gen-specs (Python)                                              │
 │     fixtures/coding_framework.json  ──►  analyze_corpus.specs.jsonl │
 │     Allocates leaf-code volumes, samples metadata, plants trend     │
-│     creation_dates. One JSON object per record, no `text` yet.      │
+│     created dates. One JSON object per record, no `text` yet.       │
 ├──────────────────────────────────────────────────────────────────────┤
 │  2. LLM batches (Claude Code)                                       │
 │     analyze_corpus.specs.jsonl  ──►  texts.jsonl                    │
@@ -87,7 +87,7 @@ A spec looks like:
     "year": 2020,
     "sensitive": false,
     "codes": "covid-19:observation-perception-or-belief:beliefs-about-treatment-for-the-disease:beliefs-about-use-of-herbs-or-other-natural-materials-for-treatment",
-    "creation_date": "2020-10-17"
+    "created": "2020-10-17"
   },
   "_context": {
     "code_name": "Beliefs about use of herbs or other natural materials for treatment",
@@ -156,9 +156,9 @@ uv run python scripts/generate_corpus.py plant-in-place \
 ```
 
 Use this when you have a corpus that *already has prose* (e.g. a real-world
-dump) and you want to retro-fit it with planted `creation_date`s for the
+dump) and you want to retro-fit it with planted `created`s for the
 same trend-detection benchmark. It re-uses the existing `codes` field and
-only mutates `metadata.creation_date` + `metadata.year`. The carrier
+only mutates `metadata.created` + `metadata.year`. The carrier
 thresholds default to the values calibrated for the original 1000-record
 fixture; that's deliberate — `gen-specs` uses stronger thresholds because
 its corpus is denser.

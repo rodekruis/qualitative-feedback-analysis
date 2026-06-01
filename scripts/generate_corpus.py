@@ -2,7 +2,7 @@ r"""Generate the COVID-19 trend-detection benchmark corpus.
 
 Helper script (run manually, not in CI). The output is a labelled benchmark
 for ``POST /v1/analyze`` with ``mode=hierarchical``: every record carries a
-known ``creation_date`` and a fraction of records sit on auto-selected
+known ``created`` and a fraction of records sit on auto-selected
 "carrier" codes whose dates trace a designed temporal pattern (spike,
 emerging, declining, step, cross-code, rumour).
 
@@ -13,7 +13,7 @@ two-stage pipeline that splits *trend statistics* (Python, here) from
 ``gen-specs``
     Allocate leaf-code volumes against ``fixtures/coding_framework.json``,
     sample metadata (region, country, source, sensitive, …) per record,
-    pick carriers, sample ``creation_date`` from each pattern's monthly
+    pick carriers, sample ``created`` from each pattern's monthly
     density, and emit one JSON object per record to a JSONL file. The
     specs carry everything except ``text`` and ``sentence_count``.
 
@@ -23,11 +23,11 @@ two-stage pipeline that splits *trend statistics* (Python, here) from
     coverage, attach the texts, and write the final YAML + trend-plot PNG.
 
 ``plant-in-place``
-    Original behaviour: load an existing YAML, add ``creation_date`` to
+    Original behaviour: load an existing YAML, add ``created`` to
     every record by sampling from per-pattern densities, write the YAML
     back in place. Useful for retro-fitting a real-world fixture as a
     labelled benchmark without regenerating prose. For each record the
-    script adds an ISO ``creation_date`` (string, ``YYYY-MM-DD``) to
+    script adds an ISO ``created`` (string, ``YYYY-MM-DD``) to
     ``metadata`` and sets ``year`` consistent with that date. No record
     is re-tagged: every record keeps its original ``codes`` field.
 
@@ -349,7 +349,7 @@ def assign_dates(
     carriers: dict[str, list[str]],
     rng: random.Random,
 ) -> dict[str, list[int]]:
-    """Mutate each record in place: add ``creation_date`` + update ``year``.
+    """Mutate each record in place: add ``created`` + update ``year``.
 
     Returns ``pattern -> [record_index, ...]`` so the caller can plot and
     summarise.
@@ -380,7 +380,7 @@ def assign_dates(
             )
         for idx, date in zip(indices, dates, strict=True):
             iso = date.isoformat()
-            records[idx]["metadata"]["creation_date"] = iso
+            records[idx]["metadata"]["created"] = iso
             records[idx]["metadata"]["year"] = date.year
 
     return dict(by_pattern)
@@ -403,7 +403,7 @@ def build_top_comment(
         "# Codes come from coding_framework.json (comma-separated, colon-hierarchical).",
         "#",
         "# PLANTED TRENDS (added by scripts/generate_corpus.py).",
-        "# Each record carries an ISO `creation_date` in metadata; `year` matches.",
+        "# Each record carries an ISO `created` in metadata; `year` matches.",
         f"# Timeline: {START.isoformat()} .. {END.isoformat()} ({N_MONTHS} monthly buckets).",
         "#",
         "# | Pattern     | n  | Carrier leaf code(s)                                                | Expected detector behavior                                                                  |",
@@ -495,7 +495,7 @@ def make_plot(
                 for idx in indices:
                     if leaf not in _record_leaves(records[idx]):
                         continue
-                    d = dt.date.fromisoformat(records[idx]["metadata"]["creation_date"])
+                    d = dt.date.fromisoformat(records[idx]["metadata"]["created"])
                     m = (d.year - START.year) * 12 + (d.month - START.month)
                     counts[m] += 1
                 ax.bar(
@@ -510,7 +510,7 @@ def make_plot(
 
             totals = np.zeros(N_MONTHS, dtype=int)
             for idx in indices:
-                d = dt.date.fromisoformat(records[idx]["metadata"]["creation_date"])
+                d = dt.date.fromisoformat(records[idx]["metadata"]["created"])
                 m = (d.year - START.year) * 12 + (d.month - START.month)
                 totals[m] += 1
             ax.bar(
@@ -525,7 +525,7 @@ def make_plot(
             ax.legend(loc="upper left", fontsize=7, ncols=2, frameon=False)
         else:
             dates = [
-                dt.date.fromisoformat(records[i]["metadata"]["creation_date"])
+                dt.date.fromisoformat(records[i]["metadata"]["created"])
                 for i in indices
             ]
             days = (
@@ -928,7 +928,7 @@ def merge(
         claimed = int(text_obj.get("sentence_count", _approx_sentence_count(text)))
         if abs(claimed - _approx_sentence_count(text)) > 1:
             sentence_warnings += 1
-        # Final record carries ``creation_date`` so the plot reproduces from
+        # Final record carries ``created`` so the plot reproduces from
         # the YAML alone, and ``sentence_count`` so the existing model schema
         # is satisfied without a second pass.
         metadata = {**spec["metadata"], "sentence_count": claimed}
@@ -970,7 +970,7 @@ def merge(
 
 
 def plant_in_place(yaml_path: Path, png_path: Path, rng: random.Random) -> int:
-    """Add creation_date in place to an existing fixture YAML."""
+    """Add created in place to an existing fixture YAML."""
     logger.info("Loading %s", yaml_path)
     records: list[dict[str, Any]] = yaml.safe_load(yaml_path.read_text())
     logger.info("Loaded %d records", len(records))
@@ -1065,7 +1065,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     p_plant = sub.add_parser(
-        "plant-in-place", help="Add creation_date to an existing YAML in place."
+        "plant-in-place", help="Add created to an existing YAML in place."
     )
     p_plant.add_argument(
         "--yaml",
