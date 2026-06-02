@@ -4,8 +4,8 @@ import json
 from math import isnan
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import openai
 import pytest
+from litellm.exceptions import APIError, BadRequestError, RateLimitError, Timeout
 from pydantic import BaseModel, Field
 
 from qfa.adapters.llm_client import (
@@ -13,7 +13,13 @@ from qfa.adapters.llm_client import (
     LiteLLMClient,
     _provider_safe_response_format,
 )
-from qfa.domain.errors import LLMError, LLMRateLimitError, LLMTimeoutError
+from qfa.domain.errors import (
+    LLMBadRequestError,
+    LLMContentPolicyViolationError,
+    LLMError,
+    LLMRateLimitError,
+    LLMTimeoutError,
+)
 from qfa.domain.models import LLMResponse
 
 MODEL = "azure_ai/mistral-large-2411"
@@ -187,11 +193,19 @@ class TestLiteLLMClientCostFallback:
 class TestLiteLLMClientExceptionMapping:
     @pytest.mark.asyncio
     async def test_timeout_error_mapped(self):
+        """litellm.Timeout maps to the domain LLMTimeoutError.
+
+        Why: litellm (not openai) is what acompletion raises; the adapter
+        must translate the provider-specific timeout into our domain error so
+        callers depend only on qfa.domain.errors.
+        """
         client = _make_client()
         with patch(
             "qfa.adapters.llm_client.acompletion",
             new_callable=AsyncMock,
-            side_effect=openai.APITimeoutError(request=MagicMock()),
+            side_effect=Timeout(
+                message="timed out", model=MODEL, llm_provider="azure_ai"
+            ),
         ):
             with pytest.raises(LLMTimeoutError):
                 await client.complete.__wrapped__(
@@ -205,15 +219,17 @@ class TestLiteLLMClientExceptionMapping:
 
     @pytest.mark.asyncio
     async def test_rate_limit_error_mapped(self):
+        """litellm.RateLimitError maps to the domain LLMRateLimitError.
+
+        Why: same boundary-translation contract as the timeout case, for the
+        429 path the retry decorator keys off.
+        """
         client = _make_client()
-        mock_resp = MagicMock()
-        mock_resp.status_code = 429
-        mock_resp.headers = {}
         with patch(
             "qfa.adapters.llm_client.acompletion",
             new_callable=AsyncMock,
-            side_effect=openai.RateLimitError(
-                message="rate limited", response=mock_resp, body=None
+            side_effect=RateLimitError(
+                message="rate limited", model=MODEL, llm_provider="azure_ai"
             ),
         ):
             with pytest.raises(LLMRateLimitError):
@@ -228,15 +244,68 @@ class TestLiteLLMClientExceptionMapping:
 
     @pytest.mark.asyncio
     async def test_generic_api_error_mapped(self):
+        """A generic litellm.APIError maps to the domain LLMError.
+
+        Why: provider errors that aren't timeout/rate-limit/bad-request fall
+        through to the catch-all branch and must surface as our base LLMError.
+        """
         client = _make_client()
         with patch(
             "qfa.adapters.llm_client.acompletion",
             new_callable=AsyncMock,
-            side_effect=openai.APIError(
-                message="server error", request=MagicMock(), body=None
+            side_effect=APIError(
+                status_code=500,
+                message="server error",
+                model=MODEL,
+                llm_provider="azure_ai",
             ),
         ):
             with pytest.raises(LLMError):
+                await client.complete(
+                    SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT
+                )
+
+    @pytest.mark.asyncio
+    async def test_content_policy_bad_request_mapped(self):
+        """A content-filtered BadRequestError maps to LLMContentPolicyViolationError.
+
+        Why: Azure signals content-policy blocks as a BadRequest whose message
+        mentions filtering + the content management policy; that case must be
+        distinguishable from other bad requests so callers can handle it.
+        """
+        client = _make_client()
+        with patch(
+            "qfa.adapters.llm_client.acompletion",
+            new_callable=AsyncMock,
+            side_effect=BadRequestError(
+                message="The response was filtered due to the content management policy",
+                model=MODEL,
+                llm_provider="azure_ai",
+            ),
+        ):
+            with pytest.raises(LLMContentPolicyViolationError):
+                await client.complete(
+                    SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT
+                )
+
+    @pytest.mark.asyncio
+    async def test_generic_bad_request_mapped(self):
+        """A non-content-policy BadRequestError maps to plain LLMBadRequestError.
+
+        Why: the content-policy branch must not swallow ordinary 400s; those
+        should surface as the generic bad-request domain error.
+        """
+        client = _make_client()
+        with patch(
+            "qfa.adapters.llm_client.acompletion",
+            new_callable=AsyncMock,
+            side_effect=BadRequestError(
+                message="invalid model parameter",
+                model=MODEL,
+                llm_provider="azure_ai",
+            ),
+        ):
+            with pytest.raises(LLMBadRequestError):
                 await client.complete(
                     SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT
                 )

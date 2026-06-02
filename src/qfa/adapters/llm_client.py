@@ -4,14 +4,27 @@ import logging
 import re
 from typing import cast
 
-import openai
 from litellm import acompletion, completion_cost
+from litellm.exceptions import APIError, BadRequestError, RateLimitError, Timeout
 from litellm.utils import type_to_response_format_param
 from pydantic import BaseModel, ValidationError
-from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_exponential
+from tenacity import (
+    after_log,
+    before_sleep_log,
+    retry,
+    retry_if_exception_type,
+    stop_after_delay,
+    wait_exponential,
+)
 
 from qfa.domain import AnalysisError, FeedbackTooLargeError
-from qfa.domain.errors import LLMError, LLMRateLimitError, LLMTimeoutError
+from qfa.domain.errors import (
+    LLMBadRequestError,
+    LLMContentPolicyViolationError,
+    LLMError,
+    LLMRateLimitError,
+    LLMTimeoutError,
+)
 from qfa.domain.models import LLMResponse, T_Response
 from qfa.domain.ports import LLMPort
 from qfa.utils import timed
@@ -174,6 +187,8 @@ class LiteLLMClient(LLMPort):
         wait=wait_exponential(multiplier=1, max=10),
         stop=stop_after_delay(60),
         retry=retry_if_exception_type((LLMTimeoutError, LLMRateLimitError)),
+        before_sleep=before_sleep_log(logger, logging.DEBUG),
+        after=after_log(logger, logging.DEBUG),
     )
     async def complete(
         self,
@@ -214,6 +229,9 @@ class LiteLLMClient(LLMPort):
 
         self._check_token_limit(system_message, user_message)
 
+        logger.debug(
+            "LiteLLMClient: dispatching message with timeout %.1f seconds", timeout
+        )
         with timed() as call_sw:
             try:
                 response = await acompletion(
@@ -231,13 +249,22 @@ class LiteLLMClient(LLMPort):
                     if issubclass(response_model, BaseModel)
                     else None,
                 )
-            except openai.APITimeoutError as exc:
+            except Timeout as exc:
+                # TODO retry
                 logger.error(exc)
                 raise LLMTimeoutError(str(exc)) from exc
-            except openai.RateLimitError as exc:
+            except RateLimitError as exc:
+                # TODO back off and retry downstream
                 logger.error(exc)
                 raise LLMRateLimitError(str(exc)) from exc
-            except openai.APIError as exc:
+            except BadRequestError as exc:
+                logger.error(exc)
+                msg = str(exc)
+                if "filtered" in msg and "content management policy" in msg:
+                    raise LLMContentPolicyViolationError(str(exc)) from exc
+                else:
+                    raise LLMBadRequestError(str(exc)) from exc
+            except APIError as exc:
                 logger.error(exc)
                 raise LLMError(str(exc)) from exc
 
