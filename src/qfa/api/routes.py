@@ -125,7 +125,7 @@ async def analyze(
         populated for both modes whenever metadata permits; ``confidence``
         is populated only for ``hierarchical`` mode.
     """
-    deadline = datetime.now(UTC) + timedelta(seconds=120)
+    deadline = datetime.now(UTC) + timedelta(seconds=600)
 
     domain_feedback_records = tuple(
         FeedbackRecordModel(id=doc.id, text=doc.text, metadata=doc.metadata)
