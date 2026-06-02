@@ -9,10 +9,11 @@ single_pass call is byte-identical to before (no regression).
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from qfa.domain.errors import AnalysisError, LLMError
+from qfa.domain.errors import AnalysisError, AnalysisTimeoutError, LLMError
 from qfa.domain.models import (
     AnalysisRequestModel,
     FeedbackRecordModel,
@@ -512,14 +513,17 @@ class OneChunkMapFailsLLM:
 
 
 @pytest.mark.asyncio
-async def test_partial_map_failure_still_reduces_and_lowers_confidence():
-    """One chunk's map failure doesn't abort the run; it drops from reduce, scores 0.0.
+async def test_partial_map_failure_excludes_chunk_from_confidence():
+    """One chunk's map failure doesn't abort the run; it is excluded from confidence.
 
     Why: regression for the partial-failure path. A failed map chunk becomes a
     ``None`` partial that MUST be filtered before the reduce prompt — passing
     None into ``build_reduce_user_message`` raised ``AttributeError`` and tore
-    down the whole analysis. The failed chunk still pulls confidence down via a
-    0.0 leaf-judge score rather than vanishing. Only an all-chunk failure raises.
+    down the whole analysis. The failed chunk has no partial to judge, so it is
+    *excluded* from the coverage-weighted confidence (unverified ≠ unfaithful):
+    confidence reflects only the surviving chunk's leaf score (0.8), and the
+    exclusion is reported in ``uncertainty_explanation``. Only an all-chunk
+    failure raises.
     """
     water = _records(4, "water access was limited " * 5, "w")
     health = _records(4, "health clinic medicine " * 5, "h")
@@ -544,10 +548,106 @@ async def test_partial_map_failure_still_reduces_and_lowers_confidence():
         c for c in llm.calls if c[2] is str and "<partial_analyses>" in c[1]
     ]
     assert reduce_calls, "reduce never ran after a partial map failure"
-    # The failed chunk's 0.0 leaf score pulls confidence below the surviving
-    # chunk's 0.8, but the surviving chunk keeps it above 0.0.
-    assert result.confidence is not None
-    assert 0.0 < result.confidence < 0.8
+    # The failed chunk is excluded, so confidence is exactly the surviving
+    # chunk's 0.8 (not dragged toward 0.0), and the exclusion is surfaced.
+    assert result.confidence == pytest.approx(0.8)
+    assert "excluded" in result.uncertainty_explanation
+
+
+class AllJudgesFailLLM:
+    """Map and reduce calls succeed, but every leaf-judge call raises.
+
+    Exercises the "nothing could be judged" path: the synthesis is produced
+    normally, yet confidence must come back ``None`` rather than 0.0.
+    """
+
+    def __init__(self):
+        self.calls = []
+
+    async def complete(
+        self, system_message, user_message, tenant_id, response_model=str, timeout=20.0
+    ):
+        """Raise on judge calls; return canned output for map and reduce."""
+        self.calls.append((system_message, user_message, response_model))
+        if response_model is AnalyzeJudgeResult:
+            raise LLMError("simulated judge failure")
+        return LLMResponse(
+            structured="PARTIAL_OR_REDUCE",
+            model="fake",
+            prompt_tokens=1,
+            completion_tokens=1,
+            cost=0.0,
+        )
+
+
+@pytest.mark.asyncio
+async def test_all_judges_failing_yields_none_confidence_with_synthesis():
+    """When every leaf judge fails, confidence is None but the synthesis stands.
+
+    Why: judge failures are excluded from confidence, so if *none* succeed there
+    is no faithfulness signal at all — confidence must be ``None`` (unavailable),
+    not 0.0 (verified-bad). The deliverable synthesis is independent of judging
+    and must still be returned.
+    """
+    water = _records(4, "water access was limited " * 5, "w")
+    health = _records(4, "health clinic medicine " * 5, "h")
+    request = AnalysisRequestModel(
+        feedback_records=water + health,
+        prompt="trends?",
+        tenant_id=TENANT_ID,
+        mode="hierarchical",
+    )
+    orch = _build_orchestrator(
+        AllJudgesFailLLM(),
+        RecordingAnonymizer(),
+        FakeEmbeddingPort(),
+        max_total_tokens=100_000,
+    )
+    deadline = datetime.now(UTC) + timedelta(seconds=120)
+
+    result = await orch.analyze_hierarchical(request, deadline, anonymize=True)
+
+    assert result.result  # synthesis produced
+    assert result.confidence is None
+    assert "unavailable" in result.uncertainty_explanation.lower()
+
+
+@pytest.mark.asyncio
+async def test_judge_phase_timeout_does_not_discard_synthesis():
+    """A timeout escaping the judge phase still yields the synthesis, confidence None.
+
+    Why: the synthesis is produced before judging, so a judge-phase timeout must
+    not tear down the whole request. Patching ``_judge_chunk`` to raise
+    ``AnalysisTimeoutError`` simulates a timeout escaping the per-chunk handling;
+    the phase-level backstop must catch it, mark confidence unavailable, and run
+    the pure-Python result assembly to completion.
+    """
+    water = _records(4, "water access was limited " * 5, "w")
+    health = _records(4, "health clinic medicine " * 5, "h")
+    request = AnalysisRequestModel(
+        feedback_records=water + health,
+        prompt="trends?",
+        tenant_id=TENANT_ID,
+        mode="hierarchical",
+    )
+    orch = _build_orchestrator(
+        RecordingLLM(),
+        RecordingAnonymizer(),
+        FakeEmbeddingPort(),
+        max_total_tokens=100_000,
+    )
+    deadline = datetime.now(UTC) + timedelta(seconds=120)
+
+    with patch.object(
+        Orchestrator,
+        "_judge_chunk",
+        new=AsyncMock(side_effect=AnalysisTimeoutError("judge deadline exceeded")),
+    ):
+        result = await orch.analyze_hierarchical(request, deadline, anonymize=True)
+
+    assert result.result  # synthesis assembled and returned
+    assert result.confidence is None
+    assert "unavailable" in result.uncertainty_explanation.lower()
 
 
 @pytest.mark.asyncio
@@ -603,14 +703,14 @@ async def test_all_chunks_failing_raises_analysis_error():
 
 
 @pytest.mark.asyncio
-async def test_judge_and_reduce_phases_overlap():
-    """Leaf judging runs concurrently with the reduce phase.
+async def test_reduce_runs_to_completion_before_any_judge():
+    """The reduce phase fully completes before the first leaf-judge call starts.
 
-    Why: reduce needs only the partials, while the leaf judges score those
-    partials for the confidence — independent work, so overlapping them
-    shortens wall-clock. With a generous concurrency cap (no semaphore
-    contention), a judge call and a reduce call are observed in flight at the
-    same time. The aggregated confidence and synthesis must still be produced.
+    Why: the synthesis is the deliverable, so it gets first claim on the
+    concurrency slots and short-circuits the judges on failure. Sequencing
+    reduce-before-judge means no judge call is ever in flight while a reduce
+    call runs, and every reduce call precedes every judge call in time. The
+    aggregated confidence and synthesis must still be produced.
     """
     request = _multi_chunk_request()
     llm = OverlapTrackingLLM()
@@ -627,10 +727,21 @@ async def test_judge_and_reduce_phases_overlap():
 
     result = await orch.analyze_hierarchical(request, deadline, anonymize=True)
 
-    assert llm.judge_reduce_overlap, "judge and reduce phases did not overlap"
-    reduce_calls = [
-        c for c in llm.calls if c[2] is str and "<partial_analyses>" in c[1]
+    # No judge call ever coexisted with a reduce call.
+    assert not llm.judge_reduce_overlap, "judge ran concurrently with reduce"
+    # Every reduce call strictly precedes every judge call in the recorded order.
+    kinds = [
+        "judge"
+        if c[2] is AnalyzeJudgeResult
+        else ("reduce" if "<partial_analyses>" in c[1] else "map")
+        for c in llm.calls
     ]
-    assert len(reduce_calls) >= 1
+    reduce_positions = [i for i, k in enumerate(kinds) if k == "reduce"]
+    judge_positions = [i for i, k in enumerate(kinds) if k == "judge"]
+    assert reduce_positions, "reduce never ran"
+    assert judge_positions, "judge never ran"
+    assert max(reduce_positions) < min(judge_positions), (
+        "a judge call started before the reduce phase finished"
+    )
     assert result.confidence is not None
     assert result.result

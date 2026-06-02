@@ -6,6 +6,7 @@ manages retries with exponential backoff, and enforces deadlines.
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Callable, ClassVar, Optional, TypeVar
@@ -63,7 +64,11 @@ from qfa.services.prompts import (
     build_analyze_judge_system_message,
     build_analyze_user_message,
 )
-from qfa.settings import AnalyzeSettings, OrchestratorSettings
+from qfa.settings import (
+    LLM_RETRY_BUDGET_MULTIPLIER,
+    AnalyzeSettings,
+    OrchestratorSettings,
+)
 from qfa.utils import timed
 
 logger = logging.getLogger(__name__)
@@ -211,6 +216,22 @@ class _ScoredCode:
             f"Category ({self.confidence_category:.2f}): {self.explanation_category} "
             f"Code ({self.confidence_code:.2f}): {self.explanation_code}"
         )
+
+
+@dataclass
+class _SlotTiming:
+    """Split timing for one semaphore-bounded hierarchical LLM call.
+
+    ``queued_seconds`` is the time spent waiting to acquire the concurrency
+    semaphore; ``call_seconds`` is the LLM completion itself, measured only
+    *after* the slot was acquired. Keeping them apart makes the per-chunk
+    debug lines honest: a single combined duration folds queue-wait into
+    "call time", so a 5s call that waited 100s in the queue looked like a
+    110s call (and like a near-timeout when it was nothing of the sort).
+    """
+
+    queued_seconds: float = 0.0
+    call_seconds: float = 0.0
 
 
 class Orchestrator:
@@ -416,11 +437,17 @@ class Orchestrator:
 
         Flow: anonymise each record → deterministic coding-trend table →
         embed record texts (synchronous, CPU-bound) → cluster (HDBSCAN) →
-        MAP each chunk (leaf LLM call + leaf judge) → REDUCE the partials
+        MAP each chunk to a partial (leaf LLM call) → REDUCE the partials
         (with the trend table), recursing when a chunk or the partial set
-        overflows the token budget. The returned ``confidence`` is the
-        coverage-weighted mean of the per-chunk judge scores; the minimum
-        chunk score is reported as a floor in ``uncertainty_explanation``.
+        overflows the token budget → leaf-JUDGE each partial for the
+        confidence. Reduce runs before the judges: the synthesis is the
+        deliverable and gets slot priority, while the judges only feed the
+        secondary confidence signal. The returned ``confidence`` is the
+        coverage-weighted mean of the per-chunk judge scores, computed over
+        only the chunks that were successfully judged — chunks whose map or
+        judge call failed are excluded (not scored 0.0) and their count is
+        reported in ``uncertainty_explanation``. ``confidence`` is ``None``
+        when no chunk could be judged.
 
         Anonymisation happens before embedding and before every LLM call.
         Guardrails are applied at both the map and reduce prompts.
@@ -527,6 +554,7 @@ class Orchestrator:
                 len(chunks),
                 len(chunk.records),
             )
+            timing = _SlotTiming()
             with timed() as chunk_sw:
                 partial = await self._map_chunk(
                     anonymized_prompt,
@@ -534,12 +562,15 @@ class Orchestrator:
                     request.tenant_id,
                     deadline,
                     semaphore,
+                    timing=timing,
                 )
             logger.debug(
-                "map chunk %d/%d done in %.2fs",
+                "map chunk %d/%d done in %.2fs (queued=%.2fs call=%.2fs)",
                 index,
                 len(chunks),
                 chunk_sw.elapsed_seconds,
+                timing.queued_seconds,
+                timing.call_seconds,
             )
             return partial
 
@@ -576,15 +607,20 @@ class Orchestrator:
             "map phase: %d chunk(s) in %.2fs", len(chunks), map_sw.elapsed_seconds
         )
 
-        # 5. JUDGE and REDUCE run concurrently. REDUCE needs only the partials;
-        #    the leaf judges score each partial against its own chunk for the
-        #    confidence. They are independent, so overlap them — the shared
-        #    semaphore keeps total LLM concurrency within ``max_concurrent_chunks``.
-        async def _judge_all() -> list[float]:
+        # 5. REDUCE first, then JUDGE. The synthesis is the deliverable, so it
+        #    gets first claim on the semaphore slots and short-circuits the
+        #    judges on failure (a reduce error propagates and we never spend
+        #    tokens judging a synthesis we're about to discard). The leaf judges
+        #    only feed the secondary ``confidence`` signal, so they run after and
+        #    absorb whatever deadline pressure remains. Sequencing costs little
+        #    wall-clock: judge and reduce share one semaphore, so they were
+        #    already time-slicing the same ``max_concurrent_chunks`` slots.
+        async def _judge_all() -> list[float | None]:
             async def _judge_one(
                 index: int, chunk: Chunk, partial: Optional[str]
-            ) -> float:
+            ) -> float | None:
                 logger.debug("starting judge chunk %d/%d", index, len(chunks))
+                timing = _SlotTiming()
                 with timed() as judge_sw:
                     score = await self._judge_chunk(
                         anonymized_prompt,
@@ -593,13 +629,17 @@ class Orchestrator:
                         request.tenant_id,
                         deadline,
                         semaphore,
+                        timing=timing,
                     )
                 logger.debug(
-                    "judge chunk %d/%d done: judge=%.2f in %.2fs",
+                    "judge chunk %d/%d done: judge=%s in %.2fs "
+                    "(queued=%.2fs call=%.2fs)",
                     index,
                     len(chunks),
-                    score,
+                    f"{score:.2f}" if score is not None else "excluded",
                     judge_sw.elapsed_seconds,
+                    timing.queued_seconds,
+                    timing.call_seconds,
                 )
                 return score
 
@@ -617,9 +657,10 @@ class Orchestrator:
         async def _reduce() -> str:
             # Drop chunks whose map call failed (None). They contribute nothing
             # to the synthesis, and passing None into build_reduce_user_message
-            # would raise (escape_for_tag_envelope expects a str). The failed
-            # chunks still lower confidence: _judge_all scores them 0.0 by
-            # keeping the full, position-aligned `partials` list.
+            # would raise (escape_for_tag_envelope expects a str). Such chunks
+            # are *excluded* from the confidence too (see _judge_chunk → None),
+            # rather than scored 0.0 — a dropped chunk is unverified, not
+            # unfaithful. Their absence is surfaced in uncertainty_explanation.
             successful_partials = tuple(p for p in partials if p is not None)
             logger.info(
                 "starting reduce phase over %d partial(s)", len(successful_partials)
@@ -633,19 +674,61 @@ class Orchestrator:
                 semaphore,
             )
 
-        logger.info("starting judge + reduce (concurrent)")
-        with timed() as judge_reduce_sw:
-            chunk_scores, synthesis = await asyncio.gather(_judge_all(), _reduce())
-        logger.info("judge + reduce in %.2fs", judge_reduce_sw.elapsed_seconds)
+        logger.info("starting reduce phase")
+        with timed() as reduce_sw:
+            synthesis = await _reduce()
+        logger.info("reduce phase in %.2fs", reduce_sw.elapsed_seconds)
 
-        # 6. Aggregate per-chunk faithfulness into one confidence.
-        confidence = self._coverage_weighted_mean(chunk_scores, chunk_sizes)
-        floor = min(chunk_scores) if chunk_scores else 0.0
-        uncertainty = (
-            f"Leaf-judged confidence is a coverage-weighted mean over "
-            f"{len(chunks)} chunk(s); the lowest single-chunk faithfulness "
-            f"was {floor:.2f}."
-        )
+        logger.info("starting judge phase")
+        with timed() as judge_sw:
+            try:
+                chunk_scores = await _judge_all()
+            except (LLMTimeoutError, AnalysisTimeoutError) as exc:
+                # The synthesis (the deliverable) is already produced; a judge
+                # phase that runs out of time must NOT discard it. Per-chunk
+                # judges already swallow these into None, so this is a phase-level
+                # backstop: treat every chunk as unjudged (confidence -> None) and
+                # fall through to the fast, pure-Python result assembly below.
+                logger.warning(
+                    "Judge phase aborted (%s); returning the synthesis with "
+                    "confidence unavailable.",
+                    type(exc).__name__,
+                )
+                chunk_scores = [None] * len(chunks)
+        logger.info("judge phase in %.2fs", judge_sw.elapsed_seconds)
+
+        # 6. Aggregate per-chunk faithfulness into one confidence. Chunks whose
+        #    judge timed out or errored (None) are EXCLUDED — they neither count
+        #    toward nor against the mean, so a time-starved judge cannot masquerade
+        #    as a faithfulness of 0.0. Confidence is None when nothing was judged.
+        judged = [
+            (score, weight)
+            for score, weight in zip(chunk_scores, chunk_sizes, strict=True)
+            if score is not None
+        ]
+        excluded = len(chunks) - len(judged)
+        confidence: float | None
+        if not judged:
+            confidence = None
+            uncertainty = (
+                f"Confidence unavailable: none of the {len(chunks)} chunk(s) "
+                f"could be leaf-judged (all judge calls failed or timed out)."
+            )
+        else:
+            judged_scores = [score for score, _ in judged]
+            judged_weights = [weight for _, weight in judged]
+            confidence = self._coverage_weighted_mean(judged_scores, judged_weights)
+            floor = min(judged_scores)
+            excluded_note = (
+                f" ({excluded} chunk(s) excluded: judge failed or timed out)"
+                if excluded
+                else ""
+            )
+            uncertainty = (
+                f"Leaf-judged confidence is a coverage-weighted mean over "
+                f"{len(judged)} of {len(chunks)} chunk(s){excluded_note}; the "
+                f"lowest single-chunk faithfulness was {floor:.2f}."
+            )
 
         # 7. De-anonymise the synthesis (retain PERSON placeholders as in `analyze`).
         analysis_text = synthesis
@@ -662,17 +745,20 @@ class Orchestrator:
         # (de-anonymisation and trend-table building are sub-millisecond).
         logger.info(
             "analyze_hierarchical done in %.2fs "
-            "(anonymise=%.2fs embed=%.2fs cluster=%.2fs map=%.2fs judge+reduce=%.2fs)",
+            "(anonymise=%.2fs embed=%.2fs cluster=%.2fs map=%.2fs "
+            "reduce=%.2fs judge=%.2fs)",
             anonymize_sw.elapsed_seconds
             + embed_sw.elapsed_seconds
             + cluster_sw.elapsed_seconds
             + map_sw.elapsed_seconds
-            + judge_reduce_sw.elapsed_seconds,
+            + reduce_sw.elapsed_seconds
+            + judge_sw.elapsed_seconds,
             anonymize_sw.elapsed_seconds,
             embed_sw.elapsed_seconds,
             cluster_sw.elapsed_seconds,
             map_sw.elapsed_seconds,
-            judge_reduce_sw.elapsed_seconds,
+            reduce_sw.elapsed_seconds,
+            judge_sw.elapsed_seconds,
         )
 
         return AnalysisResultModel(
@@ -712,6 +798,7 @@ class Orchestrator:
         tenant_id: str,
         response_model: type[T_Response],
         deadline: datetime,
+        timing: _SlotTiming | None = None,
     ) -> LLMResponse[T_Response]:
         """Run one LLM completion, bounded by ``semaphore`` and the deadline.
 
@@ -722,16 +809,31 @@ class Orchestrator:
         completion that queued behind others still honours the remaining budget
         (and raises ``AnalysisTimeoutError`` if the deadline passed while it
         waited).
+
+        When ``timing`` is supplied it is populated with the queue-wait and the
+        post-acquire call duration as two separate fields, so callers can log
+        them apart rather than reporting one combined number that hides how long
+        the call sat waiting for a slot.
         """
+        queue_start = time.perf_counter()
         async with semaphore:
+            acquired_at = time.perf_counter()
+            if timing is not None:
+                timing.queued_seconds = acquired_at - queue_start
+            # Compute the timeout only now: queue-wait already elapsed, so the
+            # per-call window reflects the budget that actually remains.
             timeout = self._check_deadline_and_get_timeout(deadline)
-            return await self._llm.complete(
-                system_message=system_message,
-                user_message=user_message,
-                tenant_id=tenant_id,
-                response_model=response_model,
-                timeout=timeout,
-            )
+            try:
+                return await self._llm.complete(
+                    system_message=system_message,
+                    user_message=user_message,
+                    tenant_id=tenant_id,
+                    response_model=response_model,
+                    timeout=timeout,
+                )
+            finally:
+                if timing is not None:
+                    timing.call_seconds = time.perf_counter() - acquired_at
 
     async def _map_chunk(
         self,
@@ -740,6 +842,7 @@ class Orchestrator:
         tenant_id: str,
         deadline: datetime,
         semaphore: asyncio.Semaphore,
+        timing: _SlotTiming | None = None,
     ) -> str:
         """Produce one partial analysis for a chunk (no judging).
 
@@ -754,6 +857,7 @@ class Orchestrator:
             tenant_id=tenant_id,
             response_model=str,
             deadline=deadline,
+            timing=timing,
         )
         return response.structured
 
@@ -765,17 +869,19 @@ class Orchestrator:
         tenant_id: str,
         deadline: datetime,
         semaphore: asyncio.Semaphore,
-    ) -> float:
+        timing: _SlotTiming | None = None,
+    ) -> float | None:
         """Leaf-judge a partial against its own (anonymised) chunk.
 
-        Returns the faithfulness score in ``[0, 1]``; on any judge failure the
-        score floors at 0.0 and is still counted in the coverage-weighted mean,
-        so judge failure lowers confidence rather than vanishing. Independent of
-        the reduce phase, so it runs concurrently with it.
+        Returns the faithfulness score in ``[0, 1]``, or ``None`` when the chunk
+        cannot be judged — either its map call failed (``partial is None``) or
+        the judge call itself failed/timed out. ``None`` means *excluded* from
+        the confidence aggregation (unverified ≠ unfaithful), not scored 0.0, so
+        a time-starved judge does not depress the reported confidence.
         """
         if partial is None:
-            # something went wrong processing the partial.
-            return 0.0
+            # The map call for this chunk failed; there is nothing to judge.
+            return None
         user_message = build_analyze_user_message(analyst_prompt, records)
         try:
             judge_system = build_analyze_judge_system_message(
@@ -790,6 +896,7 @@ class Orchestrator:
                 tenant_id=tenant_id,
                 response_model=AnalyzeJudgeResult,
                 deadline=deadline,
+                timing=timing,
             )
             return judge_response.structured.quality_score
         except (
@@ -802,7 +909,7 @@ class Orchestrator:
             logger.warning(
                 "Hierarchical leaf judge failed: error_class=%s", type(exc).__name__
             )
-            return 0.0
+            return None
 
     async def _reduce_partials(
         self,
@@ -1375,7 +1482,14 @@ class Orchestrator:
             raise AnalysisTimeoutError(
                 f"Insufficient time remaining ({remaining:.1f}s) for an LLM attempt"
             )
-        return min(self._llm_timeout_seconds, remaining)
+        # A single ``LLMPort.complete`` may retry internally, spending up to
+        # ``LLM_RETRY_BUDGET_MULTIPLIER`` times this per-attempt timeout in worst
+        # case (see ``qfa.adapters.llm_client``). Divide the remaining deadline
+        # by the same factor so even a fully-retried last call finishes before
+        # the deadline. With a generous deadline the per-call cap binds first, so
+        # this only bites as the deadline approaches.
+        per_attempt_budget = remaining / LLM_RETRY_BUDGET_MULTIPLIER
+        return min(self._llm_timeout_seconds, per_attempt_budget)
 
     def _check_coding_deadline(self, deadline: datetime) -> None:
         """Raise when the coding deadline is exceeded."""

@@ -39,19 +39,24 @@ slow run can be diagnosed from logs alone — no profiler attach required.
 
 - **Per phase, at INFO** — `Orchestrator.analyze_hierarchical` logs a `starting
   <phase>` line *before* each potentially slow step (embedding, clustering, map,
-  then judge+reduce) and a `<phase> … in <seconds>s` line after it, plus a closing
+  reduce, then judge) and a `<phase> … in <seconds>s` line after it, plus a closing
   one-line breakdown: `analyze_hierarchical done in 87.7s (anonymise=… embed=…
-  cluster=… map=… judge+reduce=…)`. The leaf judges and the reduce run
-  concurrently, so they are timed together as one `judge + reduce` phase. The map
-  line reports the concurrency cap (`up to N concurrent LLM call(s)`). These lines
-  carry only record/chunk counts and durations.
+  cluster=… map=… reduce=… judge=…)`. Reduce runs *before* the judges (the
+  synthesis is the deliverable and gets slot priority; the judges only feed the
+  confidence), so the two are timed separately. The map line reports the
+  concurrency cap (`up to N concurrent LLM call(s)`). These lines carry only
+  record/chunk counts and durations.
 - **Per chunk and per LLM call, at DEBUG** — each map chunk logs a `starting map
-  chunk i/N` line and a `done` line with its duration; each leaf judge logs a
-  `starting`/`done` line with its score; each LLM round-trip logs `model`,
-  `latency`, `prompt_tokens`, `completion_tokens`, and `cost` from the
-  `LiteLLMClient` adapter. DEBUG (not INFO) because hierarchical mode fans out one
-  call per chunk plus judges and reduces — at INFO this would flood the log.
-  Because map runs concurrently and judging overlaps reducing, these per-chunk
+  chunk i/N` line and a `done` line; each leaf judge logs a `starting`/`done` line
+  with its score (or `excluded` when the chunk could not be judged). The per-chunk
+  `done` lines split their duration into `queued=<s>` (time waiting for a
+  concurrency slot) and `call=<s>` (the LLM round-trip after the slot was
+  acquired), so a long chunk caused by queue backlog is distinguishable from a
+  genuinely slow call. Each LLM round-trip also logs `model`, `latency`,
+  `prompt_tokens`, `completion_tokens`, and `cost` from the `LiteLLMClient`
+  adapter, and its per-attempt timeout plus the retry budget. DEBUG (not INFO)
+  because hierarchical mode fans out one call per chunk plus judges and reduces —
+  at INFO this would flood the log. Because map runs concurrently, these per-chunk
   lines interleave.
 
 All of these are built from the safe-to-log list above; none interpolate

@@ -12,7 +12,7 @@ Every environment variable the app reads. Settings are loaded by `pydantic-setti
 | `LLM_API_KEY` | **yes** | — | Provider API key. Stored as `SecretStr`. |
 | `LLM_API_BASE` | only some providers | `""` | E.g. `https://<resource>.openai.azure.com/` for Azure OpenAI. |
 | `LLM_API_VERSION` | only some providers | `""` | API version where the provider expects one. |
-| `LLM_TIMEOUT_SECONDS` | no | `115.0` | Per-LLM-call timeout. |
+| `LLM_TIMEOUT_SECONDS` | no | `115.0` | Per-*attempt* LLM-call timeout. A single call retries transient failures (timeout, rate-limit) up to `3×` this budget; the orchestrator sizes the per-attempt timeout against the request deadline so the worst-case retry sequence still fits. |
 | `LLM_MAX_TOTAL_TOKENS` | no | `100000` | Token budget guard. Estimated as `len(text) / LLM_CHARS_PER_TOKEN`. |
 | `LLM_CHARS_PER_TOKEN` | no | `4` | Conversion ratio used by the token budget guard. |
 

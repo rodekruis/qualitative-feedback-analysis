@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from litellm.exceptions import APIError, BadRequestError, RateLimitError, Timeout
 from pydantic import BaseModel, Field
+from tenacity import wait_fixed
 
 from qfa.adapters.llm_client import (
     _UNSUPPORTED_SCHEMA_KEYWORDS,
@@ -193,11 +194,13 @@ class TestLiteLLMClientCostFallback:
 class TestLiteLLMClientExceptionMapping:
     @pytest.mark.asyncio
     async def test_timeout_error_mapped(self):
-        """litellm.Timeout maps to the domain LLMTimeoutError.
+        """litellm.Timeout maps to the domain LLMTimeoutError on a single attempt.
 
         Why: litellm (not openai) is what acompletion raises; the adapter
         must translate the provider-specific timeout into our domain error so
-        callers depend only on qfa.domain.errors.
+        callers depend only on qfa.domain.errors. Targets ``_complete_once``
+        (one attempt) so the mapping is asserted without driving the retry
+        loop in ``complete``.
         """
         client = _make_client()
         with patch(
@@ -208,21 +211,21 @@ class TestLiteLLMClientExceptionMapping:
             ),
         ):
             with pytest.raises(LLMTimeoutError):
-                await client.complete.__wrapped__(
-                    client,
-                    SYSTEM_MSG,
-                    USER_MSG,
-                    TENANT_ID,
-                    str,
+                await client._complete_once(
+                    system_message=SYSTEM_MSG,
+                    user_message=USER_MSG,
+                    tenant_id=TENANT_ID,
                     timeout=TIMEOUT,
+                    response_format=None,
                 )
 
     @pytest.mark.asyncio
     async def test_rate_limit_error_mapped(self):
-        """litellm.RateLimitError maps to the domain LLMRateLimitError.
+        """litellm.RateLimitError maps to the domain LLMRateLimitError on one attempt.
 
         Why: same boundary-translation contract as the timeout case, for the
-        429 path the retry decorator keys off.
+        429 path the retry loop keys off. Targets ``_complete_once`` so the
+        mapping is asserted without retrying.
         """
         client = _make_client()
         with patch(
@@ -233,13 +236,12 @@ class TestLiteLLMClientExceptionMapping:
             ),
         ):
             with pytest.raises(LLMRateLimitError):
-                await client.complete.__wrapped__(
-                    client,
-                    SYSTEM_MSG,
-                    USER_MSG,
-                    TENANT_ID,
-                    str,
+                await client._complete_once(
+                    system_message=SYSTEM_MSG,
+                    user_message=USER_MSG,
+                    tenant_id=TENANT_ID,
                     timeout=TIMEOUT,
+                    response_format=None,
                 )
 
     @pytest.mark.asyncio
@@ -389,6 +391,105 @@ class TestLiteLLMClientExceptionMapping:
                     _StructuredResponse,
                     timeout=TIMEOUT,
                 )
+
+
+class TestLiteLLMClientRetry:
+    """`complete` retries transient failures up to its budget, then re-raises.
+
+    The retry waits are patched to be instant (``wait_fixed``) so these tests
+    assert the retry *behaviour* without sleeping through real backoff.
+    """
+
+    @pytest.mark.asyncio
+    async def test_retries_transient_timeout_then_succeeds(self):
+        """A transient timeout is retried and the subsequent success is returned.
+
+        Why: the whole point of moving the retry into the body — a single
+        flaky timeout must not fail the call when a retry would succeed.
+        """
+        good = _make_mock_response()
+        client = _make_client()
+        with (
+            patch(
+                "qfa.adapters.llm_client.acompletion",
+                new_callable=AsyncMock,
+                side_effect=[
+                    Timeout(message="transient", model=MODEL, llm_provider="azure_ai"),
+                    good,
+                ],
+            ) as mock_ac,
+            patch("qfa.adapters.llm_client.completion_cost", return_value=0.0),
+            patch(
+                "qfa.adapters.llm_client.wait_exponential",
+                return_value=wait_fixed(0),
+            ),
+        ):
+            result = await client.complete(
+                SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT
+            )
+
+        assert result.structured == "This is the summary."
+        assert mock_ac.call_count == 2  # one failure, one success
+
+    @pytest.mark.asyncio
+    async def test_retries_exhausted_reraises_domain_error(self):
+        """When every attempt times out, the domain LLMTimeoutError is re-raised.
+
+        Why: ``reraise=True`` must surface the underlying domain error (not a
+        tenacity RetryError) once the budget is spent, and the call must make
+        more than one attempt. A tiny per-attempt timeout keeps the
+        ``stop_after_delay`` budget (3x) small so the loop ends in milliseconds.
+        """
+        client = _make_client()
+        with (
+            patch(
+                "qfa.adapters.llm_client.acompletion",
+                new_callable=AsyncMock,
+                side_effect=Timeout(
+                    message="always", model=MODEL, llm_provider="azure_ai"
+                ),
+            ) as mock_ac,
+            patch(
+                "qfa.adapters.llm_client.wait_exponential",
+                return_value=wait_fixed(0.01),
+            ),
+        ):
+            with pytest.raises(LLMTimeoutError):
+                await client.complete(
+                    SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=0.01
+                )
+
+        assert mock_ac.call_count >= 2  # retried before giving up
+
+    @pytest.mark.asyncio
+    async def test_bad_request_is_not_retried(self):
+        """A non-transient BadRequest fails on the first attempt without retrying.
+
+        Why: bad requests are deterministic — retrying wastes the budget and a
+        held concurrency slot. Only timeout/rate-limit are transient.
+        """
+        client = _make_client()
+        with (
+            patch(
+                "qfa.adapters.llm_client.acompletion",
+                new_callable=AsyncMock,
+                side_effect=BadRequestError(
+                    message="invalid model parameter",
+                    model=MODEL,
+                    llm_provider="azure_ai",
+                ),
+            ) as mock_ac,
+            patch(
+                "qfa.adapters.llm_client.wait_exponential",
+                return_value=wait_fixed(0),
+            ),
+        ):
+            with pytest.raises(LLMBadRequestError):
+                await client.complete(
+                    SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT
+                )
+
+        assert mock_ac.call_count == 1  # not retried
 
 
 class TestProviderSafeResponseFormat:
