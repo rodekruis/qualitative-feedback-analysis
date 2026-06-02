@@ -12,6 +12,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from qfa.domain.errors import AnalysisError, LLMError
 from qfa.domain.models import (
     AnalysisRequestModel,
     FeedbackRecordModel,
@@ -469,6 +470,136 @@ class OverlapTrackingLLM:
             completion_tokens=1,
             cost=0.0,
         )
+
+
+class OneChunkMapFailsLLM:
+    """LLM whose map call fails for the 'health' cluster but succeeds elsewhere.
+
+    A map call is identified by ``response_model is str`` plus the
+    ``<feedback_records>`` envelope; when such a call carries 'health' text it
+    raises ``LLMError`` to simulate one chunk failing. Judge and reduce calls
+    answer normally. Used to exercise the partial-failure path.
+    """
+
+    def __init__(self):
+        self.calls = []
+
+    async def complete(
+        self, system_message, user_message, tenant_id, response_model=str, timeout=20.0
+    ):
+        """Raise on the 'health' map chunk; return canned output otherwise."""
+        self.calls.append((system_message, user_message, response_model))
+        is_map = response_model is str and "<feedback_records>" in user_message
+        if is_map and "health" in user_message:
+            raise LLMError("simulated map failure for one chunk")
+        if response_model is AnalyzeJudgeResult:
+            return LLMResponse(
+                structured=AnalyzeJudgeResult(
+                    quality_score=0.8, uncertainty_explanation="ok"
+                ),
+                model="fake",
+                prompt_tokens=1,
+                completion_tokens=1,
+                cost=0.0,
+            )
+        return LLMResponse(
+            structured="PARTIAL_OR_REDUCE",
+            model="fake",
+            prompt_tokens=1,
+            completion_tokens=1,
+            cost=0.0,
+        )
+
+
+@pytest.mark.asyncio
+async def test_partial_map_failure_still_reduces_and_lowers_confidence():
+    """One chunk's map failure doesn't abort the run; it drops from reduce, scores 0.0.
+
+    Why: regression for the partial-failure path. A failed map chunk becomes a
+    ``None`` partial that MUST be filtered before the reduce prompt — passing
+    None into ``build_reduce_user_message`` raised ``AttributeError`` and tore
+    down the whole analysis. The failed chunk still pulls confidence down via a
+    0.0 leaf-judge score rather than vanishing. Only an all-chunk failure raises.
+    """
+    water = _records(4, "water access was limited " * 5, "w")
+    health = _records(4, "health clinic medicine " * 5, "h")
+    request = AnalysisRequestModel(
+        feedback_records=water + health,
+        prompt="trends?",
+        tenant_id=TENANT_ID,
+        mode="hierarchical",
+    )
+    llm = OneChunkMapFailsLLM()
+    orch = _build_orchestrator(
+        llm, RecordingAnonymizer(), FakeEmbeddingPort(), max_total_tokens=100_000
+    )
+    deadline = datetime.now(UTC) + timedelta(seconds=120)
+
+    result = await orch.analyze_hierarchical(request, deadline, anonymize=True)
+
+    # The run completed despite one chunk failing — the reduce-phase regression.
+    assert result.result
+    # Reduce still ran; the surviving partial fed it (None was filtered out).
+    reduce_calls = [
+        c for c in llm.calls if c[2] is str and "<partial_analyses>" in c[1]
+    ]
+    assert reduce_calls, "reduce never ran after a partial map failure"
+    # The failed chunk's 0.0 leaf score pulls confidence below the surviving
+    # chunk's 0.8, but the surviving chunk keeps it above 0.0.
+    assert result.confidence is not None
+    assert 0.0 < result.confidence < 0.8
+
+
+@pytest.mark.asyncio
+async def test_all_chunks_failing_raises_analysis_error():
+    """When every map chunk fails, analyze_hierarchical raises AnalysisError.
+
+    Why: a partial failure degrades gracefully, but a total map failure has no
+    partials to synthesise, so it must surface as an error rather than an empty
+    result.
+    """
+
+    class AllMapsFailLLM(OneChunkMapFailsLLM):
+        """Every map call fails; judge/reduce never get the chance to run."""
+
+        async def complete(
+            self,
+            system_message,
+            user_message,
+            tenant_id,
+            response_model=str,
+            timeout=20.0,
+        ):
+            """Raise on every map call regardless of cluster."""
+            self.calls.append((system_message, user_message, response_model))
+            if response_model is str and "<feedback_records>" in user_message:
+                raise LLMError("simulated map failure for all chunks")
+            return LLMResponse(
+                structured="UNREACHED",
+                model="fake",
+                prompt_tokens=1,
+                completion_tokens=1,
+                cost=0.0,
+            )
+
+    water = _records(4, "water access was limited " * 5, "w")
+    health = _records(4, "health clinic medicine " * 5, "h")
+    request = AnalysisRequestModel(
+        feedback_records=water + health,
+        prompt="trends?",
+        tenant_id=TENANT_ID,
+        mode="hierarchical",
+    )
+    orch = _build_orchestrator(
+        AllMapsFailLLM(),
+        RecordingAnonymizer(),
+        FakeEmbeddingPort(),
+        max_total_tokens=100_000,
+    )
+    deadline = datetime.now(UTC) + timedelta(seconds=120)
+
+    with pytest.raises(AnalysisError, match="mapping failed for all chunks"):
+        await orch.analyze_hierarchical(request, deadline, anonymize=True)
 
 
 @pytest.mark.asyncio

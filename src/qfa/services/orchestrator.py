@@ -8,7 +8,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Callable, ClassVar, TypeVar
+from typing import Callable, ClassVar, Optional, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -443,6 +443,9 @@ class Orchestrator:
         )
 
         # 1. Anonymise each record's text up front (before embed + LLM).
+        logger.info(
+            "Starting anonymization of %d records...", len(request.feedback_records)
+        )
         with timed() as anonymize_sw:
             anonymized_records, mapping = self._anonymize_records(
                 request.feedback_records, anonymize
@@ -541,11 +544,33 @@ class Orchestrator:
             return partial
 
         with timed() as map_sw:
-            partials: list[str] = list(
+            partials_with_exceptions: list[str | BaseException] = list(
                 await asyncio.gather(
-                    *(_map_one(i, chunk) for i, chunk in enumerate(chunks, start=1))
+                    *(_map_one(i, chunk) for i, chunk in enumerate(chunks, start=1)),
+                    return_exceptions=True,
                 )
             )
+            errors: list[BaseException] = []
+            partials: list[str | None] = []
+            for partial_or_exc in partials_with_exceptions:
+                if isinstance(partial_or_exc, BaseException):
+                    errors.append(partial_or_exc)
+                    partials.append(None)
+                else:
+                    partials.append(partial_or_exc)
+            # check if any errors occurred and log them.
+            # Iff ALL chunks failed, raise.
+            if errors:
+                if len(errors) == len(chunks):
+                    raise AnalysisError("mapping failed for all chunks")
+                else:
+                    logger.warning(
+                        "Errors mapping %d/%d chunks: %s",
+                        len(errors),
+                        len(chunks),
+                        str(errors),
+                    )
+
         chunk_sizes: list[int] = [len(chunk.records) for chunk in chunks]
         logger.info(
             "map phase: %d chunk(s) in %.2fs", len(chunks), map_sw.elapsed_seconds
@@ -556,7 +581,9 @@ class Orchestrator:
         #    confidence. They are independent, so overlap them — the shared
         #    semaphore keeps total LLM concurrency within ``max_concurrent_chunks``.
         async def _judge_all() -> list[float]:
-            async def _judge_one(index: int, chunk: Chunk, partial: str) -> float:
+            async def _judge_one(
+                index: int, chunk: Chunk, partial: Optional[str]
+            ) -> float:
                 logger.debug("starting judge chunk %d/%d", index, len(chunks))
                 with timed() as judge_sw:
                     score = await self._judge_chunk(
@@ -583,15 +610,23 @@ class Orchestrator:
                         for i, (chunk, partial) in enumerate(
                             zip(chunks, partials, strict=True), start=1
                         )
-                    )
+                    ),
                 )
             )
 
         async def _reduce() -> str:
-            logger.info("starting reduce phase over %d partial(s)", len(partials))
+            # Drop chunks whose map call failed (None). They contribute nothing
+            # to the synthesis, and passing None into build_reduce_user_message
+            # would raise (escape_for_tag_envelope expects a str). The failed
+            # chunks still lower confidence: _judge_all scores them 0.0 by
+            # keeping the full, position-aligned `partials` list.
+            successful_partials = tuple(p for p in partials if p is not None)
+            logger.info(
+                "starting reduce phase over %d partial(s)", len(successful_partials)
+            )
             return await self._reduce_partials(
                 anonymized_prompt,
-                tuple(partials),
+                successful_partials,
                 trend_table,
                 request.tenant_id,
                 deadline,
@@ -708,7 +743,7 @@ class Orchestrator:
     ) -> str:
         """Produce one partial analysis for a chunk (no judging).
 
-        The records are already anonymised. The leaf judge that scores this
+        The leaf judge that scores this
         partial runs separately (see :meth:`_judge_chunk`) so it can overlap the
         reduce phase, which depends only on the partials.
         """
@@ -726,7 +761,7 @@ class Orchestrator:
         self,
         analyst_prompt: str,
         records: tuple[FeedbackRecordModel, ...],
-        partial: str,
+        partial: Optional[str],
         tenant_id: str,
         deadline: datetime,
         semaphore: asyncio.Semaphore,
@@ -738,6 +773,9 @@ class Orchestrator:
         so judge failure lowers confidence rather than vanishing. Independent of
         the reduce phase, so it runs concurrently with it.
         """
+        if partial is None:
+            # something went wrong processing the partial.
+            return 0.0
         user_message = build_analyze_user_message(analyst_prompt, records)
         try:
             judge_system = build_analyze_judge_system_message(
