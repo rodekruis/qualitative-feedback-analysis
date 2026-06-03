@@ -49,15 +49,11 @@ slow run can be diagnosed from logs alone — no profiler attach required.
 - **Per chunk and per LLM call, at DEBUG** — each map chunk logs a `starting map
   chunk i/N` line and a `done` line; each leaf judge logs a `starting`/`done` line
   with its score (or `excluded` when the chunk could not be judged). The reduce
-  phase, which is a *recursive* tree-reduce rather than a flat fan-out, logs each
-  level with its recursion `depth=<d>` (0 at the top): a `synthesising N
-  partial(s)` line on entry, then either a single `synthesis … done` line (when the
-  partials fit one reduce call) or a split line (`N partial(s) exceed the token
-  budget -> K group(s)`) followed by a `reducing group i/K` line per group and a
-  closing `K group(s) reduced to M intermediate(s); starting final reduce` line —
-  so a multi-level synthesis shows both how deep the tree is and how much of the
-  current level remains. The per-chunk and per-reduce `done` lines split their
-  duration into `queued=<s>` (time waiting for a
+  phase is a *recursive* tree-reduce rather than a flat fan-out; rather than log
+  every call, it emits a single line each time it has to split (`N partial(s)
+  exceed the token budget; tree-reducing in K group(s)`), so a multi-level
+  synthesis is visible without one line per group. The per-chunk `done` lines
+  split their duration into `queued=<s>` (time waiting for a
   concurrency slot) and `call=<s>` (the LLM round-trip after the slot was
   acquired), so a long chunk caused by queue backlog is distinguishable from a
   genuinely slow call. Each LLM round-trip also logs `model`, `latency`,

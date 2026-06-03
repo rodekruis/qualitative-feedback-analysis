@@ -674,7 +674,6 @@ class Orchestrator:
                 semaphore,
             )
 
-        logger.info("starting reduce phase")
         with timed() as reduce_sw:
             synthesis = await _reduce()
         logger.info("reduce phase in %.2fs", reduce_sw.elapsed_seconds)
@@ -919,21 +918,12 @@ class Orchestrator:
         tenant_id: str,
         deadline: datetime,
         semaphore: asyncio.Semaphore,
-        depth: int = 0,
     ) -> str:
         """Synthesise partials into one analysis, tree-reducing on overflow.
 
         ``semaphore`` bounds the reduce LLM calls together with the concurrently
         running leaf judges, so total pipeline concurrency stays within
         ``max_concurrent_chunks``.
-
-        ``depth`` is the recursion level (0 at the top-level call), threaded
-        through purely for log instrumentation: each reduce LLM call and each
-        tree-reduce split is logged at DEBUG with its depth, the group it is
-        working on (``i/N``), and a queued/call timing split — mirroring the
-        per-chunk visibility the map and judge phases already provide, so an
-        operator can see exactly which part of the (possibly multi-level)
-        synthesis is running and how much of the current level remains.
 
         If the reduce user message would exceed the token budget, the
         partials are split into budget-sized groups, each reduced to an
@@ -949,10 +939,6 @@ class Orchestrator:
         """
         system_message = build_reduce_system_message()
 
-        logger.debug(
-            "reduce depth=%d: synthesising %d partial(s)", depth, len(partials)
-        )
-
         def _fits(items: tuple[str, ...], table: CodingTrendTable | None) -> bool:
             user = build_reduce_user_message(
                 analyst_prompt=analyst_prompt,
@@ -964,34 +950,25 @@ class Orchestrator:
                 <= self._max_total_tokens
             )
 
-        # Base case: everything fits in one reduce call, or only one partial remains.
-        if len(partials) <= 1 or _fits(partials, trend_table):
-            user_message = build_reduce_user_message(
-                analyst_prompt=analyst_prompt,
-                partial_analyses=partials,
-                trend_table=trend_table,
-            )
-            timing = _SlotTiming()
-            with timed() as reduce_sw:
-                response = await self._bounded_complete(
-                    semaphore,
-                    system_message=system_message,
-                    user_message=user_message,
-                    tenant_id=tenant_id,
-                    response_model=str,
-                    deadline=deadline,
-                    timing=timing,
-                )
-            logger.debug(
-                "reduce depth=%d: single-call synthesis over %d partial(s) done "
-                "in %.2fs (queued=%.2fs call=%.2fs)",
-                depth,
-                len(partials),
-                reduce_sw.elapsed_seconds,
-                timing.queued_seconds,
-                timing.call_seconds,
+        async def _reduce_once(items: tuple[str, ...]) -> str:
+            """Synthesise ``items`` (with the trend table) in one reduce call."""
+            response = await self._bounded_complete(
+                semaphore,
+                system_message=system_message,
+                user_message=build_reduce_user_message(
+                    analyst_prompt=analyst_prompt,
+                    partial_analyses=items,
+                    trend_table=trend_table,
+                ),
+                tenant_id=tenant_id,
+                response_model=str,
+                deadline=deadline,
             )
             return response.structured
+
+        # Base case: everything fits in one reduce call, or only one partial remains.
+        if len(partials) <= 1 or _fits(partials, trend_table):
+            return await _reduce_once(partials)
 
         # Recursive case: group partials to budget, reduce each group, recurse.
         groups = self._group_partials_to_budget(
@@ -1002,72 +979,20 @@ class Orchestrator:
         # (every partial overflows on its own), we cannot shrink the partial
         # count further. Emit one reduce call over all partials to terminate.
         if all(len(g) == 1 for g in groups) and len(groups) == len(partials):
-            logger.debug(
-                "reduce depth=%d: %d partial(s) each overflow alone; convergence "
-                "safeguard emits one final reduce call over all of them",
-                depth,
-                len(partials),
-            )
-            user_message = build_reduce_user_message(
-                analyst_prompt=analyst_prompt,
-                partial_analyses=partials,
-                trend_table=trend_table,
-            )
-            timing = _SlotTiming()
-            with timed() as reduce_sw:
-                response = await self._bounded_complete(
-                    semaphore,
-                    system_message=system_message,
-                    user_message=user_message,
-                    tenant_id=tenant_id,
-                    response_model=str,
-                    deadline=deadline,
-                    timing=timing,
-                )
-            logger.debug(
-                "reduce depth=%d: safeguard synthesis over %d partial(s) done "
-                "in %.2fs (queued=%.2fs call=%.2fs)",
-                depth,
-                len(partials),
-                reduce_sw.elapsed_seconds,
-                timing.queued_seconds,
-                timing.call_seconds,
-            )
-            return response.structured
+            return await _reduce_once(partials)
 
         logger.debug(
-            "reduce depth=%d: %d partial(s) exceed the token budget -> %d group(s); "
-            "reducing each group, then recursing over the intermediates",
-            depth,
+            "reduce: %d partial(s) exceed the token budget; tree-reducing in "
+            "%d group(s)",
             len(partials),
             len(groups),
         )
-        intermediates: list[str] = []
-        for group_index, group in enumerate(groups, start=1):
-            logger.debug(
-                "reduce depth=%d: reducing group %d/%d (%d partial(s))",
-                depth,
-                group_index,
-                len(groups),
-                len(group),
+        intermediates = [
+            await self._reduce_partials(
+                analyst_prompt, group, None, tenant_id, deadline, semaphore
             )
-            intermediate = await self._reduce_partials(
-                analyst_prompt,
-                group,
-                None,
-                tenant_id,
-                deadline,
-                semaphore,
-                depth=depth + 1,
-            )
-            intermediates.append(intermediate)
-        logger.debug(
-            "reduce depth=%d: %d group(s) reduced to %d intermediate(s); "
-            "starting final reduce over the intermediates",
-            depth,
-            len(groups),
-            len(intermediates),
-        )
+            for group in groups
+        ]
         return await self._reduce_partials(
             analyst_prompt,
             tuple(intermediates),
@@ -1075,7 +1000,6 @@ class Orchestrator:
             tenant_id,
             deadline,
             semaphore,
-            depth=depth + 1,
         )
 
     def _group_partials_to_budget(
