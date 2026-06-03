@@ -17,6 +17,14 @@ from qfa.domain.models import TenantApiKey
 #: stay in lock-step — they live in different layers and cannot share code.
 LLM_RETRY_BUDGET_MULTIPLIER: float = 3.0
 
+DEFAULT_EMBEDDING_BATCH_SIZE = 100
+"""Default records-per-onnxruntime-batch for the embedder.
+
+Single source of truth shared by ``EmbeddingSettings.batch_size`` and the
+``qfa.adapters.embedding`` constructor/factory defaults, so the configurable
+default and the library default cannot silently drift apart.
+"""
+
 
 class LogSettings(BaseSettings):
     """Define settings for the logger."""
@@ -128,7 +136,7 @@ class EmbeddingSettings(BaseSettings):
     )
     intra_op_num_threads: int | None = None
     batch_size: int = Field(
-        default=100,
+        default=DEFAULT_EMBEDDING_BATCH_SIZE,
         ge=1,
         description=(
             "Records embedded per onnxruntime batch. The corpus is encoded in"

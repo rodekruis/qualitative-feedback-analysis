@@ -477,12 +477,15 @@ class Orchestrator:
             anonymized_records, mapping = self._anonymize_records(
                 request.feedback_records, anonymize
             )
-            if anonymize:
-                _, prompt_map = self._anonymizer.anonymize(request.prompt)
-                mapping = {**mapping, **prompt_map}
             anonymized_prompt = request.prompt
             if anonymize:
-                anonymized_prompt, _ = self._anonymizer.anonymize(request.prompt)
+                # Single pass over the prompt, capturing both the redacted
+                # text and its mapping (previously this ran Presidio twice —
+                # once for the mapping, once for the text).
+                anonymized_prompt, prompt_map = self._anonymizer.anonymize(
+                    request.prompt
+                )
+                mapping = {**mapping, **prompt_map}
         logger.info(
             "anonymisation: %d record(s) in %.2fs",
             len(request.feedback_records),

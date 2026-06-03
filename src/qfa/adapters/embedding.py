@@ -12,7 +12,7 @@ graph's output is turned into one dense vector per text:
 * ``e5`` — multilingual-E5 ONNX exports emit token-level
   ``last_hidden_state`` (shape ``(batch, seq, hidden)``); the adapter
   **mean-pools** it over the attention mask (``pooling="mean"``) and
-  prepends the ``query: `` prefix every E5 input requires.
+  prepends the ``"query: "`` prefix every E5 input requires.
 
 The *dimension* and *token cap* are per-artifact, not per-family, so they
 are separate knobs (``dense_dim`` / the builder's ``max_tokens``): both
@@ -45,6 +45,7 @@ from typing import Any
 import numpy as np
 
 from qfa.domain.ports import EmbeddingPort
+from qfa.settings import DEFAULT_EMBEDDING_BATCH_SIZE
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +101,8 @@ class OnnxEmbedder(EmbeddingPort):
         trust_remote_code: bool = False,
         custom_op_libraries: tuple[str, ...] = (),
         intra_op_num_threads: int | None = None,
-        batch_size: int = 100,
+        batch_size: int = DEFAULT_EMBEDDING_BATCH_SIZE,
+        max_tokens: int = _BGE_M3_MAX_TOKENS,
     ) -> None:
         """Construct the embedder and assert the required security flags.
 
@@ -137,6 +139,12 @@ class OnnxEmbedder(EmbeddingPort):
             Number of records encoded per ``session.run`` call. The corpus is
             embedded in sequential batches of this size to bound peak memory on
             large inputs. Must be ``>= 1``.
+        max_tokens : int
+            The tokenizer's truncation cap. Used only to detect and warn about
+            silently truncated inputs (a row whose attention-mask sum reaches
+            this cap was almost certainly cut off). Must match the
+            ``enable_truncation`` length the builder configured so the two stay
+            in lock-step.
 
         Raises
         ------
@@ -167,6 +175,7 @@ class OnnxEmbedder(EmbeddingPort):
         self._dense_dim = dense_dim
         self._intra_op_num_threads = intra_op_num_threads
         self._batch_size = batch_size
+        self._max_tokens = max_tokens
         logger.info(
             "OnnxEmbedder ready: path=%s revision=%s pooling=%s dim=%d"
             " threads=%s batch_size=%s",
@@ -224,6 +233,22 @@ class OnnxEmbedder(EmbeddingPort):
         input_ids = np.asarray(encoded["input_ids"])
         attention_mask = np.asarray(encoded["attention_mask"])
 
+        # Surface otherwise-silent truncation: the tokenizer caps inputs at
+        # self._max_tokens, so a row whose real-token count (its attention-mask
+        # sum) reaches the cap was almost certainly truncated and lost trailing
+        # content. Log only the count and the limit — never the text — per the
+        # content-free logging rule in docs/operations/observability.md.
+        truncated = int(
+            np.count_nonzero(attention_mask.sum(axis=1) >= self._max_tokens)
+        )
+        if truncated:
+            logger.warning(
+                "%d record(s) hit the %d-token limit and were truncated before "
+                "embedding",
+                truncated,
+                self._max_tokens,
+            )
+
         outputs = self._session.run(
             None, {"input_ids": input_ids, "attention_mask": attention_mask}
         )
@@ -254,7 +279,7 @@ def build_onnx_embedder(
     dense_dim: int,
     max_tokens: int | None = None,
     intra_op_num_threads: int | None = None,
-    batch_size: int = 100,
+    batch_size: int = DEFAULT_EMBEDDING_BATCH_SIZE,
 ) -> OnnxEmbedder:
     """Build an :class:`OnnxEmbedder` for a model family from a local artifact.
 
@@ -347,6 +372,7 @@ def build_onnx_embedder(
         custom_op_libraries=(),
         intra_op_num_threads=intra_op_num_threads,
         batch_size=batch_size,
+        max_tokens=effective_max_tokens,
     )
 
 
