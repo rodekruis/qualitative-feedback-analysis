@@ -432,7 +432,7 @@ class ApiAssignCodesRequest(ApiSingleInferenceRequestBase):
         "json_schema_extra": {"examples": _assign_codes_request_examples()},
     }
     coding_levels: ApiCodingLevels = Field(
-        description="Hierarchical coding framework. Each item in the list represents a separate coding dimension.",
+        description="Hierarchical coding framework.",
     )
 
     max_codes: int = Field(default=1, ge=1, le=50)
