@@ -27,6 +27,23 @@ Notes:
 
 - The mapping lives in memory for the request and is discarded when the orchestrator method returns.
 - The de-anonymise step runs over the serialised response — substitutions are textual, so the round-trip is a string replacement, not a structured walk.
+- The `analyze` flow retains `<PERSON_*>` placeholders in the output as a defense-in-depth guardrail (even if the LLM echoes a person placeholder back, the analyst never sees the underlying name). All other entity types are still restored.
+
+## Anonymisation helpers
+
+The orchestrator exposes two private helpers that every flow should use. They
+centralise the conditional logic and the JSON round-trip so new flows cannot
+forget them:
+
+| Helper | Purpose |
+|---|---|
+| `_anonymize_text(text, do_anonymize)` | Calls `AnonymizationPort.anonymize` when `do_anonymize` is `True`; returns the original text and an empty mapping otherwise. Callers never need to branch on `anonymize`. |
+| `_deanonymize_model(model, mapping)` | Serialises `model` to JSON, calls `AnonymizationPort.deanonymize`, and re-parses. Returns the model unchanged (no round-trip) when `mapping` is empty. Works with any `pydantic.BaseModel` subclass. |
+
+The `analyze` flow does not use `_deanonymize_model` because its result is a
+plain `str` (not a model) and it applies a filtered mapping that intentionally
+retains `<PERSON_*>` placeholders. See
+[ADR-014](../adr/014-anonymization-helpers.md) for the design rationale.
 
 ## Call context and usage tracking
 

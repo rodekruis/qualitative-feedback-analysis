@@ -143,6 +143,7 @@ _MINIMUM_ATTEMPT_WINDOW = 10.0
 _JUDGE_USER_MESSAGE = "."
 
 _AlignedItemT = TypeVar("_AlignedItemT")
+_BaseModelT = TypeVar("_BaseModelT", bound=BaseModel)
 
 
 class AnalyzeJudgeResult(BaseModel):
@@ -289,14 +290,10 @@ class Orchestrator:
             request.prompt, request.feedback_records
         )
 
-        anonymized_user_message = user_message
-        anonymized_prompt = request.prompt
-        anonymization_mapping: dict[str, str] = {}
-        if anonymize:
-            anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
-                user_message
-            )
-            anonymized_prompt, _ = self._anonymizer.anonymize(request.prompt)
+        anonymized_user_message, anonymization_mapping = self._anonymize_text(
+            user_message, anonymize
+        )
+        anonymized_prompt, _ = self._anonymize_text(request.prompt, anonymize)
 
         analyse_timeout = self._check_deadline_and_get_timeout(deadline)
         analyse_response = await self._llm.complete(
@@ -392,11 +389,9 @@ class Orchestrator:
             system_message += f"\nAdditional instructions: {request.prompt}"
 
         user_message = str(request.feedback_records)
-        anonymized_user_message = user_message
-        if anonymize:
-            anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
-                user_message
-            )
+        anonymized_user_message, anonymization_mapping = self._anonymize_text(
+            user_message, anonymize
+        )
 
         llm_completion = await self._llm.complete(
             system_message=system_message,
@@ -406,16 +401,9 @@ class Orchestrator:
             timeout=timeout,
         )
 
-        if anonymize:
-            return_model_as_string = llm_completion.structured.model_dump_json()
-            unanonymized_return_model_as_string = self._anonymizer.deanonymize(
-                return_model_as_string, anonymization_mapping
-            )
-            result = SummaryResultModel.model_validate_json(
-                unanonymized_return_model_as_string
-            )
-        else:
-            result = llm_completion.structured
+        result = self._deanonymize_model(
+            llm_completion.structured, anonymization_mapping
+        )
 
         # Guard against LLM returning a different number of summaries than records
         # submitted and replace model-provided IDs with authoritative input IDs.
@@ -494,11 +482,9 @@ class Orchestrator:
             for idx, record in enumerate(request.feedback_records, start=1)
         )
 
-        anonymized_user_message = user_message
-        if anonymize:
-            anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
-                user_message
-            )
+        anonymized_user_message, anonymization_mapping = self._anonymize_text(
+            user_message, anonymize
+        )
 
         timeout = self._check_deadline_and_get_timeout(deadline)
         response = await self._llm.complete(
@@ -510,9 +496,8 @@ class Orchestrator:
         )
         total_cost = response.cost
 
-        judge_user_message = anonymized_user_message if anonymize else user_message
         judge_system = _build_judge_system_message(
-            judge_user_message, response.structured.summary
+            anonymized_user_message, response.structured.summary
         )
 
         judge_timeout = self._check_deadline_and_get_timeout(deadline)
@@ -531,16 +516,7 @@ class Orchestrator:
             record.id for record in request.feedback_records
         )
 
-        if anonymize:
-            return_model_as_string = response.structured.model_dump_json()
-            unanonymized_return_model_as_string = self._anonymizer.deanonymize(
-                return_model_as_string, anonymization_mapping
-            )
-            return AggregateSummaryResultModel.model_validate_json(
-                unanonymized_return_model_as_string
-            )
-
-        return response.structured
+        return self._deanonymize_model(response.structured, anonymization_mapping)
 
     async def assign_codes(
         self,
@@ -724,11 +700,9 @@ class Orchestrator:
         system_message = _DEFAULT_SENSITIVITY_DETECTION_PROMPT
         user_message = str(request.feedback_records)
 
-        anonymized_user_message = user_message
-        if anonymize:
-            anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
-                user_message
-            )
+        anonymized_user_message, anonymization_mapping = self._anonymize_text(
+            user_message, anonymize
+        )
 
         response = await self._llm.complete(
             system_message=system_message,
@@ -738,15 +712,7 @@ class Orchestrator:
             timeout=timeout,
         )
 
-        structured = response.structured
-        if anonymize:
-            return_model_as_string = structured.model_dump_json()
-            unanonymized_return_model_as_string = self._anonymizer.deanonymize(
-                return_model_as_string, anonymization_mapping
-            )
-            structured = SensitivityAnalysisResultModelList.model_validate_json(
-                unanonymized_return_model_as_string
-            )
+        structured = self._deanonymize_model(response.structured, anonymization_mapping)
 
         aligned_results = tuple(
             SensitivityAnalysisResultModel(
@@ -813,9 +779,7 @@ class Orchestrator:
         self._check_coding_deadline(deadline)
         self._check_token_limit(system_message, user_message)
 
-        anonymized_user_message = user_message
-        if anonymize:
-            anonymized_user_message, _ = self._anonymizer.anonymize(user_message)
+        anonymized_user_message, _ = self._anonymize_text(user_message, anonymize)
 
         response = await self._llm.complete(
             system_message=system_message,
@@ -843,8 +807,7 @@ class Orchestrator:
         )
         self._check_coding_deadline(deadline)
         self._check_token_limit(system_message, user_message)
-        if anonymize:
-            user_message, _ = self._anonymizer.anonymize(user_message)
+        user_message, _ = self._anonymize_text(user_message, anonymize)
         response = await self._llm.complete(
             system_message=system_message,
             user_message=user_message,
@@ -854,6 +817,37 @@ class Orchestrator:
         if not 0.0 <= response.structured.score <= 1.0:
             raise AnalysisError("LLM judge returned score outside 0.0-1.0")
         return response.structured
+
+    # ------------------------------------------------------------------
+    # Anonymization helpers
+    # ------------------------------------------------------------------
+
+    def _anonymize_text(
+        self, text: str, do_anonymize: bool
+    ) -> tuple[str, dict[str, str]]:
+        """Anonymize ``text`` when ``do_anonymize`` is ``True``; return it unchanged otherwise.
+
+        Returns a ``(possibly_anonymized_text, mapping)`` pair. When not
+        anonymising, the mapping is empty so callers can pass it directly
+        to ``_deanonymize_model`` without any extra branching.
+        """
+        if not do_anonymize:
+            return text, {}
+        return self._anonymizer.anonymize(text)
+
+    def _deanonymize_model(
+        self, model: _BaseModelT, mapping: dict[str, str]
+    ) -> _BaseModelT:
+        """Restore PII in ``model`` by serialising to JSON, substituting placeholders, then re-parsing.
+
+        When ``mapping`` is empty (i.e. anonymisation was not applied), the
+        model is returned unchanged to avoid an unnecessary round-trip.
+        """
+        if not mapping:
+            return model
+        json_str = model.model_dump_json()
+        restored_str = self._anonymizer.deanonymize(json_str, mapping)
+        return type(model).model_validate_json(restored_str)  # type: ignore[return-value]
 
     # ------------------------------------------------------------------
     # Token estimation

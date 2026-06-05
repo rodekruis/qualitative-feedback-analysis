@@ -1051,3 +1051,113 @@ class TestAnalyzeAnonymizationOrdering:
 
         judge_system = fake_llm.calls[1]["system_message"]
         assert "What themes about Alice?" in judge_system
+
+
+class TestAnonymizationHelpers:
+    """Unit tests for the ``_anonymize_text`` and ``_deanonymize_model`` helpers."""
+
+    def _make_orch(self, settings, anonymizer):
+        return Orchestrator(
+            llm=FakeLLMPort(),
+            anonymizer=anonymizer,
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+    # ------------------------------------------------------------------
+    # _anonymize_text
+    # ------------------------------------------------------------------
+
+    def test_anonymize_text_passthrough_when_disabled(self, settings):
+        """``_anonymize_text(text, False)`` returns text unchanged and an empty mapping."""
+        orch = self._make_orch(settings, FakeAnonymizer())
+        anon_text, mapping = orch._anonymize_text("Hello Alice", do_anonymize=False)
+        assert anon_text == "Hello Alice"
+        assert mapping == {}
+
+    def test_anonymize_text_delegates_to_port_when_enabled(self, settings):
+        """``_anonymize_text(text, True)`` calls ``AnonymizationPort.anonymize``."""
+
+        class CapturingAnonymizer(AnonymizationPort):
+            def __init__(self):
+                self.calls = []
+
+            def anonymize(self, text):
+                self.calls.append(text)
+                return text.replace("Alice", "<PERSON_0>"), {"<PERSON_0>": "Alice"}
+
+            def deanonymize(self, text, mapping):
+                return text
+
+        capturing = CapturingAnonymizer()
+        orch = self._make_orch(settings, capturing)
+        anon_text, mapping = orch._anonymize_text("Alice was here", do_anonymize=True)
+
+        assert anon_text == "<PERSON_0> was here"
+        assert mapping == {"<PERSON_0>": "Alice"}
+        assert capturing.calls == ["Alice was here"]
+
+    # ------------------------------------------------------------------
+    # _deanonymize_model
+    # ------------------------------------------------------------------
+
+    def test_deanonymize_model_passthrough_when_mapping_empty(self, settings):
+        """Empty mapping causes ``_deanonymize_model`` to return the model unchanged (no round-trip)."""
+        orch = self._make_orch(settings, FakeAnonymizer())
+        original = _make_summary_result(title="Original title", summary="- Point A")
+        result = orch._deanonymize_model(original, mapping={})
+        assert result is original  # exact same object — no copy made
+
+    def test_deanonymize_model_restores_placeholders(self, settings):
+        """Placeholders in string fields are replaced using the provided mapping."""
+
+        class SubstitutingAnonymizer(AnonymizationPort):
+            def anonymize(self, text):
+                return text, {}
+
+            def deanonymize(self, text, mapping):
+                for placeholder, original in mapping.items():
+                    text = text.replace(placeholder, original)
+                return text
+
+        orch = self._make_orch(settings, SubstitutingAnonymizer())
+        model = _make_summary_result(
+            title="Report from <LOCATION_0>",
+            summary="- <PERSON_0> raised concerns",
+        )
+        mapping = {"<LOCATION_0>": "Nairobi", "<PERSON_0>": "Alice"}
+        result = orch._deanonymize_model(model, mapping)
+
+        assert result.feedback_record_summaries[0].title == "Report from Nairobi"
+        assert result.feedback_record_summaries[0].summary == "- Alice raised concerns"
+
+    def test_deanonymize_model_preserves_type(self, settings):
+        """The returned model is the same Pydantic type as the input."""
+        orch = self._make_orch(settings, FakeAnonymizer())
+        model = _make_summary_result()
+        result = orch._deanonymize_model(model, mapping={"<LOCATION_0>": "Nairobi"})
+        assert type(result) is SummaryResultModel
+
+    def test_deanonymize_model_aggregate_summary(self, settings):
+        """``_deanonymize_model`` works correctly with ``AggregateSummaryResultModel``."""
+
+        class SubstitutingAnonymizer(AnonymizationPort):
+            def anonymize(self, text):
+                return text, {}
+
+            def deanonymize(self, text, mapping):
+                for placeholder, original in mapping.items():
+                    text = text.replace(placeholder, original)
+                return text
+
+        orch = self._make_orch(settings, SubstitutingAnonymizer())
+        model = _make_aggregate_summary_result(
+            title="Themes in <LOCATION_0>",
+            summary="- <PERSON_0> reported issues",
+        )
+        mapping = {"<LOCATION_0>": "Kampala", "<PERSON_0>": "Bob"}
+        result = orch._deanonymize_model(model, mapping)
+
+        assert result.title == "Themes in Kampala"
+        assert "Bob" in result.summary
