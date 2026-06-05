@@ -198,11 +198,11 @@ async def summarize(
     orchestrator: Orchestrator = Depends(get_orchestrator),
     _scope: CallContext = Depends(call_scope_for(Operation.SUMMARIZE)),
 ) -> ApiSummarizeResponse:
-    """Summarize each submitted feedback record individually.
+    """Summarize submitted feedback record.
 
     Parameters
     ----------
-    body : SummarizeRequest
+    body : ApiSummarizeRequest
         The request body containing feedback records and summarization options.
     request : Request
         The incoming HTTP request.
@@ -213,7 +213,7 @@ async def summarize(
 
     Returns
     -------
-    SummarizeResponse
+    ApiSummarizeResponse
         The per-feedback-record titles and summaries.
     """
     deadline = datetime.now(UTC) + timedelta(seconds=120)
