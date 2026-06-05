@@ -343,7 +343,6 @@ class ApiSummarizeRequest(ApiSingleInferenceRequestBase):
                             "coding_level_3": "Waiting times",
                         },
                     },
-                    "output_language": "English",
                 },
             ],
         },
