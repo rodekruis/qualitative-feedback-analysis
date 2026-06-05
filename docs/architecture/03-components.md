@@ -39,14 +39,17 @@ The tracking decorator is the only place hex's "stack adapters at the compositio
 
 ## The orchestrator
 
-{py:class}`~qfa.services.orchestrator.Orchestrator` is one class with four async methods, each backing one HTTP endpoint:
+{py:class}`~qfa.services.orchestrator.Orchestrator` is one class with five async methods, each backing one HTTP endpoint:
 
 | Method | Endpoint | What it does |
 |---|---|---|
-| `analyze` | `POST /v1/analyze` | One LLM call. Free-text summary of themes across submitted records. |
+| `analyze_bulk` | `POST /v1/analyze-bulk` | One LLM call. Bulk free-text summary of themes across submitted records. |
+| `summarize_bulk` | `POST /v1/summarize-bulk` | Two LLM calls (summary + judge). Single bulk summary with a calibrated score. |
 | `summarize` | `POST /v1/summarize` | One LLM call. Per-record summaries with a self-evaluated quality score. |
-| `summarize_aggregate` | `POST /v1/summarize-aggregate` | Two LLM calls (summary + judge). Single aggregate summary with a calibrated score. |
 | `assign_codes` | `POST /v1/assign-codes` | Multiple LLM calls per record: pick + judge at each level of a hierarchical coding framework. |
+| `detect_sensitive_content` | `POST /v1/detect-sensitive` | One LLM call per record. Detects sensitive content and categorizes sensitivity types. |
+
+`/v1/summarize`, `/v1/assign-codes`, and `/v1/detect-sensitive` are non-bulk endpoints with per-record outputs. `/v1/analyze-bulk` and `/v1/summarize-bulk` are bulk endpoints that return one aggregate result per request.
 
 Each method is pure use-case logic — no scope or correlation plumbing. `call_scope` is entered by a FastAPI dependency declared on the route (`Depends(call_scope_for(Operation.X))`), so by the time an orchestrator method runs `current_call_context` is already set. See [Cross-cutting concerns](04-crosscutting.md) for the full picture.
 

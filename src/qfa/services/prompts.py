@@ -140,7 +140,7 @@ def build_analyze_user_message(
     record_blocks: list[str] = []
     for record in feedback_records:
         rec_id_attr = _xml_quoteattr(record.id)
-        rec_text = escape_for_tag_envelope(record.text)
+        rec_text = escape_for_tag_envelope(record.content)
         metadata_lines = "\n".join(
             f"      {escape_for_tag_envelope(str(k))}={escape_for_tag_envelope(str(v))}"
             for k, v in record.metadata.items()

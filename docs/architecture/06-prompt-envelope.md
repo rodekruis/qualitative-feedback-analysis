@@ -1,6 +1,6 @@
 # Prompt envelope and guardrails
 
-How `POST /v1/analyze` structures its LLM prompts to separate trusted
+How `POST /v1/analyze-bulk` structures its LLM prompts to separate trusted
 instructions from untrusted feedback data.
 
 ## Three-constant system message
@@ -93,9 +93,9 @@ parsed by Pydantic.
 
 The full judge prompt (source records, analyst question, analysis to
 score, and instructions) is sent in the **system message**; the user
-message is a constant `"."` placeholder. When `anonymize=True`, both
-the source-text envelope and the analyst question fed to the judge are
-anonymised first, so no raw PII reaches the judge LLM.
+message is a constant `"."` placeholder. Both the source-text envelope and
+the analyst question fed to the judge are anonymised first, so no raw PII
+reaches the judge LLM.
 
 The judge call is tracked as a separate row in `llm_calls` (same `call_id`
 as the analysis call, same `operation=analyze`). Analysts see the result as

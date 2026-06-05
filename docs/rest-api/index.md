@@ -15,24 +15,23 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 
 | Method | Path | Purpose |
 |---|---|---|
-| `POST` | `/v1/analyze` | Free-text analysis of submitted feedback records |
+| `POST` | `/v1/analyze-bulk` | Bulk free-text analysis over submitted feedback records |
 | `POST` | `/v1/summarize` | Per-record summaries with quality scores |
-| `POST` | `/v1/summarize-aggregate` | Single aggregate summary with judge score |
+| `POST` | `/v1/summarize-bulk` | Single bulk summary with judge score |
 | `POST` | `/v1/assign-codes` | Hierarchical code assignment |
 | `GET` | `/v1/usage` | Aggregate stats for the caller's tenant |
 | `GET` | `/v1/usage/all/by-tenant` | Cross-tenant stats, tenants top-level with per-operation nested (requires `is_superuser=true`) |
 | `GET` | `/v1/usage/all/by-operation` | Cross-tenant stats, operations top-level with per-tenant nested (requires `is_superuser=true`) |
 | `GET` | `/v1/health` | Liveness probe; no auth |
 
-## POST /v1/analyze — field reference
+## POST /v1/analyze-bulk — field reference
 
 ### Request
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `feedback_records` | list | — | Non-empty list of `{id, text, metadata?}` records. |
+| `feedback_records` | list | — | Non-empty list of `{id, content, metadata?}` records. |
 | `prompt` | string | — | Analyst question (1–4000 chars). |
-| `anonymize` | bool | `true` | Anonymize record text before the LLM call. |
 | `mode` | `"single_pass"` | `"single_pass"` | Analysis mode. Only `single_pass` is supported; other values → 422. Large-corpus analysis is deferred to [#124](https://github.com/rodekruis/qualitative-feedback-analysis/issues/124). |
 
 ### Response (200 OK)
@@ -44,13 +43,14 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 | `uncertainty_explanation` | string | Natural-language judge reasoning, or a constant unavailable message when the judge failed. |
 | `feedback_record_count` | int | Number of records submitted. |
 | `request_id` | string | Canonical UUID matching the `X-Request-ID` response header. |
-| `used_anonymization` | bool | Whether anonymization was applied. |
+
+Per-record inference endpoints (`/v1/summarize`, `/v1/assign-codes`, `/v1/detect-sensitive`) accept a single `feedback_record` and return one result object, unlike bulk endpoints that accept multiple records and return aggregated output.
 
 ## Usage endpoint response shape
 
 All usage endpoints return aggregated stats in two parallel views:
 
-- **Per REST API call** (top-level fields): each distinct call to one of the analysis endpoints (`/v1/analyze`, `/v1/summarize`, `/v1/summarize-aggregate`, `/v1/assign-codes`) counts as one. An endpoint like `/v1/assign-codes` that fans out to several LLM calls internally still shows up as a single entry here.
+- **Per REST API call** (top-level fields): each distinct call to one of the analysis endpoints (`/v1/analyze-bulk`, `/v1/summarize`, `/v1/summarize-bulk`, `/v1/assign-codes`) counts as one. An endpoint like `/v1/assign-codes` that fans out to several LLM calls internally still shows up as a single entry here.
 - **Per LLM call** (`llm_call_stats`): each individual LLM provider call counts as one. Use this view when you want to see raw provider traffic — for example to compute the LLM-calls-per-API-call ratio (`llm_call_stats.total_calls / total_calls`).
 
 `GET /v1/usage` and `GET /v1/usage/all/by-tenant` carry an `operations` breakdown under each tenant block, sorted by `total_cost_usd` desc (ties: operation asc), with empty operations omitted. `GET /v1/usage/all/by-operation` flips the hierarchy: operations are top-level, each carrying a nested `tenants` breakdown (sorted by `total_cost_usd` desc, ties broken by `tenant_id` asc). Every block — at any level — carries its own `llm_call_stats`.
@@ -61,10 +61,10 @@ Full per-field semantics (including how `failed_calls` is counted for multi-LLM-
 
 ## curl examples
 
-A minimal `analyze` call:
+A minimal `analyze-bulk` call:
 
 ```bash
-curl -X POST http://localhost:8000/v1/analyze \
+curl -X POST http://localhost:8000/v1/analyze-bulk \
   -H "Authorization: Bearer $LOCAL_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -84,8 +84,7 @@ Example 200 response:
   "quality_score": 0.82,
   "uncertainty_explanation": "Coverage is high; all themes supported by at least two records.",
   "feedback_record_count": 1,
-  "request_id": "550e8400-e29b-41d4-a716-446655440000",
-  "used_anonymization": true
+  "request_id": "550e8400-e29b-41d4-a716-446655440000"
 }
 ```
 

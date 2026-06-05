@@ -44,7 +44,7 @@ class TestAnalyzeRecordsRow:
     async def test_post_analyze_records_one_ok_row_with_operation_analyze(
         self, e2e_client, e2e_fake_llm, e2e_engine
     ):
-        """A successful /v1/analyze persists two ``ok`` rows — analyse + judge.
+        """A successful /v1/analyze-bulk persists two ``ok`` rows.
 
         The refactored Orchestrator.analyze makes two LLM calls: one for the
         main analysis (response_model=str) and one for the judge
@@ -62,11 +62,10 @@ class TestAnalyzeRecordsRow:
         )
 
         resp = await e2e_client.post(
-            "/v1/analyze",
+            "/v1/analyze-bulk",
             json={
                 "feedback_records": [{"id": "d1", "content": "hello"}],
                 "prompt": "summarize",
-                "anonymize": False,
             },
             headers={"Authorization": f"Bearer {E2E_API_KEY}"},
         )
@@ -110,11 +109,10 @@ class TestRequestIdEqualsCallId:
         )
 
         resp = await e2e_client.post(
-            "/v1/analyze",
+            "/v1/analyze-bulk",
             json={
                 "feedback_records": [{"id": "d1", "content": "hello"}],
                 "prompt": "summarize",
-                "anonymize": False,
             },
             headers={"Authorization": f"Bearer {E2E_API_KEY}"},
         )
@@ -141,7 +139,7 @@ class TestRequestIdEqualsCallId:
         """
         from uuid import UUID
 
-        # /v1/summarize-aggregate fans out into 2 LLM calls: the aggregate
+        # /v1/summarize-bulk fans out into 2 LLM calls: the aggregate
         # summary itself, then a judge call that scores the summary as a
         # plain float string. Queue both.
         e2e_fake_llm.queue_response(
@@ -152,7 +150,7 @@ class TestRequestIdEqualsCallId:
         e2e_fake_llm.queue_response(_ok(text="0.9"))
 
         resp = await e2e_client.post(
-            "/v1/summarize-aggregate",
+            "/v1/summarize-bulk",
             json={
                 "feedback_records": [
                     {
@@ -167,8 +165,6 @@ class TestRequestIdEqualsCallId:
                         },
                     }
                 ],
-                "prompt": "summarize then aggregate",
-                "anonymize": False,
             },
             headers={"Authorization": f"Bearer {E2E_API_KEY}"},
         )
@@ -176,7 +172,7 @@ class TestRequestIdEqualsCallId:
 
         header_uuid = UUID(resp.headers["x-request-id"])
         rows = await _fetch_rows(e2e_engine)
-        assert len(rows) >= 2, "expected >=2 LLM calls for summarize-aggregate"
+        assert len(rows) >= 2, "expected >=2 LLM calls for summarize-bulk"
         assert {r.call_id for r in rows} == {header_uuid}
 
 
@@ -187,11 +183,10 @@ class TestAnalyzeFailureRecordsRow:
         e2e_fake_llm.queue_failure(LLMError("boom"))
 
         resp = await e2e_client.post(
-            "/v1/analyze",
+            "/v1/analyze-bulk",
             json={
                 "feedback_records": [{"id": "d1", "content": "hello"}],
                 "prompt": "summarize",
-                "anonymize": False,
             },
             headers={"Authorization": f"Bearer {E2E_API_KEY}"},
         )
@@ -219,14 +214,16 @@ class TestAssignCodesRecordsMultipleRows:
         # type/category/code path it issues 6 LLM calls in this order:
         # pick-Types, judge-Type, pick-Categories, judge-Category,
         # pick-Codes, judge-Code.
-        coding_framework = {
+        coding_levels = {
             "root_codes": [
                 {
                     "name": "Type A",
                     "children": [
                         {
                             "name": "Cat A1",
-                            "children": [{"name": "Code A1.1", "children": []}],
+                            "children": [
+                                {"name": "Code A1.1", "children": []},
+                            ],
                         }
                     ],
                 }
@@ -241,8 +238,8 @@ class TestAssignCodesRecordsMultipleRows:
         resp = await e2e_client.post(
             "/v1/assign-codes",
             json={
-                "coding_framework": coding_framework,
-                "feedback_records": [{"id": "f1", "content": "some feedback text"}],
+                "coding_levels": coding_levels,
+                "feedback_record": {"id": "f1", "content": "some feedback text"},
                 "max_codes": 5,
             },
             headers={"Authorization": f"Bearer {E2E_API_KEY}"},

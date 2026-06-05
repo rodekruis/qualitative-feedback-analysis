@@ -1,6 +1,5 @@
 """API route handlers for the feedback analysis backend."""
 
-import re
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Request
@@ -12,79 +11,57 @@ from qfa.api.dependencies import (
     get_orchestrator,
 )
 from qfa.api.schemas import (
-    ApiAggregateSummary,
+    ApiAnalyzeBulkResponse,
     ApiAnalyzeRequest,
-    ApiAnalyzeResponse,
     ApiAssignCodesRequest,
     ApiAssignCodesResponse,
     ApiAssignedCode,
-    ApiCodedFeedbackRecord,
-    ApiCodingLevels,
+    ApiCodingNode,
     ApiDetectSensitiveRequest,
     ApiDetectSensitiveResponse,
-    ApiFeedbackItemSensitivityRating,
-    ApiFeedbackRecordSummary,
     ApiHealthResponse,
-    ApiSummarizeAggregateResponse,
+    ApiSummarizeBulkRequest,
+    ApiSummarizeBulkResponse,
     ApiSummarizeRequest,
     ApiSummarizeResponse,
 )
 from qfa.domain.models import (
     AnalysisRequestModel,
     CodingAssignmentRequestModel,
+    CodingLevels,
+    CodingNode,
     FeedbackRecordModel,
     SensitivityAnalysisRequestModel,
+    SingleSummaryRequestModel,
+    SummaryRequestModel,
     TenantApiKey,
-)
-from qfa.domain.models import (
-    SummaryRequestModel as DomainSummaryRequest,
 )
 from qfa.domain.usage_models import CallContext, Operation
 from qfa.services.orchestrator import Orchestrator
 
+
+def _to_domain_coding_node(node: ApiCodingNode) -> CodingNode:
+    return CodingNode(
+        name=node.name, children=[_to_domain_coding_node(c) for c in node.children]
+    )
+
+
 router = APIRouter()
 
 
-def _code_id_part(name: str) -> str:
-    """Create a stable code-id segment from a coding name."""
-    normalized = re.sub(r"[^a-zA-Z0-9]+", "-", name.strip().lower()).strip("-")
-    return normalized or "code"
-
-
-def _to_legacy_coding_framework(coding_framework: ApiCodingLevels) -> dict[str, object]:
-    """Adapt validated API coding levels to legacy orchestrator structure."""
-    types: list[dict[str, object]] = []
-    for type_node in coding_framework.root_codes:
-        categories: list[dict[str, object]] = []
-        for category_node in type_node.children:
-            codes: list[dict[str, str]] = []
-            for code_node in category_node.children:
-                code_id = ":".join(
-                    (
-                        _code_id_part(type_node.name),
-                        _code_id_part(category_node.name),
-                        _code_id_part(code_node.name),
-                    )
-                )
-                codes.append({"code_id": code_id, "name": code_node.name})
-            categories.append({"name": category_node.name, "codes": codes})
-        types.append({"name": type_node.name, "categories": categories})
-    return {"types": types}
-
-
 @router.post(
-    "/v1/analyze",
-    response_model=ApiAnalyzeResponse,
+    "/v1/analyze-bulk",
+    response_model=ApiAnalyzeBulkResponse,
     status_code=200,
-    tags=["Inference"],
+    tags=["Bulk Inference"],
 )
-async def analyze(
+async def analyze_bulk(
     body: ApiAnalyzeRequest,
     request: Request,
     tenant: TenantApiKey = Depends(authenticate_request),
     orchestrator: Orchestrator = Depends(get_orchestrator),
     _scope: CallContext = Depends(call_scope_for(Operation.ANALYZE)),
-) -> ApiAnalyzeResponse:
+) -> ApiAnalyzeBulkResponse:
     """Analyze a batch of feedback records for trends and themes.
 
     The analyst prompt in ``body.prompt`` is wrapped in a structural
@@ -129,7 +106,7 @@ async def analyze(
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
     domain_feedback_records = tuple(
-        FeedbackRecordModel(id=doc.id, text=doc.content, metadata=doc.metadata)
+        FeedbackRecordModel(id=doc.id, content=doc.content, metadata=doc.metadata)
         for doc in body.feedback_records
     )
 
@@ -140,17 +117,71 @@ async def analyze(
         mode=body.mode,
     )
 
-    result = await orchestrator.analyze(
-        domain_request, deadline, anonymize=body.anonymize
-    )
+    result = await orchestrator.analyze_bulk(domain_request, deadline)
 
-    return ApiAnalyzeResponse(
+    return ApiAnalyzeBulkResponse(
         analysis=result.result,
         quality_score=result.quality_score,
         uncertainty_explanation=result.uncertainty_explanation,
         feedback_record_count=len(body.feedback_records),
         request_id=request.state.request_id,
-        used_anonymization=body.anonymize,
+    )
+
+
+@router.post(
+    "/v1/summarize-bulk",
+    response_model=ApiSummarizeBulkResponse,
+    status_code=200,
+    tags=["Bulk Inference"],
+)
+async def summarize_bulk(
+    body: ApiSummarizeBulkRequest,
+    request: Request,
+    tenant: TenantApiKey = Depends(authenticate_request),
+    orchestrator: Orchestrator = Depends(get_orchestrator),
+    _scope: CallContext = Depends(call_scope_for(Operation.SUMMARIZE_AGGREGATE)),
+) -> ApiSummarizeBulkResponse:
+    """Summarize all submitted feedback records as a single aggregate summary.
+
+    Parameters
+    ----------
+    body : ApiSummarizeBulkRequest
+        The request body containing feedback records and summarization options.
+    request : Request
+        The incoming HTTP request.
+    tenant : TenantApiKey
+        The authenticated tenant, injected via dependency.
+    orchestrator : Orchestrator
+        The orchestrator service, injected via dependency.
+
+    Returns
+    -------
+    ApiSummarizeBulkResponse
+        A single summary with themes ordered by frequency across all feedback records.
+    """
+    deadline = datetime.now(UTC) + timedelta(seconds=120)
+
+    feedback_records = tuple(
+        FeedbackRecordModel(
+            id=record.id,
+            content=record.content,
+            metadata=record.metadata,
+        )
+        for record in body.feedback_records
+    )
+    domain_request = SummaryRequestModel(
+        feedback_records=feedback_records,
+        output_language=body.output_language,
+        tenant_id=tenant.tenant_id,
+    )
+
+    result = await orchestrator.summarize_bulk(domain_request, deadline)
+
+    return ApiSummarizeBulkResponse(
+        ids=list(result.ids),
+        title=result.title,
+        summary=result.summary,
+        quality_score=result.quality_score,
     )
 
 
@@ -167,11 +198,11 @@ async def summarize(
     orchestrator: Orchestrator = Depends(get_orchestrator),
     _scope: CallContext = Depends(call_scope_for(Operation.SUMMARIZE)),
 ) -> ApiSummarizeResponse:
-    """Summarize each submitted feedback record individually.
+    """Summarize submitted feedback record.
 
     Parameters
     ----------
-    body : SummarizeRequest
+    body : ApiSummarizeRequest
         The request body containing feedback records and summarization options.
     request : Request
         The incoming HTTP request.
@@ -182,43 +213,30 @@ async def summarize(
 
     Returns
     -------
-    SummarizeResponse
+    ApiSummarizeResponse
         The per-feedback-record titles and summaries.
     """
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
-    feedback_records = tuple(
-        FeedbackRecordModel(
-            id=record.id,
-            text=record.content,
-            metadata=record.metadata,
-        )
-        for record in body.feedback_records
-    )
-    domain_request = DomainSummaryRequest(
-        feedback_records=feedback_records,
-        output_language=body.output_language,
-        prompt=body.prompt,
+    domain_request = SingleSummaryRequestModel(
+        feedback_record=FeedbackRecordModel(
+            id=body.feedback_record.id,
+            content=body.feedback_record.content,
+            metadata=body.feedback_record.metadata,
+        ),
         tenant_id=tenant.tenant_id,
     )
 
     result = await orchestrator.summarize(
         domain_request,
         deadline,
-        anonymize=body.anonymize,
     )
 
     return ApiSummarizeResponse(
-        summaries=[
-            ApiFeedbackRecordSummary(
-                id=summary.id,
-                title=summary.title,
-                summary=summary.summary,
-                quality_score=summary.quality_score,
-            )
-            for summary in result.feedback_record_summaries
-        ],
-        used_anonymization=body.anonymize,
+        id=result.id,
+        title=result.title,
+        summary=result.summary,
+        quality_score=result.quality_score,
     )
 
 
@@ -237,103 +255,38 @@ async def assign_codes(
     """Assign codes via iterative LLM picks at each level of the framework."""
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
-    domain_feedback_records = tuple(
-        FeedbackRecordModel(id=record.id, text=record.content, metadata={})
-        for record in body.feedback_records
-    )
     domain_request = CodingAssignmentRequestModel(
-        feedback_records=domain_feedback_records,
-        coding_framework=_to_legacy_coding_framework(body.coding_framework),
+        feedback_record=FeedbackRecordModel(
+            id=body.feedback_record.id,
+            content=body.feedback_record.content,
+            metadata=body.feedback_record.metadata,
+        ),
+        coding_levels=CodingLevels(
+            root_codes=[
+                _to_domain_coding_node(n) for n in body.coding_levels.root_codes
+            ]
+        ),
         max_codes=body.max_codes,
         confidence_threshold=body.confidence_threshold,
         tenant_id=tenant.tenant_id,
     )
 
-    result = await orchestrator.assign_codes(
-        domain_request, deadline, anonymize=body.anonymize
-    )
+    result = await orchestrator.assign_codes(domain_request, deadline)
+    coded = result.coded_feedback_records[0]
 
     return ApiAssignCodesResponse(
-        coded_feedback_records=[
-            ApiCodedFeedbackRecord(
-                feedback_record_id=coded.feedback_record_id,
-                assigned_codes=[
-                    ApiAssignedCode(
-                        code_id=assigned.code_id,
-                        code_label=assigned.code_label,
-                        confidence_type=assigned.confidence_type,
-                        confidence_category=assigned.confidence_category,
-                        confidence_code=assigned.confidence_code,
-                        confidence_aggregate=assigned.confidence_aggregate,
-                        explanation=assigned.explanation,
-                    )
-                    for assigned in coded.assigned_codes
-                ],
+        assigned_codes=[
+            ApiAssignedCode(
+                code_id=assigned.code_id,
+                code_label=assigned.code_label,
+                confidence_type=assigned.confidence_type,
+                confidence_category=assigned.confidence_category,
+                confidence_code=assigned.confidence_code,
+                confidence_aggregate=assigned.confidence_aggregate,
+                explanation=assigned.explanation,
             )
-            for coded in result.coded_feedback_records
+            for assigned in coded.assigned_codes
         ],
-    )
-
-
-@router.post(
-    "/v1/summarize-aggregate",
-    response_model=ApiSummarizeAggregateResponse,
-    status_code=200,
-    tags=["Inference"],
-)
-async def summarize_aggregate(
-    body: ApiSummarizeRequest,
-    request: Request,
-    tenant: TenantApiKey = Depends(authenticate_request),
-    orchestrator: Orchestrator = Depends(get_orchestrator),
-    _scope: CallContext = Depends(call_scope_for(Operation.SUMMARIZE_AGGREGATE)),
-) -> ApiSummarizeAggregateResponse:
-    """Summarize all submitted feedback records as a single aggregate summary.
-
-    Parameters
-    ----------
-    body : SummarizeRequest
-        The request body containing feedback records and summarization options.
-    request : Request
-        The incoming HTTP request.
-    tenant : TenantApiKey
-        The authenticated tenant, injected via dependency.
-    orchestrator : Orchestrator
-        The orchestrator service, injected via dependency.
-
-    Returns
-    -------
-    SummarizeAggregateResponse
-        A single summary with themes ordered by frequency across all feedback records.
-    """
-    deadline = datetime.now(UTC) + timedelta(seconds=120)
-
-    feedback_records = tuple(
-        FeedbackRecordModel(
-            id=record.id,
-            text=record.content,
-            metadata=record.metadata,
-        )
-        for record in body.feedback_records
-    )
-    domain_request = DomainSummaryRequest(
-        feedback_records=feedback_records,
-        output_language=body.output_language,
-        prompt=body.prompt,
-        tenant_id=tenant.tenant_id,
-    )
-
-    result = await orchestrator.summarize_aggregate(
-        domain_request, deadline, anonymize=body.anonymize
-    )
-
-    return ApiSummarizeAggregateResponse(
-        summary=ApiAggregateSummary(
-            ids=list(result.ids),
-            title=result.title,
-            summary=result.summary,
-            quality_score=result.quality_score,
-        )
     )
 
 
@@ -372,41 +325,22 @@ async def detect_sensitive(
 
     result = await orchestrator.detect_sensitive_content(
         SensitivityAnalysisRequestModel(
-            feedback_records=tuple(
-                FeedbackRecordModel(
-                    id=record.id, text=record.content, metadata=record.metadata
-                )
-                for record in body.feedback_records
+            feedback_record=FeedbackRecordModel(
+                id=body.feedback_record.id,
+                content=body.feedback_record.content,
+                metadata=body.feedback_record.metadata,
             ),
             tenant_id=tenant.tenant_id,
         ),
         deadline,
-        anonymize=body.anonymize,
     )
 
     return ApiDetectSensitiveResponse(
-        ratings=[
-            ApiFeedbackItemSensitivityRating(
-                id=feedback_item.id,
-                is_sensitive=rating.is_sensitive,
-                explanation=rating.explanation,
-                sensitivity_types=[
-                    sensitivity_type.value
-                    for sensitivity_type in rating.sensitivity_types
-                ],
-            )
-            for feedback_item, rating in zip(
-                body.feedback_records, result.results, strict=False
-            )
-        ]
+        id=result.feedback_record_id,
+        is_sensitive=result.is_sensitive,
+        explanation=result.explanation,
+        sensitivity_types=[st.value for st in result.sensitivity_types],
     )
-
-
-@router.post("/v1/test-print", status_code=200, tags=["Default"])
-async def test_print(body: dict[str, object]) -> dict[str, str]:
-    """Accept any dict payload and print it for testing."""
-    print(body)
-    return {"status": "ok"}
 
 
 @router.get(
