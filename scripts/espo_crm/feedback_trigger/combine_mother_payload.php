@@ -10,6 +10,5 @@ $motherPayload = string\concatenate(
     '"coding_framework": {"root_codes": ', $$codesString, '}, ',
     '"max_codes": 10, ',
     '"confidence_threshold": 0.7, ',
-    '"anonymize": true ',
     '}'
 );
