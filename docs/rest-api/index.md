@@ -44,7 +44,7 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 | `feedback_record_count` | int | Number of records submitted. |
 | `request_id` | string | Canonical UUID matching the `X-Request-ID` response header. |
 
-Non-bulk inference endpoints (`/v1/summarize`, `/v1/assign-codes`, `/v1/detect-sensitive`) are intended for per-feedback-record output shapes. They currently accept lists, but they are documented as non-bulk because they return one output object per input record, unlike bulk endpoints that return a single aggregate output.
+Per-record inference endpoints (`/v1/summarize`, `/v1/assign-codes`, `/v1/detect-sensitive`) accept a single `feedback_record` and return one result object, unlike bulk endpoints that accept multiple records and return aggregated output.
 
 ## Usage endpoint response shape
 
