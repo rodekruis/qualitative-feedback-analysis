@@ -6,7 +6,7 @@
 
 $motherPayload = string\concatenate(
     '{',
-    '"feedback_records": ', $$recordsString, ', ',
+    '"feedback_record": ', $$recordString, ', ',
     '"coding_framework": {"root_codes": ', $$codesString, '}, ',
     '"max_codes": 10, ',
     '"confidence_threshold": 0.7, ',

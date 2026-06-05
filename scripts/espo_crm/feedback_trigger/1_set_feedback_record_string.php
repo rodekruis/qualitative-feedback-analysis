@@ -24,11 +24,9 @@ $metadata = string\concatenate(
 );
 
 // Fill record-level JSON string
-$record = string\concatenate(
+$$recordString = string\concatenate(
     '{"content": "', $feedbackDescription, '", "id": "', $feedbackID, '", ', 
     '"metadata": ', $metadata, '}'
 );
-
-$$recordsString = string\concatenate('[', $record, ']');
 
 
