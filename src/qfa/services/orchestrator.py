@@ -288,7 +288,7 @@ class Orchestrator:
             f"{ANALYZE_ACTION_PROMPT}"
         )
         user_message = build_analyze_user_message(
-            request.prompt, request.feedback_records
+            request.prompt, request.feedback_records, request.output_language
         )
 
         anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(

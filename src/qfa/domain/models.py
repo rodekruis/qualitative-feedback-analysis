@@ -67,6 +67,10 @@ class AnalysisRequestModel(BaseModel):
         min_length=1,
         description="Non-empty tuple of feedback records to analyze.",
     )
+    output_language: str | None = Field(
+        default=None,
+        description="Optional target language for all summaries.",
+    )
     prompt: str = Field(
         min_length=1,
         max_length=4000,

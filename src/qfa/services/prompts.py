@@ -128,6 +128,7 @@ def escape_for_tag_envelope(text: str) -> str:
 def build_analyze_user_message(
     analyst_prompt: str,
     feedback_records: tuple[FeedbackRecordModel, ...],
+    output_language: str | None = None,
 ) -> str:
     """Build the user message for the analyse endpoint.
 
@@ -165,6 +166,7 @@ def build_analyze_user_message(
         f"<feedback_records>\n"
         f"{records_xml}\n"
         f"</feedback_records>"
+        f"{f'\n\n<output_language>{escape_for_tag_envelope(output_language)}</output_language>' if output_language else ''}"
     )
 
 
