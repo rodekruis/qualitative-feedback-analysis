@@ -9,6 +9,6 @@ $motherPayload = string\concatenate(
     '"feedback_record": ', $$recordString, ', ',
     '"coding_levels": {"root_codes": ', $$codesString, '}, ',
     '"max_codes": 1, ',
-    '"confidence_threshold": 0.7, ',
+    '"confidence_threshold": 0.7 ',
     '}'
 );
