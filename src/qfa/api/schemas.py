@@ -378,24 +378,6 @@ class ApiSingleInferenceRequestBase(BaseModel, ABC):
     feedback_record: ApiFeedbackRecordInput = Field(
         description="Feedback record to process.",
     )
-    confidence: float | None = Field(
-        default=None,
-        ge=0.0,
-        le=1.0,
-        description=(
-            "Coverage-weighted mean of per-chunk judge faithfulness scores for"
-            " the ``hierarchical`` path; ``null`` for ``single_pass``."
-        ),
-    )
-    coding_trends: ApiCodingTrends | None = Field(
-        default=None,
-        description=(
-            "Deterministic code-by-period frequency table; populated for"
-            " both ``single_pass`` and ``hierarchical`` whenever the"
-            " configured date + code metadata fields are present."
-            " ``null`` only when no record carries a parseable date."
-        ),
-    )
 
 
 # note: no response base model for since these are all different shapes
