@@ -380,7 +380,7 @@ class ApiSingleInferenceRequestBase(BaseModel, ABC):
     )
 
 
-# note: no response base model for since these are all different shapes
+# note: no response base model since these are all different shapes
 
 # summarize
 
