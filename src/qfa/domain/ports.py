@@ -6,7 +6,7 @@ subtyping per ADR-002. The orchestrator is exposed as the concrete
 """
 
 import datetime as dt
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from qfa.domain.models import (
     AuthKeyInfo,
@@ -21,6 +21,38 @@ from qfa.domain.usage_models import (
     OperationUsageStats,
     TenantUsageStats,
 )
+
+
+@runtime_checkable
+class EmbeddingPort(Protocol):
+    """Port for a multilingual text-embedding model.
+
+    Implementations MUST be multilingual: community feedback is
+    multilingual, and a monolingual model would cluster by language
+    instead of theme. ``embed`` returns one dense vector per input text,
+    in input order.
+
+    Synchronous by design: encoding is CPU-bound local computation, not
+    an I/O call (contrast :meth:`LLMPort.complete`). If a future
+    externalised adapter makes embedding I/O-bound, an async variant can
+    be added then.
+    """
+
+    def embed(self, texts: tuple[str, ...]) -> tuple[tuple[float, ...], ...]:
+        """Return one dense embedding vector per input text, in order.
+
+        Parameters
+        ----------
+        texts : tuple[str, ...]
+            The texts to embed. May be empty.
+
+        Returns
+        -------
+        tuple[tuple[float, ...], ...]
+            One vector (tuple of floats) per input text, same length and
+            order as ``texts``. Every vector has the same dimensionality.
+        """
+        ...
 
 
 class LLMPort(Protocol):

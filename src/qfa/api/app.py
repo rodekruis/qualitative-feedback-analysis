@@ -21,6 +21,7 @@ from qfa.adapters.db import (
     create_async_engine_from_settings,
     create_session_factory,
 )
+from qfa.adapters.embedding import build_bge_m3_embedder
 from qfa.adapters.env_auth import EnvironmentAuthLookupAdapter
 from qfa.adapters.llm_client import LiteLLMClient
 from qfa.adapters.presidio_anonymizer import PresidioAnonymizer
@@ -48,10 +49,10 @@ from qfa.domain.errors import (
     TenantNotFoundError,
     UsageRepositoryUnavailableError,
 )
-from qfa.domain.ports import LLMPort
+from qfa.domain.ports import EmbeddingPort, LLMPort
 from qfa.services.auth_orchestrator import AuthOrchestrator
 from qfa.services.orchestrator import Orchestrator
-from qfa.settings import AppSettings, LLMSettings
+from qfa.settings import AppSettings, EmbeddingSettings, LLMSettings
 from qfa.utils import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -546,6 +547,40 @@ def build_llm_client(settings: LLMSettings) -> LiteLLMClient:
     )
 
 
+def build_embedder(settings: EmbeddingSettings) -> EmbeddingPort | None:
+    """Build the self-hosted embedding adapter, or return None when unconfigured.
+
+    The embedder is optional: when ``EMBEDDING_MODEL_PATH`` is not set this
+    returns ``None``, and a ``mode=hierarchical`` request then fails with
+    502 ``analysis_unavailable`` (the orchestrator raises ``AnalysisError``
+    when its embedder is ``None``); ``single_pass`` is unaffected.
+    Production deployments set the path variables; local / CI runs omit them
+    so the normal test suite never downloads a multi-GB model.
+
+    Parameters
+    ----------
+    settings : EmbeddingSettings
+        Embedding configuration loaded from environment variables.
+
+    Returns
+    -------
+    EmbeddingPort | None
+        A fully-constructed ``BgeM3OnnxEmbedder``, or ``None`` when
+        ``model_path`` is empty.
+    """
+    if not settings.model_path:
+        logger.info(
+            "EMBEDDING_MODEL_PATH not set — hierarchical mode requires it at runtime"
+        )
+        return None
+    return build_bge_m3_embedder(
+        model_path=settings.model_path,
+        tokenizer_path=settings.tokenizer_path or settings.model_path,
+        revision_hash=settings.revision_hash,
+        intra_op_num_threads=settings.intra_op_num_threads,
+    )
+
+
 def _register_custom_model_prices() -> None:
     """Load custom model pricing from the bundled YAML resource.
 
@@ -661,12 +696,22 @@ def _make_lifespan(llm_factory: LLMFactory):
         )
         logger.info("Usage tracking enabled (per-attempt, per-operation)")
 
+        if settings.embedding.model_path:
+            logger.info(
+                "Loading embedding model from %s ...", settings.embedding.model_path
+            )
+        embedder = build_embedder(settings.embedding)
+        if embedder is not None:
+            logger.info("Embedding model ready (hierarchical analysis available)")
+
         orchestrator = Orchestrator(
             llm=llm_for_orch,
             anonymizer=anonymizer,
             settings=settings.orchestrator,
+            analyze_settings=settings.analyze,
             llm_timeout_seconds=settings.llm.timeout_seconds,
             max_total_tokens=settings.llm.max_total_tokens,
+            embedder=embedder,
         )
 
         app.state.auth_orchestrator = AuthOrchestrator(

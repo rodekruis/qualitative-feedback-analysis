@@ -34,8 +34,21 @@ flowchart LR
 | {py:class}`~qfa.domain.ports.LLMPort` | {py:class}`~qfa.adapters.llm_client.LiteLLMClient`; optionally wrapped by {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter` when `DB_TRACK_USAGE=true` | One method, `complete(system_message, user_message, tenant_id, response_model, timeout)`. Returns `LLMResponse[T_Response]` carrying the structured output plus token counts and cost. |
 | {py:class}`~qfa.domain.ports.AnonymizationPort` | {py:class}`~qfa.adapters.presidio_anonymizer.PresidioAnonymizer` | `anonymize(text) -> (text, mapping)` and `deanonymize(text, mapping) -> text`. The mapping is held in memory for the request lifetime, then discarded. |
 | {py:class}`~qfa.domain.ports.UsageRepositoryPort` | {py:class}`~qfa.adapters.usage_repository.SqlAlchemyUsageRepository` | Writes one {py:class}`~qfa.domain.usage_models.LLMCallRecord` per LLM call (from {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter`) and reads aggregate stats (from the `/v1/usage` routes). |
+| {py:class}`~qfa.domain.ports.EmbeddingPort` | {py:class}`~qfa.adapters.embedding.BgeM3OnnxEmbedder` | One method, `embed(texts) -> vectors`. Multilingual dense embeddings (BGE-M3 ONNX-int8, dense-1024-d, in-process, CPU-only). Used only by `mode=hierarchical`. See [ADR-014](../adr/014-embedding-port-and-self-hosted-model.md). |
 
 The tracking decorator is the only place hex's "stack adapters at the composition root" earns its keep — {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter` is itself an {py:class}`~qfa.domain.ports.LLMPort`, so the orchestrator never knows whether tracking is on.
+
+Two pieces of the hierarchical (`mode=hierarchical`) path are deterministic
+in-process computation with no external dependency, so they live in
+`qfa.services` with no port: {py:func}`~qfa.services.clustering.cluster_records`
+(HDBSCAN clustering + token-budget chunking, guaranteeing every record lands
+in exactly one chunk) and
+{py:func}`~qfa.services.coding_trends.build_coding_trend_table` (a non-LLM
+code-by-period count fed into the reduce prompt as a faithfulness anchor). The
+orchestrator's `analyze_hierarchical` composes embed -> cluster -> map -> reduce,
+recursing when a chunk or the combined partials overflow the token budget. See
+[Hierarchical analysis](07-hierarchical-analysis.md) for the full algorithm,
+the rationale, and flow/sequence diagrams.
 
 ## The orchestrator
 
@@ -43,7 +56,8 @@ The tracking decorator is the only place hex's "stack adapters at the compositio
 
 | Method | Endpoint | What it does |
 |---|---|---|
-| `analyze` | `POST /v1/analyze` | One LLM call. Free-text summary of themes across submitted records. |
+| `analyze` | `POST /v1/analyze` (`mode=single_pass`) | One LLM call. Free-text summary of themes across submitted records. |
+| `analyze_hierarchical` | `POST /v1/analyze` (`mode=hierarchical`) | Embed -> cluster -> map -> reduce pipeline. Returns additional `confidence` and `coding_trends` fields. |
 | `summarize` | `POST /v1/summarize` | One LLM call. Per-record summaries with a self-evaluated quality score. |
 | `summarize_aggregate` | `POST /v1/summarize-aggregate` | Two LLM calls (summary + judge). Single aggregate summary with a calibrated score. |
 | `assign_codes` | `POST /v1/assign-codes` | Multiple LLM calls per record: pick + judge at each level of a hierarchical coding framework. |

@@ -816,6 +816,61 @@ class TestAnalyzeHappyPath:
         assert "<feedback_records>" in user_msg
         assert "<feedback_record id=" in user_msg
 
+    @pytest.mark.asyncio
+    async def test_single_pass_populates_coding_trends_from_metadata(self, settings):
+        """single_pass returns the deterministic coding_trends table when metadata permits.
+
+        Why: the table is built from input metadata, not from the LLM call
+        or chunking — it is a free win for single_pass. This test pins
+        the contract so a future refactor can't silently revert it to
+        hierarchical-only without breaking the assertion. The
+        ``period`` defaults to ``week`` server-side; this test uses
+        ``period="month"`` on the request so the assertion can compare
+        against ``YYYY-MM`` labels without depending on ISO-week
+        calendaring of the chosen dates.
+        """
+        from qfa.services.orchestrator import AnalyzeJudgeResult, Orchestrator
+
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured="analysis"),
+                _make_llm_response(
+                    structured=AnalyzeJudgeResult(
+                        quality_score=0.7, uncertainty_explanation="ok"
+                    )
+                ),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+        records = (
+            _make_feedback_record(
+                doc_id="r1",
+                text="water access was limited",
+                metadata={"created": "2024-01-05T10:00:00Z", "codes": "Water"},
+            ),
+            _make_feedback_record(
+                doc_id="r2",
+                text="health clinic medicine",
+                metadata={"created": "2024-02-02T10:00:00Z", "codes": "Health"},
+            ),
+        )
+        request = _make_request(feedback_records=records).model_copy(
+            update={"period": "month"}
+        )
+
+        result = await orch.analyze(request, _future_deadline())
+
+        assert result.coding_trends is not None
+        assert result.coding_trends.periods == ("2024-01", "2024-02")
+        counts = {(c.code, c.period): c.count for c in result.coding_trends.cells}
+        assert counts == {("Water", "2024-01"): 1, ("Health", "2024-02"): 1}
+
 
 class TestAnalyzeJudgeFailure:
     @pytest.mark.asyncio

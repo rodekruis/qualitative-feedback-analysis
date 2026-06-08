@@ -33,7 +33,8 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 | `feedback_records` | list | — | Non-empty list of `{id, text, metadata?}` records. |
 | `prompt` | string | — | Analyst question (1–4000 chars). |
 | `anonymize` | bool | `true` | Anonymize record text before the LLM call. |
-| `mode` | `"single_pass"` | `"single_pass"` | Analysis mode. Only `single_pass` is supported; other values → 422. Large-corpus analysis is deferred to [#124](https://github.com/rodekruis/qualitative-feedback-analysis/issues/124). |
+| `mode` | `"single_pass"` \| `"hierarchical"` | `"single_pass"` | `single_pass` runs one LLM call under the token cap (input over the cap → 413). `hierarchical` runs embed → cluster → map → reduce over large corpora and additionally returns `confidence`. |
+| `period` | `"day"` \| `"week"` \| `"month"` \| null | `null` → server default (`week`) | Granularity for the deterministic `coding_trends` table. `day` for short-window deep-dives, `week` for the typical 1-3 month operational corpus, `month` for multi-year corpora. Omit to use the server-side default (`ANALYZE_DEFAULT_CODING_TREND_PERIOD`). |
 
 ### Response (200 OK)
 
@@ -45,6 +46,14 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 | `feedback_record_count` | int | Number of records submitted. |
 | `request_id` | string | Canonical UUID matching the `X-Request-ID` response header. |
 | `used_anonymization` | bool | Whether anonymization was applied. |
+| `confidence` | float or null | Coverage-weighted mean of per-chunk faithfulness scores. Populated only for `mode=hierarchical`; `null` for `single_pass`. |
+| `coding_trends` | object or null | Deterministic code-by-period frequency table. Populated for **both** modes whenever the configured date + code metadata fields are present (it depends only on metadata, not on the analysis pipeline). `null` when no record carries a parseable date. Bucket-label shape depends on `period`: `YYYY-MM-DD` for day, `YYYY-Www` (ISO week) for week, `YYYY-MM` for month. |
+
+For `mode: "hierarchical"`, the response additionally populates `confidence`
+(a coverage-weighted mean of per-chunk faithfulness). `coding_trends` is
+populated for both modes, so existing single-pass integrations that ignored
+the field are unaffected; clients that want trends can now read them from
+the single-pass response too.
 
 ## Usage endpoint response shape
 

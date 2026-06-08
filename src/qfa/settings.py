@@ -4,6 +4,7 @@ from typing import Any, Literal
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from qfa.domain.clustering_models import TrendPeriod
 from qfa.domain.models import TenantApiKey
 
 
@@ -65,8 +66,31 @@ class LLMSettings(BaseSettings):
     chars_per_token: int = 4
 
 
+class EmbeddingSettings(BaseSettings):
+    """Configuration for the self-hosted embedding model.
+
+    The artifact is mirrored locally and pinned by hash; production never
+    fetches it from HuggingFace at runtime.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="EMBEDDING_")
+
+    model_path: str = ""
+    tokenizer_path: str = ""
+    revision_hash: str = ""
+    intra_op_num_threads: int | None = None
+
+
 class OrchestratorSettings(BaseSettings):
-    """Configuration for the orchestrator service."""
+    """Cross-cutting configuration shared by every orchestrator use case.
+
+    Per-endpoint tuning lives in its own settings class (e.g.
+    :class:`AnalyzeSettings`) so the eventual split into
+    one-use-case-per-module (per ADR-011) doesn't require renaming
+    env-vars in production. Only knobs that genuinely apply to *every*
+    use case — retry policy, token-budget estimation, metadata
+    allow-list — stay here.
+    """
 
     model_config = SettingsConfigDict(env_prefix="ORCHESTRATOR_")
 
@@ -76,6 +100,52 @@ class OrchestratorSettings(BaseSettings):
     retry_jitter_factor: float = 0.5
     retry_cap_seconds: float = 10.0
     chars_per_token: int = 4
+
+
+class AnalyzeSettings(BaseSettings):
+    """Configuration specific to the ``POST /v1/analyze`` endpoint.
+
+    Covers both ``mode=single_pass`` and ``mode=hierarchical``: the
+    coding-trend table is built for both, and the clustering knobs are
+    only consulted on the hierarchical path. Naming the group after the
+    endpoint (not the mode) lets a future single_pass-only knob land
+    here without another rename.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="ANALYZE_")
+
+    min_cluster_size: int = Field(
+        default=5,
+        ge=2,
+        description=(
+            "HDBSCAN min_cluster_size for the map-step chunking"
+            " (mode=hierarchical only)."
+        ),
+    )
+    clustering_metric: str = Field(
+        default="euclidean",
+        description=(
+            "HDBSCAN distance metric over dense embedding vectors"
+            " (mode=hierarchical only)."
+        ),
+    )
+    coding_trend_date_field: str = Field(
+        default="created",
+        description="Metadata key holding the record date for the coding-trend table.",
+    )
+    coding_trend_code_fields: list[str] = Field(
+        default_factory=lambda: ["codes"],
+        description="Metadata keys holding coding labels (comma-separated strings).",
+    )
+    default_coding_trend_period: TrendPeriod = Field(
+        default="week",
+        description=(
+            "Server-side default granularity for the coding-trend table."
+            " Callers can override per-request via the analyze request"
+            " body's ``period`` field. ``week`` is usually right; ``month``"
+            " suits multi-year corpora; ``day`` short-window deep-dives."
+        ),
+    )
 
 
 class AuthSettings(BaseSettings):
@@ -139,7 +209,9 @@ class AppSettings(BaseSettings):
     """Root configuration composing all sub-settings groups."""
 
     llm: LLMSettings = Field(default_factory=LLMSettings)
+    embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
     orchestrator: OrchestratorSettings = Field(default_factory=OrchestratorSettings)
+    analyze: AnalyzeSettings = Field(default_factory=AnalyzeSettings)
     auth: AuthSettings = Field(default_factory=AuthSettings)
     log: LogSettings = Field(default_factory=LogSettings)
     db: DatabaseSettings = Field(default_factory=DatabaseSettings)

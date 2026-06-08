@@ -15,6 +15,7 @@ from pydantic import (
     model_validator,
 )
 
+from qfa.domain.clustering_models import CodingTrendTable, TrendPeriod
 from qfa.domain.sensitivity_types import SensitivityType
 
 
@@ -50,11 +51,21 @@ class AnalysisRequestModel(BaseModel):
         description="Analysis instruction for the model.",
     )
     tenant_id: str = Field(description="Tenant identifier injected by the auth layer.")
-    mode: Literal["single_pass"] = Field(
+    mode: Literal["single_pass", "hierarchical"] = Field(
         default="single_pass",
         description=(
-            "Analysis mode. ``single_pass`` is the only supported value in this"
-            " version; other modes (hierarchical/map-reduce) are tracked in #124."
+            "Analysis mode. ``single_pass`` (default) runs one LLM call under"
+            " the token cap. ``hierarchical`` runs embed → cluster → map →"
+            " reduce over corpora larger than the single-call cap (#124)."
+        ),
+    )
+    period: TrendPeriod | None = Field(
+        default=None,
+        description=(
+            "Granularity for the deterministic coding-trend table"
+            " (``day`` / ``week`` / ``month``). ``None`` falls back to"
+            " the server-side default in ``AnalyzeSettings``"
+            " (currently ``week``)."
         ),
     )
 
@@ -74,6 +85,22 @@ class AnalysisResultModel(BaseModel):
     uncertainty_explanation: str = Field(
         default="",
         description="Natural-language explanation from the judge model.",
+    )
+    confidence: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Coverage-weighted mean of per-chunk judge faithfulness for the"
+            " hierarchical path; ``None`` for single_pass."
+        ),
+    )
+    coding_trends: CodingTrendTable | None = Field(
+        default=None,
+        description=(
+            "Deterministic code-by-period table; ``None`` for single_pass or when"
+            " metadata is absent."
+        ),
     )
 
 

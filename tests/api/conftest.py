@@ -148,6 +148,18 @@ class FakeOrchestrator:
         deadline: datetime,
         anonymize: bool = True,
     ) -> AnalysisResultModel:
+        """Fake single-pass analyze; raises configured error or returns canned result."""
+        if self._error is not None:
+            raise self._error
+        return self._analyze_result
+
+    async def analyze_hierarchical(
+        self,
+        request: AnalysisRequestModel,
+        deadline: datetime,
+        anonymize: bool = True,
+    ) -> AnalysisResultModel:
+        """Fake hierarchical analyze; delegates to the same canned result as single-pass."""
         if self._error is not None:
             raise self._error
         return self._analyze_result
