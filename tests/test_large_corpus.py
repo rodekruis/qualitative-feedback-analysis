@@ -37,7 +37,7 @@ def test_corpus_is_at_least_five_times_the_token_cap() -> None:
     would not exercise recursion.
     """
     corpus = _load()
-    total_chars = sum(len(item["text"]) for item in corpus)
+    total_chars = sum(len(item["content"]) for item in corpus)
     total_tokens = total_chars // CHARS_PER_TOKEN
     assert total_tokens >= 5 * SINGLE_CALL_TOKEN_CAP, (
         f"corpus is only ~{total_tokens} tokens; need >= {5 * SINGLE_CALL_TOKEN_CAP}"
@@ -64,7 +64,7 @@ def test_clustering_covers_every_record_with_fake_embedder() -> None:
     corpus = _load()
     records = tuple(
         FeedbackRecordModel(
-            id=item["id"], content=item["text"], metadata=item["metadata"]
+            id=item["id"], content=item["content"], metadata=item["metadata"]
         )
         for item in corpus
     )
@@ -95,7 +95,7 @@ def test_coding_trend_table_counts_match_corpus() -> None:
     corpus = _load()
     records = tuple(
         FeedbackRecordModel(
-            id=item["id"], content=item["text"], metadata=item["metadata"]
+            id=item["id"], content=item["content"], metadata=item["metadata"]
         )
         for item in corpus
     )
