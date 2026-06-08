@@ -29,7 +29,12 @@ class _FakeTokenizer:
 
 
 class _FakeSession:
-    """Fake onnxruntime session returning a 1024-d dense vector per row."""
+    """Fake onnxruntime session emitting the shipped model's first output.
+
+    Mirrors the BGE-M3 ONNX build, whose first output ``dense_vecs`` is the
+    already-pooled (CLS-pooled internally) dense vector — shape
+    ``(batch, 1024)``, no token dimension.
+    """
 
     def __init__(self) -> None:
         self.run_calls = 0
@@ -37,8 +42,7 @@ class _FakeSession:
     def run(self, output_names, inputs):
         self.run_calls += 1
         batch = inputs["input_ids"].shape[0]
-        # Dense [batch, seq, 1024]; the adapter pools to [batch, 1024].
-        return [np.ones((batch, 4, 1024), dtype=np.float32)]
+        return [np.ones((batch, 1024), dtype=np.float32)]
 
 
 def _make_embedder(
@@ -49,6 +53,7 @@ def _make_embedder(
     trust_remote_code: bool = False,
     custom_op_libraries: tuple[str, ...] = (),
     intra_op_num_threads: int | None = 4,
+    batch_size: int = 100,
 ) -> BgeM3OnnxEmbedder:
     """Build a ``BgeM3OnnxEmbedder`` with sensible defaults for unit tests."""
     return BgeM3OnnxEmbedder(
@@ -59,6 +64,7 @@ def _make_embedder(
         trust_remote_code=trust_remote_code,
         custom_op_libraries=custom_op_libraries,
         intra_op_num_threads=intra_op_num_threads,
+        batch_size=batch_size,
     )
 
 
@@ -101,29 +107,62 @@ def test_construction_requires_pinned_revision_hash() -> None:
         _make_embedder(revision_hash="")
 
 
-def test_embed_returns_one_1024d_vector_per_text_in_order() -> None:
-    """``embed`` returns one dense 1024-d vector per input, in input order.
+def test_embed_returns_one_normalised_1024d_vector_per_text_in_order() -> None:
+    """``embed`` returns one L2-normalised dense 1024-d vector per input, in order.
 
-    Why: clustering depends on a fixed-width, order-preserving contract;
-    BGE-M3 sparse/ColBERT outputs are explicitly unused.
+    Why: clustering depends on a fixed-width, order-preserving contract of
+    unit vectors; the shipped build's already-pooled ``dense_vecs`` is taken
+    as-is (no token pooling) and L2-normalised, and BGE-M3's sparse/ColBERT
+    outputs are explicitly unused.
     """
+    import math
+
     embedder = _make_embedder()
     vectors = embedder.embed(("first feedback", "second feedback"))
     assert len(vectors) == 2
     assert all(len(v) == 1024 for v in vectors)
     assert all(isinstance(x, float) for x in vectors[0])
+    # ones/sqrt(1024) is the L2-normalised unit vector -> norm 1.0.
+    assert abs(math.sqrt(sum(x * x for x in vectors[0])) - 1.0) < 1e-5
 
 
-def test_embed_uses_a_single_batched_session_run() -> None:
-    """The whole batch is encoded in one ``session.run`` call.
+def test_embed_uses_one_session_run_when_input_fits_one_batch() -> None:
+    """An input no larger than ``batch_size`` is encoded in one ``session.run``.
 
-    Why: the spec mandates a single batched call (no thread/process pool);
-    onnxruntime saturates cores via intra_op_num_threads instead.
+    Why: batching only splits inputs that exceed ``batch_size``; a small batch
+    must still be a single onnxruntime call (no per-record overhead, cores
+    saturated via intra_op_num_threads rather than a thread/process pool).
     """
     session = _FakeSession()
-    embedder = _make_embedder(session=session)
+    embedder = _make_embedder(session=session, batch_size=100)
     embedder.embed(("a", "b", "c"))
     assert session.run_calls == 1
+
+
+def test_embed_batches_large_input_into_sequential_session_runs() -> None:
+    """Inputs beyond ``batch_size`` are encoded in sequential ``session.run`` calls.
+
+    Why: embedding a whole large corpus in one run materialises one giant
+    padded-token tensor and activation map — the dominant memory cost. Batching
+    caps peak memory; the one-vector-per-text, input-order contract must survive
+    the split, and the call count must be ``ceil(n / batch_size)``.
+    """
+    session = _FakeSession()
+    embedder = _make_embedder(session=session, batch_size=2)
+    vectors = embedder.embed(("a", "b", "c", "d", "e"))
+    assert session.run_calls == 3  # ceil(5 / 2)
+    assert len(vectors) == 5
+    assert all(len(v) == 1024 for v in vectors)
+
+
+def test_construction_rejects_non_positive_batch_size() -> None:
+    """A ``batch_size`` below 1 raises at construction.
+
+    Why: a zero/negative batch would embed no records per run (an infinite or
+    empty loop); the contract requires at least one record per ``session.run``.
+    """
+    with pytest.raises(ValueError, match="batch_size"):
+        _make_embedder(batch_size=0)
 
 
 def test_embed_empty_input_returns_empty_without_calling_session() -> None:

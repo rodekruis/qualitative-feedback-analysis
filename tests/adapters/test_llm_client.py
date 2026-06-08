@@ -1,13 +1,18 @@
 """Tests for the LiteLLM client adapter."""
 
+import json
 from math import isnan
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import openai
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from qfa.adapters.llm_client import LiteLLMClient
+from qfa.adapters.llm_client import (
+    _UNSUPPORTED_SCHEMA_KEYWORDS,
+    LiteLLMClient,
+    _provider_safe_response_format,
+)
 from qfa.domain.errors import LLMError, LLMRateLimitError, LLMTimeoutError
 from qfa.domain.models import LLMResponse
 
@@ -147,7 +152,11 @@ class TestLiteLLMClientCallParameters:
             )
 
         call_kwargs = mock_ac.call_args.kwargs
-        assert call_kwargs["response_format"] is _StructuredResponse
+        # response_format is now LiteLLM's converted schema dict (sanitised),
+        # not the raw model — so unsupported keywords never reach the provider.
+        sent = call_kwargs["response_format"]
+        assert sent["type"] == "json_schema"
+        assert sent["json_schema"]["name"] == "_StructuredResponse"
         assert isinstance(result.structured, _StructuredResponse)
         assert result.structured.summary == "Structured summary."
 
@@ -311,3 +320,64 @@ class TestLiteLLMClientExceptionMapping:
                     _StructuredResponse,
                     timeout=TIMEOUT,
                 )
+
+
+class TestProviderSafeResponseFormat:
+    """The response_format sanitiser keeps providers from seeing rejected keywords."""
+
+    def test_strips_unsupported_validation_keywords(self):
+        """ge/le/min_length/max_length/pattern must not reach the schema.
+
+        Why: Azure AI Mistral rejects JSON-Schema validation keywords (e.g.
+        `minimum`). We keep the Field constraints on the model — still enforced
+        when the response is parsed — but must strip them from the outgoing
+        response_format so structured-output calls don't 400.
+        """
+
+        class _Constrained(BaseModel):
+            score: float = Field(ge=0.0, le=1.0)
+            label: str = Field(min_length=1, max_length=40, pattern=r"^[a-z]+$")
+
+        response_format = _provider_safe_response_format(_Constrained)
+        blob = json.dumps(response_format)
+        leaked = [k for k in _UNSUPPORTED_SCHEMA_KEYWORDS if f'"{k}"' in blob]
+        assert leaked == [], f"unsupported keywords leaked: {leaked}"
+        # Structure is preserved: a named json_schema with all properties.
+        assert response_format["type"] == "json_schema"
+        schema = response_format["json_schema"]["schema"]
+        assert set(schema["properties"]) == {"score", "label"}
+        assert set(schema["required"]) == {"score", "label"}
+
+    def test_strips_keywords_inside_nested_defs(self):
+        """Constraints on nested models (carried in `$defs`) are stripped too.
+
+        Why: a single-level walk would miss them, and nested response models
+        (e.g. the sensitivity-analysis list) would still 400 on the provider.
+        """
+
+        class _Inner(BaseModel):
+            n: int = Field(ge=0)
+
+        class _Outer(BaseModel):
+            items: tuple[_Inner, ...] = Field(min_length=1)
+
+        response_format = _provider_safe_response_format(_Outer)
+        blob = json.dumps(response_format)
+        leaked = [k for k in _UNSUPPORTED_SCHEMA_KEYWORDS if f'"{k}"' in blob]
+        assert leaked == [], f"unsupported keywords leaked from $defs: {leaked}"
+
+    def test_does_not_mutate_model_field_constraints(self):
+        """Sanitising the outgoing schema leaves the model's own validation intact.
+
+        Why: the whole point of stripping at the boundary is to keep the
+        declarative Field constraints (and their OpenAPI docs / parse-time
+        enforcement) while only the wire schema loses the keywords.
+        """
+
+        class _Constrained(BaseModel):
+            score: float = Field(ge=0.0, le=1.0)
+
+        _provider_safe_response_format(_Constrained)
+        # The model still rejects out-of-range values after sanitisation ran.
+        with pytest.raises(ValueError):
+            _Constrained(score=2.0)

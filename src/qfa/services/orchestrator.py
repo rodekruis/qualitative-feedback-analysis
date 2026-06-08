@@ -4,6 +4,7 @@ Assembles prompts, enforces token limits, filters prompt injection,
 manages retries with exponential backoff, and enforces deadlines.
 """
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -11,6 +12,7 @@ from typing import Callable, ClassVar, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from qfa.domain.chunk_models import Chunk
 from qfa.domain.clustering_models import CodingTrendTable
 from qfa.domain.errors import (
     AnalysisError,
@@ -29,11 +31,13 @@ from qfa.domain.models import (
     CodingAssignmentRequestModel,
     CodingAssignmentResultModel,
     FeedbackRecordModel,
+    LLMResponse,
     SensitivityAnalysisRequestModel,
     SensitivityAnalysisResultModel,
     SensitivityAnalysisResultModelList,
     SummaryRequestModel,
     SummaryResultModel,
+    T_Response,
 )
 from qfa.domain.ports import AnonymizationPort, EmbeddingPort, LLMPort
 from qfa.domain.sensitivity_types import SENSITIVITY_TYPE_DESCRIPTIONS
@@ -60,6 +64,7 @@ from qfa.services.prompts import (
     build_analyze_user_message,
 )
 from qfa.settings import AnalyzeSettings, OrchestratorSettings
+from qfa.utils import timed
 
 logger = logging.getLogger(__name__)
 
@@ -430,16 +435,32 @@ class Orchestrator:
                 "Hierarchical analysis is not available: no embedder configured"
             )
 
-        # 1. Anonymise each record's text up front (before embed + LLM).
-        anonymized_records, mapping = self._anonymize_records(
-            request.feedback_records, anonymize
+        logger.info(
+            "analyze_hierarchical start: %d record(s) tenant=%s anonymize=%s",
+            len(request.feedback_records),
+            request.tenant_id,
+            anonymize,
         )
-        if anonymize:
-            _, prompt_map = self._anonymizer.anonymize(request.prompt)
-            mapping = {**mapping, **prompt_map}
-        anonymized_prompt = request.prompt
-        if anonymize:
-            anonymized_prompt, _ = self._anonymizer.anonymize(request.prompt)
+
+        # 1. Anonymise each record's text up front (before embed + LLM).
+        with timed() as anonymize_sw:
+            anonymized_records, mapping = self._anonymize_records(
+                request.feedback_records, anonymize
+            )
+            anonymized_prompt = request.prompt
+            if anonymize:
+                # Single pass over the prompt, capturing both the redacted
+                # text and its mapping (previously this ran Presidio twice —
+                # once for the mapping, once for the text).
+                anonymized_prompt, prompt_map = self._anonymizer.anonymize(
+                    request.prompt
+                )
+                mapping = {**mapping, **prompt_map}
+        logger.info(
+            "anonymisation: %d record(s) in %.2fs",
+            len(request.feedback_records),
+            anonymize_sw.elapsed_seconds,
+        )
 
         # 2. Deterministic coding-trend table from ORIGINAL metadata
         #    (metadata is not anonymised; codes/dates are not PII).
@@ -454,36 +475,136 @@ class Orchestrator:
 
         # 3. Embed (synchronous, CPU-bound) then cluster into budget chunks.
         texts = tuple(r.text for r in anonymized_records)
-        vectors = self._embedder.embed(texts)
-        chunks = cluster_records(
-            records=anonymized_records,
-            vectors=vectors,
-            min_cluster_size=self._analyze_settings.min_cluster_size,
-            max_total_tokens=self._max_total_tokens,
-            chars_per_token=self._settings.chars_per_token,
-            metric=self._analyze_settings.clustering_metric,
+        logger.info("starting embedding of %d record(s)", len(texts))
+        with timed() as embed_sw:
+            vectors = self._embedder.embed(texts)
+        logger.info(
+            "embedding: %d record(s) in %.2fs", len(texts), embed_sw.elapsed_seconds
         )
 
-        # 4. MAP: one partial analysis + one leaf judge score per chunk.
-        partials: list[str] = []
-        chunk_sizes: list[int] = []
-        chunk_scores: list[float] = []
-        for chunk in chunks:
-            partial, score = await self._map_chunk(
-                anonymized_prompt, chunk.records, request.tenant_id, deadline
+        logger.info("starting clustering of %d record(s)", len(texts))
+        with timed() as cluster_sw:
+            chunks = cluster_records(
+                records=anonymized_records,
+                vectors=vectors,
+                min_cluster_size=self._analyze_settings.min_cluster_size,
+                max_total_tokens=self._max_total_tokens,
+                chars_per_token=self._settings.chars_per_token,
+                metric=self._analyze_settings.clustering_metric,
+                target_chunk_tokens=self._analyze_settings.target_chunk_tokens,
+                date_field=self._analyze_settings.coding_trend_date_field,
             )
-            partials.append(partial)
-            chunk_sizes.append(len(chunk.records))
-            chunk_scores.append(score)
-
-        # 5. REDUCE the partials (recursively tree-reduce on overflow).
-        synthesis = await self._reduce_partials(
-            anonymized_prompt,
-            tuple(partials),
-            trend_table,
-            request.tenant_id,
-            deadline,
+        logger.info(
+            "clustering: %d record(s) -> %d chunk(s) in %.2fs",
+            len(texts),
+            len(chunks),
+            cluster_sw.elapsed_seconds,
         )
+
+        # One semaphore bounds *every* hierarchical LLM call (map, leaf judge,
+        # reduce) to ``max_concurrent_chunks``, so total concurrency stays
+        # capped even while the judge and reduce phases overlap below. cap=1
+        # therefore remains fully sequential.
+        max_in_flight = self._analyze_settings.max_concurrent_chunks
+        semaphore = asyncio.Semaphore(max_in_flight)
+
+        # 4. MAP: produce one partial per chunk, concurrently. Only the partials
+        #    are on the critical path to REDUCE; the leaf-judge scores feed only
+        #    the final confidence, so judging is deferred to phase 5 and overlaps
+        #    REDUCE. ``asyncio.gather`` preserves chunk order, so partials and
+        #    chunk_sizes stay aligned with ``chunks``.
+        logger.info(
+            "starting map phase: %d chunk(s), up to %d concurrent LLM call(s)",
+            len(chunks),
+            max_in_flight,
+        )
+
+        async def _map_one(index: int, chunk: Chunk) -> str:
+            """Produce one chunk's partial (the judge runs separately)."""
+            logger.debug(
+                "starting map chunk %d/%d: %d record(s)",
+                index,
+                len(chunks),
+                len(chunk.records),
+            )
+            with timed() as chunk_sw:
+                partial = await self._map_chunk(
+                    anonymized_prompt,
+                    chunk.records,
+                    request.tenant_id,
+                    deadline,
+                    semaphore,
+                )
+            logger.debug(
+                "map chunk %d/%d done in %.2fs",
+                index,
+                len(chunks),
+                chunk_sw.elapsed_seconds,
+            )
+            return partial
+
+        with timed() as map_sw:
+            partials: list[str] = list(
+                await asyncio.gather(
+                    *(_map_one(i, chunk) for i, chunk in enumerate(chunks, start=1))
+                )
+            )
+        chunk_sizes: list[int] = [len(chunk.records) for chunk in chunks]
+        logger.info(
+            "map phase: %d chunk(s) in %.2fs", len(chunks), map_sw.elapsed_seconds
+        )
+
+        # 5. JUDGE and REDUCE run concurrently. REDUCE needs only the partials;
+        #    the leaf judges score each partial against its own chunk for the
+        #    confidence. They are independent, so overlap them — the shared
+        #    semaphore keeps total LLM concurrency within ``max_concurrent_chunks``.
+        async def _judge_all() -> list[float]:
+            async def _judge_one(index: int, chunk: Chunk, partial: str) -> float:
+                logger.debug("starting judge chunk %d/%d", index, len(chunks))
+                with timed() as judge_sw:
+                    score = await self._judge_chunk(
+                        anonymized_prompt,
+                        chunk.records,
+                        partial,
+                        request.tenant_id,
+                        deadline,
+                        semaphore,
+                    )
+                logger.debug(
+                    "judge chunk %d/%d done: judge=%.2f in %.2fs",
+                    index,
+                    len(chunks),
+                    score,
+                    judge_sw.elapsed_seconds,
+                )
+                return score
+
+            return list(
+                await asyncio.gather(
+                    *(
+                        _judge_one(i, chunk, partial)
+                        for i, (chunk, partial) in enumerate(
+                            zip(chunks, partials, strict=True), start=1
+                        )
+                    )
+                )
+            )
+
+        async def _reduce() -> str:
+            logger.info("starting reduce phase over %d partial(s)", len(partials))
+            return await self._reduce_partials(
+                anonymized_prompt,
+                tuple(partials),
+                trend_table,
+                request.tenant_id,
+                deadline,
+                semaphore,
+            )
+
+        logger.info("starting judge + reduce (concurrent)")
+        with timed() as judge_reduce_sw:
+            chunk_scores, synthesis = await asyncio.gather(_judge_all(), _reduce())
+        logger.info("judge + reduce in %.2fs", judge_reduce_sw.elapsed_seconds)
 
         # 6. Aggregate per-chunk faithfulness into one confidence.
         confidence = self._coverage_weighted_mean(chunk_scores, chunk_sizes)
@@ -503,6 +624,24 @@ class Orchestrator:
                 if not self._is_retained_analyze_placeholder(placeholder)
             }
             analysis_text = self._anonymizer.deanonymize(analysis_text, restorable)
+
+        # One-line breakdown so a single log line answers "where did the time
+        # go?" without scrolling. The total is the sum of the timed phases
+        # (de-anonymisation and trend-table building are sub-millisecond).
+        logger.info(
+            "analyze_hierarchical done in %.2fs "
+            "(anonymise=%.2fs embed=%.2fs cluster=%.2fs map=%.2fs judge+reduce=%.2fs)",
+            anonymize_sw.elapsed_seconds
+            + embed_sw.elapsed_seconds
+            + cluster_sw.elapsed_seconds
+            + map_sw.elapsed_seconds
+            + judge_reduce_sw.elapsed_seconds,
+            anonymize_sw.elapsed_seconds,
+            embed_sw.elapsed_seconds,
+            cluster_sw.elapsed_seconds,
+            map_sw.elapsed_seconds,
+            judge_reduce_sw.elapsed_seconds,
+        )
 
         return AnalysisResultModel(
             result=f"{ANALYZE_DISCLAIMER}{analysis_text}",
@@ -532,47 +671,92 @@ class Orchestrator:
             new_records.append(record.model_copy(update={"text": redacted}))
         return tuple(new_records), merged
 
+    async def _bounded_complete(
+        self,
+        semaphore: asyncio.Semaphore,
+        *,
+        system_message: str,
+        user_message: str,
+        tenant_id: str,
+        response_model: type[T_Response],
+        deadline: datetime,
+    ) -> LLMResponse[T_Response]:
+        """Run one LLM completion, bounded by ``semaphore`` and the deadline.
+
+        ``semaphore`` caps how many completions run at once across the whole
+        hierarchical pipeline (map, leaf judge, reduce), so concurrency stays
+        within ``max_concurrent_chunks`` even while the judge and reduce phases
+        overlap. The deadline/timeout is computed *after* acquiring a slot, so a
+        completion that queued behind others still honours the remaining budget
+        (and raises ``AnalysisTimeoutError`` if the deadline passed while it
+        waited).
+        """
+        async with semaphore:
+            timeout = self._check_deadline_and_get_timeout(deadline)
+            return await self._llm.complete(
+                system_message=system_message,
+                user_message=user_message,
+                tenant_id=tenant_id,
+                response_model=response_model,
+                timeout=timeout,
+            )
+
     async def _map_chunk(
         self,
         analyst_prompt: str,
         records: tuple[FeedbackRecordModel, ...],
         tenant_id: str,
         deadline: datetime,
-    ) -> tuple[str, float]:
-        """Produce one partial analysis for a chunk and judge it at the leaf.
+        semaphore: asyncio.Semaphore,
+    ) -> str:
+        """Produce one partial analysis for a chunk (no judging).
 
-        The records are already anonymised. Returns ``(partial_text,
-        faithfulness_score)``; on judge failure the score floors at 0.0 and
-        is still counted in the weighted mean.
+        The records are already anonymised. The leaf judge that scores this
+        partial runs separately (see :meth:`_judge_chunk`) so it can overlap the
+        reduce phase, which depends only on the partials.
         """
-        system_message = build_map_system_message()
-        user_message = build_analyze_user_message(analyst_prompt, records)
-        timeout = self._check_deadline_and_get_timeout(deadline)
-        response = await self._llm.complete(
-            system_message=system_message,
-            user_message=user_message,
+        response = await self._bounded_complete(
+            semaphore,
+            system_message=build_map_system_message(),
+            user_message=build_analyze_user_message(analyst_prompt, records),
             tenant_id=tenant_id,
             response_model=str,
-            timeout=timeout,
+            deadline=deadline,
         )
-        partial = response.structured
+        return response.structured
 
-        # Leaf judge: the judge sees this chunk verbatim.
+    async def _judge_chunk(
+        self,
+        analyst_prompt: str,
+        records: tuple[FeedbackRecordModel, ...],
+        partial: str,
+        tenant_id: str,
+        deadline: datetime,
+        semaphore: asyncio.Semaphore,
+    ) -> float:
+        """Leaf-judge a partial against its own (anonymised) chunk.
+
+        Returns the faithfulness score in ``[0, 1]``; on any judge failure the
+        score floors at 0.0 and is still counted in the coverage-weighted mean,
+        so judge failure lowers confidence rather than vanishing. Independent of
+        the reduce phase, so it runs concurrently with it.
+        """
+        user_message = build_analyze_user_message(analyst_prompt, records)
         try:
-            judge_timeout = self._check_deadline_and_get_timeout(deadline)
             judge_system = build_analyze_judge_system_message(
                 source_text=user_message,
                 analyst_prompt=analyst_prompt,
                 analysis=partial,
             )
-            judge_response = await self._llm.complete(
+            judge_response = await self._bounded_complete(
+                semaphore,
                 system_message=judge_system,
                 user_message=_JUDGE_USER_MESSAGE,
                 tenant_id=tenant_id,
                 response_model=AnalyzeJudgeResult,
-                timeout=judge_timeout,
+                deadline=deadline,
             )
-            score = judge_response.structured.quality_score
+            return judge_response.structured.quality_score
         except (
             LLMError,
             LLMTimeoutError,
@@ -583,8 +767,7 @@ class Orchestrator:
             logger.warning(
                 "Hierarchical leaf judge failed: error_class=%s", type(exc).__name__
             )
-            score = 0.0
-        return partial, score
+            return 0.0
 
     async def _reduce_partials(
         self,
@@ -593,8 +776,13 @@ class Orchestrator:
         trend_table: CodingTrendTable | None,
         tenant_id: str,
         deadline: datetime,
+        semaphore: asyncio.Semaphore,
     ) -> str:
         """Synthesise partials into one analysis, tree-reducing on overflow.
+
+        ``semaphore`` bounds the reduce LLM calls together with the concurrently
+        running leaf judges, so total pipeline concurrency stays within
+        ``max_concurrent_chunks``.
 
         If the reduce user message would exceed the token budget, the
         partials are split into budget-sized groups, each reduced to an
@@ -628,13 +816,13 @@ class Orchestrator:
                 partial_analyses=partials,
                 trend_table=trend_table,
             )
-            timeout = self._check_deadline_and_get_timeout(deadline)
-            response = await self._llm.complete(
+            response = await self._bounded_complete(
+                semaphore,
                 system_message=system_message,
                 user_message=user_message,
                 tenant_id=tenant_id,
                 response_model=str,
-                timeout=timeout,
+                deadline=deadline,
             )
             return response.structured
 
@@ -652,24 +840,29 @@ class Orchestrator:
                 partial_analyses=partials,
                 trend_table=trend_table,
             )
-            timeout = self._check_deadline_and_get_timeout(deadline)
-            response = await self._llm.complete(
+            response = await self._bounded_complete(
+                semaphore,
                 system_message=system_message,
                 user_message=user_message,
                 tenant_id=tenant_id,
                 response_model=str,
-                timeout=timeout,
+                deadline=deadline,
             )
             return response.structured
 
         intermediates: list[str] = []
         for group in groups:
             intermediate = await self._reduce_partials(
-                analyst_prompt, group, None, tenant_id, deadline
+                analyst_prompt, group, None, tenant_id, deadline, semaphore
             )
             intermediates.append(intermediate)
         return await self._reduce_partials(
-            analyst_prompt, tuple(intermediates), trend_table, tenant_id, deadline
+            analyst_prompt,
+            tuple(intermediates),
+            trend_table,
+            tenant_id,
+            deadline,
+            semaphore,
         )
 
     def _group_partials_to_budget(

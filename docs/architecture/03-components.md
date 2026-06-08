@@ -66,16 +66,23 @@ Each method is pure use-case logic — no scope or correlation plumbing. `call_s
 
 ## Composition root
 
-`qfa.api.app.create_app()` builds the FastAPI instance; the `lifespan` context manager wires the dependency graph at startup. The wiring is roughly:
+`qfa.api.app.create_app()` builds the FastAPI instance; the `lifespan` context manager wires the dependency graph at startup. The wiring splits into two halves:
 
-1. Load settings.
-2. Construct the base {py:class}`~qfa.domain.ports.LLMPort` (a {py:class}`~qfa.adapters.llm_client.LiteLLMClient`).
-3. If `DB_TRACK_USAGE` is on:
-   - Construct the {py:class}`~qfa.domain.ports.UsageRepositoryPort` (a {py:class}`~qfa.adapters.usage_repository.SqlAlchemyUsageRepository`).
-   - Wrap the base {py:class}`~qfa.domain.ports.LLMPort` in a {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter` that delegates to the inner port and records each call to the repository.
-4. Construct the {py:class}`~qfa.domain.ports.AnonymizationPort` (a {py:class}`~qfa.adapters.presidio_anonymizer.PresidioAnonymizer`).
-5. Construct the {py:class}`~qfa.services.orchestrator.Orchestrator` with the (possibly wrapped) ports.
-6. Stash the orchestrator, API keys, and — when present — the usage repository on `app.state` for the request lifecycle to read.
+- **Infrastructure half** (in `qfa.api.app`): load settings, build the base LLM client, create the async DB engine, wrap the LLM in {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter` for usage tracking, set up the auth adapter, build the embedder (logging its construction so operators see it on startup).
+- **Domain half** (in {py:func}`qfa.api.composition.build_orchestrator`): given settings plus the already-wrapped LLM and embedder, construct the {py:class}`~qfa.adapters.presidio_anonymizer.PresidioAnonymizer`, register custom model prices with LiteLLM, and assemble the {py:class}`~qfa.services.orchestrator.Orchestrator`.
+
+The lifespan then attaches the orchestrator, API keys, and the usage repository to `app.state` for the request lifecycle to read.
+
+The split exists so callers outside the API server — scripts, notebooks, ad-hoc evaluation harnesses — can construct an `Orchestrator` over a plain LLM client with a single call:
+
+```python
+from qfa.api.composition import build_orchestrator
+from qfa.settings import AppSettings
+
+orchestrator = build_orchestrator(AppSettings())
+```
+
+`build_orchestrator` is intentionally pure with respect to the API server's runtime concerns: it does not touch the database, does not wrap the LLM in `TrackingLLMAdapter`, and does not read auth keys. The FastAPI lifespan keeps those concerns and passes the wrapped LLM in via the `llm=` keyword. See `notebooks/analyze_corpus.ipynb` for an example.
 
 This is the **only** place that knows about concrete adapter classes. Routes and dependencies read from `app.state` only.
 

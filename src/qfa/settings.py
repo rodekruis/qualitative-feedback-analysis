@@ -7,6 +7,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from qfa.domain.clustering_models import TrendPeriod
 from qfa.domain.models import TenantApiKey
 
+DEFAULT_EMBEDDING_BATCH_SIZE = 100
+"""Default records-per-onnxruntime-batch for the embedder.
+
+Single source of truth shared by ``EmbeddingSettings.batch_size`` and the
+``qfa.adapters.embedding`` constructor/factory defaults, so the configurable
+default and the library default cannot silently drift apart.
+"""
+
 
 class LogSettings(BaseSettings):
     """Define settings for the logger."""
@@ -79,6 +87,15 @@ class EmbeddingSettings(BaseSettings):
     tokenizer_path: str = ""
     revision_hash: str = ""
     intra_op_num_threads: int | None = None
+    batch_size: int = Field(
+        default=DEFAULT_EMBEDDING_BATCH_SIZE,
+        ge=1,
+        description=(
+            "Records embedded per onnxruntime batch. The corpus is encoded in"
+            " sequential batches of this size to bound peak memory on large"
+            " inputs (padding is per-batch, so smaller batches also waste less)."
+        ),
+    )
 
 
 class OrchestratorSettings(BaseSettings):
@@ -127,6 +144,35 @@ class AnalyzeSettings(BaseSettings):
         description=(
             "HDBSCAN distance metric over dense embedding vectors"
             " (mode=hierarchical only)."
+        ),
+    )
+    max_concurrent_chunks: int = Field(
+        default=8,
+        ge=1,
+        description=(
+            "Maximum map-step chunks analysed concurrently (mode=hierarchical)."
+            " Each chunk is one analysis LLM call plus one leaf-judge call, so"
+            " this bounds the fan-out and keeps a large corpus from bursting"
+            " past the provider's request/token rate limit. Set to 1 for a"
+            " fully sequential map."
+        ),
+    )
+    target_chunk_tokens: int = Field(
+        default=4_000,
+        ge=1,
+        description=(
+            "Target size (in estimated tokens) for a single map chunk"
+            " (mode=hierarchical). This is the chunking *granularity* knob,"
+            " deliberately decoupled from the LLM hard cap LLM_MAX_TOTAL_TOKENS:"
+            " HDBSCAN produces uneven clusters, so without a target a single"
+            " dominant theme becomes one fat map call whose latency (it runs"
+            " concurrently with the others) sets the wall-clock tail. A cluster"
+            " larger than this is split into roughly equal, date-ordered"
+            " sub-chunks. The effective split budget is"
+            " min(target_chunk_tokens, LLM_MAX_TOTAL_TOKENS), so a chunk can"
+            " never exceed what one call can hold regardless of this value."
+            " Lower it for more, smaller, more-parallel calls; raise it for"
+            " fewer, larger calls."
         ),
     )
     coding_trend_date_field: str = Field(

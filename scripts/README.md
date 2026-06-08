@@ -6,12 +6,20 @@ people ask about most: regenerating the `analyze_corpus.yaml` fixture.
 
 | Script                          | What it does                                                     |
 | ------------------------------- | ---------------------------------------------------------------- |
+| `fetch_embedding_model.py`      | Download the BGE-M3 ONNX embedder to a gitignored local path (dev). |
 | `generate_corpus.py`            | Build / regenerate `fixtures/analyze_corpus.yaml` (see below).   |
 | `generate_corpus.prompt.md`     | LLM prompt that fills in `text` during corpus generation.        |
+| `stress_analyze.py`             | Drive `POST /v1/analyze` with a seeded corpus sample, single-call or in parallel (see below). |
 | `translate_csv_uk_en.py`        | One-off translation helper for `fixtures/confidential/`.         |
 | `update_auth_api_keys.py`       | Rotate API keys against a running instance.                      |
 | `test-api.sh`                   | Curl smoke checks against a running instance.                    |
 | `espo_crm/`                     | Adapters / utilities for the EspoCRM integration.                |
+
+For interactive in-process exploration of the same corpus (no server,
+direct `Orchestrator.analyze_hierarchical` calls, results displayed
+inline) see [`notebooks/analyze_corpus.ipynb`](../notebooks/analyze_corpus.ipynb). It uses
+{py:func}`qfa.api.composition.build_orchestrator` to assemble the
+domain object graph against the live LLM.
 
 ---
 
@@ -19,7 +27,7 @@ people ask about most: regenerating the `analyze_corpus.yaml` fixture.
 
 `fixtures/analyze_corpus.yaml` is the trend-detection benchmark used by
 `POST /v1/analyze` with `mode=hierarchical`. Every record carries a known
-`creation_date` and a fraction of records sit on auto-selected "carrier"
+`created` and a fraction of records sit on auto-selected "carrier"
 codes whose dates trace a designed temporal pattern (spike, emerging,
 declining, step, cross-code, rumour). The detector's job is to recover
 those patterns; the fixture's job is to give it a ground truth to be
@@ -33,7 +41,7 @@ The fixture is built in two halves so that *statistics stay in Python* and
 │  1. gen-specs (Python)                                              │
 │     fixtures/coding_framework.json  ──►  analyze_corpus.specs.jsonl │
 │     Allocates leaf-code volumes, samples metadata, plants trend     │
-│     creation_dates. One JSON object per record, no `text` yet.      │
+│     created dates. One JSON object per record, no `text` yet.       │
 ├──────────────────────────────────────────────────────────────────────┤
 │  2. LLM batches (Claude Code)                                       │
 │     analyze_corpus.specs.jsonl  ──►  texts.jsonl                    │
@@ -79,7 +87,7 @@ A spec looks like:
     "year": 2020,
     "sensitive": false,
     "codes": "covid-19:observation-perception-or-belief:beliefs-about-treatment-for-the-disease:beliefs-about-use-of-herbs-or-other-natural-materials-for-treatment",
-    "creation_date": "2020-10-17"
+    "created": "2020-10-17"
   },
   "_context": {
     "code_name": "Beliefs about use of herbs or other natural materials for treatment",
@@ -148,9 +156,9 @@ uv run python scripts/generate_corpus.py plant-in-place \
 ```
 
 Use this when you have a corpus that *already has prose* (e.g. a real-world
-dump) and you want to retro-fit it with planted `creation_date`s for the
+dump) and you want to retro-fit it with planted `created`s for the
 same trend-detection benchmark. It re-uses the existing `codes` field and
-only mutates `metadata.creation_date` + `metadata.year`. The carrier
+only mutates `metadata.created` + `metadata.year`. The carrier
 thresholds default to the values calibrated for the original 1000-record
 fixture; that's deliberate — `gen-specs` uses stronger thresholds because
 its corpus is denser.
@@ -175,3 +183,69 @@ phantom signal from the repetition rather than from the planted dates.
 LLM-written prose gives genuinely independent sentences that vary across
 the same code — which is what every real-world corpus does and what the
 detector needs to handle.
+
+
+---
+
+## Driving `/v1/analyze` with `stress_analyze.py`
+
+`scripts/stress_analyze.py` posts samples from
+`fixtures/analyze_corpus.yaml` to a running API instance — either one
+request at a time (quality smoke test) or fanned out in parallel
+(stress test). Both use the **production vector**: real HTTP, real
+auth, real serialization. For interactive in-process inspection,
+use `notebooks/analyze_corpus.ipynb` instead.
+
+### Prerequisites
+
+- A server reachable at `--base-url` (default `http://localhost:8000`)
+  with `mode=hierarchical` available — i.e. `EMBEDDING_MODEL_PATH`
+  set on the server side. Don't have the model locally? Run
+  `uv run python scripts/fetch_embedding_model.py` and paste the
+  printed `EMBEDDING_*` lines into the server's environment.
+- `AUTH_API_KEYS` set in the shell where you run the script (same
+  JSON the server reads), or pass `--api-key` explicitly. The first
+  key entry is used as the Bearer token.
+
+### Quality smoke test (single request)
+
+```
+uv run python scripts/stress_analyze.py --limit 50 --seed 42
+```
+
+Fires one request with 50 records and prints a summary. The raw
+response lands in `.corpus_work/stress_<UTC-ts>.jsonl` — open it with
+`jq` or load it from a notebook to inspect `analysis`, `quality_score`,
+`confidence`, and `coding_trends`.
+
+### Stress test (parallel requests)
+
+```
+uv run python scripts/stress_analyze.py \
+    --limit 100 --seed 42 \
+    --concurrency 5 --total-calls 20
+```
+
+Maintains up to 5 in-flight requests until 20 have completed. Prints
+p50 / p95 / p99 latency, status-code distribution, and writes raw
+results to `.corpus_work/`.
+
+### Reproducibility
+
+`--seed` controls which records get sampled — same seed picks the same
+subset across runs, so latency comparisons are apples-to-apples. The
+LLM itself is non-deterministic, so the analysis text will vary.
+
+### Why a separate notebook *and* a script?
+
+Two artefacts because the use cases have different shapes:
+
+- **Notebook** (`notebooks/analyze_corpus.ipynb`) — one analysis,
+  fully inspected, interactive iteration, no HTTP. Direct call to
+  `Orchestrator.analyze_hierarchical` via
+  {py:func}`qfa.api.composition.build_orchestrator`.
+- **Script** (this one) — many analyses, only aggregate metrics
+  matter, parallel, exercises the real REST/auth/validation path.
+
+They share the corpus loader (`load_sample`) — the notebook imports
+it from this script.

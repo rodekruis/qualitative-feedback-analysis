@@ -5,6 +5,8 @@ __pycache__
 *.pyc
 tests
 scripts
+# but keep the model-fetch script — the Dockerfile builder stage runs it
+!scripts/fetch_embedding_model.py
 docs
 **/.env*
 **/*.env
