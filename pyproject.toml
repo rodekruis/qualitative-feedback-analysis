@@ -12,6 +12,7 @@ requires-python = ">=3.12,<3.14"
 authors = [
     { name = "Marius Helf", email = "mhelf@rodekruis.nl" },
     { name = "Paul van Houtum", email = "pvanhoutum@rodekruis.nl" },
+    { name = "Cas Teeuwen", email = "cteeuwen@rodekruis.nl" },
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -42,6 +43,10 @@ dependencies = [
     "es_core_news_sm",
     "xx_ent_wiki_sm",
     "langdetect>=1.0.9",
+    "hdbscan>=0.8.43",
+    "numpy>=2.4.4",
+    "onnxruntime>=1.26.0",
+    "tokenizers>=0.22.2",
 ]
 
 [tool.uv]
@@ -150,8 +155,11 @@ dev = [
     "asgi-lifespan~=2.1",
     "azure-keyvault-secrets~=4.10",
     "httpx~=0.28",
+    "huggingface-hub>=1.10",
     "import-linter>=2.11",
     "ipykernel>=7.2.0",
+    "matplotlib>=3.10.9",
+    "polars>=1.41.1",
     "pre-commit>=4.6.0",
     "pytest~=9.0",
     "pytest-asyncio~=1.3.0",
@@ -188,18 +196,20 @@ layers = [
 containers = [
     "qfa",
 ]
-# qfa.api.app is the FastAPI composition root: its lifespan instantiates
-# the driven adapters (LiteLLMClient, PresidioAnonymizer) and injects
-# them into StandardOrchestrator. This is the single allowed exception
-# to the api / adapters sibling rule. If composition moves out of
-# qfa.api.app into a dedicated module, drop these allowlist entries.
+# The composition root spans two files: qfa.api.app owns infrastructure
+# wiring (DB engine, usage tracking, auth lookup, LiteLLM construction)
+# and qfa.api.composition owns the domain-object graph (orchestrator,
+# anonymizer, embedder). Both legitimately instantiate driven adapters
+# and inject them into the application service; this is the single
+# allowed exception to the api / adapters sibling rule.
 ignore_imports = [
     "qfa.api.app -> qfa.adapters.llm_client",
-    "qfa.api.app -> qfa.adapters.presidio_anonymizer",
     "qfa.api.app -> qfa.adapters.tracking_llm",
     "qfa.api.app -> qfa.adapters.db",
     "qfa.api.app -> qfa.adapters.usage_repository",
     "qfa.api.app -> qfa.adapters.env_auth",
+    "qfa.api.composition -> qfa.adapters.embedding",
+    "qfa.api.composition -> qfa.adapters.presidio_anonymizer",
 ]
 
 [[tool.importlinter.contracts]]

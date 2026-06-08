@@ -17,6 +17,8 @@ from qfa.api.schemas import (
     ApiAssignCodesResponse,
     ApiAssignedCode,
     ApiCodingNode,
+    ApiCodingTrendCell,
+    ApiCodingTrends,
     ApiDetectSensitiveRequest,
     ApiDetectSensitiveResponse,
     ApiHealthResponse,
@@ -75,13 +77,23 @@ async def analyze_bulk(
     returns 200 with ``quality_score=null`` and a constant unavailable
     message in ``uncertainty_explanation``.
 
+    **Modes**:
+
+    - ``single_pass`` (default) — one LLM call within the token cap.
+    - ``hierarchical`` — embed → cluster → map → reduce pipeline for
+      large corpora (> 5x the single-call token cap). Returns an
+      additional ``confidence`` field in the response.
+
+    The deterministic ``coding_trends`` table is populated for **both**
+    modes — it is built from input metadata and does not depend on the
+    LLM call or chunking. The ``period`` request field controls the
+    table's granularity (``day`` / ``week`` / ``month``); omit it to
+    use the server-side default.
+
     **Edge cases**:
 
-    - ``mode`` other than ``"single_pass"`` → 422
-      (see ``mode`` field description for supported modes).
-    - Input that exceeds the token cap → 413 ``payload_too_large``
-      (reduce the batch size; large-corpus analysis is tracked in
-      `#124 <https://github.com/rodekruis/qualitative-feedback-analysis/issues/124>`_).
+    - Input that exceeds the token cap for ``single_pass`` → 413
+      ``payload_too_large`` (use ``mode=hierarchical`` for large corpora).
     - Injection-like text in record content or metadata is neutralised
       structurally by the envelope; regex-based detection is a separate
       guard handled by the LLM adapter.
@@ -101,9 +113,11 @@ async def analyze_bulk(
     -------
     AnalyzeResponse
         The analysis result with quality score, uncertainty explanation,
-        feedback record count, and request ID.
+        feedback record count, and request ID. ``coding_trends`` is
+        populated for both modes whenever metadata permits; ``confidence``
+        is populated only for ``hierarchical`` mode.
     """
-    deadline = datetime.now(UTC) + timedelta(seconds=120)
+    deadline = datetime.now(UTC) + timedelta(seconds=600)
 
     domain_feedback_records = tuple(
         FeedbackRecordModel(id=doc.id, content=doc.content, metadata=doc.metadata)
@@ -115,9 +129,24 @@ async def analyze_bulk(
         prompt=body.prompt,
         tenant_id=tenant.tenant_id,
         mode=body.mode,
+        period=body.period,
     )
 
-    result = await orchestrator.analyze_bulk(domain_request, deadline)
+    if body.mode == "hierarchical":
+        result = await orchestrator.analyze_hierarchical(domain_request, deadline)
+    else:
+        result = await orchestrator.analyze_bulk(domain_request, deadline)
+
+    # Map coding_trends domain model → API schema when present.
+    api_coding_trends: ApiCodingTrends | None = None
+    if result.coding_trends is not None:
+        api_coding_trends = ApiCodingTrends(
+            periods=list(result.coding_trends.periods),
+            cells=[
+                ApiCodingTrendCell(code=c.code, period=c.period, count=c.count)
+                for c in result.coding_trends.cells
+            ],
+        )
 
     return ApiAnalyzeBulkResponse(
         analysis=result.result,
@@ -125,6 +154,8 @@ async def analyze_bulk(
         uncertainty_explanation=result.uncertainty_explanation,
         feedback_record_count=len(body.feedback_records),
         request_id=request.state.request_id,
+        confidence=result.confidence,
+        coding_trends=api_coding_trends,
     )
 
 

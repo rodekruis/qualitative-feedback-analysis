@@ -56,15 +56,30 @@ class TestModeField:
         assert resp.status_code == 200
 
     @pytest.mark.asyncio
-    async def test_unsupported_mode_returns_422(self, client):
-        """Sending an unsupported ``mode`` value must return 422.
+    async def test_hierarchical_mode_returns_200(self, client):
+        """Sending ``"mode": "hierarchical"`` is valid and returns 200.
 
-        Pydantic's ``Literal["single_pass"]`` enforcement is the gate;
-        this confirms the schema is wired into FastAPI validation.
+        Why: #124 adds hierarchical as a supported mode; the route must
+        dispatch to ``analyze_hierarchical`` without a schema rejection.
         """
         resp = await client.post(
             "/v1/analyze-bulk",
             json=_valid_body(mode="hierarchical"),
+            headers=_auth_header(),
+        )
+        assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_unsupported_mode_returns_422(self, client):
+        """Sending an unsupported ``mode`` value must return 422.
+
+        Pydantic's ``Literal["single_pass", "hierarchical"]`` enforcement is
+        the gate; this confirms the schema is wired into FastAPI validation.
+        Only values outside the allowlist are rejected.
+        """
+        resp = await client.post(
+            "/v1/analyze-bulk",
+            json=_valid_body(mode="batch"),
             headers=_auth_header(),
         )
         assert resp.status_code == 422

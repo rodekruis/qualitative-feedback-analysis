@@ -11,6 +11,8 @@ from typing import Any, Literal, override
 
 from pydantic import BaseModel, Field, computed_field, model_validator
 
+from qfa.domain.clustering_models import TrendPeriod
+
 _SEPARATOR = "------------------------------------------------------------"
 
 
@@ -223,6 +225,61 @@ class ApiAnalyzeRequest(ApiBulkInferenceRequestBase):
         max_length=4_000,
         description="Analysis instruction for the model.",
     )
+    mode: Literal["single_pass", "hierarchical"] = Field(
+        default="single_pass",
+        description=(
+            "Analysis mode. ``single_pass`` (default) runs a single LLM call"
+            " within the token cap. ``hierarchical`` runs embed → cluster → map"
+            " → reduce over corpora larger than the single-call cap (#124)."
+        ),
+    )
+    period: TrendPeriod | None = Field(
+        default=None,
+        description=(
+            "Granularity for the deterministic ``coding_trends`` table:"
+            " ``day``, ``week`` (the server default), or ``month``."
+            " A one-month corpus typically wants ``week`` or ``day`` to"
+            " surface trend signal; multi-year corpora typically want"
+            " ``month``. Omit to use the server-side default"
+            " (``ANALYZE_DEFAULT_CODING_TREND_PERIOD``)."
+        ),
+    )
+
+
+class ApiCodingTrendCell(BaseModel):
+    """One cell in the coding-trend table: a (code, period, count) triple."""
+
+    code: str = Field(description="Coding label extracted from record metadata.")
+    period: str = Field(
+        description=(
+            "Period bucket label. Shape depends on the request's"
+            " ``period`` field: ``YYYY-MM-DD`` for ``day``, ``YYYY-Www``"
+            " (ISO week) for ``week``, ``YYYY-MM`` for ``month``."
+        )
+    )
+    count: int = Field(
+        ge=0, description="Number of records with this code in this period."
+    )
+
+
+class ApiCodingTrends(BaseModel):
+    """Deterministic code-by-period frequency table.
+
+    Built from record metadata without an LLM call. Populated for both
+    ``single_pass`` and ``hierarchical`` modes (it depends only on
+    metadata, not on the analysis pipeline). ``null`` when the required
+    metadata fields are absent from every record.
+    """
+
+    periods: list[str] = Field(
+        description=(
+            "Ordered list of period buckets present in the corpus."
+            " Bucket shape follows the request's ``period``."
+        )
+    )
+    cells: list[ApiCodingTrendCell] = Field(
+        description="(code, period, count) triples covering the whole corpus."
+    )
 
 
 class ApiAnalyzeBulkResponse(ApiBulkInferenceResponseBase):
@@ -249,6 +306,22 @@ class ApiAnalyzeBulkResponse(ApiBulkInferenceResponseBase):
         description="Number of feedback records that were analyzed.",
     )
     request_id: str = Field(description="Unique identifier for this request.")
+    confidence: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Coverage-weighted mean of per-chunk faithfulness scores."
+            " Populated only for ``mode=hierarchical``."
+        ),
+    )
+    coding_trends: ApiCodingTrends | None = Field(
+        default=None,
+        description=(
+            "Deterministic code-by-period frequency table. Populated for"
+            " both modes whenever metadata contains parseable date+code fields."
+        ),
+    )
 
     @override
     @computed_field(description="Human-readable formatted output string.")
@@ -304,6 +377,24 @@ class ApiSingleInferenceRequestBase(BaseModel, ABC):
 
     feedback_record: ApiFeedbackRecordInput = Field(
         description="Feedback record to process.",
+    )
+    confidence: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Coverage-weighted mean of per-chunk judge faithfulness scores for"
+            " the ``hierarchical`` path; ``null`` for ``single_pass``."
+        ),
+    )
+    coding_trends: ApiCodingTrends | None = Field(
+        default=None,
+        description=(
+            "Deterministic code-by-period frequency table; populated for"
+            " both ``single_pass`` and ``hierarchical`` whenever the"
+            " configured date + code metadata fields are present."
+            " ``null`` only when no record carries a parseable date."
+        ),
     )
 
 
