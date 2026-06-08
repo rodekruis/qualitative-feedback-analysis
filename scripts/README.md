@@ -6,7 +6,7 @@ people ask about most: regenerating the `analyze_corpus.yaml` fixture.
 
 | Script                          | What it does                                                     |
 | ------------------------------- | ---------------------------------------------------------------- |
-| `fetch_embedding_model.py`      | Download the BGE-M3 ONNX embedder to a gitignored local path (dev). |
+| `fetch_embedding_model.py`      | Download an ONNX embedder (`--model` e5-base/e5-small/bge-m3; default e5-base) to a gitignored local path (dev). |
 | `generate_corpus.py`            | Build / regenerate `fixtures/analyze_corpus.yaml` (see below).   |
 | `generate_corpus.prompt.md`     | LLM prompt that fills in `text` during corpus generation.        |
 | `stress_analyze.py`             | Drive `POST /v1/analyze` with a seeded corpus sample, single-call or in parallel (see below). |

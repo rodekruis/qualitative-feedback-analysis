@@ -107,6 +107,35 @@ is a pure math graph that cannot execute code or perform I/O, unlike a pickle
 - A future externalised or self-converted model is a drop-in: a new adapter
   behind the same port, no `services` change.
 
+## Addendum (2026-06-01): configurable model family, e5-base default
+
+Embedding latency (CPU-bound encoding) is the dominant cost on the
+hierarchical path for the typical short-text corpus, so the adapter was
+generalised from BGE-M3-only to a **configurable family** without changing the
+port or `services`:
+
+- `BgeM3OnnxEmbedder` became `OnnxEmbedder` (`qfa.adapters.embedding`), still
+  explicitly inheriting `EmbeddingPort`. The only behavioural fork is output
+  handling: `pooling="pre_pooled"` (BGE-M3's already-pooled `dense_vecs`) vs
+  `pooling="mean"` (mean-pool token-level `last_hidden_state` over the
+  attention mask, for E5), plus an optional `query_prefix` (`query: ` for E5).
+  The security posture (points 4–5 above) is unchanged and written once.
+- `EMBEDDING_MODEL_KIND` selects the family; `EMBEDDING_DENSE_DIM` and
+  `EMBEDDING_MAX_TOKENS` are per-artifact knobs (so e5-base 768-d and e5-small
+  384-d share `kind=e5`). The dimension is validated per batch — a mismatched
+  artifact/config fails loud.
+- **The default model is now `intfloat/multilingual-e5-base`** (768-d,
+  mean-pooled): ~2–3× faster CPU encoding than BGE-M3 at a modest cross-lingual
+  quality trade, which is the right default for the short multilingual feedback
+  this service sees. It is the official repo's own int8 ONNX export, pinned by
+  hash and validated the same way (point 3). **BGE-M3 is no longer baked into
+  the image**: deployments that prefer its stronger cross-lingual quality add a
+  fetch step to the `Dockerfile` model stage and override the `EMBEDDING_*` env.
+
+The conversion-correctness check (point 3) now applies per artifact; the
+e2e cosine-vs-official test still covers BGE-M3 via the retained
+`build_bge_m3_embedder` entry point.
+
 ## Participants
 
 Marius

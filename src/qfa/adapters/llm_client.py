@@ -4,16 +4,30 @@ import logging
 import re
 from typing import cast
 
-import openai
 from litellm import acompletion, completion_cost
+from litellm.exceptions import APIError, BadRequestError, RateLimitError, Timeout
 from litellm.utils import type_to_response_format_param
 from pydantic import BaseModel, ValidationError
-from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_exponential
+from tenacity import (
+    AsyncRetrying,
+    after_log,
+    before_sleep_log,
+    retry_if_exception_type,
+    stop_after_delay,
+    wait_exponential,
+)
 
 from qfa.domain import AnalysisError, FeedbackTooLargeError
-from qfa.domain.errors import LLMError, LLMRateLimitError, LLMTimeoutError
+from qfa.domain.errors import (
+    LLMBadRequestError,
+    LLMContentPolicyViolationError,
+    LLMError,
+    LLMRateLimitError,
+    LLMTimeoutError,
+)
 from qfa.domain.models import LLMResponse, T_Response
 from qfa.domain.ports import LLMPort
+from qfa.settings import LLM_RETRY_BUDGET_MULTIPLIER
 from qfa.utils import timed
 
 logger = logging.getLogger(__name__)
@@ -170,11 +184,56 @@ class LiteLLMClient(LLMPort):
                 limit=self._max_total_tokens,
             )
 
-    @retry(
-        wait=wait_exponential(multiplier=1, max=10),
-        stop=stop_after_delay(60),
-        retry=retry_if_exception_type((LLMTimeoutError, LLMRateLimitError)),
-    )
+    async def _complete_once(
+        self,
+        *,
+        system_message: str,
+        user_message: str,
+        tenant_id: str,
+        timeout: float,
+        response_format: dict | None,
+    ):
+        """Issue a single provider completion, translating provider errors.
+
+        This is exactly one ``acompletion`` round-trip plus the boundary
+        translation from litellm exceptions to ``qfa.domain.errors``. It does
+        NOT retry, check the token limit, scan for injection, or parse the
+        response — :meth:`complete` owns those (they must run once, not once
+        per attempt). Factored out so the retry loop wraps only the network
+        call, and so the error-mapping contract can be unit-tested on a single
+        attempt without driving the retry loop.
+        """
+        try:
+            return await acompletion(
+                model=self._model,
+                messages=[
+                    {"role": "system", "content": system_message},
+                    {"role": "user", "content": user_message},
+                ],
+                api_key=self._api_key,
+                api_base=self._api_base or None,
+                api_version=self._api_version or None,
+                user=tenant_id,
+                timeout=timeout,
+                response_format=response_format,
+            )
+        except Timeout as exc:
+            logger.error(exc)
+            raise LLMTimeoutError(str(exc)) from exc
+        except RateLimitError as exc:
+            logger.error(exc)
+            raise LLMRateLimitError(str(exc)) from exc
+        except BadRequestError as exc:
+            logger.error(exc)
+            msg = str(exc)
+            if "filtered" in msg and "content management policy" in msg:
+                raise LLMContentPolicyViolationError(str(exc)) from exc
+            else:
+                raise LLMBadRequestError(str(exc)) from exc
+        except APIError as exc:
+            logger.error(exc)
+            raise LLMError(str(exc)) from exc
+
     async def complete(
         self,
         system_message: str,
@@ -183,7 +242,16 @@ class LiteLLMClient(LLMPort):
         response_model: type[T_Response],
         timeout: float = 20.0,
     ) -> LLMResponse[T_Response]:
-        """Send a completion request via LiteLLM.
+        """Send a completion request via LiteLLM, retrying transient failures.
+
+        ``timeout`` is the budget for a *single* attempt. Transient failures
+        (timeout, rate-limit) are retried with exponential backoff up to a total
+        wall-clock budget of ``LLM_RETRY_BUDGET_MULTIPLIER * timeout``; the retry
+        wraps only the provider call, so injection/token checks and response
+        parsing happen exactly once. Callers that enforce a deadline must size
+        ``timeout`` so this worst-case budget still fits (the orchestrator does
+        this in ``_check_deadline_and_get_timeout``). Bad-request and generic
+        API errors are not retried — they are not transient.
 
         Parameters
         ----------
@@ -192,7 +260,7 @@ class LiteLLMClient(LLMPort):
         user_message : str
             The user-level message to complete.
         timeout : float
-            Maximum time in seconds to wait for a response.
+            Maximum time in seconds to wait for a single attempt.
         tenant_id : str
             Tenant identifier passed as ``user`` for audit trail.
 
@@ -204,9 +272,9 @@ class LiteLLMClient(LLMPort):
         Raises
         ------
         LLMTimeoutError
-            When the provider does not respond in time.
+            When the provider does not respond in time on every attempt.
         LLMRateLimitError
-            When the provider returns a rate-limit response.
+            When the provider rate-limits on every attempt.
         LLMError
             For any other provider error or empty response.
         """
@@ -214,32 +282,39 @@ class LiteLLMClient(LLMPort):
 
         self._check_token_limit(system_message, user_message)
 
+        response_format = (
+            _provider_safe_response_format(response_model)
+            if issubclass(response_model, BaseModel)
+            else None
+        )
+
+        retry_budget = LLM_RETRY_BUDGET_MULTIPLIER * timeout
+        logger.debug(
+            "LiteLLMClient: dispatching message with per-attempt timeout %.1fs "
+            "(retry budget %.1fs)",
+            timeout,
+            retry_budget,
+        )
+        # Retry only the provider round-trip, and only for transient errors.
+        # ``reraise=True`` surfaces the underlying domain error (not a
+        # tenacity ``RetryError``) once the budget is spent.
         with timed() as call_sw:
-            try:
-                response = await acompletion(
-                    model=self._model,
-                    messages=[
-                        {"role": "system", "content": system_message},
-                        {"role": "user", "content": user_message},
-                    ],
-                    api_key=self._api_key,
-                    api_base=self._api_base or None,
-                    api_version=self._api_version or None,
-                    user=tenant_id,
-                    timeout=timeout,
-                    response_format=_provider_safe_response_format(response_model)
-                    if issubclass(response_model, BaseModel)
-                    else None,
-                )
-            except openai.APITimeoutError as exc:
-                logger.error(exc)
-                raise LLMTimeoutError(str(exc)) from exc
-            except openai.RateLimitError as exc:
-                logger.error(exc)
-                raise LLMRateLimitError(str(exc)) from exc
-            except openai.APIError as exc:
-                logger.error(exc)
-                raise LLMError(str(exc)) from exc
+            async for attempt in AsyncRetrying(
+                wait=wait_exponential(multiplier=1, max=10),
+                stop=stop_after_delay(retry_budget),
+                retry=retry_if_exception_type((LLMTimeoutError, LLMRateLimitError)),
+                before_sleep=before_sleep_log(logger, logging.DEBUG),
+                after=after_log(logger, logging.DEBUG),
+                reraise=True,
+            ):
+                with attempt:
+                    response = await self._complete_once(
+                        system_message=system_message,
+                        user_message=user_message,
+                        tenant_id=tenant_id,
+                        timeout=timeout,
+                        response_format=response_format,
+                    )
 
         content = response.choices[0].message.content
         if content is None:

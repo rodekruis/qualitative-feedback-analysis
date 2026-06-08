@@ -7,6 +7,16 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from qfa.domain.clustering_models import TrendPeriod
 from qfa.domain.models import TenantApiKey
 
+#: Worst-case retry budget of a single ``LLMPort.complete`` call, expressed as a
+#: multiple of the per-attempt ``timeout``. The LLM adapter retries transient
+#: failures (timeout, rate-limit) up to ``LLM_RETRY_BUDGET_MULTIPLIER * timeout``
+#: of wall-clock; the orchestrator divides the deadline-derived budget by the
+#: same factor when sizing a per-attempt timeout, so even the worst-case retry
+#: sequence of the last call in a phase still finishes before the request
+#: deadline. The adapter and orchestrator MUST read this one constant so the two
+#: stay in lock-step — they live in different layers and cannot share code.
+LLM_RETRY_BUDGET_MULTIPLIER: float = 3.0
+
 DEFAULT_EMBEDDING_BATCH_SIZE = 100
 """Default records-per-onnxruntime-batch for the embedder.
 
@@ -86,6 +96,44 @@ class EmbeddingSettings(BaseSettings):
     model_path: str = ""
     tokenizer_path: str = ""
     revision_hash: str = ""
+    model_kind: Literal["bge-m3", "e5"] = Field(
+        default="e5",
+        description=(
+            "Embedding model *family*, which selects the adapter's output"
+            " handling: ``e5`` (default) mean-pools the token-level"
+            " ``last_hidden_state`` over the attention mask and prepends the"
+            " ``query: `` prefix every E5 input requires; ``bge-m3`` takes the"
+            " model's already-pooled ``dense_vecs`` head as-is. The dimension"
+            " and token cap are *per-artifact* and set separately"
+            " (``dense_dim`` / ``max_tokens``), so both e5-base (768-d) and"
+            " e5-small (384-d) share ``kind=e5``. Default is e5-base: smaller"
+            " and faster than BGE-M3 for a modest cross-lingual quality trade;"
+            " set ``kind=bge-m3`` + ``dense_dim=1024`` to use the stronger"
+            " model."
+        ),
+    )
+    dense_dim: int = Field(
+        default=768,
+        ge=1,
+        description=(
+            "Expected output dimensionality of the dense vector, validated"
+            " per batch so a mismatched artifact/config fails loud rather"
+            " than silently producing wrong-width vectors. multilingual-e5-base"
+            " (the default) is 768; multilingual-e5-small is 384; BGE-M3 is"
+            " 1024."
+        ),
+    )
+    max_tokens: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Tokenizer truncation cap. ``None`` uses the model family's"
+            " natural context: 8192 for ``bge-m3``, 512 for ``e5`` (its"
+            " XLM-R/MiniLM backbone's positional limit). Set an explicit"
+            " lower value to bound the per-record (and, since padding is to"
+            " the batch's longest row, per-batch) cost from long outliers."
+        ),
+    )
     intra_op_num_threads: int | None = None
     batch_size: int = Field(
         default=DEFAULT_EMBEDDING_BATCH_SIZE,
@@ -147,7 +195,7 @@ class AnalyzeSettings(BaseSettings):
         ),
     )
     max_concurrent_chunks: int = Field(
-        default=8,
+        default=64,
         ge=1,
         description=(
             "Maximum map-step chunks analysed concurrently (mode=hierarchical)."
@@ -158,7 +206,7 @@ class AnalyzeSettings(BaseSettings):
         ),
     )
     target_chunk_tokens: int = Field(
-        default=4_000,
+        default=2_000,
         ge=1,
         description=(
             "Target size (in estimated tokens) for a single map chunk"

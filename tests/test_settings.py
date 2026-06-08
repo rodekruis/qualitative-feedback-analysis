@@ -207,6 +207,30 @@ def test_embedding_settings_defaults_and_env_prefix(monkeypatch) -> None:
     assert settings.revision_hash == "sha256:abc123"
     # Default thread count is None (leave onnxruntime core-count default).
     assert settings.intra_op_num_threads is None
+    # Family/dimension default to multilingual-e5-base (the default model);
+    # max_tokens=None means "use the family's natural context" (512 for e5).
+    assert settings.model_kind == "e5"
+    assert settings.dense_dim == 768
+    assert settings.max_tokens is None
+
+
+def test_embedding_settings_select_bge_m3_family(monkeypatch) -> None:
+    """``EMBEDDING_MODEL_KIND``/``EMBEDDING_DENSE_DIM``/``EMBEDDING_MAX_TOKENS`` are env-configurable.
+
+    Why: the default is the smaller/faster e5-base, but switching to the
+    stronger BGE-M3 (1024-d, pre-pooled) must be a pure config change — no code
+    edit — so an operator can trade latency for cross-lingual quality per
+    deployment.
+    """
+    from qfa.settings import EmbeddingSettings
+
+    monkeypatch.setenv("EMBEDDING_MODEL_PATH", "/srv/models/bge-m3/model.onnx")
+    monkeypatch.setenv("EMBEDDING_REVISION_HASH", "sha256:bge")
+    monkeypatch.setenv("EMBEDDING_MODEL_KIND", "bge-m3")
+    monkeypatch.setenv("EMBEDDING_DENSE_DIM", "1024")
+    settings = EmbeddingSettings()
+    assert settings.model_kind == "bge-m3"
+    assert settings.dense_dim == 1024
 
 
 def test_analyze_settings_have_clustering_and_trend_fields() -> None:

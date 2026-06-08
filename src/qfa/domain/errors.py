@@ -44,6 +44,14 @@ class LLMTimeoutError(LLMError):
     """Raised when the LLM provider does not respond in time."""
 
 
+class LLMBadRequestError(LLMError):
+    """Raised when the LLM provider returns a 400 Bad Request response."""
+
+
+class LLMContentPolicyViolationError(LLMBadRequestError):
+    """Raised when the LLM provider rejects the request due to content policy."""
+
+
 class LLMRateLimitError(LLMError):
     """Raised when the LLM provider returns a rate-limit response."""
 
