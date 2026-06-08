@@ -8,7 +8,6 @@ import secrets
 from typing import Any, Generic, Literal, TypeVar, Union
 
 from pydantic import (
-    AliasChoices,
     BaseModel,
     ConfigDict,
     Field,
@@ -29,7 +28,6 @@ class FeedbackRecordModel(BaseModel):
     content: str = Field(
         min_length=1,
         max_length=100_000,
-        validation_alias=AliasChoices("content", "text"),
         description="Feedback text content.",
     )
     metadata: dict[str, str | int | float | bool] = Field(
