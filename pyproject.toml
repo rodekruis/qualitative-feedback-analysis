@@ -12,6 +12,7 @@ requires-python = ">=3.12,<3.14"
 authors = [
     { name = "Marius Helf", email = "mhelf@rodekruis.nl" },
     { name = "Paul van Houtum", email = "pvanhoutum@rodekruis.nl" },
+    { name = "Cas Teeuwen", email = "cteeuwen@rodekruis.nl" },
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
