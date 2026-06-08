@@ -9,7 +9,7 @@ import logging
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Callable, ClassVar, Optional, TypeVar
+from typing import ClassVar, Optional, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -1189,36 +1189,6 @@ class Orchestrator:
             raise AnalysisError("LLM returned no summaries for the feedback record.")
         return result.feedback_record_summaries[0].model_copy(
             update={"id": request.feedback_record.id}
-        )
-
-    def _align_record_items(
-        self,
-        *,
-        request_records: tuple[FeedbackRecordModel, ...],
-        llm_items: tuple[_AlignedItemT, ...],
-        align_item: Callable[[str, _AlignedItemT, int], _AlignedItemT],
-    ) -> tuple[_AlignedItemT, ...]:
-        """Align LLM result items to input record IDs by request order.
-
-        The LLM is not authoritative for per-record IDs; request IDs are. This
-        helper applies a caller-provided item mapper against request IDs.
-
-        Assumptions:
-        * request order is the canonical order for outputs
-        """
-        if len(llm_items) != len(request_records):
-            raise AnalysisError(
-                f"LLM returned {len(llm_items)} result items"
-                f" for {len(request_records)} requested feedback records."
-            )
-
-        return tuple(
-            align_item(
-                record.id,
-                llm_items[idx],
-                idx,
-            )
-            for idx, record in enumerate(request_records)
         )
 
     async def assign_codes(
