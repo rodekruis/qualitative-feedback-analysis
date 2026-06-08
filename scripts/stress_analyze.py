@@ -88,7 +88,7 @@ def load_sample(
     Parameters
     ----------
     yaml_path : Path
-        YAML file holding a list of ``{id, text, metadata}`` records.
+        YAML file holding a list of ``{id,  content, metadata}`` records.
     limit : int
         Number of records to keep. ``limit >= len(corpus)`` returns the
         full corpus (still seeded-shuffled, so order is deterministic).
@@ -127,7 +127,7 @@ def build_request(
     """Shape a ``/v1/analyze`` request body from sampled records.
 
     The API expects ``feedback_records`` (not ``documents``); the
-    fixture YAML stores them as ``{id, text, metadata}`` which already
+    fixture YAML stores them as ``{id, content, metadata}`` which already
     matches the schema, so we copy through unchanged.
     """
     body: dict[str, Any] = {
@@ -184,7 +184,7 @@ async def _post_once(
     headers = {"Authorization": f"Bearer {api_key}"}
     start = time.perf_counter()
     try:
-        response = await client.post("/v1/analyze", json=body, headers=headers)
+        response = await client.post("/v1/analyze-bulk", json=body, headers=headers)
     except httpx.HTTPError as exc:
         return RunResult(
             status=None,
