@@ -22,6 +22,26 @@ LANGUAGES_AND_ANONYMIZATION_MODEL_PAIRINGS = [
     {"lang_code": "xx", "model_name": "xx_ent_wiki_sm"},
 ]
 
+# spaCy's OntoNotes models emit entity labels that carry no PII meaning
+# (numbers, facilities, products, etc.). Presidio has no mapping for them,
+# so without this list it logs a "not mapped to a Presidio entity" warning
+# for each one on every document. Ignoring them silences the noise *and*
+# stops these tokens from being masked with spurious placeholders.
+NON_PII_NER_LABELS_TO_IGNORE = [
+    "CARDINAL",
+    "ORDINAL",
+    "QUANTITY",
+    "PERCENT",
+    "MONEY",
+    "FAC",
+    "PRODUCT",
+    "EVENT",
+    "WORK_OF_ART",
+    "LAW",
+    "LANGUAGE",
+    "MISC",
+]
+
 
 def detect_language(text: str) -> str:
     """Detect the language of ``text`` and return a Presidio-compatible language code.
@@ -56,6 +76,9 @@ class PresidioAnonymizer(AnonymizationPort):
                 nlp_configuration={
                     "nlp_engine_name": "spacy",
                     "models": LANGUAGES_AND_ANONYMIZATION_MODEL_PAIRINGS,
+                    "ner_model_configuration": {
+                        "labels_to_ignore": NON_PII_NER_LABELS_TO_IGNORE,
+                    },
                 }
             ).create_engine()
         )
