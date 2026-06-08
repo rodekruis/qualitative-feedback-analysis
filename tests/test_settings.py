@@ -215,7 +215,7 @@ def test_embedding_settings_defaults_and_env_prefix(monkeypatch) -> None:
 
 
 def test_embedding_settings_select_bge_m3_family(monkeypatch) -> None:
-    """``EMBEDDING_MODEL_KIND``/``DENSE_DIM``/``MAX_TOKENS`` are env-configurable.
+    """``EMBEDDING_MODEL_KIND``/``EMBEDDING_DENSE_DIM``/``EMBEDDING_MAX_TOKENS`` are env-configurable.
 
     Why: the default is the smaller/faster e5-base, but switching to the
     stronger BGE-M3 (1024-d, pre-pooled) must be a pure config change — no code

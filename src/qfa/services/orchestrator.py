@@ -533,15 +533,15 @@ class Orchestrator:
 
         # One semaphore bounds *every* hierarchical LLM call (map, leaf judge,
         # reduce) to ``max_concurrent_chunks``, so total concurrency stays
-        # capped even while the judge and reduce phases overlap below. cap=1
-        # therefore remains fully sequential.
+        # capped across all phases. cap=1 therefore remains fully sequential.
         max_in_flight = self._analyze_settings.max_concurrent_chunks
         semaphore = asyncio.Semaphore(max_in_flight)
 
         # 4. MAP: produce one partial per chunk, concurrently. Only the partials
         #    are on the critical path to REDUCE; the leaf-judge scores feed only
-        #    the final confidence, so judging is deferred to phase 5 and overlaps
-        #    REDUCE. ``asyncio.gather`` preserves chunk order, so partials and
+        #    the final confidence, so judging is deferred to phase 5, which runs
+        #    REDUCE first and then the judges (see that block for why).
+        #    ``asyncio.gather`` preserves chunk order, so partials and
         #    chunk_sizes stay aligned with ``chunks``.
         logger.info(
             "starting map phase: %d chunk(s), up to %d concurrent LLM call(s)",
@@ -598,11 +598,12 @@ class Orchestrator:
                 if len(errors) == len(chunks):
                     raise AnalysisError("mapping failed for all chunks")
                 else:
+                    error_classes = sorted({type(exc).__name__ for exc in errors})
                     logger.warning(
-                        "Errors mapping %d/%d chunks: %s",
+                        "Errors mapping %d/%d chunks: error_classes=%s",
                         len(errors),
                         len(chunks),
-                        str(errors),
+                        ",".join(error_classes),
                     )
 
         chunk_sizes: list[int] = [len(chunk.records) for chunk in chunks]
@@ -806,8 +807,8 @@ class Orchestrator:
 
         ``semaphore`` caps how many completions run at once across the whole
         hierarchical pipeline (map, leaf judge, reduce), so concurrency stays
-        within ``max_concurrent_chunks`` even while the judge and reduce phases
-        overlap. The deadline/timeout is computed *after* acquiring a slot, so a
+        within ``max_concurrent_chunks`` across every phase. The
+        deadline/timeout is computed *after* acquiring a slot, so a
         completion that queued behind others still honours the remaining budget
         (and raises ``AnalysisTimeoutError`` if the deadline passed while it
         waited).
@@ -848,9 +849,10 @@ class Orchestrator:
     ) -> str:
         """Produce one partial analysis for a chunk (no judging).
 
-        The leaf judge that scores this
-        partial runs separately (see :meth:`_judge_chunk`) so it can overlap the
-        reduce phase, which depends only on the partials.
+        The leaf judge that scores this partial runs as a separate phase
+        (see :meth:`_judge_chunk`), after reduce — both depend only on the
+        partials, and deferring the judges keeps a time-starved judge phase
+        from discarding the already-produced synthesis.
         """
         response = await self._bounded_complete(
             semaphore,

@@ -79,7 +79,7 @@ class LLMSettings(BaseSettings):
     api_key: SecretStr = Field(default=...)  # required, no default
     api_base: str = ""
     api_version: str = ""
-    timeout_seconds: float = 115.0  # deadline for most endpoints is 120s. Settings this to 55s leaves room for at least one retry on error
+    timeout_seconds: float = 115.0
     max_total_tokens: int = 100_000
     chars_per_token: int = 4
 

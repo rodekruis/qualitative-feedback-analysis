@@ -26,10 +26,10 @@ of a *self-hosted ONNX-int8* model over a hosted embedding API — and why that
 format — is recorded in
 [ADR-014](../adr/014-embedding-port-and-self-hosted-model.md). The adapter
 supports two model families, selected by `EMBEDDING_MODEL_KIND`: the default
-**multilingual-e5-base** (768-d, mean-pooled — smaller and faster) and
-**BGE-M3** (1024-d, pre-pooled — stronger cross-lingual quality), both baked
-into the image (see the
-[settings reference](../operations/settings-reference.md)).
+**multilingual-e5-base** (768-d, mean-pooled — smaller and faster), which is
+baked into the image, and **BGE-M3** (1024-d, pre-pooled — stronger
+cross-lingual quality), which requires adding a fetch step to the image build
+(see the [settings reference](../operations/settings-reference.md)).
 
 ## The pipeline
 

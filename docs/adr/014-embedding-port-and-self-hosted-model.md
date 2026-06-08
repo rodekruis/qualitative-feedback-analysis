@@ -128,9 +128,9 @@ port or `services`:
   mean-pooled): ~2–3× faster CPU encoding than BGE-M3 at a modest cross-lingual
   quality trade, which is the right default for the short multilingual feedback
   this service sees. It is the official repo's own int8 ONNX export, pinned by
-  hash and validated the same way (point 3). **BGE-M3 remains baked into the
-  image and one env override away** for deployments that prefer its stronger
-  cross-lingual quality.
+  hash and validated the same way (point 3). **BGE-M3 is no longer baked into
+  the image**: deployments that prefer its stronger cross-lingual quality add a
+  fetch step to the `Dockerfile` model stage and override the `EMBEDDING_*` env.
 
 The conversion-correctness check (point 3) now applies per artifact; the
 e2e cosine-vs-official test still covers BGE-M3 via the retained

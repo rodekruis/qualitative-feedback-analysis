@@ -19,12 +19,14 @@ Every environment variable the app reads. Settings are loaded by `pydantic-setti
 ## Embedding (`EMBEDDING_*`)
 
 Only consumed by `mode=hierarchical`. The path defaults to *empty* at the
-settings layer, but **the official Docker image bakes two ONNX embedders in
-(multilingual-e5-base and BGE-M3) and sets the `ENV` to the e5-base default**
-(see the builder stage in `Dockerfile`), so a deployed image serves
-hierarchical out of the box. The 502 `analysis_unavailable` response only
-applies where the model is genuinely absent — a bare local run, or a
-deployment that strips these vars.
+settings layer, but **the official Docker image bakes the default ONNX embedder
+in (multilingual-e5-base) and sets the `ENV` to it** (see the builder stage in
+`Dockerfile`), so a deployed image serves hierarchical out of the box. The 502
+`analysis_unavailable` response only applies where the model is genuinely
+absent — a bare local run, or a deployment that strips these vars. Running a
+different family (e.g. BGE-M3) in production means adding a fetch step to the
+`Dockerfile` model stage and overriding the `EMBEDDING_*` env — it is **not**
+baked in by default.
 
 Two model **families** are supported, selected by `EMBEDDING_MODEL_KIND`; the
 family fixes the adapter's output handling (pooling + query prefix) while the
@@ -36,8 +38,9 @@ dimension and token cap are per-artifact knobs (`EMBEDDING_DENSE_DIM` /
   modest cross-lingual quality trade. e5-small (384-d) is the same `kind`.
 - **`bge-m3`** (1024-d) — takes the model's already-pooled `dense_vecs` head
   as-is. The strongest cross-lingual model; select it when quality matters
-  more than latency. Baked into the image and one env override away (see the
-  `Dockerfile` comment for the exact `EMBEDDING_*` values).
+  more than latency. Not baked into the image: add a fetch step to the
+  `Dockerfile` model stage (`fetch_embedding_model.py --model bge-m3`) and
+  point the `EMBEDDING_*` env at it (see the `Dockerfile` comment).
 
 For **local development**, fetch an artifact and get the matching env lines
 with `uv run python scripts/fetch_embedding_model.py` (defaults to e5-base;
