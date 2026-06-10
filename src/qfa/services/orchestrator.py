@@ -66,6 +66,7 @@ from qfa.services.prompts import (
     JUDGE_UNAVAILABLE_EXPLANATION,
     build_analyze_judge_system_message,
     build_analyze_user_message,
+    build_output_language_instruction,
 )
 from qfa.settings import (
     LLM_RETRY_BUDGET_MULTIPLIER,
@@ -344,6 +345,7 @@ class Orchestrator:
             f"{ANALYZE_SYSTEM_PROMPT}\n\n"
             f"{ANALYZE_GUARDRAILS_PROMPT}\n\n"
             f"{ANALYZE_ACTION_PROMPT}"
+            f"{build_output_language_instruction(request.output_language)}"
         )
         user_message = build_analyze_user_message(
             request.prompt, request.feedback_records
@@ -679,6 +681,7 @@ class Orchestrator:
                 request.tenant_id,
                 deadline,
                 semaphore,
+                request.output_language,
             )
 
         with timed() as reduce_sw:
@@ -926,6 +929,7 @@ class Orchestrator:
         tenant_id: str,
         deadline: datetime,
         semaphore: asyncio.Semaphore,
+        output_language: str | None = None,
     ) -> str:
         """Synthesise partials into one analysis, tree-reducing on overflow.
 
@@ -945,7 +949,7 @@ class Orchestrator:
         we emit a single LLM call on the partials anyway so the recursion
         always terminates.
         """
-        system_message = build_reduce_system_message()
+        system_message = build_reduce_system_message(output_language)
 
         def _fits(items: tuple[str, ...], table: CodingTrendTable | None) -> bool:
             user = build_reduce_user_message(
@@ -997,7 +1001,13 @@ class Orchestrator:
         )
         intermediates = [
             await self._reduce_partials(
-                analyst_prompt, group, None, tenant_id, deadline, semaphore
+                analyst_prompt,
+                group,
+                None,
+                tenant_id,
+                deadline,
+                semaphore,
+                output_language,
             )
             for group in groups
         ]
@@ -1008,6 +1018,7 @@ class Orchestrator:
             tenant_id,
             deadline,
             semaphore,
+            output_language,
         )
 
     def _group_partials_to_budget(

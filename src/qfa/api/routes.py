@@ -127,6 +127,7 @@ async def analyze_bulk(
     domain_request = AnalysisRequestModel(
         feedback_records=domain_feedback_records,
         prompt=body.prompt,
+        output_language=body.output_language,
         tenant_id=tenant.tenant_id,
         mode=body.mode,
         period=body.period,

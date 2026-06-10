@@ -177,6 +177,33 @@ async def test_guardrails_present_at_both_map_and_reduce():
 
 
 @pytest.mark.asyncio
+async def test_output_language_instructs_the_reduce_system_message():
+    """``output_language`` adds a directive naming the language to the top-level reduce prompt.
+
+    Why: #154 — the user-facing analysis is produced by the reduce
+    (synthesis) step, so the language directive must reach that prompt for
+    the hierarchical path to honour ``output_language``.
+    """
+    records = _records(4, "water access " * 5, "w")
+    request = AnalysisRequestModel(
+        feedback_records=records,
+        prompt="trends?",
+        tenant_id=TENANT_ID,
+        mode="hierarchical",
+        output_language="Dutch",
+    )
+    llm = RecordingLLM()
+    orch = _build_orchestrator(
+        llm, RecordingAnonymizer(), FakeEmbeddingPort(), max_total_tokens=100_000
+    )
+    deadline = datetime.now(UTC) + timedelta(seconds=120)
+    await orch.analyze_hierarchical(request, deadline, anonymize=True)
+    system_msgs = [c[0] for c in llm.calls if c[2] is str]
+    # The last str-model call is the top-level reduce — the final, user-facing output.
+    assert "Dutch" in system_msgs[-1]
+
+
+@pytest.mark.asyncio
 async def test_anonymization_happens_before_any_llm_or_embed_call():
     """No raw PII reaches the embedder or the LLM; anonymiser saw the text first.
 
