@@ -155,7 +155,7 @@ class ApiFeedbackRecordInput(BaseModel):
     )
 
 
-##### Bulk requests #####
+##### Bulk requests Base Model #####
 
 
 class ApiBulkInferenceRequestBase(BaseModel, ABC):
@@ -182,6 +182,19 @@ class ApiBulkInferenceResponseBase(BaseModel, ABC):
         """Subclasses must implement this to return a human-readable output string."""
         raise NotImplementedError("Subclasses must implement pretty_output.")
 
+
+##### Single-record requests Base Model #####
+
+
+class ApiSingleInferenceRequestBase(BaseModel, ABC):
+    """Base request for inference endpoints that return per-feedback-record outputs."""
+
+    feedback_record: ApiFeedbackRecordInput = Field(
+        description="Feedback record to process.",
+    )
+
+
+##### Bulk requests #####
 
 # analyze-bulk
 
@@ -362,14 +375,6 @@ class ApiSummarizeBulkResponse(ApiBulkInferenceResponseBase):
 
 
 ##### Per-feedback-record requests #####
-
-
-class ApiSingleInferenceRequestBase(BaseModel, ABC):
-    """Base request for inference endpoints that return per-feedback-record outputs."""
-
-    feedback_record: ApiFeedbackRecordInput = Field(
-        description="Feedback record to process.",
-    )
 
 
 # note: no response base model since these are all different shapes
