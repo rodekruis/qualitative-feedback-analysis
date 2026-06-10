@@ -12,6 +12,9 @@ from qfa.domain.models import (
     AggregateSummaryResultModel,
     AnalysisRequestModel,
     AnalysisResultModel,
+    CodingAssignmentRequestModel,
+    CodingFramework,
+    CodingNode,
     FeedbackRecordModel,
     FeedbackRecordSummaryModel,
     LLMResponse,
@@ -24,6 +27,7 @@ from qfa.domain.models import (
 )
 from qfa.domain.ports import AnonymizationPort, LLMPort
 from qfa.domain.sensitivity_types import SensitivityType
+from qfa.services.coding_classifier import JudgeResponse
 from qfa.services.orchestrator import Orchestrator
 from qfa.settings import OrchestratorSettings
 
@@ -1074,3 +1078,55 @@ class TestAnalyzeAnonymizationOrdering:
         judge_system = fake_llm.calls[1]["system_message"]
         assert sensitive_token not in judge_system
         assert "<PERSON_0>" in judge_system
+
+
+class TestAssignCodes:
+    """Tests for hierarchical code assignment."""
+
+    @pytest.mark.asyncio
+    async def test_assigned_code_carries_type_and_category_labels(self, settings):
+        """Each assigned code carries its full Type/Category/Code labels.
+
+        Not just the leaf Code label, so EspoCRM can map an assignment back
+        to all three coding levels (#149).
+        """
+        framework = CodingFramework(
+            root_codes=[
+                CodingNode(
+                    name="Type A",
+                    children=[
+                        CodingNode(
+                            name="Cat A1",
+                            children=[CodingNode(name="Code A1.1")],
+                        )
+                    ],
+                )
+            ]
+        )
+        request = CodingAssignmentRequestModel(
+            feedback_record=_make_feedback_record(),
+            coding_levels=framework,
+            max_codes=5,
+            tenant_id=TENANT_ID,
+        )
+        # 6 calls in order: pick-Types, judge-Type, pick-Categories,
+        # judge-Category, pick-Codes, judge-Code.
+        pick = _make_llm_response(structured='{"selected": [0]}')
+        judge = _make_llm_response(
+            structured=JudgeResponse(score=0.9, explanation="fits well")
+        )
+        fake_llm = FakeLLMPort(responses=[pick, judge, pick, judge, pick, judge])
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        result = await orch.assign_codes(request, _future_deadline())
+
+        assigned = result.coded_feedback_records[0].assigned_codes[0]
+        assert assigned.type_label == "Type A"
+        assert assigned.category_label == "Cat A1"
+        assert assigned.code_label == "Code A1.1"

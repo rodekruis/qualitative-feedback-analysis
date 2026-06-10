@@ -512,8 +512,19 @@ class ApiAssignCodesRequest(ApiSingleInferenceRequestBase):
 class ApiAssignedCode(BaseModel):
     """A single code assigned to a feedback record."""
 
-    code_id: str
-    code_label: str
+    code_id: str = Field(
+        description=(
+            "Stable identifier from the coding framework. The framework "
+            "nodes carry only names, so this mirrors ``code_label``."
+        )
+    )
+    type_label: str = Field(description="Type-level (level 1) name of the assignment.")
+    category_label: str = Field(
+        description="Category-level (level 2) name of the assignment."
+    )
+    code_label: str = Field(
+        description="Code-level (level 3, leaf) name of the assignment."
+    )
     confidence_type: float
     confidence_category: float
     confidence_code: float

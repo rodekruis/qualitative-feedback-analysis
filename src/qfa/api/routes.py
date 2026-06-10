@@ -283,7 +283,17 @@ async def assign_codes(
     orchestrator: Orchestrator = Depends(get_orchestrator),
     _scope: CallContext = Depends(call_scope_for(Operation.ASSIGN_CODES)),
 ) -> ApiAssignCodesResponse:
-    """Assign codes via iterative LLM picks at each level of the framework."""
+    """Assign codes via iterative LLM picks at each level of the framework.
+
+    The orchestrator walks the framework one level at a time (Type →
+    Category → Code), keeping the highest-confidence leaf codes up to
+    ``max_codes``. Each entry in the response reports the full hierarchy
+    path of the selected leaf: ``type_label`` (level 1), ``category_label``
+    (level 2), and ``code_label`` (level 3, the leaf). Because the inbound
+    ``coding_levels`` nodes carry only names (no stable ids), ``code_id``
+    mirrors the leaf ``code_label``; consumers such as EspoCRM map the
+    three levels back to their records by name (#149).
+    """
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
     domain_request = CodingAssignmentRequestModel(
@@ -309,6 +319,8 @@ async def assign_codes(
         assigned_codes=[
             ApiAssignedCode(
                 code_id=assigned.code_id,
+                type_label=assigned.type_label,
+                category_label=assigned.category_label,
                 code_label=assigned.code_label,
                 confidence_type=assigned.confidence_type,
                 confidence_category=assigned.confidence_category,

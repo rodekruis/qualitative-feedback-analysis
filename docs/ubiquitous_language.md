@@ -19,7 +19,10 @@ name in all contexts such as code, documentation, dashboards and training materi
 | Feedback metadata | Contextual attributes that describe a feedback record for governance, analysis, and responsibility, including operational and ethical flags. | Extra fields, system data |
 | Feedback dataset | Analytical abstraction that supports aggregation, filtering, and ML workflows across storage backends; may be derived or time‑bound. | Database, table |
 | Coding | Standard qualitative analysis practice emphasising interpretation; a single feedback record may be coded multiple times. | Tagging only |
-| Coding framework | Flexible, evolving structure for organising codes; supports iteration and learning over fixed classification. | Taxonomy, list of tags |
+| Coding framework | Flexible, evolving structure for organising codes; supports iteration and learning over fixed classification. A framework is a three-level hierarchy of **coding type → coding category → code**, and every assignment names all three levels. | Taxonomy, list of tags |
+| Coding type | The top (level 1) node of the coding framework; the broadest grouping under which categories and codes are nested. Surfaced as `type_label` on an assigned code. | Theme (when used loosely), tag |
+| Coding category | The middle (level 2) node of the coding framework, nested under a coding type and grouping the leaf codes. Surfaced as `category_label` on an assigned code. | Subtype, sub-tag |
+| Code | The leaf (level 3) node of the coding framework; the most specific label actually assigned to a feedback record. Surfaced as `code_label` on an assigned code. | Tag (leaf), label (generic) |
 | Auto‑coding | Tool‑neutral term for automated analysis; produces suggested codes that require human validation. | AI tagging |
 | Manual coding | Explicitly denotes human interpretation, enabling clear mixed human–AI workflows. | Human tagging |
 | Community member | This is the person giving feedback to a Red Cross/Red Crescent National Society. People‑centred term aligned with IFRC CEA commitments, emphasising rights and participation; never referred to as a user. | Beneficiary, client |

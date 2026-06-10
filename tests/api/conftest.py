@@ -191,6 +191,8 @@ class FakeOrchestrator:
                     assigned_codes=(
                         AssignedCodeModel(
                             code_id="code-1",
+                            type_label="Test type",
+                            category_label="Test category",
                             code_label="Test code",
                             confidence_type=0.9,
                             confidence_category=0.85,

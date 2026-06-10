@@ -200,6 +200,8 @@ def _build_judge_system_message(source_text: str, summary: str) -> str:
 @dataclass
 class _ScoredCode:
     code_id: str
+    type_label: str
+    category_label: str
     code_label: str
     confidence_type: float
     confidence_category: float
@@ -1311,6 +1313,8 @@ class Orchestrator:
                     candidates.append(
                         _ScoredCode(
                             code_id=code_name,
+                            type_label=type_name,
+                            category_label=category_name,
                             code_label=code_name,
                             confidence_type=judge_type.score,
                             confidence_category=judge_category.score,
@@ -1330,6 +1334,8 @@ class Orchestrator:
                 assigned_codes=tuple(
                     AssignedCodeModel(
                         code_id=c.code_id,
+                        type_label=c.type_label,
+                        category_label=c.category_label,
                         code_label=c.code_label,
                         confidence_type=c.confidence_type,
                         confidence_category=c.confidence_category,

@@ -592,6 +592,21 @@ class TestAssignCodesSuccess:
         assert "explanation" in code_item
 
     @pytest.mark.asyncio
+    async def test_response_includes_full_coding_hierarchy_labels(self, client):
+        """Response exposes Type and Category labels alongside the leaf code.
+
+        So EspoCRM can map an assignment to all three coding levels (#149).
+        """
+        resp = await client.post(
+            "/v1/assign-codes", json=_CODING_BODY, headers=_auth_header()
+        )
+        assert resp.status_code == 200
+        code_item = resp.json()["assigned_codes"][0]
+        assert code_item["type_label"] == "Test type"
+        assert code_item["category_label"] == "Test category"
+        assert code_item["code_label"] == "Test code"
+
+    @pytest.mark.asyncio
     async def test_422_on_invalid_confidence_threshold(self, client):
         resp = await client.post(
             "/v1/assign-codes",

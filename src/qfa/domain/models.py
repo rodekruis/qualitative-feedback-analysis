@@ -233,6 +233,8 @@ class AssignedCodeModel(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     code_id: str = Field(description="Stable identifier from the coding framework.")
+    type_label: str = Field(description="Human-readable Type-level name.")
+    category_label: str = Field(description="Human-readable Category-level name.")
     code_label: str = Field(description="Human-readable code name.")
     confidence_type: float = Field(
         description="Judge confidence that the Type level fits the feedback record (0-1)."
