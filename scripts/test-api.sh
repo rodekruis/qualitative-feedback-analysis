@@ -17,7 +17,7 @@ echo ""
 echo "=== Analyze Bulk ==="
 http POST "${BASE_URL}/v1/analyze-bulk" \
   "Authorization:Bearer ${QFA_API_KEY}" \
-  documents:='[
+  feedback_records:='[
     {
       "id": "doc-001",
       "text": "The water distribution was well organized but we had to wait for three hours.",
@@ -32,7 +32,7 @@ http POST "${BASE_URL}/v1/analyze-bulk" \
   prompt="Summarize the main themes and sentiment of the feedback."
 
 
-http POST "${BASE_URL}/v1/summarize" \
+http POST "${BASE_URL}/v1/summarize-bulk" \
   "Authorization:Bearer ${QFA_API_KEY}" \
 \
 \
