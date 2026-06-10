@@ -402,7 +402,7 @@ does (a CI win — the port stops being able to drift quietly).
 I read `api/dependencies.py`, `api/routes_usage.py`, `api/schemas.py`,
 `api/schemas_usage.py`, and `cli/migrate.py` for this addendum.
 
-### Finding: `ApiCodingNode` / `ApiCodingLevels` is an unfinished migration
+### Finding: `ApiCodingNode` / `ApiCodingFramework` is an unfinished migration
 
 `api/schemas.py` defines a fully typed coding-framework hierarchy:
 
@@ -415,10 +415,10 @@ class ApiCodingNode(BaseModel):
     def max_child_depth(self) -> int: ...
     def min_child_depth(self) -> int: ...
 
-class ApiCodingLevels(BaseModel):
+class ApiCodingFramework(BaseModel):
     root_codes: list[ApiCodingNode] = Field(min_length=1)
     @model_validator(mode="after")
-    def verify_all_codes_have_same_depth(self) -> "ApiCodingLevels": ...
+    def verify_all_codes_have_same_depth(self) -> "ApiCodingFramework": ...
 ```
 
 These models have **13 unit tests** in `tests/api/test_schemas.py`
@@ -439,10 +439,10 @@ the tests, then never replaced the `dict[str, Any]` field. The typed
 model is ready to wire in. Doing so is two steps:
 
 1. Replace `coding_framework: dict[str, Any]` with `coding_framework:
-   ApiCodingLevels` in `ApiAssignCodesRequest`.
+   ApiCodingFramework` in `ApiAssignCodesRequest`.
 2. Add a corresponding domain model
    `qfa.domain.models.CodingFramework` (it'll be near-identical to
-   `ApiCodingLevels`, minus the `model_validator` if you want it to
+   `ApiCodingFramework`, minus the `model_validator` if you want it to
    stay structural-only at the domain layer) and update
    `CodingAssignmentRequestModel.coding_framework` to use it.
 3. Update the orchestrator's `assign_codes` to navigate the typed
@@ -685,7 +685,7 @@ addendum) and adjusting priorities based on what the addendum found.
 | 5 | Delete or fix `queue_default_response` (dead code that would raise on first use) | 5 min | R2 | New — concrete bug |
 | 6 | Strip stale fields from `FakeOrchestrator` and `_make_llm_response`/`_make_analysis_result` | 20 min | R2 | Reduces foot-gun if `extra="forbid"` ever lands |
 | 7 | Move `services/call_context.py` to a layer that adapters can read from cleanly | 30 min | R1 | Still applies |
-| 8 | **Wire in the existing `ApiCodingLevels` typed model** to replace `coding_framework: dict[str, Any]` | 1–2 hours | R2 (replaces R1's "build a typed model") | Half-done already; the model + tests exist. Just plumb it through. |
+| 8 | **Wire in the existing `ApiCodingFramework` typed model** to replace `coding_framework: dict[str, Any]` | 1–2 hours | R2 (replaces R1's "build a typed model") | Half-done already; the model + tests exist. Just plumb it through. |
 | 9 | Update `ADR-002` to capture the production-inheritance / test-fake-structural-typing pattern that `AGENTS.md` already documents | 30 min | R2 | Documentation hygiene |
 | 10 | Update `ADR-004` to reflect LiteLLM (decision still holds; implementation description outdated) | 30 min | R2 | Documentation hygiene |
 | 11 | **Rewrite (or stamp as historical) `docs/architecture.md`** | 2–3 hours | R2 | Highest doc-debt item |
@@ -714,7 +714,7 @@ and running the test suite, I'm now confident in:
   confirmed dead/silently-absorbed by running the tests.
 - The `architecture.md` drift in §2 — verified line-by-line against
   `src/qfa/`.
-- The unfinished `ApiCodingLevels` migration in §4 — verified the
+- The unfinished `ApiCodingFramework` migration in §4 — verified the
   typed model exists, has tests, and isn't wired in.
 - The ubiquitous-language drift in §5 — verified by grep against the
   UL doc's avoid-list.
@@ -737,4 +737,4 @@ and running the test suite, I'm now confident in:
 - I did not look at the actual COVID-19 coding framework in
   `fixtures/coding_framework.json` — the JSON file the API examples
   load from. If the fixture's structure differs from what
-  `ApiCodingLevels` expects, that would block item 8 above.
+  `ApiCodingFramework` expects, that would block item 8 above.

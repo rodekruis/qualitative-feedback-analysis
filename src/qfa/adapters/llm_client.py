@@ -4,17 +4,89 @@ import logging
 import re
 from typing import cast
 
-import openai
 from litellm import acompletion, completion_cost
+from litellm.exceptions import APIError, BadRequestError, RateLimitError, Timeout
+from litellm.utils import type_to_response_format_param
 from pydantic import BaseModel, ValidationError
-from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_exponential
+from tenacity import (
+    AsyncRetrying,
+    after_log,
+    before_sleep_log,
+    retry_if_exception_type,
+    stop_after_delay,
+    wait_exponential,
+)
 
 from qfa.domain import AnalysisError, FeedbackTooLargeError
-from qfa.domain.errors import LLMError, LLMRateLimitError, LLMTimeoutError
+from qfa.domain.errors import (
+    LLMBadRequestError,
+    LLMContentPolicyViolationError,
+    LLMError,
+    LLMRateLimitError,
+    LLMTimeoutError,
+)
 from qfa.domain.models import LLMResponse, T_Response
 from qfa.domain.ports import LLMPort
+from qfa.settings import LLM_RETRY_BUDGET_MULTIPLIER
+from qfa.utils import timed
 
 logger = logging.getLogger(__name__)
+
+# JSON-Schema validation keywords that some structured-output providers reject
+# in a ``response_format`` schema — Azure AI Mistral, for one, answers a schema
+# carrying ``minimum`` with "Received unsupported keyword `minimum` in schema".
+# They are exactly what Pydantic ``Field`` constraints serialise to (ge/le/gt/lt
+# -> minimum/maximum/exclusive*, min_length/max_length -> minLength/maxLength,
+# pattern, ...). The schema we send the model is only a generation hint — the
+# authoritative validation is ``model_validate_json`` on the response — so
+# stripping these from the *outgoing* schema costs no safety, and lets the
+# domain models keep their constraints (and the OpenAPI docs they produce).
+_UNSUPPORTED_SCHEMA_KEYWORDS: frozenset[str] = frozenset(
+    {
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+        "multipleOf",
+        "minLength",
+        "maxLength",
+        "pattern",
+        "minItems",
+        "maxItems",
+        "uniqueItems",
+        "minProperties",
+        "maxProperties",
+    }
+)
+
+
+def _strip_unsupported_schema_keywords(node: object) -> object:
+    """Return ``node`` with unsupported validation keywords removed, recursively.
+
+    Produces a new structure (the input is not mutated) and walks nested
+    objects, ``$defs`` and array ``items`` so constraints on nested models are
+    stripped too.
+    """
+    if isinstance(node, dict):
+        return {
+            key: _strip_unsupported_schema_keywords(value)
+            for key, value in node.items()
+            if key not in _UNSUPPORTED_SCHEMA_KEYWORDS
+        }
+    if isinstance(node, list):
+        return [_strip_unsupported_schema_keywords(item) for item in node]
+    return node
+
+
+def _provider_safe_response_format(model: type[BaseModel]) -> dict:
+    """Build a ``response_format`` for ``model`` that any provider can ingest.
+
+    Uses LiteLLM's own Pydantic->response_format conversion so the structure
+    matches what already works across providers, then strips the validation
+    keywords some providers reject from the schema it carries.
+    """
+    response_format = type_to_response_format_param(response_format=model)
+    return cast(dict, _strip_unsupported_schema_keywords(response_format))
 
 
 class LiteLLMClient(LLMPort):
@@ -112,11 +184,56 @@ class LiteLLMClient(LLMPort):
                 limit=self._max_total_tokens,
             )
 
-    @retry(
-        wait=wait_exponential(multiplier=1, max=10),
-        stop=stop_after_delay(60),
-        retry=retry_if_exception_type((LLMTimeoutError, LLMRateLimitError)),
-    )
+    async def _complete_once(
+        self,
+        *,
+        system_message: str,
+        user_message: str,
+        tenant_id: str,
+        timeout: float,
+        response_format: dict | None,
+    ):
+        """Issue a single provider completion, translating provider errors.
+
+        This is exactly one ``acompletion`` round-trip plus the boundary
+        translation from litellm exceptions to ``qfa.domain.errors``. It does
+        NOT retry, check the token limit, scan for injection, or parse the
+        response — :meth:`complete` owns those (they must run once, not once
+        per attempt). Factored out so the retry loop wraps only the network
+        call, and so the error-mapping contract can be unit-tested on a single
+        attempt without driving the retry loop.
+        """
+        try:
+            return await acompletion(
+                model=self._model,
+                messages=[
+                    {"role": "system", "content": system_message},
+                    {"role": "user", "content": user_message},
+                ],
+                api_key=self._api_key,
+                api_base=self._api_base or None,
+                api_version=self._api_version or None,
+                user=tenant_id,
+                timeout=timeout,
+                response_format=response_format,
+            )
+        except Timeout as exc:
+            logger.error(exc)
+            raise LLMTimeoutError(str(exc)) from exc
+        except RateLimitError as exc:
+            logger.error(exc)
+            raise LLMRateLimitError(str(exc)) from exc
+        except BadRequestError as exc:
+            logger.error(exc)
+            msg = str(exc)
+            if "filtered" in msg and "content management policy" in msg:
+                raise LLMContentPolicyViolationError(str(exc)) from exc
+            else:
+                raise LLMBadRequestError(str(exc)) from exc
+        except APIError as exc:
+            logger.error(exc)
+            raise LLMError(str(exc)) from exc
+
     async def complete(
         self,
         system_message: str,
@@ -125,7 +242,16 @@ class LiteLLMClient(LLMPort):
         response_model: type[T_Response],
         timeout: float = 20.0,
     ) -> LLMResponse[T_Response]:
-        """Send a completion request via LiteLLM.
+        """Send a completion request via LiteLLM, retrying transient failures.
+
+        ``timeout`` is the budget for a *single* attempt. Transient failures
+        (timeout, rate-limit) are retried with exponential backoff up to a total
+        wall-clock budget of ``LLM_RETRY_BUDGET_MULTIPLIER * timeout``; the retry
+        wraps only the provider call, so injection/token checks and response
+        parsing happen exactly once. Callers that enforce a deadline must size
+        ``timeout`` so this worst-case budget still fits (the orchestrator does
+        this in ``_check_deadline_and_get_timeout``). Bad-request and generic
+        API errors are not retried — they are not transient.
 
         Parameters
         ----------
@@ -134,7 +260,7 @@ class LiteLLMClient(LLMPort):
         user_message : str
             The user-level message to complete.
         timeout : float
-            Maximum time in seconds to wait for a response.
+            Maximum time in seconds to wait for a single attempt.
         tenant_id : str
             Tenant identifier passed as ``user`` for audit trail.
 
@@ -146,9 +272,9 @@ class LiteLLMClient(LLMPort):
         Raises
         ------
         LLMTimeoutError
-            When the provider does not respond in time.
+            When the provider does not respond in time on every attempt.
         LLMRateLimitError
-            When the provider returns a rate-limit response.
+            When the provider rate-limits on every attempt.
         LLMError
             For any other provider error or empty response.
         """
@@ -156,31 +282,39 @@ class LiteLLMClient(LLMPort):
 
         self._check_token_limit(system_message, user_message)
 
-        try:
-            response = await acompletion(
-                model=self._model,
-                messages=[
-                    {"role": "system", "content": system_message},
-                    {"role": "user", "content": user_message},
-                ],
-                api_key=self._api_key,
-                api_base=self._api_base or None,
-                api_version=self._api_version or None,
-                user=tenant_id,
-                timeout=timeout,
-                response_format=response_model
-                if issubclass(response_model, BaseModel)
-                else None,
-            )
-        except openai.APITimeoutError as exc:
-            logger.error(exc)
-            raise LLMTimeoutError(str(exc)) from exc
-        except openai.RateLimitError as exc:
-            logger.error(exc)
-            raise LLMRateLimitError(str(exc)) from exc
-        except openai.APIError as exc:
-            logger.error(exc)
-            raise LLMError(str(exc)) from exc
+        response_format = (
+            _provider_safe_response_format(response_model)
+            if issubclass(response_model, BaseModel)
+            else None
+        )
+
+        retry_budget = LLM_RETRY_BUDGET_MULTIPLIER * timeout
+        logger.debug(
+            "LiteLLMClient: dispatching message with per-attempt timeout %.1fs "
+            "(retry budget %.1fs)",
+            timeout,
+            retry_budget,
+        )
+        # Retry only the provider round-trip, and only for transient errors.
+        # ``reraise=True`` surfaces the underlying domain error (not a
+        # tenacity ``RetryError``) once the budget is spent.
+        with timed() as call_sw:
+            async for attempt in AsyncRetrying(
+                wait=wait_exponential(multiplier=1, max=10),
+                stop=stop_after_delay(retry_budget),
+                retry=retry_if_exception_type((LLMTimeoutError, LLMRateLimitError)),
+                before_sleep=before_sleep_log(logger, logging.DEBUG),
+                after=after_log(logger, logging.DEBUG),
+                reraise=True,
+            ):
+                with attempt:
+                    response = await self._complete_once(
+                        system_message=system_message,
+                        user_message=user_message,
+                        tenant_id=tenant_id,
+                        timeout=timeout,
+                        response_format=response_format,
+                    )
 
         content = response.choices[0].message.content
         if content is None:
@@ -214,6 +348,20 @@ class LiteLLMClient(LLMPort):
             raise ValueError(
                 "The `response_model` is not a string or BaseModel subclass."
             )
+
+        # Per-call latency + usage. All fields here are explicitly safe to log
+        # (see docs/operations/observability.md) — no message text, prompt, or
+        # response content. DEBUG because hierarchical analysis fans out one of
+        # these per chunk plus judges and reduces; INFO would be very chatty.
+        logger.debug(
+            "LLM call: model=%s latency=%.2fs prompt_tokens=%d "
+            "completion_tokens=%d cost=%s",
+            response.model,
+            call_sw.elapsed_seconds,
+            usage.prompt_tokens,
+            usage.completion_tokens,
+            cost,
+        )
 
         return LLMResponse[T_Response](
             structured=parsed_data,

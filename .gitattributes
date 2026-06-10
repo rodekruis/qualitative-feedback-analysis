@@ -1,0 +1,6 @@
+# Generated corpus fixtures: large, machine-produced by scripts/generate_corpus.py.
+# Mark as generated so GitHub collapses them in pull-request diffs and excludes
+# them from repository language statistics. They remain plain, diffable text in
+# normal git (no LFS) — this only changes how they are *presented* in review.
+fixtures/analyze_corpus.yaml linguist-generated=true
+fixtures/large_corpus.yaml linguist-generated=true
