@@ -3,7 +3,7 @@
 // Works with the CodingLevels model
 
 $ids1 = record\findMany('CCodingLevel1', 20, 'name', 'asc');
-$nodes1 = list();
+$rootCodes = list();
 $i = 0;
 
 while ($i < array\length($ids1)) {
@@ -39,26 +39,26 @@ while ($i < array\length($ids1)) {
             $node3['name'] = $name3;
             $node3['children'] = list();
 
-            $nodes3 = array\push($nodes3, json\encode($node3));
+            $nodes3 = array\push($nodes3, $node3);
             $k = $k + 1;
         }
 
         $node2 = object\create();
         $node2['id'] = $id2;
         $node2['name'] = $name2;
-        $node2['children'] = json\retrieve(string\concatenate('[', array\join($nodes3, ','), ']'));
+        $node2['children'] = $nodes3;
 
-        $nodes2 = array\push($nodes2, json\encode($node2));
+        $nodes2 = array\push($nodes2, $node2);
         $j = $j + 1;
     }
 
     $node1 = object\create();
     $node1['id'] = $id1;
     $node1['name'] = $name1;
-    $node1['children'] = json\retrieve(string\concatenate('[', array\join($nodes2, ','), ']'));
+    $node1['children'] = $nodes2;
 
-    $nodes1 = array\push($nodes1, json\encode($node1));
+    $rootCodes = array\push($rootCodes, $node1);
     $i = $i + 1;
 }
 
-$$codesString = string\concatenate('[', array\join($nodes1, ','), ']');
+$$codesString = json\encode($rootCodes);
