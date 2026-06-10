@@ -29,7 +29,7 @@ def _estimate_tokens(
     records: tuple[FeedbackRecordModel, ...], chars_per_token: int
 ) -> int:
     """Estimate tokens for a group of records by total text length."""
-    return sum(len(r.text) for r in records) // chars_per_token
+    return sum(len(r.content) for r in records) // chars_per_token
 
 
 def _iso_date_prefix(raw: object) -> str | None:
@@ -110,12 +110,12 @@ def _split_to_budget(
     handles it), which is why the growth loop stops once parts hold one record.
     """
     budget_chars = max_total_tokens * chars_per_token
-    total_chars = sum(len(r.text) for r in records)
+    total_chars = sum(len(r.content) for r in records)
     n_parts = max(1, math.ceil(total_chars / budget_chars)) if budget_chars else 1
 
     while True:
         groups = _balanced_contiguous_split(records, n_parts)
-        fits = all(sum(len(r.text) for r in g) <= budget_chars for g in groups)
+        fits = all(sum(len(r.content) for r in g) <= budget_chars for g in groups)
         if fits or n_parts >= len(records):
             return groups
         n_parts += 1

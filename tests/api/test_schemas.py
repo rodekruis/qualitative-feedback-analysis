@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from qfa.api.schemas import ApiCodingLevels, ApiCodingNode
+from qfa.api.schemas import ApiCodingFramework, ApiCodingNode
 
 
 def test_max_child_depth_leaf_returns_zero():
@@ -63,14 +63,14 @@ def test_min_child_depth_returns_shallowest_branch():
 
 
 def test_coding_levels_valid_flat_tree():
-    levels = ApiCodingLevels(
+    levels = ApiCodingFramework(
         root_codes=[ApiCodingNode(name="a"), ApiCodingNode(name="b")]
     )
     assert len(levels.root_codes) == 2
 
 
 def test_coding_levels_valid_uniform_depth():
-    levels = ApiCodingLevels(
+    levels = ApiCodingFramework(
         root_codes=[
             ApiCodingNode(
                 name="Water",
@@ -97,7 +97,7 @@ def test_coding_levels_valid_uniform_depth():
 
 def test_coding_levels_unequal_depth_raises():
     with pytest.raises(ValueError, match="same depth"):
-        ApiCodingLevels(
+        ApiCodingFramework(
             root_codes=[
                 ApiCodingNode(name="flat"),
                 ApiCodingNode(name="deep", children=[ApiCodingNode(name="child")]),
@@ -107,7 +107,7 @@ def test_coding_levels_unequal_depth_raises():
 
 def test_coding_levels_unequal_depth_within_subtree_raises():
     with pytest.raises(ValueError, match="same depth"):
-        ApiCodingLevels(
+        ApiCodingFramework(
             root_codes=[
                 ApiCodingNode(
                     name="root",
@@ -125,4 +125,4 @@ def test_coding_levels_unequal_depth_within_subtree_raises():
 
 def test_coding_levels_with_no_children_fail():
     with pytest.raises(ValidationError, match="should have at least 1"):
-        ApiCodingLevels(root_codes=[])
+        ApiCodingFramework(root_codes=[])

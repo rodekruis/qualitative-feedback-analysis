@@ -29,7 +29,7 @@
 #   this file can retire.
 # ============================================================================
 - id: water-000
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -45,7 +45,7 @@
     codes: Water
     created: '2024-01-12T00:00:00Z'
 - id: water-001
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -61,7 +61,7 @@
     codes: Water
     created: '2024-02-08T00:00:00Z'
 - id: water-002
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -77,7 +77,7 @@
     codes: Water
     created: '2024-03-03T00:00:00Z'
 - id: water-003
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -93,7 +93,7 @@
     codes: Water
     created: '2024-01-12T00:00:00Z'
 - id: water-004
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -109,7 +109,7 @@
     codes: Water
     created: '2024-02-08T00:00:00Z'
 - id: water-005
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -125,7 +125,7 @@
     codes: Water
     created: '2024-03-03T00:00:00Z'
 - id: water-006
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -141,7 +141,7 @@
     codes: Water
     created: '2024-01-12T00:00:00Z'
 - id: water-007
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -157,7 +157,7 @@
     codes: Water
     created: '2024-02-08T00:00:00Z'
 - id: water-008
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -173,7 +173,7 @@
     codes: Water
     created: '2024-03-03T00:00:00Z'
 - id: water-009
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -189,7 +189,7 @@
     codes: Water
     created: '2024-01-12T00:00:00Z'
 - id: water-010
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -205,7 +205,7 @@
     codes: Water
     created: '2024-02-08T00:00:00Z'
 - id: water-011
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -221,7 +221,7 @@
     codes: Water
     created: '2024-03-03T00:00:00Z'
 - id: water-012
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -237,7 +237,7 @@
     codes: Water
     created: '2024-01-12T00:00:00Z'
 - id: water-013
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -253,7 +253,7 @@
     codes: Water
     created: '2024-02-08T00:00:00Z'
 - id: water-014
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -269,7 +269,7 @@
     codes: Water
     created: '2024-03-03T00:00:00Z'
 - id: water-015
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -285,7 +285,7 @@
     codes: Water
     created: '2024-01-12T00:00:00Z'
 - id: water-016
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -301,7 +301,7 @@
     codes: Water
     created: '2024-02-08T00:00:00Z'
 - id: water-017
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -317,7 +317,7 @@
     codes: Water
     created: '2024-03-03T00:00:00Z'
 - id: water-018
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -333,7 +333,7 @@
     codes: Water
     created: '2024-01-12T00:00:00Z'
 - id: water-019
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -349,7 +349,7 @@
     codes: Water
     created: '2024-02-08T00:00:00Z'
 - id: water-020
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -365,7 +365,7 @@
     codes: Water
     created: '2024-03-03T00:00:00Z'
 - id: water-021
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -381,7 +381,7 @@
     codes: Water
     created: '2024-01-12T00:00:00Z'
 - id: water-022
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -397,7 +397,7 @@
     codes: Water
     created: '2024-02-08T00:00:00Z'
 - id: water-023
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -413,7 +413,7 @@
     codes: Water
     created: '2024-03-03T00:00:00Z'
 - id: water-024
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -429,7 +429,7 @@
     codes: Water
     created: '2024-01-12T00:00:00Z'
 - id: water-025
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -445,7 +445,7 @@
     codes: Water
     created: '2024-02-08T00:00:00Z'
 - id: water-026
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -461,7 +461,7 @@
     codes: Water
     created: '2024-03-03T00:00:00Z'
 - id: water-027
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -477,7 +477,7 @@
     codes: Water
     created: '2024-01-12T00:00:00Z'
 - id: water-028
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -493,7 +493,7 @@
     codes: Water
     created: '2024-02-08T00:00:00Z'
 - id: water-029
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -509,7 +509,7 @@
     codes: Water
     created: '2024-03-03T00:00:00Z'
 - id: water-030
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -525,7 +525,7 @@
     codes: Water
     created: '2024-01-12T00:00:00Z'
 - id: water-031
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -541,7 +541,7 @@
     codes: Water
     created: '2024-02-08T00:00:00Z'
 - id: water-032
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -557,7 +557,7 @@
     codes: Water
     created: '2024-03-03T00:00:00Z'
 - id: water-033
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -573,7 +573,7 @@
     codes: Water
     created: '2024-01-12T00:00:00Z'
 - id: water-034
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -589,7 +589,7 @@
     codes: Water
     created: '2024-02-08T00:00:00Z'
 - id: water-035
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -605,7 +605,7 @@
     codes: Water
     created: '2024-03-03T00:00:00Z'
 - id: water-036
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -621,7 +621,7 @@
     codes: Water
     created: '2024-01-12T00:00:00Z'
 - id: water-037
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -637,7 +637,7 @@
     codes: Water
     created: '2024-02-08T00:00:00Z'
 - id: water-038
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -653,7 +653,7 @@
     codes: Water
     created: '2024-03-03T00:00:00Z'
 - id: water-039
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -669,7 +669,7 @@
     codes: Water
     created: '2024-01-12T00:00:00Z'
 - id: water-040
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -685,7 +685,7 @@
     codes: Water
     created: '2024-02-08T00:00:00Z'
 - id: water-041
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -701,7 +701,7 @@
     codes: Water
     created: '2024-03-03T00:00:00Z'
 - id: water-042
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -717,7 +717,7 @@
     codes: Water
     created: '2024-01-12T00:00:00Z'
 - id: water-043
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -733,7 +733,7 @@
     codes: Water
     created: '2024-02-08T00:00:00Z'
 - id: water-044
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -749,7 +749,7 @@
     codes: Water
     created: '2024-03-03T00:00:00Z'
 - id: water-045
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -765,7 +765,7 @@
     codes: Water
     created: '2024-01-12T00:00:00Z'
 - id: water-046
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -781,7 +781,7 @@
     codes: Water
     created: '2024-02-08T00:00:00Z'
 - id: water-047
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -797,7 +797,7 @@
     codes: Water
     created: '2024-03-03T00:00:00Z'
 - id: water-048
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -813,7 +813,7 @@
     codes: Water
     created: '2024-01-12T00:00:00Z'
 - id: water-049
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -829,7 +829,7 @@
     codes: Water
     created: '2024-02-08T00:00:00Z'
 - id: water-050
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -845,7 +845,7 @@
     codes: Water
     created: '2024-03-03T00:00:00Z'
 - id: water-051
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -861,7 +861,7 @@
     codes: Water
     created: '2024-01-12T00:00:00Z'
 - id: water-052
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -877,7 +877,7 @@
     codes: Water
     created: '2024-02-08T00:00:00Z'
 - id: water-053
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -893,7 +893,7 @@
     codes: Water
     created: '2024-03-03T00:00:00Z'
 - id: water-054
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -909,7 +909,7 @@
     codes: Water
     created: '2024-01-12T00:00:00Z'
 - id: water-055
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -925,7 +925,7 @@
     codes: Water
     created: '2024-02-08T00:00:00Z'
 - id: water-056
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -941,7 +941,7 @@
     codes: Water
     created: '2024-03-03T00:00:00Z'
 - id: water-057
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -957,7 +957,7 @@
     codes: Water
     created: '2024-01-12T00:00:00Z'
 - id: water-058
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -973,7 +973,7 @@
     codes: Water
     created: '2024-02-08T00:00:00Z'
 - id: water-059
-  text: The water distribution point ran low and many families waited for hours in
+  content: The water distribution point ran low and many families waited for hours in
     the heat before receiving their ration; the queue management improved over the
     week but supply remained the main concern. The water distribution point ran low
     and many families waited for hours in the heat before receiving their ration;
@@ -989,7 +989,7 @@
     codes: Water
     created: '2024-03-03T00:00:00Z'
 - id: health-000
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1005,7 +1005,7 @@
     codes: Health
     created: '2024-01-12T00:00:00Z'
 - id: health-001
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1021,7 +1021,7 @@
     codes: Health
     created: '2024-02-08T00:00:00Z'
 - id: health-002
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1037,7 +1037,7 @@
     codes: Health
     created: '2024-03-03T00:00:00Z'
 - id: health-003
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1053,7 +1053,7 @@
     codes: Health
     created: '2024-01-12T00:00:00Z'
 - id: health-004
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1069,7 +1069,7 @@
     codes: Health
     created: '2024-02-08T00:00:00Z'
 - id: health-005
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1085,7 +1085,7 @@
     codes: Health
     created: '2024-03-03T00:00:00Z'
 - id: health-006
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1101,7 +1101,7 @@
     codes: Health
     created: '2024-01-12T00:00:00Z'
 - id: health-007
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1117,7 +1117,7 @@
     codes: Health
     created: '2024-02-08T00:00:00Z'
 - id: health-008
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1133,7 +1133,7 @@
     codes: Health
     created: '2024-03-03T00:00:00Z'
 - id: health-009
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1149,7 +1149,7 @@
     codes: Health
     created: '2024-01-12T00:00:00Z'
 - id: health-010
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1165,7 +1165,7 @@
     codes: Health
     created: '2024-02-08T00:00:00Z'
 - id: health-011
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1181,7 +1181,7 @@
     codes: Health
     created: '2024-03-03T00:00:00Z'
 - id: health-012
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1197,7 +1197,7 @@
     codes: Health
     created: '2024-01-12T00:00:00Z'
 - id: health-013
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1213,7 +1213,7 @@
     codes: Health
     created: '2024-02-08T00:00:00Z'
 - id: health-014
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1229,7 +1229,7 @@
     codes: Health
     created: '2024-03-03T00:00:00Z'
 - id: health-015
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1245,7 +1245,7 @@
     codes: Health
     created: '2024-01-12T00:00:00Z'
 - id: health-016
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1261,7 +1261,7 @@
     codes: Health
     created: '2024-02-08T00:00:00Z'
 - id: health-017
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1277,7 +1277,7 @@
     codes: Health
     created: '2024-03-03T00:00:00Z'
 - id: health-018
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1293,7 +1293,7 @@
     codes: Health
     created: '2024-01-12T00:00:00Z'
 - id: health-019
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1309,7 +1309,7 @@
     codes: Health
     created: '2024-02-08T00:00:00Z'
 - id: health-020
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1325,7 +1325,7 @@
     codes: Health
     created: '2024-03-03T00:00:00Z'
 - id: health-021
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1341,7 +1341,7 @@
     codes: Health
     created: '2024-01-12T00:00:00Z'
 - id: health-022
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1357,7 +1357,7 @@
     codes: Health
     created: '2024-02-08T00:00:00Z'
 - id: health-023
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1373,7 +1373,7 @@
     codes: Health
     created: '2024-03-03T00:00:00Z'
 - id: health-024
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1389,7 +1389,7 @@
     codes: Health
     created: '2024-01-12T00:00:00Z'
 - id: health-025
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1405,7 +1405,7 @@
     codes: Health
     created: '2024-02-08T00:00:00Z'
 - id: health-026
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1421,7 +1421,7 @@
     codes: Health
     created: '2024-03-03T00:00:00Z'
 - id: health-027
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1437,7 +1437,7 @@
     codes: Health
     created: '2024-01-12T00:00:00Z'
 - id: health-028
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1453,7 +1453,7 @@
     codes: Health
     created: '2024-02-08T00:00:00Z'
 - id: health-029
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1469,7 +1469,7 @@
     codes: Health
     created: '2024-03-03T00:00:00Z'
 - id: health-030
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1485,7 +1485,7 @@
     codes: Health
     created: '2024-01-12T00:00:00Z'
 - id: health-031
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1501,7 +1501,7 @@
     codes: Health
     created: '2024-02-08T00:00:00Z'
 - id: health-032
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1517,7 +1517,7 @@
     codes: Health
     created: '2024-03-03T00:00:00Z'
 - id: health-033
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1533,7 +1533,7 @@
     codes: Health
     created: '2024-01-12T00:00:00Z'
 - id: health-034
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1549,7 +1549,7 @@
     codes: Health
     created: '2024-02-08T00:00:00Z'
 - id: health-035
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1565,7 +1565,7 @@
     codes: Health
     created: '2024-03-03T00:00:00Z'
 - id: health-036
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1581,7 +1581,7 @@
     codes: Health
     created: '2024-01-12T00:00:00Z'
 - id: health-037
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1597,7 +1597,7 @@
     codes: Health
     created: '2024-02-08T00:00:00Z'
 - id: health-038
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1613,7 +1613,7 @@
     codes: Health
     created: '2024-03-03T00:00:00Z'
 - id: health-039
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1629,7 +1629,7 @@
     codes: Health
     created: '2024-01-12T00:00:00Z'
 - id: health-040
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1645,7 +1645,7 @@
     codes: Health
     created: '2024-02-08T00:00:00Z'
 - id: health-041
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1661,7 +1661,7 @@
     codes: Health
     created: '2024-03-03T00:00:00Z'
 - id: health-042
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1677,7 +1677,7 @@
     codes: Health
     created: '2024-01-12T00:00:00Z'
 - id: health-043
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1693,7 +1693,7 @@
     codes: Health
     created: '2024-02-08T00:00:00Z'
 - id: health-044
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1709,7 +1709,7 @@
     codes: Health
     created: '2024-03-03T00:00:00Z'
 - id: health-045
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1725,7 +1725,7 @@
     codes: Health
     created: '2024-01-12T00:00:00Z'
 - id: health-046
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1741,7 +1741,7 @@
     codes: Health
     created: '2024-02-08T00:00:00Z'
 - id: health-047
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1757,7 +1757,7 @@
     codes: Health
     created: '2024-03-03T00:00:00Z'
 - id: health-048
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1773,7 +1773,7 @@
     codes: Health
     created: '2024-01-12T00:00:00Z'
 - id: health-049
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1789,7 +1789,7 @@
     codes: Health
     created: '2024-02-08T00:00:00Z'
 - id: health-050
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1805,7 +1805,7 @@
     codes: Health
     created: '2024-03-03T00:00:00Z'
 - id: health-051
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1821,7 +1821,7 @@
     codes: Health
     created: '2024-01-12T00:00:00Z'
 - id: health-052
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1837,7 +1837,7 @@
     codes: Health
     created: '2024-02-08T00:00:00Z'
 - id: health-053
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1853,7 +1853,7 @@
     codes: Health
     created: '2024-03-03T00:00:00Z'
 - id: health-054
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1869,7 +1869,7 @@
     codes: Health
     created: '2024-01-12T00:00:00Z'
 - id: health-055
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1885,7 +1885,7 @@
     codes: Health
     created: '2024-02-08T00:00:00Z'
 - id: health-056
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1901,7 +1901,7 @@
     codes: Health
     created: '2024-03-03T00:00:00Z'
 - id: health-057
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1917,7 +1917,7 @@
     codes: Health
     created: '2024-01-12T00:00:00Z'
 - id: health-058
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1933,7 +1933,7 @@
     codes: Health
     created: '2024-02-08T00:00:00Z'
 - id: health-059
-  text: La clinique mobile a traite les patients avec respect mais les medicaments
+  content: La clinique mobile a traite les patients avec respect mais les medicaments
     essentiels manquaient avant midi, obligeant certaines familles a repartir sans
     traitement pour leurs enfants malades. La clinique mobile a traite les patients
     avec respect mais les medicaments essentiels manquaient avant midi, obligeant
@@ -1949,7 +1949,7 @@
     codes: Health
     created: '2024-03-03T00:00:00Z'
 - id: shelter-000
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -1965,7 +1965,7 @@
     codes: Shelter
     created: '2024-01-12T00:00:00Z'
 - id: shelter-001
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -1981,7 +1981,7 @@
     codes: Shelter
     created: '2024-02-08T00:00:00Z'
 - id: shelter-002
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -1997,7 +1997,7 @@
     codes: Shelter
     created: '2024-03-03T00:00:00Z'
 - id: shelter-003
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2013,7 +2013,7 @@
     codes: Shelter
     created: '2024-01-12T00:00:00Z'
 - id: shelter-004
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2029,7 +2029,7 @@
     codes: Shelter
     created: '2024-02-08T00:00:00Z'
 - id: shelter-005
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2045,7 +2045,7 @@
     codes: Shelter
     created: '2024-03-03T00:00:00Z'
 - id: shelter-006
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2061,7 +2061,7 @@
     codes: Shelter
     created: '2024-01-12T00:00:00Z'
 - id: shelter-007
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2077,7 +2077,7 @@
     codes: Shelter
     created: '2024-02-08T00:00:00Z'
 - id: shelter-008
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2093,7 +2093,7 @@
     codes: Shelter
     created: '2024-03-03T00:00:00Z'
 - id: shelter-009
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2109,7 +2109,7 @@
     codes: Shelter
     created: '2024-01-12T00:00:00Z'
 - id: shelter-010
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2125,7 +2125,7 @@
     codes: Shelter
     created: '2024-02-08T00:00:00Z'
 - id: shelter-011
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2141,7 +2141,7 @@
     codes: Shelter
     created: '2024-03-03T00:00:00Z'
 - id: shelter-012
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2157,7 +2157,7 @@
     codes: Shelter
     created: '2024-01-12T00:00:00Z'
 - id: shelter-013
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2173,7 +2173,7 @@
     codes: Shelter
     created: '2024-02-08T00:00:00Z'
 - id: shelter-014
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2189,7 +2189,7 @@
     codes: Shelter
     created: '2024-03-03T00:00:00Z'
 - id: shelter-015
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2205,7 +2205,7 @@
     codes: Shelter
     created: '2024-01-12T00:00:00Z'
 - id: shelter-016
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2221,7 +2221,7 @@
     codes: Shelter
     created: '2024-02-08T00:00:00Z'
 - id: shelter-017
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2237,7 +2237,7 @@
     codes: Shelter
     created: '2024-03-03T00:00:00Z'
 - id: shelter-018
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2253,7 +2253,7 @@
     codes: Shelter
     created: '2024-01-12T00:00:00Z'
 - id: shelter-019
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2269,7 +2269,7 @@
     codes: Shelter
     created: '2024-02-08T00:00:00Z'
 - id: shelter-020
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2285,7 +2285,7 @@
     codes: Shelter
     created: '2024-03-03T00:00:00Z'
 - id: shelter-021
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2301,7 +2301,7 @@
     codes: Shelter
     created: '2024-01-12T00:00:00Z'
 - id: shelter-022
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2317,7 +2317,7 @@
     codes: Shelter
     created: '2024-02-08T00:00:00Z'
 - id: shelter-023
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2333,7 +2333,7 @@
     codes: Shelter
     created: '2024-03-03T00:00:00Z'
 - id: shelter-024
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2349,7 +2349,7 @@
     codes: Shelter
     created: '2024-01-12T00:00:00Z'
 - id: shelter-025
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2365,7 +2365,7 @@
     codes: Shelter
     created: '2024-02-08T00:00:00Z'
 - id: shelter-026
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2381,7 +2381,7 @@
     codes: Shelter
     created: '2024-03-03T00:00:00Z'
 - id: shelter-027
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2397,7 +2397,7 @@
     codes: Shelter
     created: '2024-01-12T00:00:00Z'
 - id: shelter-028
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2413,7 +2413,7 @@
     codes: Shelter
     created: '2024-02-08T00:00:00Z'
 - id: shelter-029
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2429,7 +2429,7 @@
     codes: Shelter
     created: '2024-03-03T00:00:00Z'
 - id: shelter-030
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2445,7 +2445,7 @@
     codes: Shelter
     created: '2024-01-12T00:00:00Z'
 - id: shelter-031
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2461,7 +2461,7 @@
     codes: Shelter
     created: '2024-02-08T00:00:00Z'
 - id: shelter-032
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2477,7 +2477,7 @@
     codes: Shelter
     created: '2024-03-03T00:00:00Z'
 - id: shelter-033
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2493,7 +2493,7 @@
     codes: Shelter
     created: '2024-01-12T00:00:00Z'
 - id: shelter-034
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2509,7 +2509,7 @@
     codes: Shelter
     created: '2024-02-08T00:00:00Z'
 - id: shelter-035
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2525,7 +2525,7 @@
     codes: Shelter
     created: '2024-03-03T00:00:00Z'
 - id: shelter-036
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2541,7 +2541,7 @@
     codes: Shelter
     created: '2024-01-12T00:00:00Z'
 - id: shelter-037
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2557,7 +2557,7 @@
     codes: Shelter
     created: '2024-02-08T00:00:00Z'
 - id: shelter-038
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2573,7 +2573,7 @@
     codes: Shelter
     created: '2024-03-03T00:00:00Z'
 - id: shelter-039
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2589,7 +2589,7 @@
     codes: Shelter
     created: '2024-01-12T00:00:00Z'
 - id: shelter-040
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2605,7 +2605,7 @@
     codes: Shelter
     created: '2024-02-08T00:00:00Z'
 - id: shelter-041
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2621,7 +2621,7 @@
     codes: Shelter
     created: '2024-03-03T00:00:00Z'
 - id: shelter-042
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2637,7 +2637,7 @@
     codes: Shelter
     created: '2024-01-12T00:00:00Z'
 - id: shelter-043
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2653,7 +2653,7 @@
     codes: Shelter
     created: '2024-02-08T00:00:00Z'
 - id: shelter-044
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2669,7 +2669,7 @@
     codes: Shelter
     created: '2024-03-03T00:00:00Z'
 - id: shelter-045
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2685,7 +2685,7 @@
     codes: Shelter
     created: '2024-01-12T00:00:00Z'
 - id: shelter-046
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2701,7 +2701,7 @@
     codes: Shelter
     created: '2024-02-08T00:00:00Z'
 - id: shelter-047
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2717,7 +2717,7 @@
     codes: Shelter
     created: '2024-03-03T00:00:00Z'
 - id: shelter-048
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2733,7 +2733,7 @@
     codes: Shelter
     created: '2024-01-12T00:00:00Z'
 - id: shelter-049
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2749,7 +2749,7 @@
     codes: Shelter
     created: '2024-02-08T00:00:00Z'
 - id: shelter-050
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2765,7 +2765,7 @@
     codes: Shelter
     created: '2024-03-03T00:00:00Z'
 - id: shelter-051
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2781,7 +2781,7 @@
     codes: Shelter
     created: '2024-01-12T00:00:00Z'
 - id: shelter-052
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2797,7 +2797,7 @@
     codes: Shelter
     created: '2024-02-08T00:00:00Z'
 - id: shelter-053
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2813,7 +2813,7 @@
     codes: Shelter
     created: '2024-03-03T00:00:00Z'
 - id: shelter-054
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2829,7 +2829,7 @@
     codes: Shelter
     created: '2024-01-12T00:00:00Z'
 - id: shelter-055
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2845,7 +2845,7 @@
     codes: Shelter
     created: '2024-02-08T00:00:00Z'
 - id: shelter-056
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2861,7 +2861,7 @@
     codes: Shelter
     created: '2024-03-03T00:00:00Z'
 - id: shelter-057
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2877,7 +2877,7 @@
     codes: Shelter
     created: '2024-01-12T00:00:00Z'
 - id: shelter-058
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2893,7 +2893,7 @@
     codes: Shelter
     created: '2024-02-08T00:00:00Z'
 - id: shelter-059
-  text: El refugio temporal estaba superpoblado y las familias compartian espacios
+  content: El refugio temporal estaba superpoblado y las familias compartian espacios
     reducidos; agradecieron las mantas distribuidas pero pidieron una mejor proteccion
     contra la lluvia y el frio nocturno. El refugio temporal estaba superpoblado y
     las familias compartian espacios reducidos; agradecieron las mantas distribuidas
@@ -2909,7 +2909,7 @@
     codes: Shelter
     created: '2024-03-03T00:00:00Z'
 - id: protection-000
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -2924,7 +2924,7 @@
     codes: Protection
     created: '2024-01-12T00:00:00Z'
 - id: protection-001
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -2939,7 +2939,7 @@
     codes: Protection
     created: '2024-02-08T00:00:00Z'
 - id: protection-002
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -2954,7 +2954,7 @@
     codes: Protection
     created: '2024-03-03T00:00:00Z'
 - id: protection-003
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -2969,7 +2969,7 @@
     codes: Protection
     created: '2024-01-12T00:00:00Z'
 - id: protection-004
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -2984,7 +2984,7 @@
     codes: Protection
     created: '2024-02-08T00:00:00Z'
 - id: protection-005
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -2999,7 +2999,7 @@
     codes: Protection
     created: '2024-03-03T00:00:00Z'
 - id: protection-006
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3014,7 +3014,7 @@
     codes: Protection
     created: '2024-01-12T00:00:00Z'
 - id: protection-007
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3029,7 +3029,7 @@
     codes: Protection
     created: '2024-02-08T00:00:00Z'
 - id: protection-008
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3044,7 +3044,7 @@
     codes: Protection
     created: '2024-03-03T00:00:00Z'
 - id: protection-009
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3059,7 +3059,7 @@
     codes: Protection
     created: '2024-01-12T00:00:00Z'
 - id: protection-010
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3074,7 +3074,7 @@
     codes: Protection
     created: '2024-02-08T00:00:00Z'
 - id: protection-011
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3089,7 +3089,7 @@
     codes: Protection
     created: '2024-03-03T00:00:00Z'
 - id: protection-012
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3104,7 +3104,7 @@
     codes: Protection
     created: '2024-01-12T00:00:00Z'
 - id: protection-013
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3119,7 +3119,7 @@
     codes: Protection
     created: '2024-02-08T00:00:00Z'
 - id: protection-014
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3134,7 +3134,7 @@
     codes: Protection
     created: '2024-03-03T00:00:00Z'
 - id: protection-015
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3149,7 +3149,7 @@
     codes: Protection
     created: '2024-01-12T00:00:00Z'
 - id: protection-016
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3164,7 +3164,7 @@
     codes: Protection
     created: '2024-02-08T00:00:00Z'
 - id: protection-017
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3179,7 +3179,7 @@
     codes: Protection
     created: '2024-03-03T00:00:00Z'
 - id: protection-018
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3194,7 +3194,7 @@
     codes: Protection
     created: '2024-01-12T00:00:00Z'
 - id: protection-019
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3209,7 +3209,7 @@
     codes: Protection
     created: '2024-02-08T00:00:00Z'
 - id: protection-020
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3224,7 +3224,7 @@
     codes: Protection
     created: '2024-03-03T00:00:00Z'
 - id: protection-021
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3239,7 +3239,7 @@
     codes: Protection
     created: '2024-01-12T00:00:00Z'
 - id: protection-022
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3254,7 +3254,7 @@
     codes: Protection
     created: '2024-02-08T00:00:00Z'
 - id: protection-023
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3269,7 +3269,7 @@
     codes: Protection
     created: '2024-03-03T00:00:00Z'
 - id: protection-024
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3284,7 +3284,7 @@
     codes: Protection
     created: '2024-01-12T00:00:00Z'
 - id: protection-025
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3299,7 +3299,7 @@
     codes: Protection
     created: '2024-02-08T00:00:00Z'
 - id: protection-026
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3314,7 +3314,7 @@
     codes: Protection
     created: '2024-03-03T00:00:00Z'
 - id: protection-027
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3329,7 +3329,7 @@
     codes: Protection
     created: '2024-01-12T00:00:00Z'
 - id: protection-028
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3344,7 +3344,7 @@
     codes: Protection
     created: '2024-02-08T00:00:00Z'
 - id: protection-029
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3359,7 +3359,7 @@
     codes: Protection
     created: '2024-03-03T00:00:00Z'
 - id: protection-030
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3374,7 +3374,7 @@
     codes: Protection
     created: '2024-01-12T00:00:00Z'
 - id: protection-031
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3389,7 +3389,7 @@
     codes: Protection
     created: '2024-02-08T00:00:00Z'
 - id: protection-032
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3404,7 +3404,7 @@
     codes: Protection
     created: '2024-03-03T00:00:00Z'
 - id: protection-033
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3419,7 +3419,7 @@
     codes: Protection
     created: '2024-01-12T00:00:00Z'
 - id: protection-034
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3434,7 +3434,7 @@
     codes: Protection
     created: '2024-02-08T00:00:00Z'
 - id: protection-035
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3449,7 +3449,7 @@
     codes: Protection
     created: '2024-03-03T00:00:00Z'
 - id: protection-036
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3464,7 +3464,7 @@
     codes: Protection
     created: '2024-01-12T00:00:00Z'
 - id: protection-037
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3479,7 +3479,7 @@
     codes: Protection
     created: '2024-02-08T00:00:00Z'
 - id: protection-038
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3494,7 +3494,7 @@
     codes: Protection
     created: '2024-03-03T00:00:00Z'
 - id: protection-039
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3509,7 +3509,7 @@
     codes: Protection
     created: '2024-01-12T00:00:00Z'
 - id: protection-040
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3524,7 +3524,7 @@
     codes: Protection
     created: '2024-02-08T00:00:00Z'
 - id: protection-041
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3539,7 +3539,7 @@
     codes: Protection
     created: '2024-03-03T00:00:00Z'
 - id: protection-042
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3554,7 +3554,7 @@
     codes: Protection
     created: '2024-01-12T00:00:00Z'
 - id: protection-043
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3569,7 +3569,7 @@
     codes: Protection
     created: '2024-02-08T00:00:00Z'
 - id: protection-044
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3584,7 +3584,7 @@
     codes: Protection
     created: '2024-03-03T00:00:00Z'
 - id: protection-045
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3599,7 +3599,7 @@
     codes: Protection
     created: '2024-01-12T00:00:00Z'
 - id: protection-046
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3614,7 +3614,7 @@
     codes: Protection
     created: '2024-02-08T00:00:00Z'
 - id: protection-047
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3629,7 +3629,7 @@
     codes: Protection
     created: '2024-03-03T00:00:00Z'
 - id: protection-048
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3644,7 +3644,7 @@
     codes: Protection
     created: '2024-01-12T00:00:00Z'
 - id: protection-049
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3659,7 +3659,7 @@
     codes: Protection
     created: '2024-02-08T00:00:00Z'
 - id: protection-050
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3674,7 +3674,7 @@
     codes: Protection
     created: '2024-03-03T00:00:00Z'
 - id: protection-051
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3689,7 +3689,7 @@
     codes: Protection
     created: '2024-01-12T00:00:00Z'
 - id: protection-052
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3704,7 +3704,7 @@
     codes: Protection
     created: '2024-02-08T00:00:00Z'
 - id: protection-053
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3719,7 +3719,7 @@
     codes: Protection
     created: '2024-03-03T00:00:00Z'
 - id: protection-054
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3734,7 +3734,7 @@
     codes: Protection
     created: '2024-01-12T00:00:00Z'
 - id: protection-055
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3749,7 +3749,7 @@
     codes: Protection
     created: '2024-02-08T00:00:00Z'
 - id: protection-056
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3764,7 +3764,7 @@
     codes: Protection
     created: '2024-03-03T00:00:00Z'
 - id: protection-057
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3779,7 +3779,7 @@
     codes: Protection
     created: '2024-01-12T00:00:00Z'
 - id: protection-058
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3794,7 +3794,7 @@
     codes: Protection
     created: '2024-02-08T00:00:00Z'
 - id: protection-059
-  text: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
+  content: Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok ta ditei
     u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
     intsydentam. Liudy povidomlialy pro vidsutnist bezpechnoho prostoru dlia zhinok
     ta ditei u tabori, a takozh pro potrebu v krashchomu osvitlenni vnochi dlia zapobihannia
@@ -3809,7 +3809,7 @@
     codes: Protection
     created: '2024-03-03T00:00:00Z'
 - id: food-000
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -3824,7 +3824,7 @@
     codes: Food
     created: '2024-01-12T00:00:00Z'
 - id: food-001
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -3839,7 +3839,7 @@
     codes: Food
     created: '2024-02-08T00:00:00Z'
 - id: food-002
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -3854,7 +3854,7 @@
     codes: Food
     created: '2024-03-03T00:00:00Z'
 - id: food-003
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -3869,7 +3869,7 @@
     codes: Food
     created: '2024-01-12T00:00:00Z'
 - id: food-004
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -3884,7 +3884,7 @@
     codes: Food
     created: '2024-02-08T00:00:00Z'
 - id: food-005
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -3899,7 +3899,7 @@
     codes: Food
     created: '2024-03-03T00:00:00Z'
 - id: food-006
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -3914,7 +3914,7 @@
     codes: Food
     created: '2024-01-12T00:00:00Z'
 - id: food-007
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -3929,7 +3929,7 @@
     codes: Food
     created: '2024-02-08T00:00:00Z'
 - id: food-008
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -3944,7 +3944,7 @@
     codes: Food
     created: '2024-03-03T00:00:00Z'
 - id: food-009
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -3959,7 +3959,7 @@
     codes: Food
     created: '2024-01-12T00:00:00Z'
 - id: food-010
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -3974,7 +3974,7 @@
     codes: Food
     created: '2024-02-08T00:00:00Z'
 - id: food-011
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -3989,7 +3989,7 @@
     codes: Food
     created: '2024-03-03T00:00:00Z'
 - id: food-012
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4004,7 +4004,7 @@
     codes: Food
     created: '2024-01-12T00:00:00Z'
 - id: food-013
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4019,7 +4019,7 @@
     codes: Food
     created: '2024-02-08T00:00:00Z'
 - id: food-014
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4034,7 +4034,7 @@
     codes: Food
     created: '2024-03-03T00:00:00Z'
 - id: food-015
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4049,7 +4049,7 @@
     codes: Food
     created: '2024-01-12T00:00:00Z'
 - id: food-016
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4064,7 +4064,7 @@
     codes: Food
     created: '2024-02-08T00:00:00Z'
 - id: food-017
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4079,7 +4079,7 @@
     codes: Food
     created: '2024-03-03T00:00:00Z'
 - id: food-018
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4094,7 +4094,7 @@
     codes: Food
     created: '2024-01-12T00:00:00Z'
 - id: food-019
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4109,7 +4109,7 @@
     codes: Food
     created: '2024-02-08T00:00:00Z'
 - id: food-020
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4124,7 +4124,7 @@
     codes: Food
     created: '2024-03-03T00:00:00Z'
 - id: food-021
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4139,7 +4139,7 @@
     codes: Food
     created: '2024-01-12T00:00:00Z'
 - id: food-022
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4154,7 +4154,7 @@
     codes: Food
     created: '2024-02-08T00:00:00Z'
 - id: food-023
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4169,7 +4169,7 @@
     codes: Food
     created: '2024-03-03T00:00:00Z'
 - id: food-024
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4184,7 +4184,7 @@
     codes: Food
     created: '2024-01-12T00:00:00Z'
 - id: food-025
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4199,7 +4199,7 @@
     codes: Food
     created: '2024-02-08T00:00:00Z'
 - id: food-026
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4214,7 +4214,7 @@
     codes: Food
     created: '2024-03-03T00:00:00Z'
 - id: food-027
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4229,7 +4229,7 @@
     codes: Food
     created: '2024-01-12T00:00:00Z'
 - id: food-028
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4244,7 +4244,7 @@
     codes: Food
     created: '2024-02-08T00:00:00Z'
 - id: food-029
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4259,7 +4259,7 @@
     codes: Food
     created: '2024-03-03T00:00:00Z'
 - id: food-030
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4274,7 +4274,7 @@
     codes: Food
     created: '2024-01-12T00:00:00Z'
 - id: food-031
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4289,7 +4289,7 @@
     codes: Food
     created: '2024-02-08T00:00:00Z'
 - id: food-032
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4304,7 +4304,7 @@
     codes: Food
     created: '2024-03-03T00:00:00Z'
 - id: food-033
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4319,7 +4319,7 @@
     codes: Food
     created: '2024-01-12T00:00:00Z'
 - id: food-034
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4334,7 +4334,7 @@
     codes: Food
     created: '2024-02-08T00:00:00Z'
 - id: food-035
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4349,7 +4349,7 @@
     codes: Food
     created: '2024-03-03T00:00:00Z'
 - id: food-036
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4364,7 +4364,7 @@
     codes: Food
     created: '2024-01-12T00:00:00Z'
 - id: food-037
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4379,7 +4379,7 @@
     codes: Food
     created: '2024-02-08T00:00:00Z'
 - id: food-038
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4394,7 +4394,7 @@
     codes: Food
     created: '2024-03-03T00:00:00Z'
 - id: food-039
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4409,7 +4409,7 @@
     codes: Food
     created: '2024-01-12T00:00:00Z'
 - id: food-040
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4424,7 +4424,7 @@
     codes: Food
     created: '2024-02-08T00:00:00Z'
 - id: food-041
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4439,7 +4439,7 @@
     codes: Food
     created: '2024-03-03T00:00:00Z'
 - id: food-042
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4454,7 +4454,7 @@
     codes: Food
     created: '2024-01-12T00:00:00Z'
 - id: food-043
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4469,7 +4469,7 @@
     codes: Food
     created: '2024-02-08T00:00:00Z'
 - id: food-044
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4484,7 +4484,7 @@
     codes: Food
     created: '2024-03-03T00:00:00Z'
 - id: food-045
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4499,7 +4499,7 @@
     codes: Food
     created: '2024-01-12T00:00:00Z'
 - id: food-046
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4514,7 +4514,7 @@
     codes: Food
     created: '2024-02-08T00:00:00Z'
 - id: food-047
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4529,7 +4529,7 @@
     codes: Food
     created: '2024-03-03T00:00:00Z'
 - id: food-048
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4544,7 +4544,7 @@
     codes: Food
     created: '2024-01-12T00:00:00Z'
 - id: food-049
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4559,7 +4559,7 @@
     codes: Food
     created: '2024-02-08T00:00:00Z'
 - id: food-050
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4574,7 +4574,7 @@
     codes: Food
     created: '2024-03-03T00:00:00Z'
 - id: food-051
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4589,7 +4589,7 @@
     codes: Food
     created: '2024-01-12T00:00:00Z'
 - id: food-052
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4604,7 +4604,7 @@
     codes: Food
     created: '2024-02-08T00:00:00Z'
 - id: food-053
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4619,7 +4619,7 @@
     codes: Food
     created: '2024-03-03T00:00:00Z'
 - id: food-054
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4634,7 +4634,7 @@
     codes: Food
     created: '2024-01-12T00:00:00Z'
 - id: food-055
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4649,7 +4649,7 @@
     codes: Food
     created: '2024-02-08T00:00:00Z'
 - id: food-056
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4664,7 +4664,7 @@
     codes: Food
     created: '2024-03-03T00:00:00Z'
 - id: food-057
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4679,7 +4679,7 @@
     codes: Food
     created: '2024-01-12T00:00:00Z'
 - id: food-058
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
@@ -4694,7 +4694,7 @@
     codes: Food
     created: '2024-02-08T00:00:00Z'
 - id: food-059
-  text: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
+  content: Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis, i
     pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney
     pomoshchi. Raspredelenie prodovolstviia bylo organizovannym, no portsii umenshilis,
     i pozhilye liudi s trudom donosili tiazhyolye pakety do svoikh palatov bez postoronney

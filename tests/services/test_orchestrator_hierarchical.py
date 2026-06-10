@@ -104,7 +104,7 @@ def _records(n: int, text: str, prefix: str) -> tuple[FeedbackRecordModel, ...]:
     return tuple(
         FeedbackRecordModel(
             id=f"{prefix}{i}",
-            text=text,
+            content=text,
             metadata={"created": "2024-01-05T00:00:00Z", "codes": "Water"},
         )
         for i in range(n)
@@ -185,7 +185,7 @@ async def test_anonymization_happens_before_any_llm_or_embed_call():
     records = (
         FeedbackRecordModel(
             id="r1",
-            text="Jane reported water shortages " * 5,
+            content="Jane reported water shortages " * 5,
             metadata={"created": "2024-01-05T00:00:00Z", "codes": "Water"},
         ),
         *_records(3, "water access " * 5, "w"),

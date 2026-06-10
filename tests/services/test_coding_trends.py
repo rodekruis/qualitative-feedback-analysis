@@ -17,7 +17,7 @@ from qfa.services.coding_trends import (
 def _record(rec_id: str, created: str, codes: str) -> FeedbackRecordModel:
     return FeedbackRecordModel(
         id=rec_id,
-        text="some feedback",
+        content="some feedback",
         metadata={"created": created, "codes": codes},
     )
 
@@ -102,7 +102,7 @@ def test_returns_none_when_date_field_absent() -> None:
 
     Why: the spec mandates best-effort; a missing field must never raise.
     """
-    records = (FeedbackRecordModel(id="r1", text="x", metadata={"codes": "Water"}),)
+    records = (FeedbackRecordModel(id="r1", content="x", metadata={"codes": "Water"}),)
     table = build_coding_trend_table(
         records, date_field="created", code_fields=("codes",)
     )
@@ -118,7 +118,7 @@ def test_records_without_codes_are_skipped_not_errored() -> None:
     records = (
         _record("r1", "2024-01-05T10:00:00Z", "Water"),
         FeedbackRecordModel(
-            id="r2", text="x", metadata={"created": "2024-01-06T10:00:00Z"}
+            id="r2", content="x", metadata={"created": "2024-01-06T10:00:00Z"}
         ),
     )
     table = build_coding_trend_table(

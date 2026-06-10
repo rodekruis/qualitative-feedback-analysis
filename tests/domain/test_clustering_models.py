@@ -18,7 +18,7 @@ from qfa.domain.models import FeedbackRecordModel
 
 
 def _record(rec_id: str) -> FeedbackRecordModel:
-    return FeedbackRecordModel(id=rec_id, text="x", metadata={})
+    return FeedbackRecordModel(id=rec_id, content="x", metadata={})
 
 
 def test_chunk_is_frozen() -> None:

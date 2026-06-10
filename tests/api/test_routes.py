@@ -8,7 +8,7 @@ from qfa.domain.errors import (
     AnalysisTimeoutError,
     FeedbackTooLargeError,
 )
-from qfa.domain.models import FeedbackRecordSummaryModel, SummaryResultModel
+from qfa.domain.models import FeedbackRecordSummaryModel
 
 from .conftest import FAKE_API_KEY, FakeOrchestrator
 
@@ -22,7 +22,9 @@ def _valid_body(
     prompt="Summarize the feedback.",
 ):
     if feedback_records is None:
-        feedback_records = [{"id": "doc-1", "text": "Great service!", "metadata": {}}]
+        feedback_records = [
+            {"id": "doc-1", "content": "Great service!", "metadata": {}}
+        ]
     return {"feedback_records": feedback_records, "prompt": prompt}
 
 
@@ -47,13 +49,10 @@ def _summary_metadata(**overrides):
 
 def _valid_summary_body(**overrides):
     body = {
-        "feedback_records": [
-            {
-                "id": "doc-1",
-                "content": "Great service!",
-                "metadata": _summary_metadata(),
-            },
-        ],
+        "feedback_record": {
+            "id": "doc-1",
+            "content": "Great service!",
+        },
     }
     body.update(overrides)
     return body
@@ -61,12 +60,10 @@ def _valid_summary_body(**overrides):
 
 def _valid_detect_sensitive_body(**overrides):
     body = {
-        "feedback_items": [
-            {
-                "id": "doc-1",
-                "text": "A staff member asked for a bribe.",
-            },
-        ],
+        "feedback_record": {
+            "id": "doc-1",
+            "content": "A staff member asked for a bribe.",
+        },
     }
     body.update(overrides)
     return body
@@ -81,7 +78,7 @@ class TestAnalyzeSuccess:
     @pytest.mark.asyncio
     async def test_200_on_valid_request(self, client):
         resp = await client.post(
-            "/v1/analyze", json=_valid_body(), headers=_auth_header()
+            "/v1/analyze-bulk", json=_valid_body(), headers=_auth_header()
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -92,12 +89,12 @@ class TestAnalyzeSuccess:
     @pytest.mark.asyncio
     async def test_feedback_record_count_matches_input(self, client):
         docs = [
-            {"id": "1", "text": "Doc one"},
-            {"id": "2", "text": "Doc two"},
-            {"id": "3", "text": "Doc three"},
+            {"id": "1", "content": "Doc one"},
+            {"id": "2", "content": "Doc two"},
+            {"id": "3", "content": "Doc three"},
         ]
         resp = await client.post(
-            "/v1/analyze",
+            "/v1/analyze-bulk",
             json=_valid_body(feedback_records=docs),
             headers=_auth_header(),
         )
@@ -115,7 +112,7 @@ class TestAnalyzeSuccess:
         from uuid import UUID
 
         resp = await client.post(
-            "/v1/analyze", json=_valid_body(), headers=_auth_header()
+            "/v1/analyze-bulk", json=_valid_body(), headers=_auth_header()
         )
         # Raises ValueError if the string isn't a valid UUID.
         UUID(resp.json()["request_id"])
@@ -123,14 +120,14 @@ class TestAnalyzeSuccess:
     @pytest.mark.asyncio
     async def test_x_request_id_header_present(self, client):
         resp = await client.post(
-            "/v1/analyze", json=_valid_body(), headers=_auth_header()
+            "/v1/analyze-bulk", json=_valid_body(), headers=_auth_header()
         )
         assert "x-request-id" in resp.headers
 
     @pytest.mark.asyncio
     async def test_x_request_id_matches_body(self, client):
         resp = await client.post(
-            "/v1/analyze", json=_valid_body(), headers=_auth_header()
+            "/v1/analyze-bulk", json=_valid_body(), headers=_auth_header()
         )
         assert resp.headers["x-request-id"] == resp.json()["request_id"]
 
@@ -155,7 +152,7 @@ class TestAnalyzeSuccess:
         captured: dict = {}
 
         class CapturingOrchestrator:
-            async def analyze(self, request, deadline, anonymize=True):
+            async def analyze_bulk(self, request, deadline):
                 ctx = current_call_context.get()
                 assert ctx is not None
                 captured["call_id"] = ctx.call_id
@@ -165,7 +162,7 @@ class TestAnalyzeSuccess:
         test_app.state.orchestrator = CapturingOrchestrator()
         async with _make_client(test_app) as c:
             resp = await c.post(
-                "/v1/analyze", json=_valid_body(), headers=_auth_header()
+                "/v1/analyze-bulk", json=_valid_body(), headers=_auth_header()
             )
         assert resp.status_code == 200
         header_uuid = UUID(resp.headers["x-request-id"])
@@ -181,7 +178,9 @@ class TestSummarizeSuccess:
         )
         assert resp.status_code == 200
         data = resp.json()
-        assert "summaries" in data
+        assert "id" in data
+        assert "title" in data
+        assert "summary" in data
 
     @pytest.mark.asyncio
     async def test_response_contains_summary_items(self, client):
@@ -189,11 +188,11 @@ class TestSummarizeSuccess:
             "/v1/summarize", json=_valid_summary_body(), headers=_auth_header()
         )
         assert resp.status_code == 200
-        summary_item = resp.json()["summaries"][0]
-        assert summary_item["id"] == "doc-1"
-        assert "title" in summary_item
-        assert "summary" in summary_item
-        assert summary_item["quality_score"] == 0.9
+        data = resp.json()
+        assert data["id"] == "doc-1"
+        assert "title" in data
+        assert "summary" in data
+        assert data["quality_score"] == 0.9
 
     @pytest.mark.asyncio
     async def test_x_request_id_header_on_summarize(self, client):
@@ -221,8 +220,8 @@ class TestDetectSensitiveSuccess:
         )
         assert resp.status_code == 200
         data = resp.json()
-        assert "ratings" in data
-        assert len(data["ratings"]) == 1
+        assert "id" in data
+        assert "is_sensitive" in data
 
     @pytest.mark.asyncio
     async def test_response_contains_rating_fields(self, client):
@@ -232,22 +231,20 @@ class TestDetectSensitiveSuccess:
             headers=_auth_header(),
         )
         assert resp.status_code == 200
-        rating = resp.json()["ratings"][0]
-        assert rating["id"] == "doc-1"
-        assert rating["is_sensitive"] is True
-        assert rating["explanation"] == "Contains a bribery allegation."
-        assert rating["sensitivity_types"] == ["CORRUPTION"]
+        data = resp.json()
+        assert data["id"] == "doc-1"
+        assert data["is_sensitive"] is True
+        assert data["explanation"] == "Contains a bribery allegation."
+        assert data["sensitivity_types"] == ["CORRUPTION"]
 
     @pytest.mark.asyncio
     async def test_detect_sensitive_forwards_metadata(self, test_app):
         body = _valid_detect_sensitive_body(
-            feedback_items=[
-                {
-                    "id": "doc-1",
-                    "text": "A staff member asked for a bribe.",
-                    "metadata": {"region": "North"},
-                }
-            ]
+            feedback_record={
+                "id": "doc-1",
+                "content": "A staff member asked for a bribe.",
+                "metadata": {"region": "North"},
+            }
         )
         async with _make_client(test_app) as c:
             resp = await c.post(
@@ -258,9 +255,7 @@ class TestDetectSensitiveSuccess:
         assert resp.status_code == 200
         assert test_app.state.orchestrator.last_detect_sensitive_request is not None
         record = (
-            test_app.state.orchestrator.last_detect_sensitive_request.feedback_records[
-                0
-            ]
+            test_app.state.orchestrator.last_detect_sensitive_request.feedback_record
         )
         assert record.metadata == {"region": "North"}
 
@@ -273,14 +268,14 @@ class TestDetectSensitiveSuccess:
 class TestAuthentication:
     @pytest.mark.asyncio
     async def test_401_missing_authorization_header(self, client):
-        resp = await client.post("/v1/analyze", json=_valid_body())
+        resp = await client.post("/v1/analyze-bulk", json=_valid_body())
         assert resp.status_code == 401
         assert resp.json()["error"]["code"] == "authentication_required"
 
     @pytest.mark.asyncio
     async def test_401_invalid_api_key(self, client):
         resp = await client.post(
-            "/v1/analyze",
+            "/v1/analyze-bulk",
             json=_valid_body(),
             headers=_auth_header("wrong-key"),
         )
@@ -290,7 +285,7 @@ class TestAuthentication:
     @pytest.mark.asyncio
     async def test_401_malformed_authorization(self, client):
         resp = await client.post(
-            "/v1/analyze",
+            "/v1/analyze-bulk",
             json=_valid_body(),
             headers={"Authorization": "Basic xyzverysecrettoken123"},
         )
@@ -321,7 +316,7 @@ class TestValidation:
     @pytest.mark.asyncio
     async def test_422_empty_feedback_records(self, client):
         resp = await client.post(
-            "/v1/analyze",
+            "/v1/analyze-bulk",
             json=_valid_body(feedback_records=[]),
             headers=_auth_header(),
         )
@@ -332,7 +327,7 @@ class TestValidation:
     @pytest.mark.asyncio
     async def test_422_missing_prompt(self, client):
         resp = await client.post(
-            "/v1/analyze",
+            "/v1/analyze-bulk",
             json={"feedback_records": [{"id": "1", "text": "data"}]},
             headers=_auth_header(),
         )
@@ -342,7 +337,7 @@ class TestValidation:
     @pytest.mark.asyncio
     async def test_422_prompt_too_long(self, client):
         resp = await client.post(
-            "/v1/analyze",
+            "/v1/analyze-bulk",
             json=_valid_body(prompt="x" * 4001),
             headers=_auth_header(),
         )
@@ -352,8 +347,8 @@ class TestValidation:
     @pytest.mark.asyncio
     async def test_422_empty_feedback_record_text(self, client):
         resp = await client.post(
-            "/v1/analyze",
-            json=_valid_body(feedback_records=[{"id": "1", "text": ""}]),
+            "/v1/analyze-bulk",
+            json=_valid_body(feedback_records=[{"id": "1", "content": ""}]),
             headers=_auth_header(),
         )
         assert resp.status_code == 422
@@ -361,34 +356,22 @@ class TestValidation:
         assert resp.json()["error"]["fields"] is not None
 
     @pytest.mark.asyncio
-    async def test_summary_422_empty_feedback_records(self, client):
+    async def test_summary_422_missing_feedback_record(self, client):
         resp = await client.post(
             "/v1/summarize",
-            json=_valid_summary_body(feedback_records=[]),
+            json={},
             headers=_auth_header(),
         )
         assert resp.status_code == 422
         assert resp.json()["error"]["code"] == "validation_error"
         assert resp.json()["error"]["fields"] is not None
-
-    @pytest.mark.asyncio
-    async def test_summary_422_prompt_too_long(self, client):
-        resp = await client.post(
-            "/v1/summarize",
-            json=_valid_summary_body(prompt="x" * 4001),
-            headers=_auth_header(),
-        )
-        assert resp.status_code == 422
-        assert resp.json()["error"]["code"] == "validation_error"
 
     @pytest.mark.asyncio
     async def test_summary_422_empty_feedback_content(self, client):
         resp = await client.post(
             "/v1/summarize",
             json=_valid_summary_body(
-                feedback_records=[
-                    {"id": "1", "content": "", "metadata": _summary_metadata()},
-                ],
+                feedback_record={"id": "1", "content": ""},
             ),
             headers=_auth_header(),
         )
@@ -397,10 +380,10 @@ class TestValidation:
         assert resp.json()["error"]["fields"] is not None
 
     @pytest.mark.asyncio
-    async def test_detect_sensitive_422_empty_feedback_items(self, client):
+    async def test_detect_sensitive_422_missing_feedback_record(self, client):
         resp = await client.post(
             "/v1/detect-sensitive",
-            json=_valid_detect_sensitive_body(feedback_items=[]),
+            json={},
             headers=_auth_header(),
         )
         assert resp.status_code == 422
@@ -423,7 +406,7 @@ class TestErrorMapping:
         )
         async with _make_client(test_app) as c:
             resp = await c.post(
-                "/v1/analyze", json=_valid_body(), headers=_auth_header()
+                "/v1/analyze-bulk", json=_valid_body(), headers=_auth_header()
             )
         assert resp.status_code == 413
         assert resp.json()["error"]["code"] == "payload_too_large"
@@ -436,7 +419,7 @@ class TestErrorMapping:
         )
         async with _make_client(test_app) as c:
             resp = await c.post(
-                "/v1/analyze", json=_valid_body(), headers=_auth_header()
+                "/v1/analyze-bulk", json=_valid_body(), headers=_auth_header()
             )
         assert resp.status_code == 504
         assert resp.json()["error"]["code"] == "analysis_timeout"
@@ -449,7 +432,7 @@ class TestErrorMapping:
         )
         async with _make_client(test_app) as c:
             resp = await c.post(
-                "/v1/analyze", json=_valid_body(), headers=_auth_header()
+                "/v1/analyze-bulk", json=_valid_body(), headers=_auth_header()
             )
         assert resp.status_code == 502
         assert resp.json()["error"]["code"] == "analysis_unavailable"
@@ -462,7 +445,7 @@ class TestErrorMapping:
         )
         async with _make_client(test_app) as c:
             resp = await c.post(
-                "/v1/analyze", json=_valid_body(), headers=_auth_header()
+                "/v1/analyze-bulk", json=_valid_body(), headers=_auth_header()
             )
         assert resp.status_code == 500
         assert resp.json()["error"]["code"] == "internal_error"
@@ -483,7 +466,7 @@ class TestErrorMapping:
         )
         async with _make_client(test_app) as c:
             resp = await c.post(
-                "/v1/analyze", json=_valid_body(), headers=_auth_header()
+                "/v1/analyze-bulk", json=_valid_body(), headers=_auth_header()
             )
         UUID(resp.json()["error"]["request_id"])
 
@@ -548,42 +531,25 @@ class TestErrorMapping:
     @pytest.mark.asyncio
     async def test_summary_returns_configured_result(self, test_app):
         test_app.state.orchestrator = FakeOrchestrator(
-            summarize_result=SummaryResultModel(
-                feedback_record_summaries=(
-                    FeedbackRecordSummaryModel(
-                        id="custom-1",
-                        title="Custom title",
-                        summary="- Custom point",
-                        quality_score=0.75,
-                    ),
-                ),
+            summarize_result=FeedbackRecordSummaryModel(
+                id="custom-1",
+                title="Custom title",
+                summary="- Custom point",
+                quality_score=0.75,
             )
         )
         async with _make_client(test_app) as c:
             resp = await c.post(
                 "/v1/summarize",
-                json=_valid_summary_body(
-                    feedback_records=[
-                        {
-                            "id": "custom-1",
-                            "content": "Input text",
-                            "metadata": _summary_metadata(
-                                feedback_record_id="fi-custom-1"
-                            ),
-                        },
-                    ],
-                ),
+                json={"feedback_record": {"id": "custom-1", "content": "Input text"}},
                 headers=_auth_header(),
             )
         assert resp.status_code == 200
-        summaries = resp.json()["summaries"]
-        assert len(summaries) == 1
-        s = summaries[0]
-        assert s["id"] == "custom-1"
-        assert s["title"] == "Custom title"
-        assert s["summary"] == "- Custom point"
-        assert s["quality_score"] == 0.75
-        assert "pretty_output" in s
+        data = resp.json()
+        assert data["id"] == "custom-1"
+        assert data["title"] == "Custom title"
+        assert data["summary"] == "- Custom point"
+        assert data["quality_score"] == 0.75
 
     @pytest.mark.asyncio
     async def test_detect_sensitive_502_analysis_error(self, test_app):
@@ -606,8 +572,8 @@ class TestErrorMapping:
 
 
 _CODING_BODY = {
-    "feedback_records": [{"id": "custom-1", "content": "Long waiting times"}],
-    "coding_framework": {"types": []},
+    "feedback_record": {"id": "custom-1", "content": "Long waiting times"},
+    "coding_levels": {"root_codes": [{"name": "Type A", "children": []}]},
 }
 
 
@@ -618,7 +584,7 @@ class TestAssignCodesSuccess:
             "/v1/assign-codes", json=_CODING_BODY, headers=_auth_header()
         )
         assert resp.status_code == 200
-        code_item = resp.json()["coded_feedback_records"][0]["assigned_codes"][0]
+        code_item = resp.json()["assigned_codes"][0]
         assert code_item["confidence_type"] == 0.9
         assert code_item["confidence_category"] == 0.85
         assert code_item["confidence_code"] == 0.8

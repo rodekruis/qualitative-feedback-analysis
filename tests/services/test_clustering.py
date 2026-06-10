@@ -12,12 +12,12 @@ from qfa.services.clustering import _split_to_budget, cluster_records
 
 
 def _record(
-    rec_id: str, text: str = "feedback", *, created: str | None = None
+    rec_id: str, content: str = "feedback", *, created: str | None = None
 ) -> FeedbackRecordModel:
     metadata: dict[str, str | int | float] = {}
     if created is not None:
         metadata["created"] = created
-    return FeedbackRecordModel(id=rec_id, text=text, metadata=metadata)
+    return FeedbackRecordModel(id=rec_id, content=content, metadata=metadata)
 
 
 def test_every_record_lands_in_exactly_one_chunk() -> None:
@@ -83,7 +83,7 @@ def test_over_budget_chunk_is_split_into_budget_sized_subchunks() -> None:
     """
     # 10 near-identical records, each ~400 chars → ~100 tokens at cpt=4.
     big_text = "alpha beta gamma delta epsilon zeta " * 11  # ~400 chars
-    records = tuple(_record(f"r{i}", text=big_text) for i in range(10))
+    records = tuple(_record(f"r{i}", content=big_text) for i in range(10))
     vectors = tuple((0.0, float(i) * 0.001) for i in range(10))  # one tight cluster
     chunks = cluster_records(
         records=records,
@@ -94,7 +94,7 @@ def test_over_budget_chunk_is_split_into_budget_sized_subchunks() -> None:
     )
     # Every chunk must fit the budget.
     for chunk in chunks:
-        chars = sum(len(r.text) for r in chunk.records)
+        chars = sum(len(r.content) for r in chunk.records)
         assert chars // 4 <= 300, "a chunk exceeds the token budget after splitting"
     # And coverage still holds.
     seen = [r.id for c in chunks for r in c.records]
@@ -112,7 +112,7 @@ def test_large_cluster_is_split_by_target_below_the_llm_cap() -> None:
     # 30 short records in one tight cluster: ~10 tokens each (~40 chars),
     # ~300 tokens total — nowhere near the 100k LLM cap, but over a 100-token
     # target, so it must split.
-    records = tuple(_record(f"r{i}", text="x" * 40) for i in range(30))
+    records = tuple(_record(f"r{i}", content="x" * 40) for i in range(30))
     vectors = tuple((0.0, float(i) * 0.001) for i in range(30))
     chunks = cluster_records(
         records=records,
@@ -124,7 +124,7 @@ def test_large_cluster_is_split_by_target_below_the_llm_cap() -> None:
     )
     assert len(chunks) > 1, "a target far below the cap did not split the cluster"
     for chunk in chunks:
-        tokens = sum(len(r.text) for r in chunk.records) // 4
+        tokens = sum(len(r.content) for r in chunk.records) // 4
         assert tokens <= 100, "a sub-chunk exceeded the target size"
     seen = [r.id for c in chunks for r in c.records]
     assert sorted(seen) == sorted(r.id for r in records)
@@ -139,13 +139,13 @@ def test_split_to_budget_produces_balanced_not_remainder_groups() -> None:
     """
     # 22 uniform records of 40 chars (10 tokens) each; budget 60 tokens
     # (240 chars) → ceil(880/240) = 4 groups.
-    records = tuple(_record(f"r{i}", text="x" * 40) for i in range(22))
+    records = tuple(_record(f"r{i}", content="x" * 40) for i in range(22))
     groups = _split_to_budget(records, max_total_tokens=60, chars_per_token=4)
     counts = sorted(len(g) for g in groups)
     assert counts == [5, 5, 6, 6], f"not balanced into equal contiguous parts: {counts}"
     # Hard budget still respected by every group.
     for group in groups:
-        assert sum(len(r.text) for r in group) // 4 <= 60
+        assert sum(len(r.content) for r in group) // 4 <= 60
 
 
 def test_split_to_budget_grows_part_count_when_a_balanced_part_overflows() -> None:
@@ -159,14 +159,14 @@ def test_split_to_budget_grows_part_count_when_a_balanced_part_overflows() -> No
     # 2-way balanced split would pair the big record with a small one and may
     # fit, so make the big one dominate: budget 30 tokens (120 chars).
     records = (
-        _record("big", text="x" * 110),  # ~27 tokens, near the budget alone
-        _record("s1", text="x" * 40),
-        _record("s2", text="x" * 40),
-        _record("s3", text="x" * 40),
+        _record("big", content="x" * 110),  # ~27 tokens, near the budget alone
+        _record("s1", content="x" * 40),
+        _record("s2", content="x" * 40),
+        _record("s3", content="x" * 40),
     )
     groups = _split_to_budget(records, max_total_tokens=30, chars_per_token=4)
     for group in groups:
-        assert sum(len(r.text) for r in group) // 4 <= 30, "a group busts the budget"
+        assert sum(len(r.content) for r in group) // 4 <= 30, "a group busts the budget"
     seen = [r.id for g in groups for r in g]
     assert sorted(seen) == ["big", "s1", "s2", "s3"]
 
@@ -178,7 +178,7 @@ def test_target_above_the_llm_cap_still_respects_the_cap() -> None:
     effective split budget is min(target, cap), so a misconfigured large target
     can never produce a chunk that overflows a single LLM call.
     """
-    records = tuple(_record(f"r{i}", text="x" * 40) for i in range(20))
+    records = tuple(_record(f"r{i}", content="x" * 40) for i in range(20))
     vectors = tuple((0.0, float(i) * 0.001) for i in range(20))
     chunks = cluster_records(
         records=records,
@@ -189,7 +189,7 @@ def test_target_above_the_llm_cap_still_respects_the_cap() -> None:
         target_chunk_tokens=1_000_000,  # absurd target must not win
     )
     for chunk in chunks:
-        tokens = sum(len(r.text) for r in chunk.records) // 4
+        tokens = sum(len(r.content) for r in chunk.records) // 4
         assert tokens <= 50, "a chunk exceeded the hard LLM cap"
 
 

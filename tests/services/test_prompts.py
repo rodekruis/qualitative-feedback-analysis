@@ -55,8 +55,8 @@ class TestEscapeForTagEnvelope:
         assert "&lt;evil&gt;" in out
 
 
-def _rec(rec_id="doc-1", text="hello", metadata=None):
-    return FeedbackRecordModel(id=rec_id, text=text, metadata=metadata or {})
+def _rec(rec_id="doc-1", content="hello", metadata=None):
+    return FeedbackRecordModel(id=rec_id, content=content, metadata=metadata or {})
 
 
 class TestBuildAnalyzeUserMessage:
@@ -85,7 +85,7 @@ class TestBuildAnalyzeUserMessage:
 
     def test_escapes_record_text(self):
         """Record text is escaped before embedding."""
-        out = build_analyze_user_message("q", (_rec(text="ev<il>"),))
+        out = build_analyze_user_message("q", (_rec(content="ev<il>"),))
         assert "&lt;il&gt;" in out
 
     def test_escapes_record_id(self):

@@ -5,11 +5,13 @@ HTTP contract can evolve independently of the core domain.
 """
 
 import json
-from datetime import datetime
+from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, override
 
 from pydantic import BaseModel, Field, computed_field, model_validator
+
+from qfa.domain.clustering_models import TrendPeriod
 
 _SEPARATOR = "------------------------------------------------------------"
 
@@ -58,32 +60,69 @@ def _create_pretty_output(
     lines.append(_SEPARATOR)
     return "\n".join(lines)
 
-from qfa.domain.clustering_models import TrendPeriod
-
 
 def _assign_codes_request_examples() -> list[dict[str, Any]]:
     """Build Swagger ``examples`` from ``fixtures/coding_framework.json`` + COVID-19 codebook quotes."""
+
+    def _coding_levels_from_framework(framework: dict[str, Any]) -> dict[str, Any]:
+        """Convert the legacy codebook shape into ``ApiCodingFramework`` example shape."""
+        if isinstance(framework.get("root_codes"), list):
+            return {"root_codes": framework["root_codes"]}
+
+        root_codes: list[dict[str, Any]] = []
+        for code_type in framework.get("types", []):
+            categories = []
+            for category in code_type.get("categories", []):
+                codes = [
+                    {"name": code.get("name", "Unnamed code"), "children": []}
+                    for code in category.get("codes", [])
+                ]
+                categories.append(
+                    {
+                        "name": category.get("name", "Unnamed category"),
+                        "children": codes,
+                    }
+                )
+            root_codes.append(
+                {"name": code_type.get("name", "Unnamed type"), "children": categories}
+            )
+
+        return {"root_codes": root_codes}
+
     root = Path(__file__).resolve().parents[3]
     path = root / "fixtures" / "coding_framework.json"
     if not path.is_file():
         return [
             {
-                "coding_framework": {"types": []},
-                "feedback_records": [
-                    {
-                        "id": "no-framework",
-                        "content": (
-                            "Repository root must contain fixtures/coding_framework.json "
-                            "for full Try-it-out examples."
-                        ),
-                    }
-                ],
+                "coding_levels": {
+                    "root_codes": [
+                        {
+                            "name": "Example type",
+                            "children": [
+                                {
+                                    "name": "Example category",
+                                    "children": [
+                                        {"name": "Example code", "children": []}
+                                    ],
+                                }
+                            ],
+                        }
+                    ]
+                },
+                "feedback_record": {
+                    "id": "no-framework",
+                    "content": (
+                        "Repository root must contain fixtures/coding_framework.json "
+                        "for full Try-it-out examples."
+                    ),
+                },
                 "max_codes": 10,
                 "confidence_threshold": None,
             }
         ]
     # Dev-only: load JSON for Swagger examples; TODO: link production framework through API
     framework = json.loads(path.read_text(encoding="utf-8"))
+    coding_levels = _coding_levels_from_framework(framework)
     # Verbatim long examples from the COVID-19 coding framework (Excel export).
     quotes = [
         "they belief now a day covid-19 is as such not big deal, but the ruling party or the government used it as the agenda to divert the political view and opinion of the people towards the election after the coming two months",
@@ -92,25 +131,23 @@ def _assign_codes_request_examples() -> list[dict[str, Any]]:
     ]
     return [
         {
-            "coding_framework": framework,
-            "feedback_records": [
-                {"id": f"covid-example-{i}", "content": text}
-                for i, text in enumerate(quotes)
-            ],
+            "coding_levels": coding_levels,
+            "feedback_record": {"id": f"covid-example-{i}", "content": text},
             "max_codes": 10,
             "confidence_threshold": None,
         }
+        for i, text in enumerate(quotes)
     ]
 
 
 class ApiFeedbackRecordInput(BaseModel):
-    """A single feedback record in an analysis request."""
+    """A single feedback record in an inference request."""
 
     id: str = Field(description="Unique identifier for the feedback record.")
-    text: str = Field(
+    content: str = Field(
         min_length=1,
         max_length=100_000,
-        description="Feedback text content.",
+        description="Feedback description content.",
     )
     metadata: dict[str, str | int | float | bool] = Field(
         default_factory=dict,
@@ -118,8 +155,52 @@ class ApiFeedbackRecordInput(BaseModel):
     )
 
 
-class ApiAnalyzeRequest(BaseModel):
-    """Request body for the ``POST /v1/analyze`` endpoint."""
+##### Bulk requests Base Model #####
+
+
+class ApiBulkInferenceRequestBase(BaseModel, ABC):
+    """Base request for inference endpoints that process bulk feedback records."""
+
+    feedback_records: list[ApiFeedbackRecordInput] = Field(
+        min_length=1,
+        description="Non-empty list of feedback records to process.",
+    )
+
+    output_language: str | None = Field(
+        default=None,
+        description="Optional target language for the output of this inference request.",
+    )
+
+
+class ApiBulkInferenceResponseBase(BaseModel, ABC):
+    """Base response for inference endpoints that process bulk feedback records."""
+
+    @computed_field
+    @property
+    @abstractmethod
+    def pretty_output(self) -> str:
+        """Subclasses must implement this to return a human-readable output string."""
+        raise NotImplementedError("Subclasses must implement pretty_output.")
+
+
+##### Single-record requests Base Model #####
+
+
+class ApiSingleInferenceRequestBase(BaseModel, ABC):
+    """Base request for inference endpoints that return per-feedback-record outputs."""
+
+    feedback_record: ApiFeedbackRecordInput = Field(
+        description="Feedback record to process.",
+    )
+
+
+##### Bulk requests #####
+
+# analyze-bulk
+
+
+class ApiAnalyzeRequest(ApiBulkInferenceRequestBase):
+    """Request body for the ``POST /v1/analyze-bulk`` endpoint."""
 
     model_config = {
         "json_schema_extra": {
@@ -128,12 +209,12 @@ class ApiAnalyzeRequest(BaseModel):
                     "feedback_records": [
                         {
                             "id": "doc-001",
-                            "text": "The water distribution was well organized but we had to wait for three hours.",
+                            "content": "The water distribution was well organized but we had to wait for three hours.",
                             "metadata": {"region": "Eastern Province", "year": 2024},
                         },
                         {
                             "id": "doc-002",
-                            "text": "Medical staff were very professional. Medicine supply was insufficient.",
+                            "content": "Medical staff were very professional. Medicine supply was insufficient.",
                             "metadata": {"region": "Northern Province", "year": 2024},
                         },
                     ],
@@ -144,22 +225,10 @@ class ApiAnalyzeRequest(BaseModel):
         },
     }
 
-    feedback_records: list[ApiFeedbackRecordInput] = Field(
-        min_length=1,
-        description="Non-empty list of feedback records to analyze.",
-    )
     prompt: str = Field(
         min_length=1,
         max_length=4_000,
         description="Analysis instruction for the model.",
-    )
-    anonymize: bool = Field(
-        default=True,
-        description=(
-            "If true, the service will anonymize feedback text before sending it"
-            " to the LLM. Disable only if you are sure that no personally"
-            " identifiable information (PII) is present in the input."
-        ),
     )
     mode: Literal["single_pass", "hierarchical"] = Field(
         default="single_pass",
@@ -218,8 +287,8 @@ class ApiCodingTrends(BaseModel):
     )
 
 
-class ApiAnalyzeResponse(BaseModel):
-    """Response body for the ``POST /v1/analyze`` endpoint.
+class ApiAnalyzeBulkResponse(ApiBulkInferenceResponseBase):
+    """Response body for the ``POST /v1/analyze-bulk`` endpoint.
 
     The analysis text always starts with a server-side disclaimer
     ("Generated by AI. Human review required."), which carries the
@@ -242,141 +311,116 @@ class ApiAnalyzeResponse(BaseModel):
         description="Number of feedback records that were analyzed.",
     )
     request_id: str = Field(description="Unique identifier for this request.")
-    used_anonymization: bool = Field(
-        description="Indicates whether anonymization was applied to the feedback text.",
-    )
     confidence: float | None = Field(
         default=None,
         ge=0.0,
         le=1.0,
         description=(
-            "Coverage-weighted mean of per-chunk judge faithfulness scores for"
-            " the ``hierarchical`` path; ``null`` for ``single_pass``."
+            "Coverage-weighted mean of per-chunk faithfulness scores."
+            " Populated only for ``mode=hierarchical``."
         ),
     )
     coding_trends: ApiCodingTrends | None = Field(
         default=None,
         description=(
-            "Deterministic code-by-period frequency table; populated for"
-            " both ``single_pass`` and ``hierarchical`` whenever the"
-            " configured date + code metadata fields are present."
-            " ``null`` only when no record carries a parseable date."
+            "Deterministic code-by-period frequency table. Populated for"
+            " both modes whenever metadata contains parseable date+code fields."
         ),
     )
 
+    @override
+    @computed_field(description="Human-readable formatted output string.")
+    @property
+    def pretty_output(self) -> str:
+        """Human-readable formatted output string."""
+        return _create_pretty_output(
+            quality_score=self.quality_score,
+            title="Analysis",
+            summary=self.analysis,
+        )
 
-class ApiSummarizeFeedbackMetadata(BaseModel):
-    """Metadata for a feedback record in a summarize request."""
 
-    created: datetime = Field(
-        description="Timestamp when the feedback record was created."
+# summarize-bulk
+
+
+class ApiSummarizeBulkRequest(ApiBulkInferenceRequestBase):
+    """Request body for the ``POST /v1/summarize-bulk`` endpoint."""
+
+
+class ApiSummarizeBulkResponse(ApiBulkInferenceResponseBase):
+    """Response body for ``POST /v1/summarize-bulk``."""
+
+    ids: list[str] = Field(description="Identifiers of all source feedback records.")
+    title: str = Field(description="Generated short title for the aggregate summary.")
+    summary: str = Field(
+        description="Generated bullet-point summary ordered by theme frequency."
     )
-    feedback_record_id: str = Field(description="Source feedback record identifier.")
-    coding_level_1: str = Field(description="Level 1 coding label.")
-    coding_level_2: str = Field(description="Level 2 coding label.")
-    coding_level_3: str = Field(description="Level 3 coding label.")
-
-
-class ApiSummarizeFeedbackRecord(BaseModel):
-    """A single feedback record for ``POST /v1/summarize``."""
-
-    id: str = Field(description="Unique identifier for the feedback record.")
-    content: str = Field(
-        min_length=1,
-        max_length=100_000,
-        description="Feedback content to summarize.",
-    )
-    metadata: ApiSummarizeFeedbackMetadata = Field(
-        description="Structured metadata for the feedback record.",
+    quality_score: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Judge score for summary quality in the range 0.0-1.0.",
     )
 
+    @override
+    @computed_field(description="Human-readable formatted output string.")
+    @property
+    def pretty_output(self) -> str:
+        """Human-readable formatted output string."""
+        return _create_pretty_output(
+            ids=self.ids,
+            quality_score=self.quality_score,
+            title=self.title,
+            summary=self.summary,
+        )
 
-class ApiSummarizeRequest(BaseModel):
+
+##### Per-feedback-record requests #####
+
+
+# note: no response base model since these are all different shapes
+
+# summarize
+
+
+class ApiSummarizeRequest(ApiSingleInferenceRequestBase):
     """Request body for the ``POST /v1/summarize`` endpoint."""
 
     model_config = {
         "json_schema_extra": {
             "examples": [
                 {
-                    "feedback_records": [
-                        {
-                            "id": "doc-001",
-                            "content": (
-                                "After the storm damaged the main supply line, a water distribution "
-                                "point was set up near the schoolyard with ropes and signs so people "
-                                "knew where to queue. Volunteers explained the ration clearly - two "
-                                "jerrycans per family per day - and the process felt orderly compared "
-                                "to the chaos in the first days. The main problem was the waiting time: "
-                                "many of us stood in line for more than three hours in the sun, "
-                                "including elderly people and parents with small children, and some "
-                                "had to leave before reaching the front because of work or caring "
-                                "for relatives at home. A few argued that those who arrived earliest "
-                                "should not lose out when the team stopped for breaks. People "
-                                "appreciated that distribution was organized, but the long wait made "
-                                "it hard for everyone to benefit fairly."
-                            ),
-                            "metadata": {
-                                "created": "2024-06-01T12:00:00Z",
-                                "feedback_record_id": "fi-001",
-                                "coding_level_1": "Water",
-                                "coding_level_2": "Distribution",
-                                "coding_level_3": "Waiting times",
-                            },
+                    "feedback_record": {
+                        "id": "doc-001",
+                        "content": (
+                            "After the storm damaged the main supply line, a water distribution "
+                            "point was set up near the schoolyard with ropes and signs so people "
+                            "knew where to queue. Volunteers explained the ration clearly - two "
+                            "jerrycans per family per day - and the process felt orderly compared "
+                            "to the chaos in the first days. The main problem was the waiting time: "
+                            "many of us stood in line for more than three hours in the sun, "
+                            "including elderly people and parents with small children, and some "
+                            "had to leave before reaching the front because of work or caring "
+                            "for relatives at home. A few argued that those who arrived earliest "
+                            "should not lose out when the team stopped for breaks. People "
+                            "appreciated that distribution was organized, but the long wait made "
+                            "it hard for everyone to benefit fairly."
+                        ),
+                        "metadata": {
+                            "created": "2024-06-01T12:00:00Z",
+                            "feedback_record_id": "fi-001",
+                            "coding_level_1": "Water",
+                            "coding_level_2": "Distribution",
+                            "coding_level_3": "Waiting times",
                         },
-                        {
-                            "id": "doc-002",
-                            "content": (
-                                "During the mobile clinic in the settlement after the floods, the "
-                                "medical staff treated people with respect and explained things "
-                                "clearly; several of us felt reassured even though we had waited most "
-                                "of the morning in the heat. The nurses worked steadily and the "
-                                "doctor listened properly before prescribing. What frustrated many "
-                                "families was that essential medicines ran out before midday - "
-                                "especially antibiotics and chronic medication for older people - so "
-                                "some had to leave with prescriptions but no drugs, and others were "
-                                "told to come back the next day without any guarantee that stock "
-                                "would arrive. A few parents said their children's fever had still "
-                                "not been checked by the time the team packed up. Overall the care "
-                                "was professional, but unless supplies match the number of people, "
-                                "the visit feels incomplete and people lose trust in follow-up."
-                            ),
-                            "metadata": {
-                                "created": "2024-06-02T09:30:00Z",
-                                "feedback_record_id": "fi-002",
-                                "coding_level_1": "Health",
-                                "coding_level_2": "Staff",
-                                "coding_level_3": "Supplies",
-                            },
-                        },
-                    ],
-                    "output_language": "English",
-                    "prompt": "Focus on operational issues and community-member experience.",
+                    },
                 },
             ],
         },
     }
 
-    feedback_records: list[ApiSummarizeFeedbackRecord] = Field(
-        min_length=1,
-        description="Non-empty list of feedback records to summarize individually.",
-    )
-    output_language: str | None = Field(
-        default=None,
-        description="Optional target language for summaries and titles for every feedback record.",
-    )
-    prompt: str | None = Field(
-        default=None,
-        max_length=4_000,
-        description="Optional extra instruction appended to the default summarize prompt.",
-    )
-    anonymize: bool = Field(
-        default=True,
-        description="If true, the service will anonymize feedback text before sending it to the LLM. Disable only if you are sure that no personally identifiable information (PII) is present in the input.",
-    )
 
-
-class ApiFeedbackRecordSummary(BaseModel):
-    """Per-feedback-record summary response."""
+class ApiSummarizeResponse(BaseModel):
+    """Feedback-record summary response."""
 
     id: str = Field(description="Identifier of the source feedback record.")
     title: str = Field(description="Generated short title for the feedback record.")
@@ -401,49 +445,7 @@ class ApiFeedbackRecordSummary(BaseModel):
         )
 
 
-class ApiSummarizeResponse(BaseModel):
-    """Response body for the ``POST /v1/summarize`` endpoint."""
-
-    summaries: list[ApiFeedbackRecordSummary] = Field(
-        description="Title and summary for each submitted feedback record.",
-    )
-    used_anonymization: bool = Field(
-        description="Indicates whether anonymization was applied to the feedback text.",
-    )
-
-
-class ApiAggregateSummary(BaseModel):
-    """Aggregate summary covering all submitted feedback records."""
-
-    ids: list[str] = Field(description="Identifiers of all source feedback records.")
-    title: str = Field(description="Generated short title for the aggregate summary.")
-    summary: str = Field(
-        description="Generated bullet-point summary ordered by theme frequency."
-    )
-    quality_score: float = Field(
-        ge=0.0,
-        le=1.0,
-        description="Judge score for summary quality in the range 0.0-1.0.",
-    )
-
-    @computed_field(description="Human-readable formatted output string.")
-    @property
-    def pretty_output(self) -> str:
-        """Human-readable formatted output string."""
-        return _create_pretty_output(
-            ids=self.ids,
-            quality_score=self.quality_score,
-            title=self.title,
-            summary=self.summary,
-        )
-
-
-class ApiSummarizeAggregateResponse(BaseModel):
-    """Response body for the ``POST /v1/summarize-aggregate`` endpoint."""
-
-    summary: ApiAggregateSummary = Field(
-        description="Aggregate summary of all submitted feedback records."
-    )
+# assign-codes
 
 
 class ApiCodingNode(BaseModel):
@@ -473,7 +475,7 @@ class ApiCodingNode(BaseModel):
         return min([child.min_child_depth() for child in self.children]) + 1
 
 
-class ApiCodingLevels(BaseModel):
+class ApiCodingFramework(BaseModel):
     """Contains the hierarchical codings used for classification."""
 
     root_codes: list[ApiCodingNode] = Field(
@@ -481,7 +483,7 @@ class ApiCodingLevels(BaseModel):
     )
 
     @model_validator(mode="after")
-    def verify_all_codes_have_same_depth(self) -> "ApiCodingLevels":
+    def verify_all_codes_have_same_depth(self) -> "ApiCodingFramework":
         """Checks if all codes have the same depth."""
         max_lengths = set(code.max_child_depth() for code in self.root_codes)
         min_lengths = set(code.min_child_depth() for code in self.root_codes)
@@ -493,27 +495,47 @@ class ApiCodingLevels(BaseModel):
         return self
 
 
-class ApiDetectSensitiveRequest(BaseModel):
-    """Request body for the ``POST /v1/detect-sensitive`` endpoint.
+class ApiAssignCodesRequest(ApiSingleInferenceRequestBase):
+    """Request body for ``POST /v1/assign-codes``."""
 
-    Attributes
-    ----------
-        feedback_items : list[ApiFeedbackRecordInput]
-    """
-
-    feedback_items: list[ApiFeedbackRecordInput] = Field(
-        min_length=1,
-        description="List of feedback items to check for sensitive content.",
+    model_config = {
+        "json_schema_extra": {"examples": _assign_codes_request_examples()},
+    }
+    coding_levels: ApiCodingFramework = Field(
+        description="Hierarchical coding framework.",
     )
 
-    anonymize: bool = Field(
-        default=True,
-        description="If true, the service will anonymize feedback text before sending it to the LLM. Disable only if you are sure that no personally identifiable information (PII) is present in the input.",
-    )
+    max_codes: int = Field(default=1, ge=1, le=50)
+    confidence_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
-class ApiFeedbackItemSensitivityRating(BaseModel):
-    """Represents the sensitivity rating for a single feedback item.
+class ApiAssignedCode(BaseModel):
+    """A single code assigned to a feedback record."""
+
+    code_id: str
+    code_label: str
+    confidence_type: float
+    confidence_category: float
+    confidence_code: float
+    confidence_aggregate: float
+    explanation: str
+
+
+class ApiAssignCodesResponse(BaseModel):
+    """Response body for ``POST /v1/assign-codes``."""
+
+    assigned_codes: list[ApiAssignedCode]
+
+
+# detect-sensitive
+
+
+class ApiDetectSensitiveRequest(ApiSingleInferenceRequestBase):
+    """Request body for the ``POST /v1/detect-sensitive`` endpoint."""
+
+
+class ApiDetectSensitiveResponse(BaseModel):
+    """Response body for the ``POST /v1/detect-sensitive`` endpoint.
 
     Attributes
     ----------
@@ -537,65 +559,7 @@ class ApiFeedbackItemSensitivityRating(BaseModel):
     )
 
 
-class ApiDetectSensitiveResponse(BaseModel):
-    """Response body for the ``POST /v1/detect-sensitive`` endpoint.
-
-    Attributes
-    ----------
-    ratings : list[ApiFeedbackItemSensitivityRating]
-        Sensitivity rating for each submitted feedback item.
-    """
-
-    ratings: list[ApiFeedbackItemSensitivityRating]
-
-
-class ApiFeedbackRecord(BaseModel):
-    """Feedback record: ``id`` plus body text (reusable across endpoints)."""
-
-    id: str
-    content: str = Field(min_length=1, max_length=100_000)
-
-
-class ApiAssignCodesRequest(BaseModel):
-    """Request body for ``POST /v1/assign-codes``."""
-
-    model_config = {
-        "json_schema_extra": {"examples": _assign_codes_request_examples()},
-    }
-
-    coding_framework: dict[str, Any]
-    feedback_records: list[ApiFeedbackRecord] = Field(min_length=1)
-    max_codes: int = Field(default=1, ge=1, le=50)
-    confidence_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
-    anonymize: bool = Field(
-        default=True,
-        description="If true, the service will anonymize feedback text before sending it to the LLM. Disable only if you are sure that no personally identifiable information (PII) is present in the input.",
-    )
-
-
-class ApiAssignedCode(BaseModel):
-    """A single code assigned to a feedback record."""
-
-    code_id: str
-    code_label: str
-    confidence_type: float
-    confidence_category: float
-    confidence_code: float
-    confidence_aggregate: float
-    explanation: str
-
-
-class ApiCodedFeedbackRecord(BaseModel):
-    """The codes assigned to a single feedback record."""
-
-    feedback_record_id: str
-    assigned_codes: list[ApiAssignedCode]
-
-
-class ApiAssignCodesResponse(BaseModel):
-    """Response body for ``POST /v1/assign-codes``."""
-
-    coded_feedback_records: list[ApiCodedFeedbackRecord]
+##### Non-inference endpoints #####
 
 
 class ApiAddTenantRequest(BaseModel):

@@ -722,8 +722,12 @@ def create_app(*, llm_factory: LLMFactory | None = None) -> FastAPI:
             "description": "System health and status endpoints",
         },
         {
+            "name": "Bulk Inference",
+            "description": "Batch inference endpoints that return one aggregate result",
+        },
+        {
             "name": "Inference",
-            "description": "Analyze, summarize, and assign codes to feedback records",
+            "description": "Non-bulk inference endpoints intended for per-feedback-record outputs",
         },
         {
             "name": "User Management",

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Test the health and analyze API endpoints.
+# Test the health and bulk analyze API endpoints.
 # Usage: QFA_API_KEY=<key> ./scripts/test-api.sh [base_url]
 
 set -euo pipefail
@@ -14,10 +14,10 @@ echo "=== Health check ==="
 http GET "${BASE_URL}/v1/health"
 
 echo ""
-echo "=== Analyze ==="
-http POST "${BASE_URL}/v1/analyze" \
+echo "=== Analyze Bulk ==="
+http POST "${BASE_URL}/v1/analyze-bulk" \
   "Authorization:Bearer ${QFA_API_KEY}" \
-  documents:='[
+  feedback_records:='[
     {
       "id": "doc-001",
       "text": "The water distribution was well organized but we had to wait for three hours.",
@@ -32,7 +32,7 @@ http POST "${BASE_URL}/v1/analyze" \
   prompt="Summarize the main themes and sentiment of the feedback."
 
 
-http POST "${BASE_URL}/v1/summarize" \
+http POST "${BASE_URL}/v1/summarize-bulk" \
   "Authorization:Bearer ${QFA_API_KEY}" \
 \
 \
