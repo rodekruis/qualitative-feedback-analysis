@@ -199,7 +199,6 @@ def _build_judge_system_message(source_text: str, summary: str) -> str:
 
 @dataclass
 class _ScoredCode:
-    code_id: str
     type_label: str
     category_label: str
     code_label: str
@@ -1312,7 +1311,6 @@ class Orchestrator:
 
                     candidates.append(
                         _ScoredCode(
-                            code_id=code_name,
                             type_label=type_name,
                             category_label=category_name,
                             code_label=code_name,
@@ -1333,7 +1331,6 @@ class Orchestrator:
                 feedback_record_id=feedback_record.id,
                 assigned_codes=tuple(
                     AssignedCodeModel(
-                        code_id=c.code_id,
                         type_label=c.type_label,
                         category_label=c.category_label,
                         code_label=c.code_label,

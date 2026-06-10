@@ -605,6 +605,8 @@ class TestAssignCodesSuccess:
         assert code_item["type_label"] == "Test type"
         assert code_item["category_label"] == "Test category"
         assert code_item["code_label"] == "Test code"
+        # code_id was dropped: it only ever mirrored code_label (#149).
+        assert "code_id" not in code_item
 
     @pytest.mark.asyncio
     async def test_422_on_invalid_confidence_threshold(self, client):

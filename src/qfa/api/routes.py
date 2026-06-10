@@ -289,10 +289,10 @@ async def assign_codes(
     Category → Code), keeping the highest-confidence leaf codes up to
     ``max_codes``. Each entry in the response reports the full hierarchy
     path of the selected leaf: ``type_label`` (level 1), ``category_label``
-    (level 2), and ``code_label`` (level 3, the leaf). Because the inbound
-    ``coding_levels`` nodes carry only names (no stable ids), ``code_id``
-    mirrors the leaf ``code_label``; consumers such as EspoCRM map the
-    three levels back to their records by name (#149).
+    (level 2), and ``code_label`` (level 3, the leaf). The inbound
+    ``coding_levels`` nodes carry only names (no stable ids), so consumers
+    such as EspoCRM map all three levels back to their records by name
+    (#149).
     """
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
@@ -318,7 +318,6 @@ async def assign_codes(
     return ApiAssignCodesResponse(
         assigned_codes=[
             ApiAssignedCode(
-                code_id=assigned.code_id,
                 type_label=assigned.type_label,
                 category_label=assigned.category_label,
                 code_label=assigned.code_label,

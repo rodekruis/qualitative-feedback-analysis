@@ -232,7 +232,6 @@ class AssignedCodeModel(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    code_id: str = Field(description="Stable identifier from the coding framework.")
     type_label: str = Field(description="Human-readable Type-level name.")
     category_label: str = Field(description="Human-readable Category-level name.")
     code_label: str = Field(description="Human-readable code name.")
