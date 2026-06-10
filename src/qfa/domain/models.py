@@ -41,6 +41,9 @@ class CodingNode(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
+    id: str = Field(
+        description="Stable identifier for this node from the source system."
+    )
     name: str = Field(description="Label for this node in the coding hierarchy.")
     children: list["CodingNode"] = Field(
         default_factory=list,
@@ -232,12 +235,26 @@ class CodingAssignmentRequestModel(BaseModel):
 
 
 class AssignedCodeModel(BaseModel):
-    """A single leaf code assigned to a feedback record."""
+    """A single leaf code assigned to a feedback record with full hierarchical path."""
 
     model_config = ConfigDict(frozen=True)
 
-    code_id: str = Field(description="Stable identifier from the coding framework.")
-    code_label: str = Field(description="Human-readable code name.")
+    coding_level_1_id: str = Field(description="ID of the selected Type level code.")
+    coding_level_1_name: str = Field(
+        description="Name of the selected Type level code."
+    )
+    coding_level_2_id: str = Field(
+        description="ID of the selected Category level code."
+    )
+    coding_level_2_name: str = Field(
+        description="Name of the selected Category level code."
+    )
+    coding_level_3_id: str = Field(
+        description="ID of the selected Code (leaf) level code."
+    )
+    coding_level_3_name: str = Field(
+        description="Name of the selected Code (leaf) level code."
+    )
     confidence_type: float = Field(
         description="Judge confidence that the Type level fits the feedback record (0-1)."
     )

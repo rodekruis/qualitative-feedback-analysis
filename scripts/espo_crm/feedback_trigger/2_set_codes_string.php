@@ -35,6 +35,7 @@ while ($i < array\length($ids1)) {
             ifThen($name3 == null || string\length($name3) == 0, $name3 = $id3);
 
             $node3 = object\create();
+            $node3['id'] = $id3;
             $node3['name'] = $name3;
             $node3['children'] = list();
 
@@ -43,6 +44,7 @@ while ($i < array\length($ids1)) {
         }
 
         $node2 = object\create();
+        $node2['id'] = $id2;
         $node2['name'] = $name2;
         $node2['children'] = json\retrieve(string\concatenate('[', array\join($nodes3, ','), ']'));
 
@@ -51,6 +53,7 @@ while ($i < array\length($ids1)) {
     }
 
     $node1 = object\create();
+    $node1['id'] = $id1;
     $node1['name'] = $name1;
     $node1['children'] = json\retrieve(string\concatenate('[', array\join($nodes2, ','), ']'));
 

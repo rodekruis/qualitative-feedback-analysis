@@ -199,8 +199,12 @@ def _build_judge_system_message(source_text: str, summary: str) -> str:
 
 @dataclass
 class _ScoredCode:
-    code_id: str
-    code_label: str
+    coding_level_1_id: str
+    coding_level_1_name: str
+    coding_level_2_id: str
+    coding_level_2_name: str
+    coding_level_3_id: str
+    coding_level_3_name: str
     confidence_type: float
     confidence_category: float
     confidence_code: float
@@ -1310,8 +1314,12 @@ class Orchestrator:
 
                     candidates.append(
                         _ScoredCode(
-                            code_id=code_name,
-                            code_label=code_name,
+                            coding_level_1_id=type_node.id,
+                            coding_level_1_name=type_name,
+                            coding_level_2_id=category_node.id,
+                            coding_level_2_name=category_name,
+                            coding_level_3_id=code_node.id,
+                            coding_level_3_name=code_name,
                             confidence_type=judge_type.score,
                             confidence_category=judge_category.score,
                             confidence_code=judge_code.score,
@@ -1329,8 +1337,12 @@ class Orchestrator:
                 feedback_record_id=feedback_record.id,
                 assigned_codes=tuple(
                     AssignedCodeModel(
-                        code_id=c.code_id,
-                        code_label=c.code_label,
+                        coding_level_1_id=c.coding_level_1_id,
+                        coding_level_1_name=c.coding_level_1_name,
+                        coding_level_2_id=c.coding_level_2_id,
+                        coding_level_2_name=c.coding_level_2_name,
+                        coding_level_3_id=c.coding_level_3_id,
+                        coding_level_3_name=c.coding_level_3_name,
                         confidence_type=c.confidence_type,
                         confidence_category=c.confidence_category,
                         confidence_code=c.confidence_code,

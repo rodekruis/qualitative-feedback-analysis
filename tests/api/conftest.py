@@ -190,8 +190,12 @@ class FakeOrchestrator:
                     feedback_record_id=request.feedback_record.id,
                     assigned_codes=(
                         AssignedCodeModel(
-                            code_id="code-1",
-                            code_label="Test code",
+                            coding_level_1_id="type-1",
+                            coding_level_1_name="Test Type",
+                            coding_level_2_id="cat-1",
+                            coding_level_2_name="Test Category",
+                            coding_level_3_id="code-1",
+                            coding_level_3_name="Test Code",
                             confidence_type=0.9,
                             confidence_category=0.85,
                             confidence_code=0.8,

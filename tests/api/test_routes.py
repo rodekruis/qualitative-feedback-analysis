@@ -573,7 +573,23 @@ class TestErrorMapping:
 
 _CODING_BODY = {
     "feedback_record": {"id": "custom-1", "content": "Long waiting times"},
-    "coding_levels": {"root_codes": [{"name": "Type A", "children": []}]},
+    "coding_levels": {
+        "root_codes": [
+            {
+                "id": "type-1",
+                "name": "Type A",
+                "children": [
+                    {
+                        "id": "cat-1",
+                        "name": "Category A",
+                        "children": [
+                            {"id": "code-1", "name": "Code A", "children": []}
+                        ],
+                    }
+                ],
+            }
+        ]
+    },
 }
 
 
@@ -590,6 +606,20 @@ class TestAssignCodesSuccess:
         assert code_item["confidence_code"] == 0.8
         assert code_item["confidence_aggregate"] == 0.8
         assert "explanation" in code_item
+
+    @pytest.mark.asyncio
+    async def test_response_includes_all_coding_levels(self, client):
+        resp = await client.post(
+            "/v1/assign-codes", json=_CODING_BODY, headers=_auth_header()
+        )
+        assert resp.status_code == 200
+        code_item = resp.json()["assigned_codes"][0]
+        assert code_item["coding_level_1_id"] == "type-1"
+        assert code_item["coding_level_1_name"] == "Test Type"
+        assert code_item["coding_level_2_id"] == "cat-1"
+        assert code_item["coding_level_2_name"] == "Test Category"
+        assert code_item["coding_level_3_id"] == "code-1"
+        assert code_item["coding_level_3_name"] == "Test Code"
 
     @pytest.mark.asyncio
     async def test_422_on_invalid_confidence_threshold(self, client):
