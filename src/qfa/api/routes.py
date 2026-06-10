@@ -30,7 +30,7 @@ from qfa.api.schemas import (
 from qfa.domain.models import (
     AnalysisRequestModel,
     CodingAssignmentRequestModel,
-    CodingLevels,
+    CodingFramework,
     CodingNode,
     FeedbackRecordModel,
     SensitivityAnalysisRequestModel,
@@ -292,7 +292,7 @@ async def assign_codes(
             content=body.feedback_record.content,
             metadata=body.feedback_record.metadata,
         ),
-        coding_levels=CodingLevels(
+        coding_levels=CodingFramework(
             root_codes=[
                 _to_domain_coding_node(n) for n in body.coding_levels.root_codes
             ]

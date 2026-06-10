@@ -13,7 +13,7 @@ Domain entities live in {py:mod}`qfa.domain.models`, with usage-tracking entitie
 | {py:class}`~qfa.domain.models.SummaryRequestModel` / {py:class}`~qfa.domain.models.SummaryResultModel` | Bulk summarisation across multiple feedback records for `POST /v1/summarize-bulk`. |
 | {py:class}`~qfa.domain.models.SingleSummaryRequestModel` / {py:class}`~qfa.domain.models.FeedbackRecordSummaryModel` | Per-record summarisation for `POST /v1/summarize`. |
 | {py:class}`~qfa.domain.models.AggregateSummaryResultModel` | Single aggregate summary with judge score. |
-| {py:class}`~qfa.domain.models.CodingAssignmentRequestModel` / {py:class}`~qfa.domain.models.CodingAssignmentResultModel` | Hierarchical code assignment with typed {py:class}`~qfa.domain.models.CodingLevels` framework. |
+| {py:class}`~qfa.domain.models.CodingAssignmentRequestModel` / {py:class}`~qfa.domain.models.CodingAssignmentResultModel` | Hierarchical code assignment with typed {py:class}`~qfa.domain.models.CodingFramework` framework. |
 | `LLMResponse[T_Response]` | Generic envelope returned from {py:class}`~qfa.domain.ports.LLMPort`'s `complete` method. |
 | {py:class}`~qfa.domain.models.TenantApiKey` | One row in `AUTH_API_KEYS`. |
 | {py:class}`~qfa.domain.usage_models.LLMCallRecord` | One LLM call's worth of tracking data — written by {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter`. |

@@ -65,7 +65,7 @@ def _assign_codes_request_examples() -> list[dict[str, Any]]:
     """Build Swagger ``examples`` from ``fixtures/coding_framework.json`` + COVID-19 codebook quotes."""
 
     def _coding_levels_from_framework(framework: dict[str, Any]) -> dict[str, Any]:
-        """Convert the legacy codebook shape into ``ApiCodingLevels`` example shape."""
+        """Convert the legacy codebook shape into ``ApiCodingFramework`` example shape."""
         if isinstance(framework.get("root_codes"), list):
             return {"root_codes": framework["root_codes"]}
 
@@ -475,7 +475,7 @@ class ApiCodingNode(BaseModel):
         return min([child.min_child_depth() for child in self.children]) + 1
 
 
-class ApiCodingLevels(BaseModel):
+class ApiCodingFramework(BaseModel):
     """Contains the hierarchical codings used for classification."""
 
     root_codes: list[ApiCodingNode] = Field(
@@ -483,7 +483,7 @@ class ApiCodingLevels(BaseModel):
     )
 
     @model_validator(mode="after")
-    def verify_all_codes_have_same_depth(self) -> "ApiCodingLevels":
+    def verify_all_codes_have_same_depth(self) -> "ApiCodingFramework":
         """Checks if all codes have the same depth."""
         max_lengths = set(code.max_child_depth() for code in self.root_codes)
         min_lengths = set(code.min_child_depth() for code in self.root_codes)
@@ -501,7 +501,7 @@ class ApiAssignCodesRequest(ApiSingleInferenceRequestBase):
     model_config = {
         "json_schema_extra": {"examples": _assign_codes_request_examples()},
     }
-    coding_levels: ApiCodingLevels = Field(
+    coding_levels: ApiCodingFramework = Field(
         description="Hierarchical coding framework.",
     )
 

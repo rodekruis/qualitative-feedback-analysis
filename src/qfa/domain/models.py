@@ -48,7 +48,7 @@ class CodingNode(BaseModel):
     )
 
 
-class CodingLevels(BaseModel):
+class CodingFramework(BaseModel):
     """A tree of coding nodes defining the full hierarchical coding framework."""
 
     model_config = ConfigDict(frozen=True)
@@ -210,7 +210,7 @@ class CodingAssignmentRequestModel(BaseModel):
     feedback_record: FeedbackRecordModel = Field(
         description="The feedback record to assign codes to.",
     )
-    coding_levels: CodingLevels = Field(
+    coding_levels: CodingFramework = Field(
         description="Hierarchical coding framework defining the assignable codes.",
     )
     max_codes: int = Field(
