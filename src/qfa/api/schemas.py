@@ -145,9 +145,15 @@ class ApiFeedbackRecordInput(BaseModel):
 
     id: str = Field(description="Unique identifier for the feedback record.")
     content: str = Field(
-        min_length=1,
+        min_length=0,
         max_length=100_000,
-        description="Feedback description content.",
+        description=(
+            "Feedback description content. May be empty: EspoCRM submits"
+            " records with blank descriptions, and rejecting the whole"
+            " request with a 422 silently broke entire batches (issue #138)."
+            " Empty records are accepted here and dropped by the route"
+            " before the domain layer, which keeps a non-empty invariant."
+        ),
     )
     metadata: dict[str, str | int | float | bool] = Field(
         default_factory=dict,
