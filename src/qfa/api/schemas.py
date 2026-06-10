@@ -166,14 +166,6 @@ class ApiBulkInferenceRequestBase(BaseModel, ABC):
         description="Non-empty list of feedback records to process.",
     )
 
-    mode: Literal["single_pass"] = Field(
-        default="single_pass",
-        description=(
-            "Analysis mode. ``single_pass`` is the only supported value in this"
-            " version; additional modes may be added in future versions."
-        ),
-    )
-
     output_language: str | None = Field(
         default=None,
         description="Optional target language for the output of this inference request.",
