@@ -348,7 +348,13 @@ class ApiBulkInferenceRequestBase(BaseModel, ABC):
             "'Chinese (Simplified)') — any language the model can produce, not "
             "restricted to a fixed list. The value is sanitized (strip-and-keep: "
             "whitespace is collapsed, only letters/spaces/hyphens/parentheses/"
-            "apostrophes are kept, capped at 50 characters) and never rejected."
+            "apostrophes are kept, capped at 50 characters) and never rejected. "
+            "Prefer an ISO 639-1 code (e.g. 'nl') or an English language name "
+            "(e.g. 'Dutch') for the most predictable results. Note: only the "
+            "human-readable pretty_output headers are localized, and only for a "
+            "small set of languages (en, fr, es, ar, ru, nl, uk); for any other "
+            "language the analysis text is still written in the requested "
+            "language but those headers fall back to English."
         ),
     )
 
