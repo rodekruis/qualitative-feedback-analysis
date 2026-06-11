@@ -15,6 +15,19 @@ Server-side EspoCRM scripts in `scripts/espo_crm/` compose request bodies and ca
 
 Each script reads the relevant EspoCRM fields, builds the JSON body, sends it with an `Authorization: Bearer <key>` header, and writes the response back to a target EspoCRM field.
 
+## Display output
+
+The `/v1/summarize-bulk` response includes a backend-rendered `pretty_output`
+field — a human-readable text block (quality dots, title, summary) ready to
+write straight into an EspoCRM field. The formatting lives entirely in the
+backend, so the scripts do not assemble it.
+
+Its `QUALITY`/`TITLE`/`SUMMARY` headers are localized to the request's
+`output_language` (the same field that drives the title/summary language).
+Supported languages are English, French, Spanish, Arabic, Russian, Dutch, and
+Ukrainian; any other or absent value falls back to English headers. The
+technical `IDs` label is not localized.
+
 ## Authentication
 
 EspoCRM stores the bearer token as a server-side secret. Provisioning and rotation use the standard flow in [API key management](../operations/auth-management.md).

@@ -213,6 +213,7 @@ async def summarize_bulk(
         title=result.title,
         summary=result.summary,
         quality_score=result.quality_score,
+        output_language=body.output_language,
     )
 
 

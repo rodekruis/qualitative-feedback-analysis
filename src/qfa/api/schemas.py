@@ -5,6 +5,7 @@ HTTP contract can evolve independently of the core domain.
 """
 
 import json
+import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Literal, override
@@ -13,7 +14,88 @@ from pydantic import BaseModel, Field, computed_field, model_validator
 
 from qfa.domain.clustering_models import TrendPeriod
 
+logger = logging.getLogger(__name__)
+
 _SEPARATOR = "------------------------------------------------------------"
+
+# Localized headers for the human-readable ``pretty_output`` block.
+# Keyed by label, then by ISO 639-1 code. The seven supported languages are the
+# five official languages of the International Red Cross and Red Crescent
+# Movement (en, fr, es, ar, ru) plus Dutch (nl) and Ukrainian (uk). English is
+# the fallback for any unsupported or absent ``output_language``.
+# The non-English translations are pending native-speaker review.
+_HEADER_LABELS: dict[str, dict[str, str]] = {
+    "quality": {
+        "en": "QUALITY",
+        "fr": "QUALITÉ",
+        "es": "CALIDAD",
+        "ar": "الجودة",
+        "ru": "КАЧЕСТВО",
+        "nl": "KWALITEIT",
+        "uk": "ЯКІСТЬ",
+    },
+    "title": {
+        "en": "TITLE",
+        "fr": "TITRE",
+        "es": "TÍTULO",
+        "ar": "العنوان",
+        "ru": "ЗАГОЛОВОК",
+        "nl": "TITEL",
+        "uk": "ЗАГОЛОВОК",
+    },
+    "summary": {
+        "en": "SUMMARY",
+        "fr": "RÉSUMÉ",
+        "es": "RESUMEN",
+        "ar": "ملخص",
+        "ru": "СВОДКА",
+        "nl": "SAMENVATTING",
+        "uk": "ПІДСУМОК",
+    },
+}
+
+# Free-text ``output_language`` values map to a supported ISO code via this
+# alias table (English names and the ISO codes themselves). Lookups are
+# case-insensitive; anything unmatched falls back to English.
+_LANGUAGE_ALIASES: dict[str, str] = {
+    "english": "en",
+    "en": "en",
+    "french": "fr",
+    "fr": "fr",
+    "spanish": "es",
+    "es": "es",
+    "arabic": "ar",
+    "ar": "ar",
+    "russian": "ru",
+    "ru": "ru",
+    "dutch": "nl",
+    "nl": "nl",
+    "ukrainian": "uk",
+    "uk": "uk",
+}
+
+
+def _resolve_language(output_language: str | None) -> str:
+    """Map a free-text ``output_language`` to a supported ISO code.
+
+    Matches English language names and ISO 639-1 codes case-insensitively;
+    returns ``"en"`` for ``None`` or any unsupported value. A requested value
+    that is present but unsupported is logged at WARNING before falling back,
+    so operators can see which languages clients ask for but we do not yet
+    localize.
+    """
+    normalized = (output_language or "").strip().lower()
+    if not normalized:
+        return "en"
+    code = _LANGUAGE_ALIASES.get(normalized)
+    if code is None:
+        logger.warning(
+            "Unsupported output_language %r for pretty_output headers; "
+            "falling back to English.",
+            output_language,
+        )
+        return "en"
+    return code
 
 
 def _quality_dots(score: float) -> str:
@@ -37,13 +119,22 @@ def _create_pretty_output(
     quality_score: float | None = None,
     title: str | None = None,
     summary: str | None = None,
+    language: str | None = None,
 ) -> str:
     """Build a human-readable text block for display in EspoCRM.
 
     All arguments are optional because this function is shared across endpoints;
     each endpoint passes only the fields relevant to it. Omitted fields are
     excluded from the output.
+
+    The ``QUALITY``/``TITLE``/``SUMMARY`` headers are localized to ``language``
+    (an ``output_language`` value), falling back to English. The
+    technical ``Feedback-ID``/``IDs`` labels and all numeric/dot formatting are
+    not localized. Each header is left-padded to a fixed column so the English
+    output is byte-for-byte unchanged; translated labels of a different length
+    shift that column.
     """
+    lang = _resolve_language(language)
     lines: list[str] = []
     if id is not None:
         lines.append(f"Feedback-ID:    {id}")
@@ -52,11 +143,13 @@ def _create_pretty_output(
     if quality_score is not None:
         dots = _quality_dots(quality_score)
         percent = f"{round(quality_score * 100)}%"
-        lines.append(f"QUALITY:        {dots} {percent}")
+        label = f"{_HEADER_LABELS['quality'][lang]}:"
+        lines.append(f"{label:<16}{dots} {percent}")
     if title is not None:
-        lines.append(f"TITLE:          {title}")
+        label = f"{_HEADER_LABELS['title'][lang]}:"
+        lines.append(f"{label:<16}{title}")
     if summary is not None:
-        lines.append(f"SUMMARY:\n{summary}")
+        lines.append(f"{_HEADER_LABELS['summary'][lang]}:\n{summary}")
     lines.append(_SEPARATOR)
     return "\n".join(lines)
 
@@ -360,6 +453,14 @@ class ApiSummarizeBulkResponse(ApiBulkInferenceResponseBase):
         le=1.0,
         description="Judge score for summary quality in the range 0.0-1.0.",
     )
+    output_language: str | None = Field(
+        default=None,
+        exclude=True,
+        description=(
+            "Render input only (not serialized): the request's output_language,"
+            " used to localize the pretty_output headers."
+        ),
+    )
 
     @override
     @computed_field(description="Human-readable formatted output string.")
@@ -371,6 +472,7 @@ class ApiSummarizeBulkResponse(ApiBulkInferenceResponseBase):
             quality_score=self.quality_score,
             title=self.title,
             summary=self.summary,
+            language=self.output_language,
         )
 
 
