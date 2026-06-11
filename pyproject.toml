@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "qualitative-feedback-analysis"
-version = "1.1.0"
+version = "2.0.0"
 description = "The feedback analysis tool receives feedback items and analyses trends, topics and their evolution over time."
 readme = "README.md"
 license = "LicenseRef-Proprietary"
