@@ -169,7 +169,7 @@ def test_coding_levels_with_no_children_fail():
 def test_coding_node_missing_id_raises():
     """ApiCodingNode requires id field."""
     with pytest.raises(ValidationError, match="id"):
-        ApiCodingNode(name="test")
+        ApiCodingNode(name="test")  # type: ignore
 
 
 def test_coding_levels_depth_less_than_3_raises():
