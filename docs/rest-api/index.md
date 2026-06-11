@@ -32,7 +32,7 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 |---|---|---|---|
 | `feedback_records` | list | — | Non-empty list of `{id, content, metadata?}` records. |
 | `prompt` | string | — | Analyst question (1–4000 chars). |
-| `output_language` | string or null | `null` | Target language for the analysis output (e.g. `"Dutch"`). Omit (or `null`) to let the model answer in the language of the input records. |
+| `output_language` | string or null | `null` | Free-text target language for the analysis output (e.g. `"Dutch"`, `"Brazilian Portuguese"`, `"Chinese (Simplified)"`) — any language the model can produce; not restricted to a fixed list. The value is sanitized (strip-and-keep: collapses whitespace, keeps only letters/spaces/hyphens/parentheses/apostrophes, caps at 50 chars) and never rejected. Omit (or `null`) to let the model answer in the language of the input records. Note: this is distinct from the fixed seven-language localization of the `pretty_output` header labels. |
 | `anonymize` | bool | `true` | Anonymize record text before the LLM call. |
 | `mode` | `"single_pass"` \| `"hierarchical"` | `"single_pass"` | `single_pass` runs one LLM call under the token cap (input over the cap → 413). `hierarchical` runs embed → cluster → map → reduce over large corpora and additionally returns `confidence`. |
 | `period` | `"day"` \| `"week"` \| `"month"` \| null | `null` → server default (`week`) | Granularity for the deterministic `coding_trends` table. `day` for short-window deep-dives, `week` for the typical 1-3 month operational corpus, `month` for multi-year corpora. Omit to use the server-side default (`ANALYZE_DEFAULT_CODING_TREND_PERIOD`). |

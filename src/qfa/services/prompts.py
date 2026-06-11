@@ -113,19 +113,28 @@ No prose outside JSON, no markdown fences.
 """
 
 
-def build_output_language_instruction(output_language: str | None) -> str:
-    """Build the system-prompt suffix pinning the analysis output language.
+def build_output_language_instruction(
+    output_language: str | None, subject: str = "analysis"
+) -> str:
+    """Build the system-prompt suffix pinning the output language.
+
+    ``subject`` names what is written in the requested language ("analysis"
+    for the analyse paths, "title and summary" for summarize-aggregate), so a
+    single builder serves every task (#161).
 
     Returns an empty string when ``output_language`` is falsy (``None`` or
     empty), so callers can append it unconditionally without changing the
     default prompt. The directive lives in the *system* message — never the
     untrusted user message — so a feedback record cannot spoof or override it.
-    Mirrors the summarize path, which likewise instructs the model which
-    language to write its output in (#154).
+
+    This is a dumb formatter: it does NOT sanitize ``output_language``.
+    Sanitization happens once at the API boundary
+    (:func:`qfa.api.schemas.sanitize_output_language`), so the value reaching
+    here is already a strip-and-keep'd, inert fragment (#161).
     """
     if not output_language:
         return ""
-    return f"\n\nWrite the analysis in {output_language}."
+    return f"\n\nWrite the {subject} in {output_language}."
 
 
 def escape_for_tag_envelope(text: str) -> str:

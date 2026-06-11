@@ -122,12 +122,14 @@ def _make_summary_request(
 def _make_aggregate_request(
     feedback_records=None,
     tenant_id=TENANT_ID,
+    output_language=None,
 ):
     if feedback_records is None:
         feedback_records = (_make_feedback_record(),)
     return SummaryRequestModel(
         feedback_records=feedback_records,
         tenant_id=tenant_id,
+        output_language=output_language,
     )
 
 
@@ -621,6 +623,67 @@ class TestAnalyzeOutputLanguage:
         await orch.analyze_bulk(_make_request(), _future_deadline())
 
         assert "Write the analysis in" not in fake_llm.calls[0]["system_message"]
+
+
+class TestAggregateSummaryOutputLanguage:
+    @pytest.mark.asyncio
+    async def test_output_language_instructs_aggregate_system_message(self, settings):
+        """``output_language`` adds a "title and summary" directive to the summarize system message.
+
+        Why: #161 consolidated the inline f-string onto the shared builder; the
+        summarize-aggregate path must still pin the output language, using the
+        "title and summary" subject noun specific to that task.
+        """
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=_make_aggregate_summary_result()),
+                _make_llm_response(structured="0.82\n"),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        await orch.summarize_bulk(
+            _make_aggregate_request(output_language="Dutch"),
+            _future_deadline(),
+        )
+
+        assert (
+            "Write the title and summary in Dutch"
+            in fake_llm.calls[0]["system_message"]
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_language_directive_when_output_language_unset(self, settings):
+        """Omitting ``output_language`` leaves the summarize system message free of a directive.
+
+        Why: #161 — the consolidated builder must keep default behaviour
+        unchanged (no spurious "write in ..." clause) when no language is set.
+        """
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=_make_aggregate_summary_result()),
+                _make_llm_response(structured="0.82\n"),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        await orch.summarize_bulk(_make_aggregate_request(), _future_deadline())
+
+        assert (
+            "Write the title and summary in" not in fake_llm.calls[0]["system_message"]
+        )
 
 
 class TestInjectionSystemPrefix:

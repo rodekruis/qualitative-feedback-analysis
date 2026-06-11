@@ -1099,10 +1099,9 @@ class Orchestrator:
             A single aggregate summary with themes ordered by frequency.
         """
         system_message = _DEFAULT_AGGREGATE_SUMMARIZATION_PROMPT
-        if request.output_language:
-            system_message += (
-                f"\nWrite the title and summary in {request.output_language}."
-            )
+        system_message += build_output_language_instruction(
+            request.output_language, subject="title and summary"
+        )
         if request.prompt:
             system_message += f"\nAdditional instructions: {request.prompt}"
 

@@ -35,6 +35,40 @@ class TestBuildOutputLanguageInstruction:
         """
         assert build_output_language_instruction("") == ""
 
+    def test_default_subject_is_analysis(self):
+        """The default subject noun is "analysis", preserving the analyse wording.
+
+        Why: #161 consolidated the directive builder; the analyse single-pass
+        and hierarchical-reduce callers rely on the default subject staying
+        "analysis" so their prompts are unchanged.
+        """
+        assert (
+            build_output_language_instruction("Dutch")
+            == "\n\nWrite the analysis in Dutch."
+        )
+
+    def test_subject_param_customizes_the_noun(self):
+        """A custom subject noun is interpolated into the directive.
+
+        Why: #161 — summarize-aggregate reuses this builder with subject
+        "title and summary", so the noun must be parameterizable.
+        """
+        assert (
+            build_output_language_instruction("Dutch", subject="title and summary")
+            == "\n\nWrite the title and summary in Dutch."
+        )
+
+    def test_does_not_sanitize_its_input(self):
+        """The builder is a dumb formatter and does not clean its input.
+
+        Why: #161 — sanitization happens once at the API boundary; the builder
+        must interpolate verbatim so it stays simple and single-responsibility.
+        """
+        assert (
+            build_output_language_instruction("Eng. lish")
+            == "\n\nWrite the analysis in Eng. lish."
+        )
+
 
 class TestEscapeForTagEnvelope:
     def test_ascii_without_special_chars_is_unchanged(self):
