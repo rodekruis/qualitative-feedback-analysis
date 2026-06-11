@@ -601,9 +601,9 @@ class TestAssignCodesSuccess:
         )
         assert resp.status_code == 200
         code_item = resp.json()["assigned_codes"][0]
-        assert code_item["confidence_type"] == 0.9
-        assert code_item["confidence_category"] == 0.85
-        assert code_item["confidence_code"] == 0.8
+        assert code_item["confidence_level_1"] == 0.9
+        assert code_item["confidence_level_2"] == 0.85
+        assert code_item["confidence_level_3"] == 0.8
         assert code_item["confidence_aggregate"] == 0.8
         assert "explanation" in code_item
 
@@ -615,11 +615,11 @@ class TestAssignCodesSuccess:
         assert resp.status_code == 200
         code_item = resp.json()["assigned_codes"][0]
         assert code_item["coding_level_1_id"] == "type-1"
-        assert code_item["coding_level_1_name"] == "Test Type"
+        assert code_item["coding_level_1_name"] == "Test Level 1"
         assert code_item["coding_level_2_id"] == "cat-1"
-        assert code_item["coding_level_2_name"] == "Test Category"
+        assert code_item["coding_level_2_name"] == "Test Level 2"
         assert code_item["coding_level_3_id"] == "code-1"
-        assert code_item["coding_level_3_name"] == "Test Code"
+        assert code_item["coding_level_3_name"] == "Test Level 3"
 
     @pytest.mark.asyncio
     async def test_422_on_invalid_confidence_threshold(self, client):

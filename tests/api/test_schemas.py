@@ -257,9 +257,9 @@ def test_assigned_code_has_all_level_fields():
         coding_level_2_name="Category A",
         coding_level_3_id="code-1",
         coding_level_3_name="Code A",
-        confidence_type=0.9,
-        confidence_category=0.8,
-        confidence_code=0.7,
+        confidence_level_1=0.9,
+        confidence_level_2=0.8,
+        confidence_level_3=0.7,
         confidence_aggregate=0.7,
         explanation="Test explanation",
     )

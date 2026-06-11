@@ -239,30 +239,20 @@ class AssignedCodeModel(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    coding_level_1_id: str = Field(description="ID of the selected Type level code.")
-    coding_level_1_name: str = Field(
-        description="Name of the selected Type level code."
+    coding_level_1_id: str = Field(description="ID of the selected level 1 code.")
+    coding_level_1_name: str = Field(description="Name of the selected level 1 code.")
+    coding_level_2_id: str = Field(description="ID of the selected level 2 code.")
+    coding_level_2_name: str = Field(description="Name of the selected level 2 code.")
+    coding_level_3_id: str = Field(description="ID of the selected level 3 code.")
+    coding_level_3_name: str = Field(description="Name of the selected level 3 code.")
+    confidence_code_level_1: float = Field(
+        description="Judge confidence that the level 1 code fits the feedback record (0-1)."
     )
-    coding_level_2_id: str = Field(
-        description="ID of the selected Category level code."
+    confidence_code_level_2: float = Field(
+        description="Judge confidence that the level 2 code fits the feedback record (0-1)."
     )
-    coding_level_2_name: str = Field(
-        description="Name of the selected Category level code."
-    )
-    coding_level_3_id: str = Field(
-        description="ID of the selected Code (leaf) level code."
-    )
-    coding_level_3_name: str = Field(
-        description="Name of the selected Code (leaf) level code."
-    )
-    confidence_type: float = Field(
-        description="Judge confidence that the Type level fits the feedback record (0-1)."
-    )
-    confidence_category: float = Field(
-        description="Judge confidence that the Category level fits the feedback record (0-1)."
-    )
-    confidence_code: float = Field(
-        description="Judge confidence that the Code level fits the feedback record (0-1)."
+    confidence_code_level_3: float = Field(
+        description="Judge confidence that the level 3 code fits the feedback record (0-1)."
     )
     confidence_aggregate: float = Field(
         description="Overall confidence, computed as min of the three level confidences."

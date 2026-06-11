@@ -495,13 +495,13 @@ class ApiCodingFramework(BaseModel):
     """Contains the hierarchical codings used for classification."""
 
     root_codes: list[ApiCodingNode] = Field(
-        description="The root (level 1) codes of your classification. Must form exactly 3 levels (Type -> Category -> Code).",
+        description="The root (level 1) codes of your classification. Must form exactly 3 levels.",
         min_length=1,
     )
 
     @model_validator(mode="after")
     def all_leaf_codes_have_depth_3(self) -> "ApiCodingFramework":
-        """Enforces exactly 3 levels (L1 Type -> L2 Category -> L3 Code)."""
+        """Enforces exactly 3 levels."""
         max_depths = {code.max_child_depth() for code in self.root_codes}
         min_depths = {code.min_child_depth() for code in self.root_codes}
 
@@ -514,7 +514,7 @@ class ApiCodingFramework(BaseModel):
         # max_child_depth/min_child_depth count edges, so 3 levels means depth 2.
         if max_depths != {2}:
             raise ValueError(
-                f"Coding framework must have exactly 3 levels (Type -> Category -> Code). Got depth {next(iter(max_depths))}"
+                f"Coding framework must have exactly 3 levels. Got depth {next(iter(max_depths))}"
             )
 
         return self
@@ -537,30 +537,20 @@ class ApiAssignCodesRequest(ApiSingleInferenceRequestBase):
 class ApiAssignedCode(BaseModel):
     """A single code assigned to a feedback record with full hierarchical path."""
 
-    coding_level_1_id: str = Field(description="ID of the selected Type level code.")
-    coding_level_1_name: str = Field(
-        description="Name of the selected Type level code."
+    coding_level_1_id: str = Field(description="ID of the selected level 1 code.")
+    coding_level_1_name: str = Field(description="Name of the selected level 1 code.")
+    coding_level_2_id: str = Field(description="ID of the selected level 2 code.")
+    coding_level_2_name: str = Field(description="Name of the selected level 2 code.")
+    coding_level_3_id: str = Field(description="ID of the selected level 3 code.")
+    coding_level_3_name: str = Field(description="Name of the selected level 3 code.")
+    confidence_level_1: float = Field(
+        description="Judge confidence at the level 1 code (0-1)."
     )
-    coding_level_2_id: str = Field(
-        description="ID of the selected Category level code."
+    confidence_level_2: float = Field(
+        description="Judge confidence at the level 2 code (0-1)."
     )
-    coding_level_2_name: str = Field(
-        description="Name of the selected Category level code."
-    )
-    coding_level_3_id: str = Field(
-        description="ID of the selected Code (leaf) level code."
-    )
-    coding_level_3_name: str = Field(
-        description="Name of the selected Code (leaf) level code."
-    )
-    confidence_type: float = Field(
-        description="Judge confidence at the Type level (0-1)."
-    )
-    confidence_category: float = Field(
-        description="Judge confidence at the Category level (0-1)."
-    )
-    confidence_code: float = Field(
-        description="Judge confidence at the Code level (0-1)."
+    confidence_level_3: float = Field(
+        description="Judge confidence at the level 3 code (0-1)."
     )
     confidence_aggregate: float = Field(
         description="Minimum of the three level confidences."

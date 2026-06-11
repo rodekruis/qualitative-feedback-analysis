@@ -205,23 +205,25 @@ class _ScoredCode:
     coding_level_2_name: str
     coding_level_3_id: str
     coding_level_3_name: str
-    confidence_type: float
-    confidence_category: float
-    confidence_code: float
-    explanation_type: str
-    explanation_category: str
-    explanation_code: str
+    confidence_level_1: float
+    confidence_level_2: float
+    confidence_level_3: float
+    explanation_level_1: str
+    explanation_level_2: str
+    explanation_level_3: str
 
     @property
     def confidence_aggregate(self) -> float:
-        return min(self.confidence_type, self.confidence_category, self.confidence_code)
+        return min(
+            self.confidence_level_1, self.confidence_level_2, self.confidence_level_3
+        )
 
     @property
     def explanation(self) -> str:
         return (
-            f"Type ({self.confidence_type:.2f}): {self.explanation_type} "
-            f"Category ({self.confidence_category:.2f}): {self.explanation_category} "
-            f"Code ({self.confidence_code:.2f}): {self.explanation_code}"
+            f"Level 1 ({self.confidence_level_1:.2f}): {self.explanation_level_1} "
+            f"Level 2 ({self.confidence_level_2:.2f}): {self.explanation_level_2} "
+            f"Level 3 ({self.confidence_level_3:.2f}): {self.explanation_level_3}"
         )
 
 
@@ -1226,7 +1228,7 @@ class Orchestrator:
             For other LLM provider failures.
         """
         coded: list[CodedFeedbackRecordModel] = []
-        type_nodes = request.coding_levels.root_codes
+        code_level_1_nodes = request.coding_levels.root_codes
         threshold = request.confidence_threshold
 
         feedback_record = request.feedback_record
@@ -1234,98 +1236,101 @@ class Orchestrator:
 
         candidates: list[_ScoredCode] = []
 
-        type_indices = await self._pick_code_indices(
+        code_level_1_indices = await self._pick_code_indices(
             feedback_text=feedback_record.content,
-            current_level="Types",
-            entries=list(type_nodes),
+            current_level="Code level 1",
+            entries=list(code_level_1_nodes),
             hierarchy_path=None,
             tenant_id=request.tenant_id,
             deadline=deadline,
         )
 
-        for type_index in type_indices:
-            type_node = type_nodes[type_index]
-            type_name = type_node.name
+        for code_level_1_index in code_level_1_indices:
+            code_level_1_node = code_level_1_nodes[code_level_1_index]
+            code_level_1_name = code_level_1_node.name
 
-            judge_type = await self._judge_code_level(
+            judge_code_level_1 = await self._judge_code_level(
                 feedback_text=feedback_record.content,
-                level="Type",
-                path=[("Type", type_name)],
+                level="Code level 1",
+                path=[("Code level 1", code_level_1_name)],
                 tenant_id=request.tenant_id,
                 deadline=deadline,
             )
-            if threshold is not None and judge_type.score < threshold:
+            if threshold is not None and judge_code_level_1.score < threshold:
                 continue
 
-            category_nodes = type_node.children
-            category_indices = await self._pick_code_indices(
+            code_level_2_nodes = code_level_1_node.children
+            code_level_2_indices = await self._pick_code_indices(
                 feedback_text=feedback_record.content,
-                current_level="Categories",
-                entries=list(category_nodes),
-                hierarchy_path=[("Type", type_name)],
+                current_level="Code level 2",
+                entries=list(code_level_2_nodes),
+                hierarchy_path=[("Code level 1", code_level_1_name)],
                 tenant_id=request.tenant_id,
                 deadline=deadline,
             )
 
-            for category_index in category_indices:
-                category_node = category_nodes[category_index]
-                category_name = category_node.name
+            for code_level_2_index in code_level_2_indices:
+                code_level_2_node = code_level_2_nodes[code_level_2_index]
+                code_level_2_name = code_level_2_node.name
 
-                judge_category = await self._judge_code_level(
+                judge_code_level_2 = await self._judge_code_level(
                     feedback_text=feedback_record.content,
-                    level="Category",
-                    path=[("Type", type_name), ("Category", category_name)],
+                    level="Code level 2",
+                    path=[
+                        ("Code level 1", code_level_1_name),
+                        ("Code level 2", code_level_2_name),
+                    ],
                     tenant_id=request.tenant_id,
                     deadline=deadline,
                 )
-                if threshold is not None and judge_category.score < threshold:
+                if threshold is not None and judge_code_level_2.score < threshold:
                     continue
 
-                code_nodes = category_node.children
-                code_indices = await self._pick_code_indices(
+                code_level_3_nodes = code_level_2_node.children
+                code_level_3_indices = await self._pick_code_indices(
                     feedback_text=feedback_record.content,
-                    current_level="Codes",
-                    entries=list(code_nodes),
+                    current_level="Code level 3",
+                    entries=list(code_level_3_nodes),
                     hierarchy_path=[
-                        ("Type", type_name),
-                        ("Category", category_name),
+                        ("Code level 1", code_level_1_name),
+                        ("Code level 2", code_level_2_name),
                     ],
                     tenant_id=request.tenant_id,
                     deadline=deadline,
                 )
 
-                for code_index in code_indices:
-                    code_node = code_nodes[code_index]
-                    code_name = code_node.name
+                for code_level_3_index in code_level_3_indices:
+                    code_level_3_node = code_level_3_nodes[code_level_3_index]
+                    code_level_3_name = code_level_3_node.name
 
-                    judge_code = await self._judge_code_level(
+                    judge_code_level_3 = await self._judge_code_level(
                         feedback_text=feedback_record.content,
-                        level="Code",
+                        level="Code level 3",
                         path=[
-                            ("Type", type_name),
-                            ("Category", category_name),
-                            ("Code", code_name),
+                            ("Code level 1", code_level_1_name),
+                            ("Code level 2", code_level_2_name),
+                            ("Code level 3", code_level_3_name),
                         ],
                         tenant_id=request.tenant_id,
                         deadline=deadline,
                     )
-                    if threshold is not None and judge_code.score < threshold:
+                    if threshold is not None and judge_code_level_3.score < threshold:
                         continue
 
                     candidates.append(
                         _ScoredCode(
-                            coding_level_1_id=type_node.id,
-                            coding_level_1_name=type_name,
-                            coding_level_2_id=category_node.id,
-                            coding_level_2_name=category_name,
-                            coding_level_3_id=code_node.id,
-                            coding_level_3_name=code_name,
-                            confidence_type=judge_type.score,
-                            confidence_category=judge_category.score,
-                            confidence_code=judge_code.score,
-                            explanation_type=judge_type.explanation,
-                            explanation_category=judge_category.explanation,
-                            explanation_code=judge_code.explanation,
+                            coding_level_1_id=code_level_1_node.id,
+                            coding_level_1_name=code_level_1_name,
+                            coding_level_2_id=code_level_2_node.id,
+                            coding_level_2_name=code_level_2_name,
+                            coding_level_3_id=code_level_3_node.id,
+                            coding_level_3_name=code_level_3_name,
+                            confidence_level_1=judge_code_level_1.score,
+                            confidence_level_2=judge_code_level_2.score,
+                            confidence_level_3=judge_code_level_3.score,
+                            explanation_level_1=judge_code_level_1.explanation,
+                            explanation_level_2=judge_code_level_2.explanation,
+                            explanation_level_3=judge_code_level_3.explanation,
                         )
                     )
 
@@ -1343,9 +1348,9 @@ class Orchestrator:
                         coding_level_2_name=c.coding_level_2_name,
                         coding_level_3_id=c.coding_level_3_id,
                         coding_level_3_name=c.coding_level_3_name,
-                        confidence_type=c.confidence_type,
-                        confidence_category=c.confidence_category,
-                        confidence_code=c.confidence_code,
+                        confidence_code_level_1=c.confidence_level_1,
+                        confidence_code_level_2=c.confidence_level_2,
+                        confidence_code_level_3=c.confidence_level_3,
                         confidence_aggregate=c.confidence_aggregate,
                         explanation=c.explanation,
                     )
