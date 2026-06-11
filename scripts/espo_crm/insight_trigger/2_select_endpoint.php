@@ -7,4 +7,4 @@ if ($$selectedMethod == "summarize_aggregate") {$$endpoint = "/v1/summarize-bulk
 else if ($$selectedMethod == "analyze") {$$endpoint = "/v1/analyze-bulk";}
 else {$$endpoint = "/v1/summarize-bulk";}
 
-$fullEndpoint = string\concatenate("https://obsessed-mantra-visible.ngrok-free.dev", $$endpoint);
+$fullEndpoint = string\concatenate("https://qfa-dev-backend.azurewebsites.net", $$endpoint);
