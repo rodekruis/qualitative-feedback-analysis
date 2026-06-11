@@ -115,7 +115,7 @@ _WHITESPACE_RUN = re.compile(r"\s+")
 def sanitize_output_language(value: str | None) -> str | None:
     """Sanitize a free-text ``output_language`` with a strip-and-keep policy (#161).
 
-    ``output_language`` is free text — any language Mistral can produce — so we
+    ``output_language`` is free text — any language the model can produce — so we
     never reject or map it to a code; we only neutralize it. The steps:
 
     * ``None`` / empty / whitespace-only → ``None``.
