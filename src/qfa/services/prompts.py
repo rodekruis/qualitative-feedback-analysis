@@ -113,6 +113,21 @@ No prose outside JSON, no markdown fences.
 """
 
 
+def build_output_language_instruction(output_language: str | None) -> str:
+    """Build the system-prompt suffix pinning the analysis output language.
+
+    Returns an empty string when ``output_language`` is falsy (``None`` or
+    empty), so callers can append it unconditionally without changing the
+    default prompt. The directive lives in the *system* message — never the
+    untrusted user message — so a feedback record cannot spoof or override it.
+    Mirrors the summarize path, which likewise instructs the model which
+    language to write its output in (#154).
+    """
+    if not output_language:
+        return ""
+    return f"\n\nWrite the analysis in {output_language}."
+
+
 def escape_for_tag_envelope(text: str) -> str:
     """Escape characters that could break an XML-style tag envelope.
 

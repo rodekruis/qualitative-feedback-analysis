@@ -132,6 +132,7 @@ class FakeOrchestrator:
         )
         self._error = error
         self.last_detect_sensitive_request = None
+        self.last_analyze_request = None
 
     async def analyze_bulk(
         self,
@@ -139,6 +140,7 @@ class FakeOrchestrator:
         deadline: datetime,
     ) -> AnalysisResultModel:
         """Fake single-pass analyze; raises configured error or returns canned result."""
+        self.last_analyze_request = request
         if self._error is not None:
             raise self._error
         return self._analyze_result
@@ -150,6 +152,7 @@ class FakeOrchestrator:
         anonymize: bool = True,
     ) -> AnalysisResultModel:
         """Fake hierarchical analyze; delegates to the same canned result as single-pass."""
+        self.last_analyze_request = request
         if self._error is not None:
             raise self._error
         return self._analyze_result

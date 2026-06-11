@@ -4,8 +4,36 @@ from qfa.domain.models import FeedbackRecordModel
 from qfa.services.prompts import (
     build_analyze_judge_system_message,
     build_analyze_user_message,
+    build_output_language_instruction,
     escape_for_tag_envelope,
 )
+
+
+class TestBuildOutputLanguageInstruction:
+    def test_returns_suffix_naming_the_language_when_given(self):
+        """A requested language produces a system-prompt suffix naming it.
+
+        Why: #154 — the analyse path must instruct the model which language
+        to write the analysis in, otherwise it defaults to the input language.
+        """
+        out = build_output_language_instruction("Dutch")
+        assert "Dutch" in out
+        assert "analysis" in out.lower()
+
+    def test_returns_empty_string_when_language_is_none(self):
+        """No requested language yields an empty suffix so callers append unconditionally.
+
+        Why: keeps the default behaviour (no language directive) byte-for-byte
+        unchanged when ``output_language`` is omitted.
+        """
+        assert build_output_language_instruction(None) == ""
+
+    def test_returns_empty_string_when_language_is_empty(self):
+        """An empty-string language is treated as 'no preference' (empty suffix).
+
+        Why: an empty directive like 'write in ' would be noise; guard against it.
+        """
+        assert build_output_language_instruction("") == ""
 
 
 class TestEscapeForTagEnvelope:

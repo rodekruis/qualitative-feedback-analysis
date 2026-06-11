@@ -12,6 +12,7 @@ from qfa.services.coding_trends import render_coding_trend_table
 from qfa.services.prompts import (
     ANALYZE_GUARDRAILS_PROMPT,
     ANALYZE_SYSTEM_PROMPT,
+    build_output_language_instruction,
     escape_for_tag_envelope,
 )
 
@@ -44,12 +45,18 @@ def build_map_system_message() -> str:
     )
 
 
-def build_reduce_system_message() -> str:
-    """Build the synthesis (reduce) system message: role + guardrails + reduce action."""
+def build_reduce_system_message(output_language: str | None = None) -> str:
+    """Build the synthesis (reduce) system message: role + guardrails + reduce action.
+
+    The reduce step produces the final, user-facing analysis, so the optional
+    ``output_language`` directive is appended here (and not at the map step,
+    whose partials are intermediate) to honour ``output_language`` (#154).
+    """
     return (
         f"{ANALYZE_SYSTEM_PROMPT}\n\n"
         f"{ANALYZE_GUARDRAILS_PROMPT}\n\n"
         f"{_REDUCE_ACTION_PROMPT}"
+        f"{build_output_language_instruction(output_language)}"
     )
 
 

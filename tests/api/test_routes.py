@@ -210,6 +210,35 @@ class TestSummarizeSuccess:
         UUID(resp.headers["x-request-id"])
 
 
+class TestSummarizeBulkSuccess:
+    @pytest.mark.asyncio
+    async def test_localizes_pretty_output_headers(self, client):
+        """output_language localizes bulk headers without leaking the field.
+
+        The request's output_language is threaded into the response renderer so
+        QUALITY/TITLE/SUMMARY come back translated, the technical IDs label is
+        not, and output_language stays out of the serialized body.
+        """
+        body = {
+            "feedback_records": [
+                {"id": "doc-1", "content": "Great service!", "metadata": {}}
+            ],
+            "output_language": "French",
+        }
+        resp = await client.post(
+            "/v1/summarize-bulk", json=body, headers=_auth_header()
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        pretty = data["pretty_output"]
+        assert "QUALITÉ" in pretty
+        assert "QUALITY:" not in pretty
+        # Technical label is not localized.
+        assert "IDs:" in pretty
+        # Presentation-only field is excluded from the response.
+        assert "output_language" not in data
+
+
 class TestDetectSensitiveSuccess:
     @pytest.mark.asyncio
     async def test_200_on_valid_request(self, client):
