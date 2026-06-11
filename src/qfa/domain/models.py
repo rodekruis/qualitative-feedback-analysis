@@ -73,6 +73,10 @@ class AnalysisRequestModel(BaseModel):
         max_length=4000,
         description="Analysis instruction for the model.",
     )
+    output_language: str | None = Field(
+        default=None,
+        description="Optional target language for the analysis output.",
+    )
     tenant_id: str = Field(description="Tenant identifier injected by the auth layer.")
     mode: Literal["single_pass", "hierarchical"] = Field(
         default="single_pass",

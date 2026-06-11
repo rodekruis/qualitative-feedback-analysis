@@ -37,7 +37,10 @@ def _make_feedback_record(doc_id="doc-1", content="Some feedback text.", metadat
 
 
 def _make_request(
-    feedback_records=None, prompt="Summarize feedback.", tenant_id=TENANT_ID
+    feedback_records=None,
+    prompt="Summarize feedback.",
+    tenant_id=TENANT_ID,
+    output_language=None,
 ):
     if feedback_records is None:
         feedback_records = (_make_feedback_record(),)
@@ -45,6 +48,7 @@ def _make_request(
         feedback_records=feedback_records,
         prompt=prompt,
         tenant_id=tenant_id,
+        output_language=output_language,
     )
 
 
@@ -549,6 +553,74 @@ class TestTenantIdPassedThrough:
         )
 
         assert fake_llm.calls[0]["tenant_id"] == "special-tenant"
+
+
+class TestAnalyzeOutputLanguage:
+    @pytest.mark.asyncio
+    async def test_output_language_instructs_analyse_system_message(self, settings):
+        """``output_language`` adds a directive naming the language to the analyse system message.
+
+        Why: #154 — analyse previously dropped ``output_language`` so the model
+        answered in the input language. The directive must reach the analyst
+        (first) LLM call, not the judge call.
+        """
+        from qfa.services.orchestrator import AnalyzeJudgeResult
+
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured="analysis"),
+                _make_llm_response(
+                    structured=AnalyzeJudgeResult(
+                        quality_score=0.5, uncertainty_explanation="ok"
+                    )
+                ),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        await orch.analyze_bulk(
+            _make_request(output_language="Dutch"),
+            _future_deadline(),
+        )
+
+        assert "Dutch" in fake_llm.calls[0]["system_message"]
+
+    @pytest.mark.asyncio
+    async def test_no_language_directive_when_output_language_unset(self, settings):
+        """Omitting ``output_language`` leaves the analyse system message free of a language directive.
+
+        Why: default behaviour must be unchanged — no spurious "write in ..."
+        instruction when the caller expresses no language preference.
+        """
+        from qfa.services.orchestrator import AnalyzeJudgeResult
+
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured="analysis"),
+                _make_llm_response(
+                    structured=AnalyzeJudgeResult(
+                        quality_score=0.5, uncertainty_explanation="ok"
+                    )
+                ),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        await orch.analyze_bulk(_make_request(), _future_deadline())
+
+        assert "Write the analysis in" not in fake_llm.calls[0]["system_message"]
 
 
 class TestInjectionSystemPrefix:
