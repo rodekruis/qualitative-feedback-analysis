@@ -152,8 +152,9 @@ def sanitize_output_language(value: str | None) -> str | None:
     """
     if value is None:
         return None
+    # Bound work even for pathological payloads; output is capped anyway.
+    value = value[:_OUTPUT_LANGUAGE_MAX_LEN * 20]
     collapsed = unicodedata.normalize("NFC", _WHITESPACE_RUN.sub(" ", value)).strip()
-    if not collapsed:
         return None
     cleaned = "".join(
         ch
