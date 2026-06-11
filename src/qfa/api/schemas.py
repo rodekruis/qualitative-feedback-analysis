@@ -500,21 +500,21 @@ class ApiCodingFramework(BaseModel):
     )
 
     @model_validator(mode="after")
-    def verify_all_codes_have_same_depth(self) -> "ApiCodingFramework":
-        """Enforces exactly 3-level hierarchy (L1 Type -> L2 Category -> L3 Code)."""
-        max_lengths = set(code.max_child_depth() for code in self.root_codes)
-        min_lengths = set(code.min_child_depth() for code in self.root_codes)
+    def all_leaf_codes_have_depth_3(self) -> "ApiCodingFramework":
+        """Enforces exactly 3 levels (L1 Type -> L2 Category -> L3 Code)."""
+        max_depths = {code.max_child_depth() for code in self.root_codes}
+        min_depths = {code.min_child_depth() for code in self.root_codes}
 
-        # All root codes must have identical tree depth
-        if len(max_lengths.union(min_lengths)) > 1:
+        # All root codes must have one uniform leaf depth.
+        if len(max_depths) != 1 or len(min_depths) != 1 or max_depths != min_depths:
             raise ValueError(
-                f"All codes must have the same depth {min_lengths=} {max_lengths=}"
+                f"All codes must have the same depth {min_depths=} {max_depths=}"
             )
 
-        # Require exactly 3 levels: max_child_depth of 2 means L1->L2->L3
-        if max_lengths and (next(iter(max_lengths)) != 2):
+        # max_child_depth/min_child_depth count edges, so 3 levels means depth 2.
+        if max_depths != {2}:
             raise ValueError(
-                f"Coding framework must have exactly 3 levels (Type -> Category -> Code). Got depth {next(iter(max_lengths))}"
+                f"Coding framework must have exactly 3 levels (Type -> Category -> Code). Got depth {next(iter(max_depths))}"
             )
 
         return self
