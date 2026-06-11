@@ -30,7 +30,7 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `feedback_records` | list | — | Non-empty list of `{id, content, metadata?}` records. |
+| `feedback_records` | list | — | Non-empty list of `{id, content, metadata?}` records. Individual records may have empty `content` (e.g. a blank EspoCRM description) — those are dropped before analysis rather than failing the request. |
 | `prompt` | string | — | Analyst question (1–4000 chars). |
 | `output_language` | string or null | `null` | Target language for the analysis output (e.g. `"Dutch"`). Omit (or `null`) to let the model answer in the language of the input records. |
 | `anonymize` | bool | `true` | Anonymize record text before the LLM call. |
@@ -44,7 +44,7 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 | `analysis` | string | Model output with a server-side disclaimer prepended. |
 | `quality_score` | float or null | Judge score in [0, 1]. `null` when the judge call failed (not an error — see `uncertainty_explanation`). |
 | `uncertainty_explanation` | string | Natural-language judge reasoning, or a constant unavailable message when the judge failed. |
-| `feedback_record_count` | int | Number of records submitted. |
+| `feedback_record_count` | int | Number of records actually analyzed (records with empty `content` are dropped). |
 | `request_id` | string | Canonical UUID matching the `X-Request-ID` response header. |
 | `used_anonymization` | bool | Whether anonymization was applied. |
 | `confidence` | float or null | Coverage-weighted mean of per-chunk faithfulness scores. Populated only for `mode=hierarchical`; `null` for `single_pass`. |
@@ -57,6 +57,8 @@ the field are unaffected; clients that want trends can now read them from
 the single-pass response too.
 
 Per-record inference endpoints (`/v1/summarize`, `/v1/assign-codes`, `/v1/detect-sensitive`) accept a single `feedback_record` and return one result object, unlike bulk endpoints that accept multiple records and return aggregated output.
+
+Empty `content` is accepted on every endpoint and never causes a 422. A record with empty content carries no information, so it is dropped (bulk) or short-circuited to a 200 empty result with no LLM call (per-record) — see each endpoint's reference for the exact empty-result shape. This keeps a single blank EspoCRM description from silently failing a whole request (issue #138).
 
 ## Usage endpoint response shape
 

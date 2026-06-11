@@ -1,5 +1,7 @@
 """API route handlers for the feedback analysis backend."""
 
+import logging
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Request
@@ -21,6 +23,7 @@ from qfa.api.schemas import (
     ApiCodingTrends,
     ApiDetectSensitiveRequest,
     ApiDetectSensitiveResponse,
+    ApiFeedbackRecordInput,
     ApiHealthResponse,
     ApiSummarizeBulkRequest,
     ApiSummarizeBulkResponse,
@@ -40,6 +43,14 @@ from qfa.domain.models import (
 )
 from qfa.domain.usage_models import CallContext, Operation
 from qfa.services.orchestrator import Orchestrator
+from qfa.services.prompts import ANALYZE_DISCLAIMER
+
+logger = logging.getLogger(__name__)
+
+# Explanation returned by the empty-result short-circuits (analyze /
+# detect-sensitive) when a request contains no non-empty feedback content and
+# is therefore not sent to the LLM.
+_NO_CONTENT_EXPLANATION = "No feedback content was provided."
 
 
 def _to_domain_coding_node(node: ApiCodingNode) -> CodingNode:
@@ -48,6 +59,39 @@ def _to_domain_coding_node(node: ApiCodingNode) -> CodingNode:
         name=node.name,
         children=[_to_domain_coding_node(c) for c in node.children],
     )
+
+
+def _drop_empty_records(
+    records: Sequence[ApiFeedbackRecordInput],
+) -> list[ApiFeedbackRecordInput]:
+    """Return only records with non-empty ``content``, logging any dropped.
+
+    EspoCRM may submit feedback records with a blank description. Such
+    records carry no information for the LLM and would violate the domain
+    ``FeedbackRecordModel`` invariant (``content`` has ``min_length=1``).
+    They are dropped here, at the driving adapter, so the domain core only
+    ever sees valid records (issue #138).
+
+    For ``analyze-bulk`` this also forfeits the dropped record's metadata,
+    which would otherwise feed the deterministic ``coding_trends`` table
+    (codes/dates, built independently of the LLM). In practice that loss is
+    negligible: a record with a blank description almost never carries
+    coding/date metadata either, so there is no real trend signal to keep —
+    which is why we drop in analyze too rather than threading empty records
+    through just for their (almost always absent) codes.
+
+    Dropping never misaligns results: bulk endpoints return a single
+    aggregate output and single-record endpoints echo the source ``id``,
+    so EspoCRM matches responses by id, never by position.
+    """
+    kept = [record for record in records if record.content]
+    dropped = len(records) - len(kept)
+    if dropped:
+        logger.info(
+            "Dropped %d feedback record(s) with empty content before processing.",
+            dropped,
+        )
+    return kept
 
 
 router = APIRouter()
@@ -96,6 +140,11 @@ async def analyze_bulk(
 
     - Input that exceeds the token cap for ``single_pass`` → 413
       ``payload_too_large`` (use ``mode=hierarchical`` for large corpora).
+    - Records with empty ``content`` are dropped before analysis (a blank
+      EspoCRM description must not fail the whole batch — issue #138).
+      ``feedback_record_count`` reflects the records actually analyzed. If
+      *every* record is empty the response is a 200 with
+      ``feedback_record_count=0`` and a disclaimer-only ``analysis``.
     - Injection-like text in record content or metadata is neutralised
       structurally by the envelope; regex-based detection is a separate
       guard handled by the LLM adapter.
@@ -121,9 +170,23 @@ async def analyze_bulk(
     """
     deadline = datetime.now(UTC) + timedelta(seconds=600)
 
+    records = _drop_empty_records(body.feedback_records)
+    if not records:
+        # All records were empty: nothing to analyze. Return a 200 empty
+        # result (disclaimer preserved) rather than failing the request.
+        return ApiAnalyzeBulkResponse(
+            analysis=ANALYZE_DISCLAIMER,
+            quality_score=None,
+            uncertainty_explanation=_NO_CONTENT_EXPLANATION,
+            feedback_record_count=0,
+            request_id=request.state.request_id,
+            confidence=None,
+            coding_trends=None,
+        )
+
     domain_feedback_records = tuple(
         FeedbackRecordModel(id=doc.id, content=doc.content, metadata=doc.metadata)
-        for doc in body.feedback_records
+        for doc in records
     )
 
     domain_request = AnalysisRequestModel(
@@ -155,7 +218,7 @@ async def analyze_bulk(
         analysis=result.result,
         quality_score=result.quality_score,
         uncertainty_explanation=result.uncertainty_explanation,
-        feedback_record_count=len(body.feedback_records),
+        feedback_record_count=len(records),
         request_id=request.state.request_id,
         confidence=result.confidence,
         coding_trends=api_coding_trends,
@@ -177,6 +240,12 @@ async def summarize_bulk(
 ) -> ApiSummarizeBulkResponse:
     """Summarize all submitted feedback records as a single aggregate summary.
 
+    Records with empty ``content`` are dropped before summarization (a blank
+    EspoCRM description must not fail the whole batch — issue #138); their ids
+    do not appear in the response ``ids``. If *every* record is empty the
+    response is a 200 empty aggregate (``ids=[]``, blank ``title``/``summary``,
+    ``quality_score=0.0``).
+
     Parameters
     ----------
     body : ApiSummarizeBulkRequest
@@ -195,13 +264,24 @@ async def summarize_bulk(
     """
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
+    records = _drop_empty_records(body.feedback_records)
+    if not records:
+        # All records were empty: nothing to summarize. Return a 200 empty
+        # aggregate rather than failing the request.
+        return ApiSummarizeBulkResponse(
+            ids=[],
+            title="",
+            summary="",
+            quality_score=0.0,
+        )
+
     feedback_records = tuple(
         FeedbackRecordModel(
             id=record.id,
             content=record.content,
             metadata=record.metadata,
         )
-        for record in body.feedback_records
+        for record in records
     )
     domain_request = SummaryRequestModel(
         feedback_records=feedback_records,
@@ -235,6 +315,11 @@ async def summarize(
 ) -> ApiSummarizeResponse:
     """Summarize submitted feedback record.
 
+    If the record's ``content`` is empty the response is a 200 empty summary
+    that still echoes the source ``id`` (blank ``title``/``summary``,
+    ``quality_score=0.0``), returned without an LLM call — a blank EspoCRM
+    description must not produce a silent 422 (issue #138).
+
     Parameters
     ----------
     body : ApiSummarizeRequest
@@ -252,6 +337,16 @@ async def summarize(
         The per-feedback-record titles and summaries.
     """
     deadline = datetime.now(UTC) + timedelta(seconds=120)
+
+    if not body.feedback_record.content:
+        # Nothing to summarize: return a 200 empty summary that still
+        # carries the source id, without calling the LLM (issue #138).
+        return ApiSummarizeResponse(
+            id=body.feedback_record.id,
+            title="",
+            summary="",
+            quality_score=0.0,
+        )
 
     domain_request = SingleSummaryRequestModel(
         feedback_record=FeedbackRecordModel(
@@ -287,8 +382,17 @@ async def assign_codes(
     orchestrator: Orchestrator = Depends(get_orchestrator),
     _scope: CallContext = Depends(call_scope_for(Operation.ASSIGN_CODES)),
 ) -> ApiAssignCodesResponse:
-    """Assign codes via iterative LLM picks at each level of the framework."""
+    """Assign codes via iterative LLM picks at each level of the framework.
+
+    If the record's ``content`` is empty the response is a 200 with an empty
+    ``assigned_codes`` list, returned without an LLM call (issue #138).
+    """
     deadline = datetime.now(UTC) + timedelta(seconds=120)
+
+    if not body.feedback_record.content:
+        # No content to code: return a 200 empty assignment without an LLM
+        # call (issue #138).
+        return ApiAssignCodesResponse(assigned_codes=[])
 
     domain_request = CodingAssignmentRequestModel(
         feedback_record=FeedbackRecordModel(
@@ -344,6 +448,10 @@ async def detect_sensitive(
 ) -> ApiDetectSensitiveResponse:
     """Detect sensitive content in feedback items.
 
+    If the record's ``content`` is empty the response is a 200 reporting
+    ``is_sensitive=False`` with no ``sensitivity_types``, returned without an
+    LLM call (issue #138).
+
     Parameters
     ----------
     body : ApiDetectSensitiveRequest
@@ -361,6 +469,16 @@ async def detect_sensitive(
         Sensitivity rating for each submitted feedback item.
     """
     deadline = datetime.now(UTC) + timedelta(seconds=120)
+
+    if not body.feedback_record.content:
+        # No content to evaluate: report not-sensitive without an LLM call
+        # (issue #138).
+        return ApiDetectSensitiveResponse(
+            id=body.feedback_record.id,
+            is_sensitive=False,
+            explanation=_NO_CONTENT_EXPLANATION,
+            sensitivity_types=[],
+        )
 
     result = await orchestrator.detect_sensitive_content(
         SensitivityAnalysisRequestModel(
