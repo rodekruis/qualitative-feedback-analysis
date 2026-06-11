@@ -25,4 +25,4 @@ The scripts must use the field names that the backend currently exposes (the `fe
 
 ## Empty descriptions
 
-A feedback record whose description is blank is sent through as an empty `content` string. The backend tolerates this: empty records are dropped from bulk requests, and per-record endpoints return a 200 empty result rather than rejecting the call. Previously a single blank description failed the entire request with a 422 that the scripts swallowed silently (issue #138), so no result was written back. Scripts therefore do not need to pre-filter blank records.
+A feedback record whose description is blank is sent through as an empty `content` string. The backend tolerates this: empty records are dropped from bulk requests, and per-record endpoints return a 200 empty result rather than rejecting the call.
