@@ -354,7 +354,7 @@ class Orchestrator:
             f"{build_output_language_instruction(request.output_language)}"
         )
         user_message = build_analyze_user_message(
-            request.prompt, request.feedback_records, request.output_language
+            request.prompt, request.feedback_records
         )
 
         anonymized_user_message = user_message

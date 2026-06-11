@@ -594,6 +594,45 @@ class TestAnalyzeOutputLanguage:
         assert "Dutch" in fake_llm.calls[0]["system_message"]
 
     @pytest.mark.asyncio
+    async def test_output_language_is_not_embedded_in_the_user_message(self, settings):
+        """``output_language`` reaches the analyse system message only, never the user message.
+
+        Why: #161 — the directive must live solely in the (trusted) system
+        message. Threading it into the user message too (the redundant
+        ``<output_language>`` envelope removed here) duplicated it and mixed a
+        config field into the untrusted, anonymized record envelope. This guards
+        against re-introducing that path.
+        """
+        from qfa.services.orchestrator import AnalyzeJudgeResult
+
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured="analysis"),
+                _make_llm_response(
+                    structured=AnalyzeJudgeResult(
+                        quality_score=0.5, uncertainty_explanation="ok"
+                    )
+                ),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        await orch.analyze_bulk(
+            _make_request(output_language="Dutch"),
+            _future_deadline(),
+        )
+
+        user_message = fake_llm.calls[0]["user_message"]
+        assert "Dutch" not in user_message
+        assert "<output_language>" not in user_message
+
+    @pytest.mark.asyncio
     async def test_no_language_directive_when_output_language_unset(self, settings):
         """Omitting ``output_language`` leaves the analyse system message free of a language directive.
 
