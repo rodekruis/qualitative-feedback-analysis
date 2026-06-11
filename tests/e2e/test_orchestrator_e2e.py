@@ -217,12 +217,18 @@ class TestAssignCodesRecordsMultipleRows:
         coding_levels = {
             "root_codes": [
                 {
+                    "id": "type-a",
                     "name": "Type A",
                     "children": [
                         {
+                            "id": "cat-a1",
                             "name": "Cat A1",
                             "children": [
-                                {"name": "Code A1.1", "children": []},
+                                {
+                                    "id": "code-a1-1",
+                                    "name": "Code A1.1",
+                                    "children": [],
+                                },
                             ],
                         }
                     ],

@@ -158,26 +158,39 @@ def _assign_codes_request_examples() -> list[dict[str, Any]]:
     """Build Swagger ``examples`` from ``fixtures/coding_framework.json`` + COVID-19 codebook quotes."""
 
     def _coding_levels_from_framework(framework: dict[str, Any]) -> dict[str, Any]:
-        """Convert the legacy codebook shape into ``ApiCodingFramework`` example shape."""
+        """Convert the legacy codebook shape into ``ApiCodingFramework`` example shape with required IDs."""
         if isinstance(framework.get("root_codes"), list):
             return {"root_codes": framework["root_codes"]}
 
         root_codes: list[dict[str, Any]] = []
-        for code_type in framework.get("types", []):
+        for type_idx, code_type in enumerate(framework.get("types", [])):
+            type_id = code_type.get("code_id") or f"type-{type_idx}"
             categories = []
-            for category in code_type.get("categories", []):
+            for cat_idx, category in enumerate(code_type.get("categories", [])):
+                cat_id = category.get("code_id") or f"category-{type_idx}-{cat_idx}"
                 codes = [
-                    {"name": code.get("name", "Unnamed code"), "children": []}
-                    for code in category.get("codes", [])
+                    {
+                        "id": code.get(
+                            "code_id", f"code-{type_idx}-{cat_idx}-{code_idx}"
+                        ),
+                        "name": code.get("name", "Unnamed code"),
+                        "children": [],
+                    }
+                    for code_idx, code in enumerate(category.get("codes", []))
                 ]
                 categories.append(
                     {
+                        "id": cat_id,
                         "name": category.get("name", "Unnamed category"),
                         "children": codes,
                     }
                 )
             root_codes.append(
-                {"name": code_type.get("name", "Unnamed type"), "children": categories}
+                {
+                    "id": type_id,
+                    "name": code_type.get("name", "Unnamed type"),
+                    "children": categories,
+                }
             )
 
         return {"root_codes": root_codes}
@@ -553,6 +566,9 @@ class ApiSummarizeResponse(BaseModel):
 class ApiCodingNode(BaseModel):
     """Contains the node of a singular coding and its' children."""
 
+    id: str = Field(
+        description="Stable identifier for this coding node from the source system."
+    )
     name: str = Field(description="Name of this coding")
     children: list["ApiCodingNode"] = Field(
         default_factory=list,
@@ -581,17 +597,26 @@ class ApiCodingFramework(BaseModel):
     """Contains the hierarchical codings used for classification."""
 
     root_codes: list[ApiCodingNode] = Field(
-        description="The root (level 1) codes of your classification.", min_length=1
+        description="The root (level 1) codes of your classification. Must form exactly 3 levels.",
+        min_length=1,
     )
 
     @model_validator(mode="after")
-    def verify_all_codes_have_same_depth(self) -> "ApiCodingFramework":
-        """Checks if all codes have the same depth."""
-        max_lengths = set(code.max_child_depth() for code in self.root_codes)
-        min_lengths = set(code.min_child_depth() for code in self.root_codes)
-        if len(max_lengths.union(min_lengths)) > 1:
+    def all_leaf_codes_have_depth_3(self) -> "ApiCodingFramework":
+        """Enforces exactly 3 levels."""
+        max_depths = {code.max_child_depth() for code in self.root_codes}
+        min_depths = {code.min_child_depth() for code in self.root_codes}
+
+        # All root codes must have one uniform leaf depth.
+        if len(max_depths) != 1 or len(min_depths) != 1 or max_depths != min_depths:
             raise ValueError(
-                f"All codes must have the same depth {min_lengths=} {max_lengths=}"
+                f"All codes must have the same depth {min_depths=} {max_depths=}"
+            )
+
+        # max_child_depth/min_child_depth count edges, so 3 levels means depth 2.
+        if max_depths != {2}:
+            raise ValueError(
+                f"Coding framework must have exactly 3 levels. Got depth {next(iter(max_depths))}"
             )
 
         return self
@@ -612,15 +637,29 @@ class ApiAssignCodesRequest(ApiSingleInferenceRequestBase):
 
 
 class ApiAssignedCode(BaseModel):
-    """A single code assigned to a feedback record."""
+    """A single code assigned to a feedback record with full hierarchical path."""
 
-    code_id: str
-    code_label: str
-    confidence_type: float
-    confidence_category: float
-    confidence_code: float
-    confidence_aggregate: float
-    explanation: str
+    coding_level_1_id: str = Field(description="ID of the selected level 1 code.")
+    coding_level_1_name: str = Field(description="Name of the selected level 1 code.")
+    coding_level_2_id: str = Field(description="ID of the selected level 2 code.")
+    coding_level_2_name: str = Field(description="Name of the selected level 2 code.")
+    coding_level_3_id: str = Field(description="ID of the selected level 3 code.")
+    coding_level_3_name: str = Field(description="Name of the selected level 3 code.")
+    confidence_level_1: float = Field(
+        description="Judge confidence at the level 1 code (0-1)."
+    )
+    confidence_level_2: float = Field(
+        description="Judge confidence at the level 2 code (0-1)."
+    )
+    confidence_level_3: float = Field(
+        description="Judge confidence at the level 3 code (0-1)."
+    )
+    confidence_aggregate: float = Field(
+        description="Minimum of the three level confidences."
+    )
+    explanation: str = Field(
+        description="Judge explanation combining reasoning from all three levels."
+    )
 
 
 class ApiAssignCodesResponse(BaseModel):

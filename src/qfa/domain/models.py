@@ -41,6 +41,9 @@ class CodingNode(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
+    id: str = Field(
+        description="Stable identifier for this node from the source system."
+    )
     name: str = Field(description="Label for this node in the coding hierarchy.")
     children: list["CodingNode"] = Field(
         default_factory=list,
@@ -67,6 +70,10 @@ class AnalysisRequestModel(BaseModel):
     feedback_records: tuple[FeedbackRecordModel, ...] = Field(
         min_length=1,
         description="Non-empty tuple of feedback records to analyze.",
+    )
+    output_language: str | None = Field(
+        default=None,
+        description="Optional target language for all summaries.",
     )
     prompt: str = Field(
         min_length=1,
@@ -232,20 +239,24 @@ class CodingAssignmentRequestModel(BaseModel):
 
 
 class AssignedCodeModel(BaseModel):
-    """A single leaf code assigned to a feedback record."""
+    """A single leaf code assigned to a feedback record with full hierarchical path."""
 
     model_config = ConfigDict(frozen=True)
 
-    code_id: str = Field(description="Stable identifier from the coding framework.")
-    code_label: str = Field(description="Human-readable code name.")
-    confidence_type: float = Field(
-        description="Judge confidence that the Type level fits the feedback record (0-1)."
+    coding_level_1_id: str = Field(description="ID of the selected level 1 code.")
+    coding_level_1_name: str = Field(description="Name of the selected level 1 code.")
+    coding_level_2_id: str = Field(description="ID of the selected level 2 code.")
+    coding_level_2_name: str = Field(description="Name of the selected level 2 code.")
+    coding_level_3_id: str = Field(description="ID of the selected level 3 code.")
+    coding_level_3_name: str = Field(description="Name of the selected level 3 code.")
+    confidence_code_level_1: float = Field(
+        description="Judge confidence that the level 1 code fits the feedback record (0-1)."
     )
-    confidence_category: float = Field(
-        description="Judge confidence that the Category level fits the feedback record (0-1)."
+    confidence_code_level_2: float = Field(
+        description="Judge confidence that the level 2 code fits the feedback record (0-1)."
     )
-    confidence_code: float = Field(
-        description="Judge confidence that the Code level fits the feedback record (0-1)."
+    confidence_code_level_3: float = Field(
+        description="Judge confidence that the level 3 code fits the feedback record (0-1)."
     )
     confidence_aggregate: float = Field(
         description="Overall confidence, computed as min of the three level confidences."

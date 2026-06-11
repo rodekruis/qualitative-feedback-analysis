@@ -131,7 +131,7 @@ These feedback records are collected from community members by Red Cross / Red C
 - About services, access, staff behaviour, health, safety, or community concerns
 
 Your task:
-Assess how well the assigned code label at the requested level fits the feedback record, given the full code path (Type > Category > Code) as context.
+Assess how well the assigned code label at the requested level fits the feedback record, given the full code path as context.
 
 Important:
 - Do not penalise feedback for being brief or colloquial — short feedback is normal in this domain.
@@ -165,11 +165,11 @@ def build_judge_messages(
     feedback_text:
         Raw text of the feedback record being coded.
     level:
-        The hierarchy level being evaluated: ``"Type"``, ``"Category"``, or ``"Code"``.
+        The hierarchy level being evaluated: ``"Code level 1"``, ``"Code level 2"``, or ``"Code level 3"``.
     path:
         Full code path up to and including the current level, as
-        ``[(level_name, label), ...]``. E.g. for the Category judge:
-        ``[("Type", "Service Delivery"), ("Category", "Staff Behavior")]``.
+        ``[(level_name, label), ...]``. E.g. for the Code level 2 judge:
+        ``[("Code level 1", "Service Delivery"), ("Code level 2", "Staff Behavior")]``.
     """
     path_lines = "\n".join(f"{name}: {label}" for name, label in path)
     user = (

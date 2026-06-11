@@ -111,7 +111,7 @@ Every error response shares this shape:
     "message": "Request validation failed.",
     "request_id": "550e8400-e29b-41d4-a716-446655440000",
     "fields": [
-      {"field": "feedback_records[0].text", "issue": "..."}
+      {"field": "feedback_records[0].content", "issue": "..."}
     ]
   }
 }

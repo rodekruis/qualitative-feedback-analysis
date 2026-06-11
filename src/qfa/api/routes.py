@@ -44,7 +44,9 @@ from qfa.services.orchestrator import Orchestrator
 
 def _to_domain_coding_node(node: ApiCodingNode) -> CodingNode:
     return CodingNode(
-        name=node.name, children=[_to_domain_coding_node(c) for c in node.children]
+        id=node.id,
+        name=node.name,
+        children=[_to_domain_coding_node(c) for c in node.children],
     )
 
 
@@ -126,8 +128,8 @@ async def analyze_bulk(
 
     domain_request = AnalysisRequestModel(
         feedback_records=domain_feedback_records,
-        prompt=body.prompt,
         output_language=body.output_language,
+        prompt=body.prompt,
         tenant_id=tenant.tenant_id,
         mode=body.mode,
         period=body.period,
@@ -310,11 +312,15 @@ async def assign_codes(
     return ApiAssignCodesResponse(
         assigned_codes=[
             ApiAssignedCode(
-                code_id=assigned.code_id,
-                code_label=assigned.code_label,
-                confidence_type=assigned.confidence_type,
-                confidence_category=assigned.confidence_category,
-                confidence_code=assigned.confidence_code,
+                coding_level_1_id=assigned.coding_level_1_id,
+                coding_level_1_name=assigned.coding_level_1_name,
+                coding_level_2_id=assigned.coding_level_2_id,
+                coding_level_2_name=assigned.coding_level_2_name,
+                coding_level_3_id=assigned.coding_level_3_id,
+                coding_level_3_name=assigned.coding_level_3_name,
+                confidence_level_1=assigned.confidence_code_level_1,
+                confidence_level_2=assigned.confidence_code_level_2,
+                confidence_level_3=assigned.confidence_code_level_3,
                 confidence_aggregate=assigned.confidence_aggregate,
                 explanation=assigned.explanation,
             )

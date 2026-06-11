@@ -1,11 +1,6 @@
-// Script for settings summarize aggregate feature payload in EspoCRM
-
+<?php // Do not copy this tag into EspoCRM
 // Find the related feedback records
 $$backendIDs = record\findRelatedMany('CInsight', id, 'feedbackDatas', 9999,'createdAt', 'desc');
-
-// TODO: Add fields to UI
-$additionalPrompt = "";
-$outputLanguage = "English";
 
 // Initialize loop variables
 $i = 0;
@@ -55,43 +50,12 @@ while($i < $count) {
   $i = $i + 1;
 }
 
-// Build the payload JSON string
-$$payload = string\concatenate(
-    '{',
-    '"feedback_records": [', $recordsString, '],',
-    '"output_language": "'$outputLanguage'",',
-    '"prompt": "', $additionalPrompt, '"',
-    '}'
-);
+$$recordsString = string\concatenate('[', $recordsString, ']');
 
+// Ussage:
+//$$payload = string\concatenate(
+//    '{',
+//    '"feedback_records": ', $recordsString, ''
+//    '}'
+//);
 
-
-// // Test payload: uncomment to succesfully run rest of workflow
-// $$payload = '{
-//     "feedback_records": [
-//         {
-//             "content": "I ate some delicious roti at a suraam place, this is a test message",
-//             "id": "doc-001",
-//             "metadata": {
-//                 "coding_level_1": "Water",
-//                 "coding_level_2": "Distribution",
-//                 "coding_level_3": "Waiting times",
-//                 "created": "2024-06-01T12:00:00Z",
-//                 "feedback_record_id": "fi-001"
-//             }
-//         },
-//         {
-//             "content": "During the mobile clinic in the settlement after the floods, the medical",
-//             "id": "doc-002",
-//             "metadata": {
-//                 "coding_level_1": "Health",
-//                 "coding_level_2": "Staff",
-//                 "coding_level_3": "Supplies",
-//                 "created": "2024-06-02T09:30:00Z",
-//                 "feedback_record_id": "fi-002"
-//             }
-//         }
-//     ],
-//     "output_language": "English",
-//     "prompt": "Focus on operational issues and beneficiary experience."
-// }';

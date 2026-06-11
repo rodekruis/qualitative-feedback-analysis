@@ -1,3 +1,4 @@
+<?php // Do not copy this tag into EspoCRM
 // Script for translating response to output string for summarize per record feature in EspoCRM
 // The QFA backend now returns a pre-formatted pretty_output field per summary record.
 // This script concatenates those fields into a single output string.
@@ -15,4 +16,4 @@ while ($i < $count) {
     $i = $i + 1;
 }
 
-modelResponse = $finalString;
+$modelResponse = $finalString;
