@@ -32,7 +32,7 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 |---|---|---|---|
 | `feedback_records` | list | — | Non-empty list of `{id, content, metadata?}` records. Individual records may have empty `content` (e.g. a blank EspoCRM description) — those are dropped before analysis rather than failing the request. |
 | `prompt` | string | — | Analyst question (1–4000 chars). |
-| `output_language` | string or null | `null` | Target language for the analysis output (e.g. `"Dutch"`). Omit (or `null`) to let the model answer in the language of the input records. |
+| `output_language` | string or null | `null` | Free-text target language for the analysis output (e.g. `"Dutch"`, `"Brazilian Portuguese"`) — any language the model can produce. Prefer an ISO 639-1 code (`"nl"`) or English language name (`"Dutch"`) for the most predictable results. The value is sanitized and never rejected. Omit (or `null`) to let the model answer in the language of the input records. |
 | `anonymize` | bool | `true` | Anonymize record text before the LLM call. |
 | `mode` | `"single_pass"` \| `"hierarchical"` | `"single_pass"` | `single_pass` runs one LLM call under the token cap (input over the cap → 413). `hierarchical` runs embed → cluster → map → reduce over large corpora and additionally returns `confidence`. |
 | `period` | `"day"` \| `"week"` \| `"month"` \| null | `null` → server default (`week`) | Granularity for the deterministic `coding_trends` table. `day` for short-window deep-dives, `week` for the typical 1-3 month operational corpus, `month` for multi-year corpora. Omit to use the server-side default (`ANALYZE_DEFAULT_CODING_TREND_PERIOD`). |

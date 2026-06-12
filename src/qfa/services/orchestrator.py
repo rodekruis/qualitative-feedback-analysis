@@ -354,7 +354,7 @@ class Orchestrator:
             f"{build_output_language_instruction(request.output_language)}"
         )
         user_message = build_analyze_user_message(
-            request.prompt, request.feedback_records, request.output_language
+            request.prompt, request.feedback_records
         )
 
         anonymized_user_message = user_message
@@ -1099,10 +1099,9 @@ class Orchestrator:
             A single aggregate summary with themes ordered by frequency.
         """
         system_message = _DEFAULT_AGGREGATE_SUMMARIZATION_PROMPT
-        if request.output_language:
-            system_message += (
-                f"\nWrite the title and summary in {request.output_language}."
-            )
+        system_message += build_output_language_instruction(
+            request.output_language, subject="title and summary"
+        )
         if request.prompt:
             system_message += f"\nAdditional instructions: {request.prompt}"
 
