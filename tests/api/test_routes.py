@@ -516,7 +516,23 @@ class TestEmptyFeedbackContent:
         """Single /assign-codes with blank content returns 200 with no codes."""
         body = {
             "feedback_record": {"id": "doc-1", "content": ""},
-            "coding_levels": {"root_codes": [{"name": "Type A", "children": []}]},
+            "coding_levels": {
+                "root_codes": [
+                    {
+                        "name": "Level 1",
+                        "id": "level-1",
+                        "children": [
+                            {
+                                "name": "Level 2",
+                                "id": "level-2",
+                                "children": [
+                                    {"name": "Level 3", "id": "level-3", "children": []}
+                                ],
+                            }
+                        ],
+                    }
+                ]
+            },
         }
         resp = await client.post("/v1/assign-codes", json=body, headers=_auth_header())
         assert resp.status_code == 200
