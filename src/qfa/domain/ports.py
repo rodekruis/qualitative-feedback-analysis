@@ -7,7 +7,15 @@ subtyping per ADR-002. The orchestrator is exposed as the concrete
 
 import datetime as dt
 from functools import wraps
-from typing import Any, Callable, Protocol, runtime_checkable
+from typing import (
+    Any,
+    Callable,
+    Concatenate,
+    ParamSpec,
+    Protocol,
+    TypeVar,
+    runtime_checkable,
+)
 
 from pydantic import BaseModel
 
@@ -230,16 +238,23 @@ class AnonymizationPort(Protocol):
         ...
 
 
-def handle_anonymization(method: Callable[..., Any]) -> Callable[..., Any]:
-    """Wrap a request/response method with anonymization and deanonymization.
+# 1. Capture the specific subclasses of BaseModel used for Request and Response
+RequestT = TypeVar("RequestT", bound=BaseModel)
+ResponseT = TypeVar("ResponseT", bound=BaseModel)
 
-    The decorator expects the wrapped method to receive a ``BaseModel`` request
-    and return a ``BaseModel`` response.
-    """
+# 2. Capture any extra positional/keyword arguments (*args, **kwargs)
+P = ParamSpec("P")
+
+
+def handle_anonymization(
+    method: Callable[Concatenate[Any, RequestT, P], ResponseT],
+) -> Callable[Concatenate[Any, RequestT, P], ResponseT]:
+    """Wrap a request/response method with anonymization and deanonymization."""
 
     @wraps(method)
-    def wrapper(self: Any, request: BaseModel, *args: Any, **kwargs: Any) -> Any:
-        # 'self' allows us to grab whatever functions are currently bound to the instance
+    def wrapper(
+        self: Any, request: RequestT, *args: P.args, **kwargs: P.kwargs
+    ) -> ResponseT:
         anonymizer: AnonymizationPort | None = getattr(self, "anonymizer", None)
         if anonymizer is None or not isinstance(anonymizer, AnonymizationPort):
             raise ValueError(
@@ -255,6 +270,8 @@ def handle_anonymization(method: Callable[..., Any]) -> Callable[..., Any]:
         anonymized_input_string, mapping = anonymizer.anonymize(
             unanonymized_input_string
         )
+
+        # Using type(request) preserves the exact subclass type
         anonymized_request = type(request).model_validate_json(anonymized_input_string)
 
         anonymized_response = method(self, anonymized_request, *args, **kwargs)
@@ -268,6 +285,8 @@ def handle_anonymization(method: Callable[..., Any]) -> Callable[..., Any]:
         deanonymized_response_string = anonymizer.deanonymize(
             anonymized_response_string, mapping
         )
+
+        # Using type(anonymized_response) preserves the exact subclass type
         deanonymized_response = type(anonymized_response).model_validate_json(
             deanonymized_response_string
         )
