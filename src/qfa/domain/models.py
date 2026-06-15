@@ -5,7 +5,7 @@ All models are immutable (frozen) Pydantic models per ADR-001.
 
 import hashlib
 import secrets
-from typing import Any, Generic, Literal, TypeVar, Union
+from typing import Annotated, Any, Generic, Literal, TypeVar, Union
 
 from pydantic import (
     BaseModel,
@@ -18,6 +18,8 @@ from pydantic import (
 from qfa.domain.clustering_models import CodingTrendTable, TrendPeriod
 from qfa.domain.sensitivity_types import SensitivityType
 
+AnonymizeString = Annotated[str, Field(json_schema_extra={"anonymize": True})]
+
 
 class FeedbackRecordModel(BaseModel):
     """A single feedback record submitted for analysis."""
@@ -25,7 +27,7 @@ class FeedbackRecordModel(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     id: str = Field(description="Unique identifier for the feedback record.")
-    content: str = Field(
+    content: AnonymizeString = Field(
         min_length=1,
         max_length=100_000,
         description="Feedback text content.",
