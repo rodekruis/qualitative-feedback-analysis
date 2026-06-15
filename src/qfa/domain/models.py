@@ -151,11 +151,6 @@ class SummaryRequestModel(BaseModel):
         default=None,
         description="Optional target language for all summaries.",
     )
-    prompt: str | None = Field(
-        default=None,
-        max_length=4000,
-        description="Optional extra instruction appended to the default summarize prompt.",
-    )
     tenant_id: str = Field(description="Tenant identifier injected by the auth layer.")
 
 

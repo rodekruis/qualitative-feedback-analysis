@@ -1102,8 +1102,6 @@ class Orchestrator:
         system_message += build_output_language_instruction(
             request.output_language, subject="title and summary"
         )
-        if request.prompt:
-            system_message += f"\nAdditional instructions: {request.prompt}"
 
         user_message = "\n\n".join(
             f"{idx}. {record.content}"
