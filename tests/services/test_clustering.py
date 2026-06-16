@@ -9,6 +9,7 @@ These are pure, deterministic and tested with hand-built vectors (no model).
 
 from qfa.domain.models import FeedbackRecordModel
 from qfa.services.clustering import _split_to_budget, cluster_records
+from qfa.settings import METADATA_DATE_FIELD
 
 
 def _record(
@@ -16,7 +17,7 @@ def _record(
 ) -> FeedbackRecordModel:
     metadata: dict[str, str | int | float] = {}
     if created is not None:
-        metadata["created"] = created
+        metadata[METADATA_DATE_FIELD] = created
     return FeedbackRecordModel(id=rec_id, content=content, metadata=metadata)
 
 
@@ -210,10 +211,10 @@ def test_records_are_sorted_by_date_within_each_chunk() -> None:
         min_cluster_size=2,
         max_total_tokens=100_000,
         chars_per_token=4,
-        date_field="created",
+        date_field=METADATA_DATE_FIELD,
     )
     for chunk in chunks:
-        seen = [r.metadata["created"] for r in chunk.records]
+        seen = [r.metadata[METADATA_DATE_FIELD] for r in chunk.records]
         assert seen == sorted(seen), f"chunk not in date order: {seen}"
 
 
@@ -238,7 +239,7 @@ def test_records_without_a_parseable_date_sort_last_and_stably() -> None:
         min_cluster_size=2,
         max_total_tokens=100_000,
         chars_per_token=4,
-        date_field="created",
+        date_field=METADATA_DATE_FIELD,
     )
     # All records land in one chunk (tight cluster, well under budget).
     assert len(chunks) == 1

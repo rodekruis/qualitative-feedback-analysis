@@ -12,13 +12,14 @@ from qfa.services.coding_trends import (
     build_coding_trend_table,
     render_coding_trend_table,
 )
+from qfa.settings import METADATA_CODE_FIELD, METADATA_DATE_FIELD
 
 
 def _record(rec_id: str, created: str, codes: str) -> FeedbackRecordModel:
     return FeedbackRecordModel(
         id=rec_id,
         content="some feedback",
-        metadata={"created": created, "codes": codes},
+        metadata={METADATA_DATE_FIELD: created, METADATA_CODE_FIELD: codes},
     )
 
 
@@ -67,7 +68,7 @@ def test_counts_codes_per_week_period_default() -> None:
         _record("r3", "2024-01-08T10:00:00Z", "Water"),
     )
     table = build_coding_trend_table(
-        records, date_field="created", code_fields=("codes",)
+        records, date_field=METADATA_DATE_FIELD, code_fields=(METADATA_CODE_FIELD,)
     )
     assert table is not None
     assert table.periods == ("2024-W01", "2024-W02")
@@ -89,7 +90,10 @@ def test_counts_codes_per_day_period() -> None:
         _record("r3", "2024-01-06T08:00:00Z", "Water"),
     )
     table = build_coding_trend_table(
-        records, date_field="created", code_fields=("codes",), period="day"
+        records,
+        date_field=METADATA_DATE_FIELD,
+        code_fields=(METADATA_CODE_FIELD,),
+        period="day",
     )
     assert table is not None
     counts = {(c.code, c.period): c.count for c in table.cells}
@@ -102,9 +106,13 @@ def test_returns_none_when_date_field_absent() -> None:
 
     Why: the spec mandates best-effort; a missing field must never raise.
     """
-    records = (FeedbackRecordModel(id="r1", content="x", metadata={"codes": "Water"}),)
+    records = (
+        FeedbackRecordModel(
+            id="r1", content="x", metadata={METADATA_CODE_FIELD: "Water"}
+        ),
+    )
     table = build_coding_trend_table(
-        records, date_field="created", code_fields=("codes",)
+        records, date_field=METADATA_DATE_FIELD, code_fields=(METADATA_CODE_FIELD,)
     )
     assert table is None
 
@@ -118,11 +126,14 @@ def test_records_without_codes_are_skipped_not_errored() -> None:
     records = (
         _record("r1", "2024-01-05T10:00:00Z", "Water"),
         FeedbackRecordModel(
-            id="r2", content="x", metadata={"created": "2024-01-06T10:00:00Z"}
+            id="r2", content="x", metadata={METADATA_DATE_FIELD: "2024-01-06T10:00:00Z"}
         ),
     )
     table = build_coding_trend_table(
-        records, date_field="created", code_fields=("codes",), period="month"
+        records,
+        date_field=METADATA_DATE_FIELD,
+        code_fields=(METADATA_CODE_FIELD,),
+        period="month",
     )
     assert table is not None
     counts = {(c.code, c.period): c.count for c in table.cells}

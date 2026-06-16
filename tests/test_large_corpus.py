@@ -14,6 +14,7 @@ import yaml
 from qfa.domain.models import FeedbackRecordModel
 from qfa.services.clustering import cluster_records
 from qfa.services.coding_trends import build_coding_trend_table
+from qfa.settings import METADATA_CODE_FIELD, METADATA_DATE_FIELD
 
 FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
 CORPUS_PATH = FIXTURES / "large_corpus.yaml"
@@ -104,15 +105,18 @@ def test_coding_trend_table_counts_match_corpus() -> None:
     # default granularity is ``week``, but the fixture isn't aligned to
     # ISO weeks.
     table = build_coding_trend_table(
-        records, date_field="created", code_fields=("codes",), period="month"
+        records,
+        date_field=METADATA_DATE_FIELD,
+        code_fields=(METADATA_CODE_FIELD,),
+        period="month",
     )
     assert table is not None
     # Hand count of one known (code, period) pair from the fixture.
     expected = sum(
         1
         for item in corpus
-        if "Water" in item["metadata"]["codes"].split(",")
-        and item["metadata"]["created"].startswith("2024-01")
+        if "Water" in item["metadata"][METADATA_CODE_FIELD].split(",")
+        and item["metadata"][METADATA_DATE_FIELD].startswith("2024-01")
     )
     got = next(
         (c.count for c in table.cells if c.code == "Water" and c.period == "2024-01"),

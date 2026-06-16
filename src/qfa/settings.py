@@ -25,6 +25,12 @@ Single source of truth shared by ``EmbeddingSettings.batch_size`` and the
 default and the library default cannot silently drift apart.
 """
 
+# Single source of truth for metadata field names consumed by the pipeline.
+# AnalyzeSettings defaults and the corpus generator both reference these
+# so they cannot silently drift apart.
+METADATA_DATE_FIELD = "created"
+METADATA_CODE_FIELD = "codes"
+
 
 class LogSettings(BaseSettings):
     """Define settings for the logger."""
@@ -224,11 +230,11 @@ class AnalyzeSettings(BaseSettings):
         ),
     )
     coding_trend_date_field: str = Field(
-        default="created",
+        default=METADATA_DATE_FIELD,
         description="Metadata key holding the record date for the coding-trend table.",
     )
     coding_trend_code_fields: list[str] = Field(
-        default_factory=lambda: ["codes"],
+        default_factory=lambda: [METADATA_CODE_FIELD],
         description="Metadata keys holding coding labels (comma-separated strings).",
     )
     default_coding_trend_period: TrendPeriod = Field(
