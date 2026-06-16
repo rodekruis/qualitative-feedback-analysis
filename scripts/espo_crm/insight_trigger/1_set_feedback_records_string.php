@@ -52,10 +52,3 @@ while($i < $count) {
 
 $$recordsString = string\concatenate('[', $recordsString, ']');
 
-// Ussage:
-//$$payload = string\concatenate(
-//    '{',
-//    '"feedback_records": ', $recordsString, ''
-//    '}'
-//);
-
