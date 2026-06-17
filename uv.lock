@@ -11,7 +11,10 @@ resolution-markers = [
 ]
 
 [manifest]
-constraints = [{ name = "starlette", specifier = ">=1.0.1" }]
+constraints = [
+    { name = "starlette", specifier = ">=1.0.1" },
+    { name = "tornado", specifier = ">=6.5.7" },
+]
 
 [[package]]
 name = "accessible-pygments"
