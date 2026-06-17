@@ -19,6 +19,32 @@ Domain entities live in {py:mod}`qfa.domain.models`, with usage-tracking entitie
 | {py:class}`~qfa.domain.usage_models.LLMCallRecord` | One LLM call's worth of tracking data — written by {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter`. |
 | {py:class}`~qfa.domain.usage_models.UsageMetrics`, {py:class}`~qfa.domain.usage_models.OperationStats`, {py:class}`~qfa.domain.usage_models.TenantUsageStats`, {py:class}`~qfa.domain.usage_models.TenantStats`, {py:class}`~qfa.domain.usage_models.OperationUsageStats`, {py:class}`~qfa.domain.usage_models.DistributionStats` | Aggregate views returned by `/v1/usage`, `/v1/usage/all/by-tenant`, and `/v1/usage/all/by-operation`. `TenantUsageStats` / `OperationStats` carry the tenant-top-level hierarchy with per-operation nested; `OperationUsageStats` / `TenantStats` carry the inverse operation-top-level hierarchy with per-tenant nested. Every block exposes per-invocation top-level fields plus a per-LLM-call `llm_call_stats`. `UsageMetrics` is the shared leaf class. `DistributionStats` is the shared distribution shape (avg/min/max/p5/p95/total) used for `call_duration`, `input_tokens`, and `output_tokens`. |
 
+## Feedback record metadata contract
+
+Each {py:class}`~qfa.domain.models.FeedbackRecordModel` carries a free-form
+`metadata` dict (`dict[str, str | int | float | bool]`). The pipeline reads two
+fields from it by convention; the rest pass through unchanged.
+
+The documented contract is {py:class}`~qfa.domain.models.FeedbackRecordMetadata`
+(in `qfa.domain.models`). It is not used as the type of the `metadata` field —
+callers may include arbitrary extra keys — but it names the two fields the
+pipeline consumes:
+
+| Field | Type | Purpose |
+|---|---|---|
+| `created` | `str` (ISO-8601 date) | Time-bucket for the coding-trend table and within-chunk chronological sort. |
+| `codes` | `str` (comma-separated labels) | Code axis of the coding-trend table. |
+
+Both fields are optional. A record missing `created` is excluded from the trend
+table but still analysed. A record missing `codes` contributes no cells to the
+trend table but is otherwise unaffected.
+
+The field names (`created`, `codes`) are the **single source of truth** defined
+by `METADATA_DATE_FIELD` and `METADATA_CODE_FIELD` in `qfa.settings`. The
+settings `ANALYZE_CODING_TREND_DATE_FIELD` and `ANALYZE_CODING_TREND_CODE_FIELDS`
+default to those constants, so the corpus generator, the pipeline, and the
+settings defaults all reference the same values and cannot drift apart.
+
 ## Persistence — `llm_calls`
 
 When `DB_TRACK_USAGE=true`, every LLM call appends one row to the `llm_calls` table. The schema lives in `qfa.adapters.db` and is managed by Alembic migrations under `migrations/`.
