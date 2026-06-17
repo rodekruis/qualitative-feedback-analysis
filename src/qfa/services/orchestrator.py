@@ -66,6 +66,8 @@ from qfa.services.prompts import (
     JUDGE_UNAVAILABLE_EXPLANATION,
     build_analyze_judge_system_message,
     build_analyze_user_message,
+    build_feedback_record_envelope,
+    build_feedback_records_envelope,
     build_output_language_instruction,
 )
 from qfa.settings import (
@@ -1105,9 +1107,8 @@ class Orchestrator:
         if request.prompt:
             system_message += f"\nAdditional instructions: {request.prompt}"
 
-        user_message = "\n\n".join(
-            f"{idx}. {record.content}"
-            for idx, record in enumerate(request.feedback_records, start=1)
+        user_message = build_feedback_records_envelope(
+            request.feedback_records, include_metadata=False
         )
 
         anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
@@ -1180,7 +1181,9 @@ class Orchestrator:
         timeout = self._check_deadline_and_get_timeout(deadline)
         system_message = _DEFAULT_SUMMARIZATION_PROMPT
 
-        user_message = str(request.feedback_record)
+        user_message = build_feedback_record_envelope(
+            request.feedback_record, include_metadata=False
+        )
         anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
             user_message
         )
@@ -1247,7 +1250,7 @@ class Orchestrator:
         candidates: list[_ScoredCode] = []
 
         code_level_1_indices = await self._pick_code_indices(
-            feedback_text=feedback_record.content,
+            feedback_record=feedback_record,
             current_level="Code level 1",
             entries=list(code_level_1_nodes),
             hierarchy_path=None,
@@ -1260,7 +1263,7 @@ class Orchestrator:
             code_level_1_name = code_level_1_node.name
 
             judge_code_level_1 = await self._judge_code_level(
-                feedback_text=feedback_record.content,
+                feedback_record=feedback_record,
                 level="Code level 1",
                 path=[("Code level 1", code_level_1_name)],
                 tenant_id=request.tenant_id,
@@ -1271,7 +1274,7 @@ class Orchestrator:
 
             code_level_2_nodes = code_level_1_node.children
             code_level_2_indices = await self._pick_code_indices(
-                feedback_text=feedback_record.content,
+                feedback_record=feedback_record,
                 current_level="Code level 2",
                 entries=list(code_level_2_nodes),
                 hierarchy_path=[("Code level 1", code_level_1_name)],
@@ -1284,7 +1287,7 @@ class Orchestrator:
                 code_level_2_name = code_level_2_node.name
 
                 judge_code_level_2 = await self._judge_code_level(
-                    feedback_text=feedback_record.content,
+                    feedback_record=feedback_record,
                     level="Code level 2",
                     path=[
                         ("Code level 1", code_level_1_name),
@@ -1298,7 +1301,7 @@ class Orchestrator:
 
                 code_level_3_nodes = code_level_2_node.children
                 code_level_3_indices = await self._pick_code_indices(
-                    feedback_text=feedback_record.content,
+                    feedback_record=feedback_record,
                     current_level="Code level 3",
                     entries=list(code_level_3_nodes),
                     hierarchy_path=[
@@ -1314,7 +1317,7 @@ class Orchestrator:
                     code_level_3_name = code_level_3_node.name
 
                     judge_code_level_3 = await self._judge_code_level(
-                        feedback_text=feedback_record.content,
+                        feedback_record=feedback_record,
                         level="Code level 3",
                         path=[
                             ("Code level 1", code_level_1_name),
@@ -1390,7 +1393,9 @@ class Orchestrator:
         """
         timeout = self._check_deadline_and_get_timeout(deadline)
         system_message = _DEFAULT_SENSITIVITY_DETECTION_PROMPT
-        user_message = str(request.feedback_record)
+        user_message = build_feedback_record_envelope(
+            request.feedback_record, include_metadata=True, include_id=True
+        )
 
         anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
             user_message
@@ -1451,7 +1456,7 @@ class Orchestrator:
     async def _pick_code_indices(
         self,
         *,
-        feedback_text: str,
+        feedback_record: FeedbackRecordModel,
         current_level: str,
         entries: list[CodingNode],
         hierarchy_path: list[tuple[str, str]] | None,
@@ -1461,7 +1466,7 @@ class Orchestrator:
         """Build one coding prompt, call the LLM, and parse selected indices."""
         labels = [entry.name for entry in entries]
         system_message, user_message = build_pick_messages(
-            feedback_text=feedback_text,
+            feedback_record=feedback_record,
             current_level=current_level,
             labels=labels,
             hierarchy_path=hierarchy_path,
@@ -1485,7 +1490,7 @@ class Orchestrator:
     async def _judge_code_level(
         self,
         *,
-        feedback_text: str,
+        feedback_record: FeedbackRecordModel,
         level: str,
         path: list[tuple[str, str]],
         tenant_id: str,
@@ -1493,7 +1498,7 @@ class Orchestrator:
     ) -> JudgeResponse:
         """Call the judge LLM for one hierarchy level; return structured score and explanation."""
         system_message, user_message = build_judge_messages(
-            feedback_text=feedback_text,
+            feedback_record=feedback_record,
             level=level,
             path=path,
         )
