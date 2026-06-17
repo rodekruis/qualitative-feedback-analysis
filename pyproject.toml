@@ -52,7 +52,10 @@ dependencies = [
 [tool.uv]
 constraint-dependencies = [
     # Starlette vulnerability in starlette >= 0.8.3, < 1.0.1: https://x41-dsec.de/lab/advisories/x41-2026-002-starlette/
-    "starlette>=1.0.1"
+    "starlette>=1.0.1",
+    # tornado (transitive via dev tooling, e.g. ipykernel); pin the floor at
+    # dependabot's bumped release.
+    "tornado>=6.5.7",
 ]
 
 [tool.uv.sources] # include spacy models through custom-defined sources https://stackoverflow.com/a/79768491
