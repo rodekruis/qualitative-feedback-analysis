@@ -52,7 +52,8 @@ dependencies = [
 [tool.uv]
 constraint-dependencies = [
     # Starlette vulnerability in starlette >= 0.8.3, < 1.0.1: https://x41-dsec.de/lab/advisories/x41-2026-002-starlette/
-    "starlette>=1.0.1"
+    # Floor bumped to track dependabot's latest release.
+    "starlette>=1.3.1"
 ]
 
 [tool.uv.sources] # include spacy models through custom-defined sources https://stackoverflow.com/a/79768491
