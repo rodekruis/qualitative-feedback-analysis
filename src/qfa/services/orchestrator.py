@@ -1196,6 +1196,23 @@ class Orchestrator:
             timeout=timeout,
         )
 
+        if not llm_completion.structured.feedback_record_summaries:
+            raise AnalysisError("LLM returned no summaries for the feedback record.")
+
+        judge_system = _build_judge_system_message(
+            anonymized_user_message,
+            llm_completion.structured.feedback_record_summaries[0].summary,
+        )
+        judge_timeout = self._check_deadline_and_get_timeout(deadline)
+        judge_response = await self._llm.complete(
+            system_message=judge_system,
+            user_message=_JUDGE_USER_MESSAGE,
+            tenant_id=request.tenant_id,
+            response_model=str,
+            timeout=judge_timeout,
+        )
+        quality_score = _parse_judge_quality_score(judge_response.structured)
+
         return_model_as_string = llm_completion.structured.model_dump_json()
         unanonymized_return_model_as_string = self._anonymizer.deanonymize(
             return_model_as_string, anonymization_mapping
@@ -1204,10 +1221,8 @@ class Orchestrator:
             unanonymized_return_model_as_string
         )
 
-        if not result.feedback_record_summaries:
-            raise AnalysisError("LLM returned no summaries for the feedback record.")
         return result.feedback_record_summaries[0].model_copy(
-            update={"id": request.feedback_record.id}
+            update={"id": request.feedback_record.id, "quality_score": quality_score}
         )
 
     async def assign_codes(
