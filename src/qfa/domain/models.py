@@ -182,6 +182,8 @@ class FeedbackRecordSummaryModel(BaseModel):
     )
     quality_score: float | None = Field(
         default=None,
+        ge=0.0,
+        le=1.0,
         description="Judge model score for summary quality in the range 0.0-1.0.",
     )
 
