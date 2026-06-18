@@ -70,20 +70,17 @@ JUDGE_UNAVAILABLE_EXPLANATION: str = (
 ANALYZE_JUDGE_PROMPT: str = """
 You are evaluating the quality of an analysis produced from feedback records.
 
-Source feedback records:
----
+<source_text>
 {source_text}
----
+</source_text>
 
-Analyst question:
----
+<analyst_prompt>
 {analyst_prompt}
----
+=</analyst_prompt>
 
-Analysis to score:
----
+<analysis_to_score>
 {analysis}
----
+</analysis_to_score>
 
 Score the analysis using three criteria. Each must be a float between 0 and 1.
 

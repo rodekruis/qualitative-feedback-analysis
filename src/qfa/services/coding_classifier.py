@@ -68,15 +68,15 @@ def _build_user_message(
     """Format the user turn: feedback, optional path, current level, numbered options."""
     if hierarchy_path:
         path_lines = "\n".join(f"{label}: {value}" for label, value in hierarchy_path)
-        path_block = f"Hierarchy path already selected:\n{path_lines}\n\n"
+        path_block = f"<hierarchy_path>\n{path_lines}\n</hierarchy_path>\n\n"
     else:
         path_block = ""
     options = "\n".join(f"{i}: {labels[i]}" for i in range(len(labels)))
     return (
-        f"{build_feedback_record_envelope(feedback_record, include_metadata=False, include_id=False)}"
+        f"{build_feedback_record_envelope(feedback_record, include_metadata=False, include_id=False)}\n"
         f"{path_block}"
-        f"Current level:\n{current_level}\n\n"
-        f"Options:\n{options}"
+        f"<current_level>\n{current_level}\n</current_level>\n\n"
+        f"<options>\n{options}\n</options>"
     )
 
 
@@ -176,8 +176,8 @@ def build_judge_messages(
     """
     path_lines = "\n".join(f"{name}: {label}" for name, label in path)
     user = (
-        f"{build_feedback_record_envelope(feedback_record, include_metadata=False, include_id=False)}"
-        f"Code path:\n{path_lines}\n\n"
-        f"Evaluate the {level} assignment."
+        f"{build_feedback_record_envelope(feedback_record, include_metadata=False, include_id=False)}\n"
+        f"<code_path>\n{path_lines}\n</code_path>\n\n"
+        f"<instruction>\nEvaluate the {level} assignment.\n</instruction>"
     )
     return _JUDGE_SYSTEM, user
