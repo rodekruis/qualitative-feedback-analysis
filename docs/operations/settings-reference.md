@@ -95,10 +95,13 @@ the clustering knobs are only consulted on the hierarchical path.
 
 ## Database (`DB_*`)
 
+Usage tracking is always on, so a database connection is mandatory: the app
+fails to start unless either `DB_URL` or the host/user/name parts below are
+provided (see {py:class}`~qfa.settings.DatabaseSettings`).
+
 | Variable | Required | Default | Notes |
 |---|---|---|---|
-| `DB_TRACK_USAGE` | no | `false` | Master switch for usage tracking. When `false`, none of the other `DB_*` variables are required. |
-| `DB_URL` | only if `DB_TRACK_USAGE=true` and host/user not split | `""` | Full asyncpg URL. Used when supplied; otherwise built from the next four. |
+| `DB_URL` | only if host/user/name not split | `""` | Full asyncpg URL. Used when supplied; otherwise built from the next four. |
 | `DB_HOST` | only if `DB_URL` not set | `""` | |
 | `DB_PORT` | no | `5432` | |
 | `DB_NAME` | only if `DB_URL` not set | `""` | |

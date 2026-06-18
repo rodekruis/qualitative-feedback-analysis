@@ -21,7 +21,7 @@ Domain entities live in {py:mod}`qfa.domain.models`, with usage-tracking entitie
 
 ## Persistence — `llm_calls`
 
-When `DB_TRACK_USAGE=true`, every LLM call appends one row to the `llm_calls` table. The schema lives in `qfa.adapters.db` and is managed by Alembic migrations under `migrations/`.
+Every LLM call appends one row to the `llm_calls` table. The schema lives in `qfa.adapters.db` and is managed by Alembic migrations under `migrations/`.
 
 Roughly:
 
