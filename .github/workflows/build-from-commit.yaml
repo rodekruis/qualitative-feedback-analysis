@@ -96,3 +96,37 @@ jobs:
             --resource-group "${{ vars.AZ_RESOURCE_GROUP }}" \
             --container-image-name "${IMAGE}@${DIGEST}" \
             --container-registry-url "https://${{ vars.AZ_ACR_NAME }}.azurecr.io"
+
+      - name: Stamp ephemeral version onto App Service tags and run summary
+        env:
+          APP_NAME: ${{ vars.AZ_APP_NAME }}
+          RESOURCE_GROUP: ${{ vars.AZ_RESOURCE_GROUP }}
+          TAG: ${{ needs.build-and-push.outputs.tag }}
+          DIGEST: ${{ needs.build-and-push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          DEPLOYED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          # Keep dev's tags truthful: an ephemeral image overwrites whatever
+          # release was last deployed, so the tags must reflect that instead of
+          # leaving a stale release version behind. Tags are control-plane
+          # metadata — no restart — and Terraform ignores these keys.
+          az webapp update \
+            --name "$APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --set tags.deployed_version="$TAG" \
+                  tags.deployed_digest="$DIGEST" \
+                  tags.deployed_at="$DEPLOYED_AT" \
+                  tags.deployed_by="$GITHUB_ACTOR" \
+            --output none
+
+          {
+            echo "### Deployed ephemeral \`$TAG\` to **dev**"
+            echo ""
+            echo "| field | value |"
+            echo "| --- | --- |"
+            echo "| version | \`$TAG\` (ephemeral — not a release) |"
+            echo "| digest | \`$DIGEST\` |"
+            echo "| deployed at | $DEPLOYED_AT |"
+            echo "| deployed by | @$GITHUB_ACTOR |"
+          } >> "$GITHUB_STEP_SUMMARY"

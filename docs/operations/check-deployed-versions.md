@@ -7,7 +7,26 @@ and the health endpoint is unreachable.
 For *how* versions get there in the first place, see [Release flow](release-flow.md).
 For the runtime picture, see [Deployment: runtime overview](deployment.md).
 
-## Quickest check: the health endpoint
+## Quick answer: the helper script
+
+[`scripts/show_deployed_versions.sh`](https://github.com/rodekruis/qualitative-feedback-analysis/blob/main/scripts/show_deployed_versions.sh)
+prints the deployed app version and infra commit for every environment using
+only the GitHub paper trail (needs `gh` and `jq`, no Azure access):
+
+```console
+$ scripts/show_deployed_versions.sh
+== dev ==
+  app:   v2.0.0 @ sha256:8a994c…  [Release]  2026-06-11T15:18:38Z  ref=main  sha=23247174df94
+  infra: 2026-06-11T17:22:46Z  ref=main  sha=8a994cd2e6b7  (Terraform apply)
+== staging ==
+  app:   v2.0.0 @ sha256:8a994c…  [Auto-deploy published release to staging]  ...
+...
+```
+
+The sections below explain where those numbers come from and how to read them
+by hand.
+
+## Live app version: the health endpoint
 
 When the app is up, every environment exposes its application version at
 `GET /v1/health`:
@@ -16,10 +35,26 @@ When the app is up, every environment exposes its application version at
 curl https://<app-host>/v1/health   # → {"status":"ok","version":"2.0.0"}
 ```
 
-The version is `qfa.__version__`, read from the installed package. This tells
-you the **app** version only — it says nothing about the infrastructure — and
-it is unavailable when the App Service is down. For everything else, use the
-GitHub paper trail below.
+The version is `qfa.__version__`, read from the installed package. It is the
+ground truth for *what is actually serving* — but it only reports the **app**
+version, and it is unavailable when the App Service is down.
+
+## When the app is down: App Service tags
+
+Every deploy stamps the version onto the App Service as **Azure resource tags**
+(`deployed_version`, `deployed_digest`, `deployed_at`, `deployed_by`). Tags are
+control-plane metadata, so they are readable even when the container will not
+start:
+
+```bash
+az webapp show -g <resource-group> -n <app-name> --query tags
+```
+
+This is the answer to "the app is down — what was deployed here?". The container
+image reference carries the same digest independently
+(`az webapp config container show`), and because tags are control-plane only,
+writing them on deploy does **not** restart the app. Terraform is configured to
+ignore these tag keys, so an infra apply will not wipe them.
 
 ## The GitHub paper trail
 
@@ -46,10 +81,20 @@ its own — read them before trusting a single field:
   A deployment record can therefore correspond to a plan that changed nothing.
   Real applies come from `workflow_dispatch` runs; plans come from
   `pull_request` / `push`.
-- **The app version tag is not in the record.** `Promote to prd` runs from
-  `main`, so its deployment `ref` is `main`, not the released tag. The tag lives
-  in the run's logs. (`Promote to staging` and the publish-triggered auto-deploy
-  run *from* the tag, so for `staging` the `ref` usually is the version.)
+- **The deployment `ref` is not the version.** `Promote to prd` runs from
+  `main`, so its deployment `ref` is `main`, not the released tag. The version is
+  instead recorded in the deployment **status description**
+  (`v2.0.0 @ sha256:…`), written by the deploy pipeline — read that, not `ref`.
+  (`Promote to staging` and the publish-triggered auto-deploy happen to run
+  *from* the tag, so for `staging` the `ref` is the version too.)
+```
+
+```{note}
+The status description is populated by the `annotate` job in
+`_deploy-release.yaml`, which runs after the deploy so its status is the latest
+one — that is why the release tag, not the bare commit, shows on the repo's
+Environments page. Deploys from before this was added have an empty description;
+fall back to the run logs (below) for those.
 ```
 
 The reliable disambiguator is the **originating workflow name**. Each deployment
@@ -65,32 +110,32 @@ has a status whose `target_url` points at the workflow run that created it:
 ## Application version per environment
 
 The deployed app version is the release **tag** (and its immutable image
-digest). Where to read it depends on the environment:
+digest). The most direct read, for any environment, is the latest app
+deployment's status description:
 
-- **`staging`** — the deploy run executes *from* the tag, so the deployment
-  `ref` already is the version:
+```bash
+ENV=prd
+ID=$(gh api "repos/{owner}/{repo}/deployments?environment=$ENV&per_page=1" --jq '.[0].id')
+gh api "repos/{owner}/{repo}/deployments/$ID/statuses" \
+  --jq 'first(.[] | select(.description != "") | .description)'
+# → v2.0.0 @ sha256:…
+```
 
-  ```bash
-  gh run list --workflow=auto-staging-on-publish.yaml -L 1 \
-    --json headBranch,conclusion,createdAt
-  # headBranch is the released tag, e.g. v2.0.0
-  ```
+(`scripts/show_deployed_versions.sh` does exactly this, for all environments,
+and skips Terraform records.) Two notes per environment:
 
-- **`prd`** — `Promote to prd` runs from `main`, so read the tag from the run's
-  logs. The `verify` job echoes it, and the deploy job logs the digest:
+- **`dev`** — `Build from commit` publishes an `ephemeral-<branch>-<sha>` image
+  that is **not** a release, so a `dev` deploy is not always a released version.
+  The App Service tags and `GET /v1/health` reflect whichever image is live.
+- **older deploys** — deployments cut before the status description was added
+  have an empty description. Fall back to the run logs: the `verify` job echoes
+  the tag and the deploy job logs the digest.
 
   ```bash
   RUN=$(gh run list --workflow=promote-to-prd.yaml --status success -L 1 \
     --json databaseId --jq '.[0].databaseId')
   gh run view "$RUN" --log | grep -E 'TAG:|Deploying v|sha256:'
-  # → TAG: v2.0.0  ...  Deploying v2.0.0 (sha256:…) to prd
   ```
-
-- **`dev`** — the last app deploy is whichever of `Release`, `Promote to dev`,
-  or `Build from commit` ran most recently. Note that `Build from commit`
-  publishes an `ephemeral-<branch>-<sha>` image that is **not** a release, so a
-  `dev` deploy is not always a released version. The live `GET /v1/health` value
-  is the tie-breaker when the app is up.
 
 ## Infrastructure version per environment
 
@@ -118,9 +163,11 @@ above is the answer when you only have repository access.
 
 ## Check everything at once
 
-This labels every recent deployment per environment with the workflow that
-produced it — separating infra applies from app deploys, and exposing the
-`ref`/`sha` and timestamp in one pass:
+The packaged way is [`scripts/show_deployed_versions.sh`](https://github.com/rodekruis/qualitative-feedback-analysis/blob/main/scripts/show_deployed_versions.sh)
+(see [Quick answer](#quick-answer-the-helper-script) above). The loop it wraps,
+for reference — it labels every recent deployment per environment with the
+workflow that produced it, separating infra applies from app deploys and
+exposing the `ref`/`sha` and timestamp in one pass:
 
 ```bash
 for env in dev staging prd; do
