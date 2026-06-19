@@ -41,4 +41,8 @@ technical `IDs` label is not localized.
 
 ## Authentication
 
-EspoCRM stores the bearer token as a server-side secret. Provisioning and rotation use the standard flow in [API key management](../operations/auth-management.md).
+EspoCRM stores the bearer token as a server-side secret. Provisioning and rotation use the standard flow in [API key management](../operations/auth-management.md). *NOTE: TODO TO ACTUALLY IMPLEMENT THESE VALUES, CURRENTLY HARD-CODED*
+
+Within your EspoCRM instance, two values are expected in the _Administration_/_App Secrets_:
+- `QFA_API_BASE_URL`| The base URL of QFA, e.g. "https://qfa-dev-backend.azurewebsites.net"
+- `QFA_API_KEY` | Bearer token for the QFA instance of `QFA_API_BASE_URL`
