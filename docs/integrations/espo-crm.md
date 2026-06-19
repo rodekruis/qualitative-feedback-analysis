@@ -15,6 +15,8 @@ Server-side EspoCRM scripts in `scripts/espo_crm/` compose request bodies based 
 
 These use all single-feedback record endpoints such as `summarize`, `detect-sensitive` and `assign-codes`. These are all executed at once.
 
+> **Note:** The entire coding framework (all codingLevel1, codingLevel2, codingLevel3 items) is sent to the `assign-codes` endpoint. This allows the inference to be stateless.
+
 ### Insight saving script
 
 `scripts/espo_crm/insight_trigger` has code that's triggered when an 
@@ -23,8 +25,6 @@ insight record is **created**. This flow selects the endpoint that coincides wit
 ![Espo flowchart for creating an insight entity](../assets/espo_insight_creation_flow.png)
 
 The two flows build their distinctive `motherPayload`, which is a a json containing all key-value pairs needed by the endpoints. This holds information about the (selected) feedbackitem(s) and their attributes. 
-
-> **Note:** Additionally, the entire coding framework (all codingLevel1, codingLevel2, codingLevel3 items) is sent to the `assign-codes` endpoint. This allows the inference to be stateless.
 
 ## Display output
 
