@@ -97,6 +97,13 @@ uv run pytest tests/integration/test_db_postgres.py   # specific file
 - **Every class that implements a port explicitly inherits from it — production adapters *and* test doubles.** Even though Python `Protocol`s support structural typing, we require `class LiteLLMClient(LLMPort):`, `class PresidioAnonymizer(AnonymizationPort):`, and `class FakeLLMPort(LLMPort):` so that "go to definition" in an IDE jumps from any port impl to its contract. Skipping the inheritance is reserved for genuinely ad-hoc cases (e.g. one-shot `MagicMock(spec=Port)` instances, where `spec=` already enforces conformance). See [Components](../architecture/03-components.md) for the full ports/adapters layout.
 - **Import directions are enforced.** `qfa.domain` must not import third-party infra (`litellm`, `presidio_*`, `fastapi`, ...); `qfa.services` may only import `qfa.domain`; the composition root in `qfa.api.app` is the only place that wires concrete adapters into ports. `make lint` runs `lint-imports` to enforce this.
 
+## How-to guides
+
+Task-oriented guides for common development work, walking through a change end
+to end across the hexagonal layers.
+
+- [Implementing a new endpoint](implementing-a-new-endpoint.md) — adding an HTTP endpoint: domain and API models, the orchestrator use case, authentication, and usage tracking.
+
 ## Where to go next
 
 - [Architecture overview](../architecture/01-architecture-style.md) — hexagonal layout, why we picked it
@@ -104,3 +111,10 @@ uv run pytest tests/integration/test_db_postgres.py   # specific file
 - [Settings reference](../operations/settings-reference.md) — every environment variable
 - [REST API overview](../rest-api/index.md) — HTTP endpoints and request shapes
 - [Python API reference](../python-api/index.md) — auto-generated reference for the `qfa` package
+
+```{toctree}
+:hidden:
+:maxdepth: 1
+
+implementing-a-new-endpoint
+```
