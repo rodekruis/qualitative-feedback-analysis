@@ -4,16 +4,22 @@ EspoCRM is the primary upstream feeding feedback records into the service. The i
 
 ## What the scripts do
 
-Server-side EspoCRM scripts in `scripts/espo_crm/` compose request bodies and call:
+The code is written in EspoCRM Formula Script, which is a specialized language, very similar to PHP. The files have a `.php` extensions, but this is solely for development highlighting.
 
-| Script | Backend endpoint |
-|---|---|
-| `set_analyze_*` | `POST /v1/analyze-bulk` |
-| `set_summarize_*` | `POST /v1/summarize` |
-| `set_summarize_aggregate_*` | `POST /v1/summarize-bulk` |
-| `set_assign_codes_*` | `POST /v1/assign-codes` |
+Server-side EspoCRM scripts in `scripts/espo_crm/` compose request bodies based on two distinct workflows.
 
-Each script reads the relevant EspoCRM fields, builds the JSON body, sends it with an `Authorization: Bearer <key>` header, and writes the response back to a target EspoCRM field.
+### Single-feedback record script
+`scripts/espo_crm/feedback_trigger` contains code that triggers on a feedback record **save**. 
+
+These use all single-feedback record endpoints such as `summarize`, `detect-sensitive` and `assign-codes`. These are all executed at once.
+
+### Insight saving script
+- `scripts/espo_crm/insight_trigger` has code that's triggered when an 
+insight record is **created**. This flow selects the endpoint that coincides with the user request, and calls one of the bulk endpoints: `analyze-bulk` or `summarize-bulk`.
+
+The two flows build their distinctive `motherPayload`, which is a a json containing all key-value pairs needed by the endpoints. This holds information about the (selected) feedbackitem(s) and their attributes. 
+
+> **Note:** Additionally, the entire coding framework (all codingLevel1, codingLevel2, codingLevel3 items) is sent to the `assign-codes` endpoint. This allows the inference to be stateless.
 
 ## Display output
 
