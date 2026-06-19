@@ -11,11 +11,16 @@ Server-side EspoCRM scripts in `scripts/espo_crm/` compose request bodies based 
 ### Single-feedback record script
 `scripts/espo_crm/feedback_trigger` contains code that triggers on a feedback record **save**. 
 
+![Espo flowchart for saving a single feedback item](../assets/espo_feedback_save_flow.png)
+
 These use all single-feedback record endpoints such as `summarize`, `detect-sensitive` and `assign-codes`. These are all executed at once.
 
 ### Insight saving script
-- `scripts/espo_crm/insight_trigger` has code that's triggered when an 
+
+`scripts/espo_crm/insight_trigger` has code that's triggered when an 
 insight record is **created**. This flow selects the endpoint that coincides with the user request, and calls one of the bulk endpoints: `analyze-bulk` or `summarize-bulk`.
+
+![Espo flowchart for creating an insight entity](../assets/espo_insight_creation_flow.png)
 
 The two flows build their distinctive `motherPayload`, which is a a json containing all key-value pairs needed by the endpoints. This holds information about the (selected) feedbackitem(s) and their attributes. 
 
