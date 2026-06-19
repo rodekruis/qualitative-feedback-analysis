@@ -37,11 +37,3 @@ technical `IDs` label is not localized.
 ## Authentication
 
 EspoCRM stores the bearer token as a server-side secret. Provisioning and rotation use the standard flow in [API key management](../operations/auth-management.md).
-
-## Field-name expectations
-
-The scripts must use the field names that the backend currently exposes (the `feedback_records` / `content` naming, per the recent ubiquitous-language migration). When the backend's API field names change, the EspoCRM scripts must be updated in the same release — there is no Pydantic-alias compatibility layer.
-
-## Empty descriptions
-
-A feedback record whose description is blank is sent through as an empty `content` string. The backend tolerates this: empty records are dropped from bulk requests, and per-record endpoints return a 200 empty result rather than rejecting the call.
