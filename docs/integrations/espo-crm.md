@@ -23,7 +23,7 @@ The two flows build their distinctive `motherPayload`, which is a a json contain
 
 ## Display output
 
-The `/v1/summarize-bulk` response includes a backend-rendered `pretty_output`
+The `-bulk` responses includes a backend-rendered `pretty_output`
 field — a human-readable text block (quality dots, title, summary) ready to
 write straight into an EspoCRM field. The formatting lives entirely in the
 backend, so the scripts do not assemble it.
