@@ -4,20 +4,31 @@ EspoCRM is the primary upstream feeding feedback records into the service. The i
 
 ## What the scripts do
 
-Server-side EspoCRM scripts in `scripts/espo_crm/` compose request bodies and call:
+The code is written in EspoCRM Formula Script, which is a specialized language, very similar to PHP. The files have a `.php` extensions, but this is solely for development highlighting.
 
-| Script | Backend endpoint |
-|---|---|
-| `set_analyze_*` | `POST /v1/analyze-bulk` |
-| `set_summarize_*` | `POST /v1/summarize` |
-| `set_summarize_aggregate_*` | `POST /v1/summarize-bulk` |
-| `set_assign_codes_*` | `POST /v1/assign-codes` |
+Server-side EspoCRM scripts in `scripts/espo_crm/` compose request bodies based on two distinct workflows.
 
-Each script reads the relevant EspoCRM fields, builds the JSON body, sends it with an `Authorization: Bearer <key>` header, and writes the response back to a target EspoCRM field.
+### Single-feedback record script
+`scripts/espo_crm/feedback_trigger` contains code that triggers on a feedback record **save**. 
+
+![Espo flowchart for saving a single feedback item](../assets/espo_feedback_save_flow.png)
+
+These use all single-feedback record endpoints such as `summarize`, `detect-sensitive` and `assign-codes`. These are all executed at once.
+
+> **Note:** The entire coding framework (all codingLevel1, codingLevel2, codingLevel3 items) is sent to the `assign-codes` endpoint. This allows the inference to be stateless.
+
+### Insight saving script
+
+`scripts/espo_crm/insight_trigger` has code that's triggered when an 
+insight record is **created**. This flow selects the endpoint that coincides with the user request, and calls one of the bulk endpoints: `analyze-bulk` or `summarize-bulk`.
+
+![Espo flowchart for creating an insight entity](../assets/espo_insight_creation_flow.png)
+
+The two flows build their distinctive `motherPayload`, which is a a json containing all key-value pairs needed by the endpoints. This holds information about the (selected) feedbackitem(s) and their attributes. 
 
 ## Display output
 
-The `/v1/summarize-bulk` response includes a backend-rendered `pretty_output`
+The `-bulk` responses includes a backend-rendered `pretty_output`
 field — a human-readable text block (quality dots, title, summary) ready to
 write straight into an EspoCRM field. The formatting lives entirely in the
 backend, so the scripts do not assemble it.
@@ -30,12 +41,10 @@ technical `IDs` label is not localized.
 
 ## Authentication
 
-EspoCRM stores the bearer token as a server-side secret. Provisioning and rotation use the standard flow in [API key management](../operations/auth-management.md).
+EspoCRM stores the bearer token as a server-side secret. Provisioning and rotation use the standard flow in [API key management](../operations/auth-management.md). 
 
-## Field-name expectations
+> NOTE: Currently, we cannot select the api url dynamically. We need [Espo Version 9.2.3](https://docs.espocrm.com/administration/app-secrets/) to get the secrets from the App secrets dynamically in Espo script.
 
-The scripts must use the field names that the backend currently exposes (the `feedback_records` / `content` naming, per the recent ubiquitous-language migration). When the backend's API field names change, the EspoCRM scripts must be updated in the same release — there is no Pydantic-alias compatibility layer.
-
-## Empty descriptions
-
-A feedback record whose description is blank is sent through as an empty `content` string. The backend tolerates this: empty records are dropped from bulk requests, and per-record endpoints return a 200 empty result rather than rejecting the call.
+Within your EspoCRM instance, two values are expected in the _Administration_/_App Secrets_:
+- `QFA_API_BASE_URL`| The base URL of QFA, e.g. "https://qfa-dev-backend.azurewebsites.net" ⚠️ Currently not implemented, see note above.
+- `QFA_API_KEY` | Bearer token for the QFA instance.
