@@ -623,6 +623,14 @@ def _make_lifespan(llm_factory: LLMFactory):
         settings = AppSettings()
         setup_logging(settings.log)
 
+        if settings.applicationinsights_connection_string:
+            from azure.monitor.opentelemetry import configure_azure_monitor
+
+            configure_azure_monitor(
+                connection_string=settings.applicationinsights_connection_string
+            )
+            logger.info("Azure Monitor OpenTelemetry configured")
+
         api_keys = settings.auth.api_keys
 
         base_llm = llm_factory(settings.llm)
