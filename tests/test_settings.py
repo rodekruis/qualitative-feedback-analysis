@@ -202,6 +202,7 @@ def test_embedding_settings_defaults_and_env_prefix(monkeypatch) -> None:
     monkeypatch.setenv("EMBEDDING_MODEL_PATH", "/srv/models/bge-m3/model.onnx")
     monkeypatch.setenv("EMBEDDING_TOKENIZER_PATH", "/srv/models/bge-m3/tokenizer.json")
     monkeypatch.setenv("EMBEDDING_REVISION_HASH", "sha256:abc123")
+    monkeypatch.delenv("EMBEDDING_MAX_TOKENS", raising=False)
     settings = EmbeddingSettings()
     assert settings.model_path == "/srv/models/bge-m3/model.onnx"
     assert settings.revision_hash == "sha256:abc123"
