@@ -64,21 +64,21 @@ resource "azurerm_monitor_metric_alert" "http_5xx" {
   }
 }
 
-# Fires when the container has no active connections, indicating it is down.
-# Note: AppConnections is an indirect signal — see health check alert for a
-# more direct way to detect a down container.
-resource "azurerm_monitor_metric_alert" "container_startup_failures" {
-  name                = "qfa-${local.env}-startup-failures"
+# Fires when the /v1/health endpoint fails, indicating the app is down.
+# HealthCheckStatus drops to 0 when the health check fails — this is the most
+# direct signal that the container is unhealthy or failed to start.
+resource "azurerm_monitor_metric_alert" "health_check" {
+  name                = "qfa-${local.env}-health-check"
   resource_group_name = data.azurerm_resource_group.main.name
   scopes              = [azurerm_linux_web_app.backend.id]
-  description         = "Alert when the container fails to start"
+  description         = "Alert when the /v1/health endpoint fails"
   severity            = 1
   frequency           = "PT5M"
   window_size         = "PT5M"
 
   criteria {
     metric_namespace = "Microsoft.Web/sites"
-    metric_name      = "AppConnections"
+    metric_name      = "HealthCheckStatus"
     aggregation      = "Average"
     operator         = "LessThan"
     threshold        = 1
