@@ -67,8 +67,10 @@ resource "azurerm_linux_web_app" "backend" {
     DB_AAD_SCOPE   = var.db_aad_scope
     DB_USER        = local.db_aad_principal_name
 
-    WEBSITES_ENABLE_APP_SERVICE_STORAGE = "false"
-    WEBSITES_PORT                       = "8000"
+    WEBSITES_ENABLE_APP_SERVICE_STORAGE  = "false"
+    WEBSITES_PORT                        = "8000"
+
+    APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.main.connection_string
   }
 
   logs {
