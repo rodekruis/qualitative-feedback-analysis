@@ -19,20 +19,6 @@ from qfa.domain.clustering_models import CodingTrendTable, TrendPeriod
 from qfa.domain.sensitivity_types import SensitivityType
 
 
-class FeedbackRecordMetadata(BaseModel):
-    """Metadata fields consumed by the analysis pipeline.
-
-    All fields are optional. Missing fields degrade gracefully
-    (no trend table, no date sorting) but emit a WARNING.
-    Extra fields (region, year, etc.) are passed through unchanged.
-    """
-
-    model_config = ConfigDict(extra="allow")
-
-    created: str | None = None  # ISO-8601 date — trend table + chunk sorting
-    codes: str | None = None  # comma-separated labels — trend table code axis
-
-
 class FeedbackRecordModel(BaseModel):
     """A single feedback record submitted for analysis."""
 
@@ -46,11 +32,7 @@ class FeedbackRecordModel(BaseModel):
     )
     metadata: dict[str, str | int | float | bool] = Field(
         default_factory=dict,
-        description=(
-            "Metadata key-value pairs for the feedback record. "
-            "The pipeline consumes two fields by convention — see "
-            "``FeedbackRecordMetadata`` for the documented contract."
-        ),
+        description="Metadata key-value pairs for the feedback record.",
     )
 
 

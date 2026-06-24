@@ -25,11 +25,6 @@ Each {py:class}`~qfa.domain.models.FeedbackRecordModel` carries a free-form
 `metadata` dict (`dict[str, str | int | float | bool]`). The pipeline reads two
 fields from it by convention; the rest pass through unchanged.
 
-The documented contract is {py:class}`~qfa.domain.models.FeedbackRecordMetadata`
-(in `qfa.domain.models`). It is not used as the type of the `metadata` field —
-callers may include arbitrary extra keys — but it names the two fields the
-pipeline consumes:
-
 | Field | Type | Purpose |
 |---|---|---|
 | `created` | `str` (ISO-8601 date) | Time-bucket for the coding-trend table and within-chunk chronological sort. |
