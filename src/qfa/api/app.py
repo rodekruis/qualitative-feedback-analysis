@@ -1,13 +1,13 @@
 """Application factory and composition root."""
 
 import logging
-import os
 from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
+from azure.monitor.opentelemetry import configure_azure_monitor
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -624,9 +624,6 @@ def _make_lifespan(llm_factory: LLMFactory):
         settings = AppSettings()
         setup_logging(settings.log)
 
-        if settings.applicationinsights_connection_string:
-            logger.info("Azure Monitor OpenTelemetry configured")
-
         api_keys = settings.auth.api_keys
 
         base_llm = llm_factory(settings.llm)
@@ -720,12 +717,10 @@ def create_app(*, llm_factory: LLMFactory | None = None) -> FastAPI:
     """
     factory: LLMFactory = llm_factory if llm_factory is not None else build_llm_client
 
-    # Configure before FastAPI app is created so the ASGI instrumentor can
-    # wrap the app at creation time rather than after it has started.
-    if cs := os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING"):
-        from azure.monitor.opentelemetry import configure_azure_monitor
-
-        configure_azure_monitor(connection_string=cs)
+    configure_azure_monitor(
+        logger_name="qfa",
+        disable_offline_storage=True,
+    )
 
     tags_metadata = [
         {
