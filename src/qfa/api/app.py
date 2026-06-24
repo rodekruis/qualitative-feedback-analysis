@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from azure.monitor.opentelemetry import configure_azure_monitor
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -716,11 +715,6 @@ def create_app(*, llm_factory: LLMFactory | None = None) -> FastAPI:
         The fully configured application instance.
     """
     factory: LLMFactory = llm_factory if llm_factory is not None else build_llm_client
-
-    configure_azure_monitor(
-        logger_name="qfa",
-        disable_offline_storage=True,
-    )
 
     tags_metadata = [
         {
