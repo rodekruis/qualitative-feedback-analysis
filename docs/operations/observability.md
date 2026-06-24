@@ -86,10 +86,37 @@ Returned shape: counts and token totals per operation, plus simple latency distr
 
 If the database is down, both endpoints return 503 with `code=usage_backend_unavailable` — a transient condition, so retry with backoff.
 
+## Azure Monitor
+
+App Service logs are shipped to an Azure Log Analytics workspace (`qfa-<env>-logs`) and surfaced in Application Insights (`qfa-<env>-appinsights`). Both are created by Terraform in `infra/observability.tf`. The app receives the App Insights connection string via `APPLICATIONINSIGHTS_CONNECTION_STRING`, which Pydantic Settings maps to `AppSettings.applicationinsights_connection_string`.
+
+Query the workspace in the Azure Portal under **Log Analytics workspace → Logs** using KQL. Useful starting queries:
+
+```kql
+// All requests in the last hour
+AppRequests
+| where TimeGenerated > ago(1h)
+| project TimeGenerated, Name, ResultCode, DurationMs
+
+// Exceptions
+AppExceptions
+| where TimeGenerated > ago(1h)
+| project TimeGenerated, ProblemId, OuterMessage
+```
+
+## Alerting
+
+Four metric alert rules are provisioned in `infra/observability.tf`, all sending email to `olaf@aurai.com` via the `qfa-<env>-alerts` action group:
+
+| Alert | Metric | Threshold | Severity |
+|---|---|---|---|
+| HTTP 5xx | `Http5xx` | >5 in 5 min | 2 |
+| Health check | `HealthCheckStatus` | <1 (i.e. `/v1/health` failing) | 1 |
+| High CPU | `CpuPercentage` | >80% for 5 min | 2 |
+| High memory | `MemoryPercentage` | >80% for 5 min | 2 |
+
+The health-check alert (severity 1) fires when the App Service platform's built-in health probe of `/v1/health` fails — this is the most direct signal that the container is down or crashed.
+
 ## What's not wired up yet
 
-- No APM, no metrics export (Prometheus / OpenTelemetry).
-- No log shipping to a central index — App Service log stream is it.
-- No alerting rules.
-
-These are gaps to fill when operational maturity calls for them.
+- No OpenTelemetry SDK instrumentation — `APPLICATIONINSIGHTS_CONNECTION_STRING` is passed to the app but the SDK is not yet initialised, so `AppRequests`/`AppDependencies` tables in Log Analytics remain empty. App Service log stream is still the primary trace source.
