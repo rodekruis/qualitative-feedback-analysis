@@ -70,9 +70,7 @@ resource "azurerm_linux_web_app" "backend" {
     WEBSITES_ENABLE_APP_SERVICE_STORAGE  = "false"
     WEBSITES_PORT                        = "8000"
 
-    APPLICATIONINSIGHTS_CONNECTION_STRING    = azurerm_application_insights.main.connection_string
-    OTEL_SERVICE_NAME                        = "qfa-${local.env}"
-    OTEL_PYTHON_DISABLED_INSTRUMENTATIONS   = "psycopg2,django,flask"
+    APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.main.connection_string
   }
 
   logs {
