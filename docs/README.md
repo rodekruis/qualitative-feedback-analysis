@@ -11,6 +11,7 @@ The rendered version of this site is hosted on [GitHub Pages](https://rodekruis.
 ## Develop
 
 - [Developer guide](development/index.md) — getting from a fresh clone to a green `make test`. Covers local env setup (direnv + `.env`), pre-commit hooks, and the coding conventions we expect on PRs.
+- [Implementing a new endpoint](development/implementing-a-new-endpoint.md) — a how-to for adding an HTTP endpoint end to end: domain and API models, the orchestrator use case, authentication, and usage tracking.
 - [Devcontainer](https://github.com/rodekruis/qualitative-feedback-analysis/blob/main/.devcontainer/README.md) — the pre-built dev environment with uv, pre-commit, Claude Code, and a default-deny egress firewall. The fastest path if you don't want to install toolchains on your host.
 
 ## Architecture
