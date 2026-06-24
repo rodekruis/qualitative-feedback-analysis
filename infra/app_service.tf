@@ -82,7 +82,14 @@ resource "azurerm_linux_web_app" "backend" {
 
   lifecycle {
     # The container image tag is updated by the CI/CD pipeline, not Terraform
-    ignore_changes = [site_config[0].application_stack]
+    ignore_changes = [
+      site_config[0].application_stack,
+      # The deploy pipeline writes deployed_version / deployed_digest /
+      # deployed_at / deployed_by tags on every deploy (see
+      # .github/workflows/_deploy-release.yaml). Terraform must not manage or
+      # revert them, or each apply would wipe the deployed-version record.
+      tags,
+    ]
   }
 }
 

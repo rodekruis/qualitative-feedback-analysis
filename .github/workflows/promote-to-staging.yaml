@@ -63,3 +63,4 @@ jobs:
     permissions:
       contents: write
       id-token: write
+      deployments: write

@@ -6,6 +6,7 @@ Running, deploying, and observing the service.
 |---|---|
 | [Deployment: runtime overview](deployment.md) | How the service runs — container, migrations, multi-replica safety |
 | [Release flow](release-flow.md) | Promotion pipeline from `dev` → `staging` → `prd`, rollback, and infra apply flow |
+| [Check deployed versions](check-deployed-versions.md) | Find which app version and infra commit are live per environment (works when the app is down) |
 | [Infrastructure bootstrap](bootstrap.md) | One-time setup of the shared Terraform backend and container registry |
 | [Set up a new environment](setup-new-env.md) | Per-environment provisioning (`dev`, `staging`, `prd`) |
 | [API key management](auth-management.md) | Adding, rotating, and revoking API keys |
@@ -19,6 +20,7 @@ For first-time setup, follow [Infrastructure bootstrap](bootstrap.md) → [Set u
 
 deployment
 release-flow
+check-deployed-versions
 bootstrap
 setup-new-env
 auth-management
