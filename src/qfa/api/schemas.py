@@ -719,17 +719,39 @@ class ApiAssignCodesRequest(ApiSingleInferenceRequestBase):
 class ApiAssignedCode(BaseModel):
     """A single code assigned to a feedback record with its hierarchical path."""
 
-    coding_level_1_id: str
-    coding_level_1_name: str
-    coding_level_2_id: str | None = None
-    coding_level_2_name: str | None = None
-    coding_level_3_id: str | None = None
-    coding_level_3_name: str | None = None
-    confidence_level_1: float
-    confidence_level_2: float | None = None
-    confidence_level_3: float | None = None
-    confidence_aggregate: float
-    explanation: str
+    coding_level_1_id: str = Field(description="ID of the selected level 1 code.")
+    coding_level_1_name: str = Field(description="Name of the selected level 1 code.")
+    coding_level_2_id: str | None = Field(
+        default=None,
+        description="ID of the selected level 2 code; null when depth < 2.",
+    )
+    coding_level_2_name: str | None = Field(
+        default=None,
+        description="Name of the selected level 2 code; null when depth < 2.",
+    )
+    coding_level_3_id: str | None = Field(
+        default=None,
+        description="ID of the selected level 3 code; null when depth < 3.",
+    )
+    coding_level_3_name: str | None = Field(
+        default=None,
+        description="Name of the selected level 3 code; null when depth < 3.",
+    )
+    confidence_level_1: float = Field(description="Judge confidence at level 1 (0-1).")
+    confidence_level_2: float | None = Field(
+        default=None,
+        description="Judge confidence at level 2 (0-1); null when depth < 2.",
+    )
+    confidence_level_3: float | None = Field(
+        default=None,
+        description="Judge confidence at level 3 (0-1); null when depth < 3.",
+    )
+    confidence_aggregate: float = Field(
+        description="Minimum of the per-level confidences."
+    )
+    explanation: str = Field(
+        description="Judge explanation combining reasoning from all hierarchy levels."
+    )
 
 
 class ApiAssignCodesResponse(BaseModel):

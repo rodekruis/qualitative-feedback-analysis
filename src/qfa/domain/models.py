@@ -243,30 +243,34 @@ class AssignedCodeModel(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    coding_level_1_id: str = Field(description="Level-1 node identifier.")
-    coding_level_1_name: str = Field(description="Level-1 node label.")
+    coding_level_1_id: str = Field(description="ID of the selected level 1 code.")
+    coding_level_1_name: str = Field(description="Name of the selected level 1 code.")
     coding_level_2_id: str | None = Field(
-        default=None, description="Level-2 node identifier; None when depth < 2."
+        default=None,
+        description="ID of the selected level 2 code; null when depth < 2.",
     )
     coding_level_2_name: str | None = Field(
-        default=None, description="Level-2 node label; None when depth < 2."
+        default=None,
+        description="Name of the selected level 2 code; null when depth < 2.",
     )
     coding_level_3_id: str | None = Field(
-        default=None, description="Level-3 node identifier; None when depth < 3."
+        default=None,
+        description="ID of the selected level 3 code; null when depth < 3.",
     )
     coding_level_3_name: str | None = Field(
-        default=None, description="Level-3 node label; None when depth < 3."
+        default=None,
+        description="Name of the selected level 3 code; null when depth < 3.",
     )
     confidence_level_1: float = Field(
-        description="Judge confidence score for level 1 (0-1)."
+        description="Judge confidence that the level 1 code fits the feedback record (0-1)."
     )
     confidence_level_2: float | None = Field(
         default=None,
-        description="Judge confidence score for level 2; None when depth < 2.",
+        description="Judge confidence that the level 2 code fits the feedback record (0-1); null when depth < 2.",
     )
     confidence_level_3: float | None = Field(
         default=None,
-        description="Judge confidence score for level 3; None when depth < 3.",
+        description="Judge confidence that the level 3 code fits the feedback record (0-1); null when depth < 3.",
     )
     confidence_aggregate: float = Field(
         description="Overall confidence, computed as min of per-level confidences."
