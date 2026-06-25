@@ -193,7 +193,7 @@ def build_feedback_record_envelope(
     include_id: bool = True,
 ) -> str:
     """Build a single <feedback_record> envelope for a record."""
-    rec_text = escape_for_tag_envelope(feedback_record.content)
+    rec_content = escape_for_tag_envelope(feedback_record.content)
     id_attr = f" id={_xml_quoteattr(feedback_record.id)}" if include_id else ""
     metadata_block = ""
     if include_metadata:
@@ -208,7 +208,7 @@ def build_feedback_record_envelope(
         )
     return (
         f"  <feedback_record{id_attr}>\n"
-        f"    <text>{rec_text}</text>\n"
+        f"    <text>{rec_content}</text>\n"
         f"{metadata_block}"
         f"  </feedback_record>"
     )
