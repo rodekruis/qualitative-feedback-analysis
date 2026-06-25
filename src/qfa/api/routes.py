@@ -422,9 +422,9 @@ async def assign_codes(
                 coding_level_2_name=assigned.coding_level_2_name,
                 coding_level_3_id=assigned.coding_level_3_id,
                 coding_level_3_name=assigned.coding_level_3_name,
-                confidence_level_1=assigned.confidence_code_level_1,
-                confidence_level_2=assigned.confidence_code_level_2,
-                confidence_level_3=assigned.confidence_code_level_3,
+                confidence_level_1=assigned.confidence_level_1,
+                confidence_level_2=assigned.confidence_level_2,
+                confidence_level_3=assigned.confidence_level_3,
                 confidence_aggregate=assigned.confidence_aggregate,
                 explanation=assigned.explanation,
             )
