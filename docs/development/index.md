@@ -2,7 +2,7 @@
 
 Everything you need to go from a fresh clone to a green `make test`.
 
-For the fastest path, use the [devcontainer](https://github.com/rodekruis/qualitative-feedback-analysis/blob/main/.devcontainer/README.md) — it pins Python, installs uv and pre-commit, and gives you a Claude Code setup with a default-deny egress firewall. The rest of this page assumes you're setting up directly on your host.
+Prefer a container? The devcontainer is an optional, per-developer secure Claude Code sandbox — it installs the project with uv, wires up pre-commit, and adds a default-deny egress firewall. It is no longer shipped in this repo; inject it locally from the [copier template](https://github.com/mariushelf/copier-devcontainer) with `uvx copier copy gh:mariushelf/copier-devcontainer "$(pwd)"`. The rest of this page assumes you're setting up directly on your host.
 
 ## 1. Check out the code
 
@@ -15,15 +15,16 @@ Make a branch off `main` for any non-trivial work (see [Project workflow](https:
 
 ## 2. Set up your local environment
 
-We use [direnv](https://direnv.net/) to load per-project environment variables automatically when you `cd` into the repo. The repo ships a `.envrc` that sources `.env`, so once direnv is allowed, opening a shell in the project will export everything you need.
+You can use [direnv](https://direnv.net/) to load per-project environment variables automatically when you `cd` into the repo. This repo no longer ships a `.envrc` (the optional devcontainer brings its own), so for a host setup add a one-line `.envrc` that sources `.env` if you want direnv to load it automatically.
 
 ```bash
 # install direnv (macOS: brew install direnv; Debian/Ubuntu: apt install direnv)
 # then hook it into your shell — see https://direnv.net/docs/hook.html
 
 cp .env.example .env
-$EDITOR .env            # fill in the values you actually need locally
-direnv allow            # one-time approval for this directory
+$EDITOR .env                 # fill in the values you actually need locally
+echo 'dotenv .env' > .envrc  # tell direnv to load .env (repo no longer ships this)
+direnv allow                 # one-time approval for this directory
 ```
 
 `.env.example` is the starter template — copy it, edit it, **never commit `.env`** (it's gitignored). Required variables and defaults are listed in [Settings reference](../operations/settings-reference.md).
