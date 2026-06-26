@@ -148,6 +148,7 @@ data/**
 *.pkl
 *.pickle
 *.csv
+!scripts/espo_crm/flowcharts/*.csv
 
 .~*
 poetry.lock
