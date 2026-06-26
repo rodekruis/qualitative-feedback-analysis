@@ -13,6 +13,7 @@ where 2024-12-30 would otherwise collide with truly-January-2024
 records.
 """
 
+import logging
 from collections import Counter
 from collections.abc import Sequence
 from datetime import date
@@ -23,6 +24,8 @@ from qfa.domain.clustering_models import (
     TrendPeriod,
 )
 from qfa.domain.models import FeedbackRecordModel
+
+logger = logging.getLogger(__name__)
 
 # Re-exported here for back-compat with call sites that import the alias
 # from ``qfa.services.coding_trends`` (where the bucketing logic lives).
@@ -161,7 +164,21 @@ def build_coding_trend_table(
             counter[(code, bucket)] += 1
 
     if not periods:
+        logger.warning(
+            "coding_trends: date field %r matched 0 of %d record(s) — "
+            "check if the field name is exactly the same and if the values are parseable dates",
+            date_field,
+            len(records),
+        )
         return None
+
+    if not counter:
+        logger.warning(
+            "coding_trends: code fields %r matched 0 labels across %d dated record(s) — "
+            "check code fields names and check if the values are comma-separated strings",
+            list(code_fields),
+            len(periods),
+        )
 
     cells = tuple(
         CodingTrendCell(code=code, period=bucket, count=count)
