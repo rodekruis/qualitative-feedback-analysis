@@ -213,7 +213,7 @@ def test_records_are_sorted_by_date_within_each_chunk() -> None:
         date_field="created",
     )
     for chunk in chunks:
-        seen = [r.metadata["created"] for r in chunk.records]
+        seen = [r.metadata.created for r in chunk.records]
         assert seen == sorted(seen), f"chunk not in date order: {seen}"
 
 

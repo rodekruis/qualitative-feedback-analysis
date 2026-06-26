@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from qfa.domain.models import (
     AnalysisRequestModel,
     AnalysisResultModel,
+    FeedbackRecordMetadataModel,
     FeedbackRecordModel,
     LLMResponse,
     SensitivityAnalysisResultModelList,
@@ -22,14 +23,15 @@ class TestFeedbackRecordModel:
         assert doc.id == "doc-1"
         assert doc.content == "Some feedback"
 
-    def test_metadata_defaults_to_empty_dict(self):
+    def test_metadata_defaults_to_empty(self):
         doc = FeedbackRecordModel(id="doc-1", content="Some feedback")
-        assert doc.metadata == {}
+        assert isinstance(doc.metadata, FeedbackRecordMetadataModel)
+        assert doc.metadata.model_dump(exclude_none=True) == {}
 
     def test_metadata_with_values(self):
         meta = {"source": "email", "score": 5, "weight": 0.8, "urgent": True}
         doc = FeedbackRecordModel(id="doc-1", content="feedback", metadata=meta)
-        assert doc.metadata == meta
+        assert doc.metadata.model_dump(exclude_none=True) == meta
 
     def test_frozen_raises_on_assignment(self):
         doc = FeedbackRecordModel(id="doc-1", content="feedback")

@@ -116,7 +116,7 @@ def _codes_in_record(
     """
     labels: list[str] = []
     for field in code_fields:
-        raw = record.metadata.get(field)
+        raw = getattr(record.metadata, field, None)
         if not isinstance(raw, str):
             continue
         labels.extend(c.strip() for c in raw.split(",") if c.strip())
@@ -156,7 +156,7 @@ def build_coding_trend_table(
     periods: set[str] = set()
 
     for record in records:
-        bucket = _period_of(record.metadata.get(date_field), period)
+        bucket = _period_of(getattr(record.metadata, date_field, None), period)
         if bucket is None:
             continue
         periods.add(bucket)

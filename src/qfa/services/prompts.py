@@ -172,7 +172,7 @@ def build_analyze_user_message(
         rec_text = escape_for_tag_envelope(record.content)
         metadata_lines = "\n".join(
             f"      {escape_for_tag_envelope(str(k))}={escape_for_tag_envelope(str(v))}"
-            for k, v in record.metadata.items()
+            for k, v in record.metadata.model_dump(exclude_none=True).items()
         )
         metadata_block = (
             f"    <metadata>\n{metadata_lines}\n    </metadata>\n"

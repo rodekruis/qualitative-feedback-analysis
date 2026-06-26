@@ -286,7 +286,7 @@ class TestDetectSensitiveSuccess:
         record = (
             test_app.state.orchestrator.last_detect_sensitive_request.feedback_record
         )
-        assert record.metadata == {"region": "North"}
+        assert record.metadata.model_dump(exclude_none=True) == {"region": "North"}
 
 
 # ------------------------------------------------------------------ #
