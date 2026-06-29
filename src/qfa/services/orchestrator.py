@@ -66,6 +66,8 @@ from qfa.services.prompts import (
     JUDGE_UNAVAILABLE_EXPLANATION,
     build_analyze_judge_system_message,
     build_analyze_user_message,
+    build_feedback_record_envelope,
+    build_feedback_records_envelope,
     build_output_language_instruction,
 )
 from qfa.settings import (
@@ -1093,9 +1095,8 @@ class Orchestrator:
         if request.prompt:
             system_message += f"\nAdditional instructions: {request.prompt}"
 
-        user_message = "\n\n".join(
-            f"{idx}. {record.content}"
-            for idx, record in enumerate(request.feedback_records, start=1)
+        user_message = build_feedback_records_envelope(
+            request.feedback_records, include_metadata=False
         )
 
         anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
@@ -1168,7 +1169,9 @@ class Orchestrator:
         timeout = self._check_deadline_and_get_timeout(deadline)
         system_message = _DEFAULT_SUMMARIZATION_PROMPT
 
-        user_message = str(request.feedback_record)
+        user_message = build_feedback_record_envelope(
+            request.feedback_record, include_metadata=False
+        )
         anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
             user_message
         )
@@ -1181,6 +1184,23 @@ class Orchestrator:
             timeout=timeout,
         )
 
+        if not llm_completion.structured.feedback_record_summaries:
+            raise AnalysisError("LLM returned no summaries for the feedback record.")
+
+        judge_system = _build_judge_system_message(
+            anonymized_user_message,
+            llm_completion.structured.feedback_record_summaries[0].summary,
+        )
+        judge_timeout = self._check_deadline_and_get_timeout(deadline)
+        judge_response = await self._llm.complete(
+            system_message=judge_system,
+            user_message=_JUDGE_USER_MESSAGE,
+            tenant_id=request.tenant_id,
+            response_model=str,
+            timeout=judge_timeout,
+        )
+        quality_score = _parse_judge_quality_score(judge_response.structured)
+
         return_model_as_string = llm_completion.structured.model_dump_json()
         unanonymized_return_model_as_string = self._anonymizer.deanonymize(
             return_model_as_string, anonymization_mapping
@@ -1189,10 +1209,8 @@ class Orchestrator:
             unanonymized_return_model_as_string
         )
 
-        if not result.feedback_record_summaries:
-            raise AnalysisError("LLM returned no summaries for the feedback record.")
         return result.feedback_record_summaries[0].model_copy(
-            update={"id": request.feedback_record.id}
+            update={"id": request.feedback_record.id, "quality_score": quality_score}
         )
 
     async def assign_codes(
@@ -1230,7 +1248,7 @@ class Orchestrator:
 
         candidates: list[_ScoredCode] = []
         await self._traverse_coding_level(
-            feedback_text=feedback_record.content,
+            feedback_record=feedback_record,
             level_nodes=list(request.coding_levels.root_codes),
             level_num=1,
             hierarchy_path=[],
@@ -1290,7 +1308,9 @@ class Orchestrator:
         """
         timeout = self._check_deadline_and_get_timeout(deadline)
         system_message = _DEFAULT_SENSITIVITY_DETECTION_PROMPT
-        user_message = str(request.feedback_record)
+        user_message = build_feedback_record_envelope(
+            request.feedback_record, include_metadata=True, include_id=True
+        )
 
         anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
             user_message
@@ -1351,7 +1371,7 @@ class Orchestrator:
     async def _traverse_coding_level(
         self,
         *,
-        feedback_text: str,
+        feedback_record: FeedbackRecordModel,
         level_nodes: list[CodingNode],
         level_num: int,
         hierarchy_path: list[tuple[str, str]],
@@ -1366,7 +1386,7 @@ class Orchestrator:
         """Recursively pick and judge codes at one level, descending into children."""
         level_label = f"Code level {level_num}"
         indices = await self._pick_code_indices(
-            feedback_text=feedback_text,
+            feedback_record=feedback_record,
             current_level=level_label,
             entries=level_nodes,
             hierarchy_path=hierarchy_path,
@@ -1377,7 +1397,7 @@ class Orchestrator:
             node = level_nodes[idx]
             current_path = [*hierarchy_path, (level_label, node.name)]
             judge = await self._judge_code_level(
-                feedback_text=feedback_text,
+                feedback_record=feedback_record,
                 level=level_label,
                 path=current_path,
                 tenant_id=tenant_id,
@@ -1390,7 +1410,7 @@ class Orchestrator:
             new_explanations = [*accumulated_explanations, judge.explanation]
             if node.children:
                 await self._traverse_coding_level(
-                    feedback_text=feedback_text,
+                    feedback_record=feedback_record,
                     level_nodes=node.children,
                     level_num=level_num + 1,
                     hierarchy_path=current_path,
@@ -1414,7 +1434,7 @@ class Orchestrator:
     async def _pick_code_indices(
         self,
         *,
-        feedback_text: str,
+        feedback_record: FeedbackRecordModel,
         current_level: str,
         entries: list[CodingNode],
         hierarchy_path: list[tuple[str, str]] | None,
@@ -1424,7 +1444,7 @@ class Orchestrator:
         """Build one coding prompt, call the LLM, and parse selected indices."""
         labels = [entry.name for entry in entries]
         system_message, user_message = build_pick_messages(
-            feedback_text=feedback_text,
+            feedback_record=feedback_record,
             current_level=current_level,
             labels=labels,
             hierarchy_path=hierarchy_path,
@@ -1448,7 +1468,7 @@ class Orchestrator:
     async def _judge_code_level(
         self,
         *,
-        feedback_text: str,
+        feedback_record: FeedbackRecordModel,
         level: str,
         path: list[tuple[str, str]],
         tenant_id: str,
@@ -1456,7 +1476,7 @@ class Orchestrator:
     ) -> JudgeResponse:
         """Call the judge LLM for one hierarchy level; return structured score and explanation."""
         system_message, user_message = build_judge_messages(
-            feedback_text=feedback_text,
+            feedback_record=feedback_record,
             level=level,
             path=path,
         )
