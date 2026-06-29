@@ -239,30 +239,44 @@ class CodingAssignmentRequestModel(BaseModel):
 
 
 class AssignedCodeModel(BaseModel):
-    """A single leaf code assigned to a feedback record with full hierarchical path."""
+    """A single leaf code assigned to a feedback record with its hierarchical path."""
 
     model_config = ConfigDict(frozen=True)
 
     coding_level_1_id: str = Field(description="ID of the selected level 1 code.")
     coding_level_1_name: str = Field(description="Name of the selected level 1 code.")
-    coding_level_2_id: str = Field(description="ID of the selected level 2 code.")
-    coding_level_2_name: str = Field(description="Name of the selected level 2 code.")
-    coding_level_3_id: str = Field(description="ID of the selected level 3 code.")
-    coding_level_3_name: str = Field(description="Name of the selected level 3 code.")
-    confidence_code_level_1: float = Field(
+    coding_level_2_id: str | None = Field(
+        default=None,
+        description="ID of the selected level 2 code; null when depth < 2.",
+    )
+    coding_level_2_name: str | None = Field(
+        default=None,
+        description="Name of the selected level 2 code; null when depth < 2.",
+    )
+    coding_level_3_id: str | None = Field(
+        default=None,
+        description="ID of the selected level 3 code; null when depth < 3.",
+    )
+    coding_level_3_name: str | None = Field(
+        default=None,
+        description="Name of the selected level 3 code; null when depth < 3.",
+    )
+    confidence_level_1: float = Field(
         description="Judge confidence that the level 1 code fits the feedback record (0-1)."
     )
-    confidence_code_level_2: float = Field(
-        description="Judge confidence that the level 2 code fits the feedback record (0-1)."
+    confidence_level_2: float | None = Field(
+        default=None,
+        description="Judge confidence that the level 2 code fits the feedback record (0-1); null when depth < 2.",
     )
-    confidence_code_level_3: float = Field(
-        description="Judge confidence that the level 3 code fits the feedback record (0-1)."
+    confidence_level_3: float | None = Field(
+        default=None,
+        description="Judge confidence that the level 3 code fits the feedback record (0-1); null when depth < 3.",
     )
     confidence_aggregate: float = Field(
-        description="Overall confidence, computed as min of the three level confidences."
+        description="Overall confidence, computed as min of per-level confidences."
     )
     explanation: str = Field(
-        description="Judge explanation combining scores from all three hierarchy levels."
+        description="Judge explanation combining scores from all hierarchy levels."
     )
 
 
