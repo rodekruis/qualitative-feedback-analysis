@@ -30,14 +30,10 @@ class FeedbackRecordMetadataModel(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="allow")
 
-    created: str | None = Field(
-        default=None,
+    created: str = Field(
         description="ISO 8601 timestamp string for the feedback record.",
     )
-    feedback_record_id: str | None = Field(
-        default=None,
-        description="EspoCRM identifier for the feedback record.",
-    )
+
     codes: str | None = Field(
         default=None,
         description="Comma-separated coding labels assigned to the feedback record.",
