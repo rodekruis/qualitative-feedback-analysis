@@ -71,7 +71,7 @@ variable "postgres_sku_name" {
 variable "postgres_storage_mb" {
   description = "Storage size in MB for PostgreSQL Flexible Server"
   type        = number
-  default     = 32768
+  default     = 32768 #Lowering this number is NOT possible and will lead to an error when running terraform apply.
 }
 
 variable "db_aad_scope" {

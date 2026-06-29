@@ -12,7 +12,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Literal, override
 
-from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
+from pydantic import BaseModel, Field, computed_field, field_validator
 
 from qfa.domain.clustering_models import TrendPeriod
 
@@ -702,26 +702,6 @@ class ApiCodingFramework(BaseModel):
         min_length=1,
     )
 
-    @model_validator(mode="after")
-    def all_leaf_codes_have_depth_3(self) -> "ApiCodingFramework":
-        """Enforces exactly 3 levels."""
-        max_depths = {code.max_child_depth() for code in self.root_codes}
-        min_depths = {code.min_child_depth() for code in self.root_codes}
-
-        # All root codes must have one uniform leaf depth.
-        if len(max_depths) != 1 or len(min_depths) != 1 or max_depths != min_depths:
-            raise ValueError(
-                f"All codes must have the same depth {min_depths=} {max_depths=}"
-            )
-
-        # max_child_depth/min_child_depth count edges, so 3 levels means depth 2.
-        if max_depths != {2}:
-            raise ValueError(
-                f"Coding framework must have exactly 3 levels. Got depth {next(iter(max_depths))}"
-            )
-
-        return self
-
 
 class ApiAssignCodesRequest(ApiSingleInferenceRequestBase):
     """Request body for ``POST /v1/assign-codes``."""
@@ -738,28 +718,40 @@ class ApiAssignCodesRequest(ApiSingleInferenceRequestBase):
 
 
 class ApiAssignedCode(BaseModel):
-    """A single code assigned to a feedback record with full hierarchical path."""
+    """A single code assigned to a feedback record with its hierarchical path."""
 
     coding_level_1_id: str = Field(description="ID of the selected level 1 code.")
     coding_level_1_name: str = Field(description="Name of the selected level 1 code.")
-    coding_level_2_id: str = Field(description="ID of the selected level 2 code.")
-    coding_level_2_name: str = Field(description="Name of the selected level 2 code.")
-    coding_level_3_id: str = Field(description="ID of the selected level 3 code.")
-    coding_level_3_name: str = Field(description="Name of the selected level 3 code.")
-    confidence_level_1: float = Field(
-        description="Judge confidence at the level 1 code (0-1)."
+    coding_level_2_id: str | None = Field(
+        default=None,
+        description="ID of the selected level 2 code; null when depth < 2.",
     )
-    confidence_level_2: float = Field(
-        description="Judge confidence at the level 2 code (0-1)."
+    coding_level_2_name: str | None = Field(
+        default=None,
+        description="Name of the selected level 2 code; null when depth < 2.",
     )
-    confidence_level_3: float = Field(
-        description="Judge confidence at the level 3 code (0-1)."
+    coding_level_3_id: str | None = Field(
+        default=None,
+        description="ID of the selected level 3 code; null when depth < 3.",
+    )
+    coding_level_3_name: str | None = Field(
+        default=None,
+        description="Name of the selected level 3 code; null when depth < 3.",
+    )
+    confidence_level_1: float = Field(description="Judge confidence at level 1 (0-1).")
+    confidence_level_2: float | None = Field(
+        default=None,
+        description="Judge confidence at level 2 (0-1); null when depth < 2.",
+    )
+    confidence_level_3: float | None = Field(
+        default=None,
+        description="Judge confidence at level 3 (0-1); null when depth < 3.",
     )
     confidence_aggregate: float = Field(
-        description="Minimum of the three level confidences."
+        description="Minimum of the per-level confidences."
     )
     explanation: str = Field(
-        description="Judge explanation combining reasoning from all three levels."
+        description="Judge explanation combining reasoning from all hierarchy levels."
     )
 
 

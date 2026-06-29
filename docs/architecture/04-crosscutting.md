@@ -94,7 +94,6 @@ The exception handlers in `qfa.api.app` translate domain errors into HTTP respon
 | {py:exc}`~qfa.domain.errors.AnalysisError` (other) | 502 | `analysis_unavailable` |
 | {py:exc}`~qfa.domain.errors.LLMError` | 502 | `llm_unavailable` |
 | `UsageRepositoryUnavailableError` | 503 | `usage_backend_unavailable` |
-| Usage tracking disabled | 503 | `usage_tracking_disabled` |
 | Unhandled `Exception` | 500 | `internal_error` |
 
 All responses share the same envelope shape with a server-generated `request_id`.

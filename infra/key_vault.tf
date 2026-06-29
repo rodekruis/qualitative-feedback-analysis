@@ -10,7 +10,7 @@ resource "azurerm_key_vault" "main" {
   sku_name                   = "standard"
   rbac_authorization_enabled = true
   soft_delete_retention_days = 90
-  purge_protection_enabled   = false
+  purge_protection_enabled   = true
 }
 
 # Key Vault secret names are declared here, but VALUES are managed out-of-band

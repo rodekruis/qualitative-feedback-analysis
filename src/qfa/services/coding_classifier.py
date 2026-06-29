@@ -39,7 +39,7 @@ Instructions:
 - Multi-label is allowed, but only when the feedback contains multiple distinct ideas that separately support different options.
 - Do not select multiple options that express the same underlying idea.
 - Prefer the best-fitting option(s) rather than returning none.
-- Return an empty list only when none of the options are meaningfully supported by the feedback.
+- There is always at least one option that is a reasonable fit for the feedback text.
 
 Selection guidance:
 - Most items should result in 1 selected option.

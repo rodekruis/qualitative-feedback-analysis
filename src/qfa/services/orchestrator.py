@@ -202,31 +202,19 @@ def _build_judge_system_message(source_text: str, summary: str) -> str:
 
 @dataclass
 class _ScoredCode:
-    coding_level_1_id: str
-    coding_level_1_name: str
-    coding_level_2_id: str
-    coding_level_2_name: str
-    coding_level_3_id: str
-    coding_level_3_name: str
-    confidence_level_1: float
-    confidence_level_2: float
-    confidence_level_3: float
-    explanation_level_1: str
-    explanation_level_2: str
-    explanation_level_3: str
+    path: list[tuple[str, str]]  # (id, name) per level, root → leaf
+    scores: list[float]  # per-level judge scores, aligned with path
+    explanations: list[str]  # per-level judge explanations, aligned with path
 
     @property
     def confidence_aggregate(self) -> float:
-        return min(
-            self.confidence_level_1, self.confidence_level_2, self.confidence_level_3
-        )
+        return min(self.scores)
 
     @property
     def explanation(self) -> str:
-        return (
-            f"Level 1 ({self.confidence_level_1:.2f}): {self.explanation_level_1} "
-            f"Level 2 ({self.confidence_level_2:.2f}): {self.explanation_level_2} "
-            f"Level 3 ({self.confidence_level_3:.2f}): {self.explanation_level_3}"
+        return " ".join(
+            f"Level {i + 1} ({score:.2f}): {expl}"
+            for i, (score, expl) in enumerate(zip(self.scores, self.explanations))
         )
 
 
@@ -1255,130 +1243,42 @@ class Orchestrator:
         LLMError
             For other LLM provider failures.
         """
-        coded: list[CodedFeedbackRecordModel] = []
-        code_level_1_nodes = request.coding_levels.root_codes
-        threshold = request.confidence_threshold
-
         feedback_record = request.feedback_record
         self._check_coding_deadline(deadline)
 
         candidates: list[_ScoredCode] = []
-
-        code_level_1_indices = await self._pick_code_indices(
+        await self._traverse_coding_level(
             feedback_record=feedback_record,
-            current_level="Code level 1",
-            entries=list(code_level_1_nodes),
-            hierarchy_path=None,
+            level_nodes=list(request.coding_levels.root_codes),
+            level_num=1,
+            hierarchy_path=[],
+            path_ids_names=[],
+            accumulated_scores=[],
+            accumulated_explanations=[],
+            threshold=request.confidence_threshold,
             tenant_id=request.tenant_id,
             deadline=deadline,
+            candidates=candidates,
         )
-
-        for code_level_1_index in code_level_1_indices:
-            code_level_1_node = code_level_1_nodes[code_level_1_index]
-            code_level_1_name = code_level_1_node.name
-
-            judge_code_level_1 = await self._judge_code_level(
-                feedback_record=feedback_record,
-                level="Code level 1",
-                path=[("Code level 1", code_level_1_name)],
-                tenant_id=request.tenant_id,
-                deadline=deadline,
-            )
-            if threshold is not None and judge_code_level_1.score < threshold:
-                continue
-
-            code_level_2_nodes = code_level_1_node.children
-            code_level_2_indices = await self._pick_code_indices(
-                feedback_record=feedback_record,
-                current_level="Code level 2",
-                entries=list(code_level_2_nodes),
-                hierarchy_path=[("Code level 1", code_level_1_name)],
-                tenant_id=request.tenant_id,
-                deadline=deadline,
-            )
-
-            for code_level_2_index in code_level_2_indices:
-                code_level_2_node = code_level_2_nodes[code_level_2_index]
-                code_level_2_name = code_level_2_node.name
-
-                judge_code_level_2 = await self._judge_code_level(
-                    feedback_record=feedback_record,
-                    level="Code level 2",
-                    path=[
-                        ("Code level 1", code_level_1_name),
-                        ("Code level 2", code_level_2_name),
-                    ],
-                    tenant_id=request.tenant_id,
-                    deadline=deadline,
-                )
-                if threshold is not None and judge_code_level_2.score < threshold:
-                    continue
-
-                code_level_3_nodes = code_level_2_node.children
-                code_level_3_indices = await self._pick_code_indices(
-                    feedback_record=feedback_record,
-                    current_level="Code level 3",
-                    entries=list(code_level_3_nodes),
-                    hierarchy_path=[
-                        ("Code level 1", code_level_1_name),
-                        ("Code level 2", code_level_2_name),
-                    ],
-                    tenant_id=request.tenant_id,
-                    deadline=deadline,
-                )
-
-                for code_level_3_index in code_level_3_indices:
-                    code_level_3_node = code_level_3_nodes[code_level_3_index]
-                    code_level_3_name = code_level_3_node.name
-
-                    judge_code_level_3 = await self._judge_code_level(
-                        feedback_record=feedback_record,
-                        level="Code level 3",
-                        path=[
-                            ("Code level 1", code_level_1_name),
-                            ("Code level 2", code_level_2_name),
-                            ("Code level 3", code_level_3_name),
-                        ],
-                        tenant_id=request.tenant_id,
-                        deadline=deadline,
-                    )
-                    if threshold is not None and judge_code_level_3.score < threshold:
-                        continue
-
-                    candidates.append(
-                        _ScoredCode(
-                            coding_level_1_id=code_level_1_node.id,
-                            coding_level_1_name=code_level_1_name,
-                            coding_level_2_id=code_level_2_node.id,
-                            coding_level_2_name=code_level_2_name,
-                            coding_level_3_id=code_level_3_node.id,
-                            coding_level_3_name=code_level_3_name,
-                            confidence_level_1=judge_code_level_1.score,
-                            confidence_level_2=judge_code_level_2.score,
-                            confidence_level_3=judge_code_level_3.score,
-                            explanation_level_1=judge_code_level_1.explanation,
-                            explanation_level_2=judge_code_level_2.explanation,
-                            explanation_level_3=judge_code_level_3.explanation,
-                        )
-                    )
 
         candidates.sort(key=lambda c: c.confidence_aggregate, reverse=True)
         top = candidates[: request.max_codes]
 
+        coded: list[CodedFeedbackRecordModel] = []
         coded.append(
             CodedFeedbackRecordModel(
                 feedback_record_id=feedback_record.id,
                 assigned_codes=tuple(
                     AssignedCodeModel(
-                        coding_level_1_id=c.coding_level_1_id,
-                        coding_level_1_name=c.coding_level_1_name,
-                        coding_level_2_id=c.coding_level_2_id,
-                        coding_level_2_name=c.coding_level_2_name,
-                        coding_level_3_id=c.coding_level_3_id,
-                        coding_level_3_name=c.coding_level_3_name,
-                        confidence_code_level_1=c.confidence_level_1,
-                        confidence_code_level_2=c.confidence_level_2,
-                        confidence_code_level_3=c.confidence_level_3,
+                        coding_level_1_id=c.path[0][0],
+                        coding_level_1_name=c.path[0][1],
+                        coding_level_2_id=c.path[1][0] if len(c.path) > 1 else None,
+                        coding_level_2_name=c.path[1][1] if len(c.path) > 1 else None,
+                        coding_level_3_id=c.path[2][0] if len(c.path) > 2 else None,
+                        coding_level_3_name=c.path[2][1] if len(c.path) > 2 else None,
+                        confidence_level_1=c.scores[0],
+                        confidence_level_2=c.scores[1] if len(c.scores) > 1 else None,
+                        confidence_level_3=c.scores[2] if len(c.scores) > 2 else None,
                         confidence_aggregate=c.confidence_aggregate,
                         explanation=c.explanation,
                     )
@@ -1467,6 +1367,69 @@ class Orchestrator:
             raise AnalysisTimeoutError(
                 "Coding deadline exceeded before all feedback records were processed"
             )
+
+    async def _traverse_coding_level(
+        self,
+        *,
+        feedback_record: FeedbackRecordModel,
+        level_nodes: list[CodingNode],
+        level_num: int,
+        hierarchy_path: list[tuple[str, str]],
+        path_ids_names: list[tuple[str, str]],
+        accumulated_scores: list[float],
+        accumulated_explanations: list[str],
+        threshold: float | None,
+        tenant_id: str,
+        deadline: datetime,
+        candidates: list[_ScoredCode],
+    ) -> None:
+        """Recursively pick and judge codes at one level, descending into children."""
+        level_label = f"Code level {level_num}"
+        indices = await self._pick_code_indices(
+            feedback_record=feedback_record,
+            current_level=level_label,
+            entries=level_nodes,
+            hierarchy_path=hierarchy_path,
+            tenant_id=tenant_id,
+            deadline=deadline,
+        )
+        for idx in indices:
+            node = level_nodes[idx]
+            current_path = [*hierarchy_path, (level_label, node.name)]
+            judge = await self._judge_code_level(
+                feedback_record=feedback_record,
+                level=level_label,
+                path=current_path,
+                tenant_id=tenant_id,
+                deadline=deadline,
+            )
+            if threshold is not None and judge.score < threshold:
+                continue
+            new_path = [*path_ids_names, (node.id, node.name)]
+            new_scores = [*accumulated_scores, judge.score]
+            new_explanations = [*accumulated_explanations, judge.explanation]
+            if node.children:
+                await self._traverse_coding_level(
+                    feedback_record=feedback_record,
+                    level_nodes=node.children,
+                    level_num=level_num + 1,
+                    hierarchy_path=current_path,
+                    path_ids_names=new_path,
+                    accumulated_scores=new_scores,
+                    accumulated_explanations=new_explanations,
+                    threshold=threshold,
+                    tenant_id=tenant_id,
+                    deadline=deadline,
+                    candidates=candidates,
+                )
+            else:
+                candidates.append(
+                    _ScoredCode(
+                        path=new_path,
+                        scores=new_scores,
+                        explanations=new_explanations,
+                    )
+                )
 
     async def _pick_code_indices(
         self,
