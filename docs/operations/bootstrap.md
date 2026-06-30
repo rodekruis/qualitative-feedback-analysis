@@ -166,4 +166,4 @@ After the bootstrap and per-environment setup are complete, infrastructure chang
 - Open a PR touching `infra/` → CI runs `terraform plan` automatically
 - Merge to `main` → trigger `terraform apply` manually from the Actions tab
 
-If the managed identity is ever recreated (e.g. after `terraform destroy`), re-run steps 4 and 5 of [Set up a new environment](setup-new-env.md) for the affected environment to update `AZ_CLIENT_ID`.
+If the managed identities are ever recreated (e.g. after `terraform destroy`), re-run steps 4 and 5 of [Set up a new environment](setup-new-env.md) for the affected environment to update `AZ_CLIENT_ID` and `AZ_TERRAFORM_CLIENT_ID`.

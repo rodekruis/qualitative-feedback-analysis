@@ -4,7 +4,8 @@ locals {
   plan_name             = "qfa-${local.env}-plan" # Azure Web Service plan name
   vnet_name             = "qfa-${local.env}-vnet"
   keyvault_name         = "qfa-${local.env}-keyvault"
-  managed_identity_name = "qfa-${local.env}-github"
+  managed_identity_name           = "qfa-${local.env}-github"
+  terraform_managed_identity_name = "qfa-${local.env}-github-terraform"
   github_environment    = local.env
   db_aad_principal_name = local.app_name # system-assigned MI name matches the App Service name
 

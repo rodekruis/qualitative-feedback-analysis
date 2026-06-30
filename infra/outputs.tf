@@ -14,8 +14,13 @@ output "keyvault_uri" {
 }
 
 output "az_client_id" {
-  description = "AZ_CLIENT_ID — client ID of the managed identity used by GitHub Actions (OIDC)"
+  description = "AZ_CLIENT_ID — client ID of the deploy managed identity used by build/release/promote workflows (OIDC)"
   value       = azurerm_user_assigned_identity.github.client_id
+}
+
+output "az_terraform_client_id" {
+  description = "AZ_TERRAFORM_CLIENT_ID — client ID of the Terraform managed identity used by terraform.yaml (OIDC)"
+  value       = azurerm_user_assigned_identity.github_terraform.client_id
 }
 
 output "postgres_server_fqdn" {
