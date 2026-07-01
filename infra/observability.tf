@@ -70,7 +70,7 @@ resource "azurerm_monitor_action_group" "email" {
   short_name          = "qfa-alerts"
 
   email_receiver {
-    name          = "olaf" #TODO change to teams channel
+    name          = "olaf" # TODO change to teams channel
     email_address = "olaf@aurai.com"
   }
 }
