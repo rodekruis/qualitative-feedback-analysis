@@ -21,7 +21,12 @@ from qfa.domain.models import (
 )
 from qfa.services.orchestrator import AnalyzeJudgeResult, Orchestrator
 from qfa.services.prompts import ANALYZE_GUARDRAILS_PROMPT
-from qfa.settings import AnalyzeSettings, OrchestratorSettings
+from qfa.settings import (
+    METADATA_CODE_FIELD,
+    METADATA_DATE_FIELD,
+    AnalyzeSettings,
+    OrchestratorSettings,
+)
 
 TENANT_ID = "tenant-42"
 LLM_TIMEOUT = 30.0
@@ -105,7 +110,10 @@ def _records(n: int, text: str, prefix: str) -> tuple[FeedbackRecordModel, ...]:
         FeedbackRecordModel(
             id=f"{prefix}{i}",
             content=text,
-            metadata={"created": "2024-01-05T00:00:00Z", "codes": "Water"},
+            metadata={
+                METADATA_DATE_FIELD: "2024-01-05T00:00:00Z",
+                METADATA_CODE_FIELD: "Water",
+            },
         )
         for i in range(n)
     )
@@ -213,7 +221,10 @@ async def test_anonymization_happens_before_any_llm_or_embed_call():
         FeedbackRecordModel(
             id="r1",
             content="Jane reported water shortages " * 5,
-            metadata={"created": "2024-01-05T00:00:00Z", "codes": "Water"},
+            metadata={
+                METADATA_DATE_FIELD: "2024-01-05T00:00:00Z",
+                METADATA_CODE_FIELD: "Water",
+            },
         ),
         *_records(3, "water access " * 5, "w"),
     )

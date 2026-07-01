@@ -16,6 +16,7 @@ import pytest
 import yaml
 
 from qfa.domain.models import FeedbackRecordModel
+from qfa.settings import METADATA_CODE_FIELD
 
 FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
 CORPUS_PATH = FIXTURES / "analyze_corpus.yaml"
@@ -81,7 +82,9 @@ class TestAnalyzeCorpus:
         unknown: dict[str, list[str]] = {}
         for item in corpus:
             code_ids = [
-                c.strip() for c in item["metadata"]["codes"].split(",") if c.strip()
+                c.strip()
+                for c in item["metadata"][METADATA_CODE_FIELD].split(",")
+                if c.strip()
             ]
             missing = [c for c in code_ids if c not in framework]
             if missing:
@@ -97,7 +100,9 @@ class TestAnalyzeCorpus:
         mismatches: list[str] = []
         for item in corpus:
             md = item["metadata"]
-            code_ids = [c.strip() for c in md["codes"].split(",") if c.strip()]
+            code_ids = [
+                c.strip() for c in md[METADATA_CODE_FIELD].split(",") if c.strip()
+            ]
             code_types = {framework[c]["feedback_type"] for c in code_ids}
             if code_types != {md["feedback_type"]}:
                 mismatches.append(
@@ -123,7 +128,8 @@ class TestAnalyzeCorpus:
         offenders = [
             item["id"]
             for item in corpus
-            if ", " in item["metadata"]["codes"] or " ," in item["metadata"]["codes"]
+            if ", " in item["metadata"][METADATA_CODE_FIELD]
+            or " ," in item["metadata"][METADATA_CODE_FIELD]
         ]
         assert not offenders, f"codes string has whitespace around comma: {offenders}"
 
@@ -134,6 +140,8 @@ class TestAnalyzeCorpus:
         empty = [
             item["id"]
             for item in corpus
-            if not [c for c in item["metadata"]["codes"].split(",") if c.strip()]
+            if not [
+                c for c in item["metadata"][METADATA_CODE_FIELD].split(",") if c.strip()
+            ]
         ]
         assert not empty, f"records with empty codes: {empty}"

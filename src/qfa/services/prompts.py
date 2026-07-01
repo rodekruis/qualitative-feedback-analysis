@@ -166,34 +166,13 @@ def build_analyze_user_message(
     here — it is trusted config, not part of the untrusted record envelope
     (#161).
     """
-    record_blocks: list[str] = []
-    for record in feedback_records:
-        rec_id_attr = _xml_quoteattr(record.id)
-        rec_text = escape_for_tag_envelope(record.content)
-        metadata_lines = "\n".join(
-            f"      {escape_for_tag_envelope(str(k))}={escape_for_tag_envelope(str(v))}"
-            for k, v in record.metadata.items()
-        )
-        metadata_block = (
-            f"    <metadata>\n{metadata_lines}\n    </metadata>\n"
-            if metadata_lines
-            else ""
-        )
-        record_blocks.append(
-            f"  <feedback_record id={rec_id_attr}>\n"
-            f"    <text>{rec_text}</text>\n"
-            f"{metadata_block}"
-            f"  </feedback_record>"
-        )
-    records_xml = "\n".join(record_blocks)
+    feedbackrecords_xml = build_feedback_records_envelope(feedback_records)
     return (
         f"<analyst_instruction>\n"
         f"{escape_for_tag_envelope(analyst_prompt)}\n"
         f"</analyst_instruction>\n"
         f"\n"
-        f"<feedback_records>\n"
-        f"{records_xml}\n"
-        f"</feedback_records>"
+        f"{feedbackrecords_xml}\n"
     )
 
 
@@ -206,3 +185,35 @@ def build_analyze_judge_system_message(
         analyst_prompt=analyst_prompt,
         analysis=analysis,
     )
+
+
+def build_feedback_record_envelope(
+    feedback_record: FeedbackRecordModel,
+) -> str:
+    """Build a single <feedback_record> envelope for a record."""
+    rec_id_attr = _xml_quoteattr(feedback_record.id)
+    rec_text = escape_for_tag_envelope(feedback_record.content)
+    metadata_lines = "\n".join(
+        f"      {escape_for_tag_envelope(str(k))}={escape_for_tag_envelope(str(v))}"
+        for k, v in feedback_record.metadata.items()
+    )
+    metadata_block = (
+        f"    <metadata>\n{metadata_lines}\n    </metadata>\n" if metadata_lines else ""
+    )
+    return (
+        f"  <feedback_record id={rec_id_attr}>\n"
+        f"    <text>{rec_text}</text>\n"
+        f"{metadata_block}"
+        f"  </feedback_record>"
+    )
+
+
+def build_feedback_records_envelope(
+    feedback_records: tuple[FeedbackRecordModel, ...],
+) -> str:
+    """Build a <feedback_records> envelope for a sequence of records."""
+    record_blocks: list[str] = [
+        build_feedback_record_envelope(record) for record in feedback_records
+    ]
+    records_xml = "\n".join(record_blocks)
+    return f"<feedback_records>\n{records_xml}\n</feedback_records>"

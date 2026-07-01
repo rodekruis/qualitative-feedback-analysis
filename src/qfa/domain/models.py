@@ -32,7 +32,7 @@ class FeedbackRecordModel(BaseModel):
     )
     metadata: dict[str, str | int | float | bool] = Field(
         default_factory=dict,
-        description="Optional metadata key-value pairs associated with the feedback record.",
+        description="Metadata key-value pairs for the feedback record.",
     )
 
 

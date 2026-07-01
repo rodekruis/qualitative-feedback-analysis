@@ -25,7 +25,7 @@ from qfa.domain.models import (
 from qfa.domain.ports import AnonymizationPort, LLMPort
 from qfa.domain.sensitivity_types import SensitivityType
 from qfa.services.orchestrator import Orchestrator
-from qfa.settings import OrchestratorSettings
+from qfa.settings import METADATA_CODE_FIELD, METADATA_DATE_FIELD, OrchestratorSettings
 
 TENANT_ID = "tenant-42"
 LLM_TIMEOUT = 30.0
@@ -1032,12 +1032,18 @@ class TestAnalyzeHappyPath:
             _make_feedback_record(
                 doc_id="r1",
                 content="water access was limited",
-                metadata={"created": "2024-01-05T10:00:00Z", "codes": "Water"},
+                metadata={
+                    METADATA_DATE_FIELD: "2024-01-05T10:00:00Z",
+                    METADATA_CODE_FIELD: "Water",
+                },
             ),
             _make_feedback_record(
                 doc_id="r2",
                 content="health clinic medicine",
-                metadata={"created": "2024-02-02T10:00:00Z", "codes": "Health"},
+                metadata={
+                    METADATA_DATE_FIELD: "2024-02-02T10:00:00Z",
+                    METADATA_CODE_FIELD: "Health",
+                },
             ),
         )
         request = _make_request(feedback_records=records).model_copy(

@@ -61,6 +61,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import yaml
 
+from qfa.settings import METADATA_CODE_FIELD, METADATA_DATE_FIELD
+
 logger = logging.getLogger("generate_corpus")
 
 # --- Timeline -----------------------------------------------------------------
@@ -197,7 +199,7 @@ PATTERN_PRIORITY: list[str] = [
 
 def _record_leaves(record: dict[str, Any]) -> list[str]:
     """Return the list of leaf code strings carried by a record."""
-    raw = record.get("metadata", {}).get("codes", "") or ""
+    raw = record.get("metadata", {}).get(METADATA_CODE_FIELD, "") or ""
     return [c.strip() for c in raw.split(",") if c.strip()]
 
 
@@ -380,7 +382,7 @@ def assign_dates(
             )
         for idx, date in zip(indices, dates, strict=True):
             iso = date.isoformat()
-            records[idx]["metadata"]["created"] = iso
+            records[idx]["metadata"][METADATA_DATE_FIELD] = iso
             records[idx]["metadata"]["year"] = date.year
 
     return dict(by_pattern)
@@ -495,7 +497,9 @@ def make_plot(
                 for idx in indices:
                     if leaf not in _record_leaves(records[idx]):
                         continue
-                    d = dt.date.fromisoformat(records[idx]["metadata"]["created"])
+                    d = dt.date.fromisoformat(
+                        records[idx]["metadata"][METADATA_DATE_FIELD]
+                    )
                     m = (d.year - START.year) * 12 + (d.month - START.month)
                     counts[m] += 1
                 ax.bar(
@@ -510,7 +514,7 @@ def make_plot(
 
             totals = np.zeros(N_MONTHS, dtype=int)
             for idx in indices:
-                d = dt.date.fromisoformat(records[idx]["metadata"]["created"])
+                d = dt.date.fromisoformat(records[idx]["metadata"][METADATA_DATE_FIELD])
                 m = (d.year - START.year) * 12 + (d.month - START.month)
                 totals[m] += 1
             ax.bar(
@@ -525,7 +529,7 @@ def make_plot(
             ax.legend(loc="upper left", fontsize=7, ncols=2, frameon=False)
         else:
             dates = [
-                dt.date.fromisoformat(records[i]["metadata"]["created"])
+                dt.date.fromisoformat(records[i]["metadata"][METADATA_DATE_FIELD])
                 for i in indices
             ]
             days = (
@@ -775,7 +779,7 @@ def _sample_metadata(
         "source": rng.choices(sources, weights=source_weights, k=1)[0],
         "year": START.year,
         "sensitive": sensitive,
-        "codes": leaf.code_id,
+        METADATA_CODE_FIELD: leaf.code_id,
     }
 
 
@@ -843,7 +847,7 @@ def gen_specs(
         leaf: pattern for pattern, leaves_in in carriers.items() for leaf in leaves_in
     }
     for record in records:
-        cid = record["metadata"]["codes"]
+        cid = record["metadata"][METADATA_CODE_FIELD]
         leaf = leaf_by_id[cid]
         record["_context"] = {
             "code_name": leaf.name,
@@ -935,7 +939,7 @@ def merge(
         out_records.append({"id": spec["id"], "text": text, "metadata": metadata})
 
         role = spec.get("_context", {}).get("trend_role", "baseline")
-        cid = spec["metadata"]["codes"].split(",")[0].strip()
+        cid = spec["metadata"][METADATA_CODE_FIELD].split(",")[0].strip()
         if role != "baseline" and cid not in carriers[role]:
             carriers[role].append(cid)
         by_pattern[role].append(i)
