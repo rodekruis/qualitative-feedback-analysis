@@ -1032,12 +1032,15 @@ class TestAnalyzeHappyPath:
             _make_feedback_record(
                 doc_id="r1",
                 content="water access was limited",
-                metadata={"created": "2024-01-05T10:00:00Z", "codes": "Water"},
+                metadata={"created": "2024-01-05T10:00:00Z", "coding_level_1": "Water"},
             ),
             _make_feedback_record(
                 doc_id="r2",
                 content="health clinic medicine",
-                metadata={"created": "2024-02-02T10:00:00Z", "codes": "Health"},
+                metadata={
+                    "created": "2024-02-02T10:00:00Z",
+                    "coding_level_1": "Health",
+                },
             ),
         )
         request = _make_request(feedback_records=records).model_copy(

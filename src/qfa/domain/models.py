@@ -28,15 +28,26 @@ class FeedbackRecordMetadataModel(BaseModel):
     corpus-level fields (e.g. `region`, `year`) continue to work.
     """
 
-    model_config = ConfigDict(frozen=True, extra="allow")
+    model_config = ConfigDict(frozen=True)
 
     created: str = Field(
+        default="",
         description="ISO 8601 timestamp string for the feedback record.",
     )
 
-    codes: str | None = Field(
+    coding_level_1: str | None = Field(
         default=None,
-        description="Comma-separated coding labels assigned to the feedback record.",
+        description="Code level 1 label assigned to the feedback record.",
+    )
+
+    coding_level_2: str | None = Field(
+        default=None,
+        description="Code level 2 label assigned to the feedback record.",
+    )
+
+    coding_level_3: str | None = Field(
+        default=None,
+        description="Code level 3 label assigned to the feedback record.",
     )
 
 

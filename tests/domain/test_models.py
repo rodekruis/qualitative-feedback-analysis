@@ -23,15 +23,17 @@ class TestFeedbackRecordModel:
         assert doc.id == "doc-1"
         assert doc.content == "Some feedback"
 
-    def test_metadata_defaults_to_empty(self):
+    def test_metadata_default_has_empty_created(self):
         doc = FeedbackRecordModel(id="doc-1", content="Some feedback")
         assert isinstance(doc.metadata, FeedbackRecordMetadataModel)
-        assert doc.metadata.model_dump(exclude_none=True) == {}
+        assert doc.metadata.created == ""
+        assert doc.metadata.model_dump(exclude_none=True) == {"created": ""}
 
     def test_metadata_with_values(self):
-        meta = {"source": "email", "score": 5, "weight": 0.8, "urgent": True}
+        meta = {"coding_level_1": "Water", "coding_level_2": "Sanitation"}
         doc = FeedbackRecordModel(id="doc-1", content="feedback", metadata=meta)
-        assert doc.metadata.model_dump(exclude_none=True) == meta
+        assert doc.metadata.coding_level_1 == "Water"
+        assert doc.metadata.coding_level_2 == "Sanitation"
 
     def test_frozen_raises_on_assignment(self):
         doc = FeedbackRecordModel(id="doc-1", content="feedback")

@@ -177,17 +177,18 @@ class TestBuildAnalyzeUserMessage:
     def test_includes_metadata_as_key_value_lines(self):
         """Metadata renders as one ``key=value`` line per entry inside ``<metadata>``."""
         out = build_analyze_user_message(
-            "q", (_rec(metadata={"region": "Eastern Province", "year": 2024}),)
+            "q", (_rec(metadata={"coding_level_1": "Eastern Province"}),)
         )
         assert "<metadata>" in out
-        assert "region=Eastern Province" in out
-        assert "year=2024" in out
+        assert "coding_level_1=Eastern Province" in out
         assert "</metadata>" in out
 
-    def test_escapes_metadata_keys_and_values(self):
-        """Metadata keys and values are escaped before embedding."""
-        out = build_analyze_user_message("q", (_rec(metadata={"<bad>": "<v>"}),))
-        assert "&lt;bad&gt;=&lt;v&gt;" in out
+    def test_escapes_metadata_values(self):
+        """Metadata values are escaped before embedding."""
+        out = build_analyze_user_message(
+            "q", (_rec(metadata={"coding_level_1": "<v>"}),)
+        )
+        assert "coding_level_1=&lt;v&gt;" in out
 
     def test_empty_metadata_omits_metadata_block(self):
         """Records without metadata don't emit an empty ``<metadata>`` block."""

@@ -14,9 +14,9 @@ while($i < $count) {
   // Fetch real attributes
   $feedbackDescription = record\attribute('CFeedbackData', $$backendID, 'feedbackDescription');
   $feedbackID = record\attribute('CFeedbackData', $$backendID, 'feedbackFormID');
-  $codingLevel1 = codingLevel1Name;
-  $codingLevel2 = codingLevel2Name;
-  $codingLevel3 = codingLevel3Name;
+  $codingLevel1 = record\attribute('CFeedbackData', $$backendID, 'codingLevel1');    
+  $codingLevel2 = record\attribute('CFeedbackData', $$backendID, 'codingLevel2');    
+  $codingLevel3 = record\attribute('CFeedbackData', $$backendID, 'codingLevel3');   
   $createdAt = record\attribute('CFeedbackData', $$backendID, 'createdAt');
 
   // Clean the feedback description string
@@ -30,7 +30,6 @@ while($i < $count) {
       '"coding_level_2": "', $codingLevel2, '", ',
       '"coding_level_3": "', $codingLevel3, '", ',
       '"created": "', $createdAt, '", ',
-      '"feedback_record_id": "', $feedbackID, '"',
     '}'
   );
   

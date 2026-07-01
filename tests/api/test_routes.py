@@ -272,7 +272,7 @@ class TestDetectSensitiveSuccess:
             feedback_record={
                 "id": "doc-1",
                 "content": "A staff member asked for a bribe.",
-                "metadata": {"region": "North"},
+                "metadata": {"coding_level_1": "North"},
             }
         )
         async with _make_client(test_app) as c:
@@ -286,7 +286,7 @@ class TestDetectSensitiveSuccess:
         record = (
             test_app.state.orchestrator.last_detect_sensitive_request.feedback_record
         )
-        assert record.metadata.model_dump(exclude_none=True) == {"region": "North"}
+        assert record.metadata.coding_level_1 == "North"
 
 
 # ------------------------------------------------------------------ #
