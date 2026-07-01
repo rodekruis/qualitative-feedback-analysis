@@ -23,6 +23,41 @@ resource "azurerm_application_insights" "main" {
   application_type    = "web"
 }
 
+# Routes App Service stdout/stderr and HTTP access logs into the Log Analytics
+# workspace above, making them searchable via KQL in the Azure Portal.
+# Without this, logs only exist in the live App Service log stream and cannot
+# be queried after the fact or used to trigger log-based alerts.
+#
+# Useful KQL queries once data arrives (Azure Portal → Log Analytics workspace
+# → Logs):
+#   AppServiceConsoleLogs                           -- all stdout/stderr
+#   | where ResultDescription contains "ERROR"
+#
+#   AppServiceHTTPLogs                              -- per-request HTTP log
+#   | where ScStatus >= 500
+#   | summarize count() by bin(TimeGenerated, 1h)
+resource "azurerm_monitor_diagnostic_setting" "app_service" {
+  name                       = "qfa-${local.env}-backend-diag"
+  target_resource_id         = azurerm_linux_web_app.backend.id
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
+
+  enabled_log {
+    category = "AppServiceConsoleLogs" # stdout/stderr — where Python logging output goes
+  }
+
+  enabled_log {
+    category = "AppServiceHTTPLogs" # HTTP access log: status, latency, path per request
+  }
+
+  enabled_log {
+    category = "AppServicePlatformLogs" # container restarts, scaling events
+  }
+
+  metric {
+    category = "AllMetrics"
+  }
+}
+
 # =============================================================================
 # Alerting
 # =============================================================================
@@ -35,7 +70,7 @@ resource "azurerm_monitor_action_group" "email" {
   short_name          = "qfa-alerts"
 
   email_receiver {
-    name          = "olaf"
+    name          = "olaf" #TODO change to teams channel
     email_address = "olaf@aurai.com"
   }
 }
