@@ -311,6 +311,7 @@ class AppSettings(BaseSettings):
     db: DatabaseSettings = Field(default_factory=DatabaseSettings)
     network: NetworkSettings = Field(default_factory=NetworkSettings)
     debug: bool = False
+    applicationinsights_connection_string: str | None = None
     """Whether to enable debug mode.
     
     This will, e.g., enable code reloading for the uvicorn server.
