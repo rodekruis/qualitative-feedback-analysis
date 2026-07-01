@@ -70,7 +70,7 @@ After this, the `terraform.yaml` workflow can manage this environment's infrastr
 
 ### 6. Seed Key Vault secrets
 
-The App Service reads three secrets from Key Vault at runtime via [Key Vault references](https://learn.microsoft.com/en-us/azure/app-service/app-service-key-vault-references) (configured in `app_service.tf`). Terraform creates the vault and grants the App Service read access (`Key Vault Secrets User`), but does **not** manage secret values — those are set out-of-band to keep them out of Terraform state.
+The App Service reads three secrets from Key Vault at runtime via [Key Vault references](https://learn.microsoft.com/en-us/azure/app-service/app-service-key-vault-references) (configured in `app_service.tf`). Terraform creates the vault with soft delete and purge protection enabled, and grants the App Service read access (`Key Vault Secrets User`), but does **not** manage secret values — those are set out-of-band to keep them out of Terraform state.
 
 The Key Vault uses RBAC authorization, so Azure Contributor/Owner on the resource group alone does **not** grant data-plane access to secrets. You must first assign yourself `Key Vault Secrets Officer` on the vault.
 

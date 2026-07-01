@@ -26,6 +26,20 @@ insight record is **created**. This flow selects the endpoint that coincides wit
 
 The two flows build their distinctive `motherPayload`, which is a a json containing all key-value pairs needed by the endpoints. This holds information about the (selected) feedbackitem(s) and their attributes. 
 
+## Flowcharts
+
+The two workflows above are implemented as EspoCRM flowcharts, built and maintained inside the EspoCRM UI. Exports of these flowcharts are stored in `scripts/espo_crm/flowcharts/` as CSV files:
+
+- `Feedback_saving_flowchart.csv` — feedback record save trigger
+- `Insight_creation_flowchart.csv` — insight creation trigger
+
+These CSV files serve as the versioning mechanism: whenever a flowchart is updated, a fresh export should be committed to the repository. Promoting a flowchart to staging or production is then a matter of importing the CSV through the EspoCRM UI.
+
+For the flowcharts to call the backend correctly, two values must be set in _Administration_ → _App Secrets_ of the target EspoCRM instance (see [Authentication](#authentication) below):
+
+- `QFA_API_BASE_URL` — base URL of the QFA backend for that environment, e.g. `https://qfa-dev-backend.azurewebsites.net`
+- `QFA_API_KEY` — bearer token for that QFA instance
+
 ## Display output
 
 The `-bulk` responses includes a backend-rendered `pretty_output`
