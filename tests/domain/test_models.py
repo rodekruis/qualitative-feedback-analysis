@@ -30,8 +30,13 @@ class TestFeedbackRecordModel:
         assert doc.metadata.model_dump(exclude_none=True) == {"created": ""}
 
     def test_metadata_with_values(self):
-        meta = {"coding_level_1": "Water", "coding_level_2": "Sanitation"}
-        doc = FeedbackRecordModel(id="doc-1", content="feedback", metadata=meta)
+        doc = FeedbackRecordModel(
+            id="doc-1",
+            content="feedback",
+            metadata=FeedbackRecordMetadataModel(
+                coding_level_1="Water", coding_level_2="Sanitation"
+            ),
+        )
         assert doc.metadata.coding_level_1 == "Water"
         assert doc.metadata.coding_level_2 == "Sanitation"
 
@@ -136,7 +141,9 @@ def test_analysis_request_accepts_hierarchical_mode() -> None:
     Why: #124 introduces the second mode; omitting ``mode`` must still
     default to ``single_pass`` so existing callers are unaffected.
     """
-    record = FeedbackRecordModel(id="r1", content="x", metadata={})
+    record = FeedbackRecordModel(
+        id="r1", content="x", metadata=FeedbackRecordMetadataModel()
+    )
     default = AnalysisRequestModel(
         feedback_records=(record,), prompt="p", tenant_id="t"
     )

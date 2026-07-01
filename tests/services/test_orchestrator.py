@@ -12,6 +12,7 @@ from qfa.domain.models import (
     AggregateSummaryResultModel,
     AnalysisRequestModel,
     AnalysisResultModel,
+    FeedbackRecordMetadataModel,
     FeedbackRecordModel,
     FeedbackRecordSummaryModel,
     LLMResponse,
@@ -33,7 +34,11 @@ MAX_TOKENS = 10_000
 
 
 def _make_feedback_record(doc_id="doc-1", content="Some feedback text.", metadata=None):
-    return FeedbackRecordModel(id=doc_id, content=content, metadata=metadata or {})
+    return FeedbackRecordModel(
+        id=doc_id,
+        content=content,
+        metadata=FeedbackRecordMetadataModel.model_validate(metadata or {}),
+    )
 
 
 def _make_request(

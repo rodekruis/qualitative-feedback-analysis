@@ -1,6 +1,6 @@
 """Tests for the analyse prompt module: constants, escape helper, envelope builder."""
 
-from qfa.domain.models import FeedbackRecordModel
+from qfa.domain.models import FeedbackRecordMetadataModel, FeedbackRecordModel
 from qfa.services.prompts import (
     build_analyze_judge_system_message,
     build_analyze_user_message,
@@ -118,7 +118,13 @@ class TestEscapeForTagEnvelope:
 
 
 def _rec(rec_id="doc-1", content="hello", metadata=None):
-    return FeedbackRecordModel(id=rec_id, content=content, metadata=metadata or {})
+    return FeedbackRecordModel(
+        id=rec_id,
+        content=content,
+        metadata=FeedbackRecordMetadataModel.model_validate(metadata)
+        if metadata is not None
+        else FeedbackRecordMetadataModel(),
+    )
 
 
 class TestBuildAnalyzeUserMessage:

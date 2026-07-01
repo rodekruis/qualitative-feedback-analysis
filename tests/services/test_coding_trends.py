@@ -7,7 +7,7 @@ decision in the design spec.
 """
 
 from qfa.domain.clustering_models import CodingTrendCell, CodingTrendTable
-from qfa.domain.models import FeedbackRecordModel
+from qfa.domain.models import FeedbackRecordMetadataModel, FeedbackRecordModel
 from qfa.services.coding_trends import (
     build_coding_trend_table,
     render_coding_trend_table,
@@ -18,7 +18,7 @@ def _record(rec_id: str, created: str, codes: str) -> FeedbackRecordModel:
     return FeedbackRecordModel(
         id=rec_id,
         content="some feedback",
-        metadata={"created": created, "coding_level_1": codes},
+        metadata=FeedbackRecordMetadataModel(created=created, coding_level_1=codes),
     )
 
 
@@ -103,7 +103,11 @@ def test_returns_none_when_date_field_absent() -> None:
     Why: the spec mandates best-effort; a missing field must never raise.
     """
     records = (
-        FeedbackRecordModel(id="r1", content="x", metadata={"coding_level_1": "Water"}),
+        FeedbackRecordModel(
+            id="r1",
+            content="x",
+            metadata=FeedbackRecordMetadataModel(coding_level_1="Water"),
+        ),
     )
     table = build_coding_trend_table(
         records, date_field="created", code_fields=("coding_level_1",)
@@ -120,7 +124,9 @@ def test_records_without_codes_are_skipped_not_errored() -> None:
     records = (
         _record("r1", "2024-01-05T10:00:00Z", "Water"),
         FeedbackRecordModel(
-            id="r2", content="x", metadata={"created": "2024-01-06T10:00:00Z"}
+            id="r2",
+            content="x",
+            metadata=FeedbackRecordMetadataModel(created="2024-01-06T10:00:00Z"),
         ),
     )
     table = build_coding_trend_table(
