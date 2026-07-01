@@ -228,7 +228,7 @@ class AnalyzeSettings(BaseSettings):
         description="Metadata key holding the record date for the coding-trend table.",
     )
     coding_trend_code_fields: list[str] = Field(
-        default_factory=lambda: ["codes"],
+        default_factory=lambda: ["coding_level_1", "coding_level_2", "coding_level_3"],
         description="Metadata keys holding coding labels (comma-separated strings).",
     )
     default_coding_trend_period: TrendPeriod = Field(

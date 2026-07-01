@@ -104,14 +104,14 @@ def test_coding_trend_table_counts_match_corpus() -> None:
     # default granularity is ``week``, but the fixture isn't aligned to
     # ISO weeks.
     table = build_coding_trend_table(
-        records, date_field="created", code_fields=("codes",), period="month"
+        records, date_field="created", code_fields=("coding_level_1",), period="month"
     )
     assert table is not None
     # Hand count of one known (code, period) pair from the fixture.
     expected = sum(
         1
         for item in corpus
-        if "Water" in item["metadata"]["codes"].split(",")
+        if "Water" in item["metadata"]["coding_level_1"].split(",")
         and item["metadata"]["created"].startswith("2024-01")
     )
     got = next(

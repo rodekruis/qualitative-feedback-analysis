@@ -65,7 +65,7 @@ def _sort_by_date(
         return records
 
     def key(record: FeedbackRecordModel) -> tuple[bool, str]:
-        prefix = _iso_date_prefix(record.metadata.get(date_field))
+        prefix = _iso_date_prefix(getattr(record.metadata, date_field, None))
         return (prefix is None, prefix or "")
 
     return tuple(sorted(records, key=key))

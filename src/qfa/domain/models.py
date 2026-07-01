@@ -19,6 +19,38 @@ from qfa.domain.clustering_models import CodingTrendTable, TrendPeriod
 from qfa.domain.sensitivity_types import SensitivityType
 
 
+class FeedbackRecordMetadataModel(BaseModel):
+    """Metadata associated with a feedback record.
+
+    Named fields (`created`, `feedback_record_id`, `codes`) match the EspoCRM
+    pipeline convention (see `scripts/espo_crm/`). Additional arbitrary
+    key-value pairs are accepted and round-tripped transparently so that
+    corpus-level fields (e.g. `region`, `year`) continue to work.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    created: str = Field(
+        default="",
+        description="ISO 8601 timestamp string for the feedback record.",
+    )
+
+    coding_level_1: str | None = Field(
+        default=None,
+        description="Code level 1 label assigned to the feedback record.",
+    )
+
+    coding_level_2: str | None = Field(
+        default=None,
+        description="Code level 2 label assigned to the feedback record.",
+    )
+
+    coding_level_3: str | None = Field(
+        default=None,
+        description="Code level 3 label assigned to the feedback record.",
+    )
+
+
 class FeedbackRecordModel(BaseModel):
     """A single feedback record submitted for analysis."""
 
@@ -30,9 +62,9 @@ class FeedbackRecordModel(BaseModel):
         max_length=100_000,
         description="Feedback text content.",
     )
-    metadata: dict[str, str | int | float | bool] = Field(
-        default_factory=dict,
-        description="Optional metadata key-value pairs associated with the feedback record.",
+    metadata: FeedbackRecordMetadataModel = Field(
+        default_factory=FeedbackRecordMetadataModel,
+        description="Metadata key-value pairs associated with the feedback record.",
     )
 
 

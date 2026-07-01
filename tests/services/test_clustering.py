@@ -7,17 +7,20 @@ token budget, so the recursion trigger in the orchestrator is well-defined.
 These are pure, deterministic and tested with hand-built vectors (no model).
 """
 
-from qfa.domain.models import FeedbackRecordModel
+from qfa.domain.models import FeedbackRecordMetadataModel, FeedbackRecordModel
 from qfa.services.clustering import _split_to_budget, cluster_records
 
 
 def _record(
     rec_id: str, content: str = "feedback", *, created: str | None = None
 ) -> FeedbackRecordModel:
-    metadata: dict[str, str | int | float] = {}
-    if created is not None:
-        metadata["created"] = created
-    return FeedbackRecordModel(id=rec_id, content=content, metadata=metadata)
+    return FeedbackRecordModel(
+        id=rec_id,
+        content=content,
+        metadata=FeedbackRecordMetadataModel(
+            created=created if created is not None else ""
+        ),
+    )
 
 
 def test_every_record_lands_in_exactly_one_chunk() -> None:
@@ -213,7 +216,7 @@ def test_records_are_sorted_by_date_within_each_chunk() -> None:
         date_field="created",
     )
     for chunk in chunks:
-        seen = [r.metadata["created"] for r in chunk.records]
+        seen = [r.metadata.created for r in chunk.records]
         assert seen == sorted(seen), f"chunk not in date order: {seen}"
 
 

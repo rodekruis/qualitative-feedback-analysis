@@ -16,6 +16,7 @@ import pytest
 from qfa.domain.errors import AnalysisError, AnalysisTimeoutError, LLMError
 from qfa.domain.models import (
     AnalysisRequestModel,
+    FeedbackRecordMetadataModel,
     FeedbackRecordModel,
     LLMResponse,
 )
@@ -105,7 +106,7 @@ def _records(n: int, text: str, prefix: str) -> tuple[FeedbackRecordModel, ...]:
         FeedbackRecordModel(
             id=f"{prefix}{i}",
             content=text,
-            metadata={"created": "2024-01-05T00:00:00Z", "codes": "Water"},
+            metadata=FeedbackRecordMetadataModel(created="2024-01-05T00:00:00Z"),
         )
         for i in range(n)
     )
@@ -213,7 +214,7 @@ async def test_anonymization_happens_before_any_llm_or_embed_call():
         FeedbackRecordModel(
             id="r1",
             content="Jane reported water shortages " * 5,
-            metadata={"created": "2024-01-05T00:00:00Z", "codes": "Water"},
+            metadata=FeedbackRecordMetadataModel(created="2024-01-05T00:00:00Z"),
         ),
         *_records(3, "water access " * 5, "w"),
     )
