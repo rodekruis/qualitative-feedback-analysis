@@ -4,12 +4,13 @@ EspoCRM is the primary upstream feeding feedback records into the service. The i
 
 ## What the scripts do
 
-The code is written in EspoCRM Formula Script, which is a specialized language, very similar to PHP. The files have a `.php` extensions, but this is solely for development highlighting.
+The code is written in EspoCRM Formula Script, which is a specialized language, very similar to PHP. The files have a `.php` extension, but this is solely for syntax highlighting during development.
 
 Server-side EspoCRM scripts in `scripts/espo_crm/` compose request bodies based on two distinct workflows.
 
 ### Single-feedback record script
-`scripts/espo_crm/feedback_trigger` contains code that triggers on a feedback record **save**. 
+
+`scripts/espo_crm/feedback_trigger` contains code that triggers on a feedback record **save**.
 
 ![Espo flowchart for saving a single feedback item](../assets/espo_feedback_save_flow.png)
 
@@ -19,32 +20,53 @@ These use all single-feedback record endpoints such as `summarize`, `detect-sens
 
 ### Insight saving script
 
-`scripts/espo_crm/insight_trigger` has code that's triggered when an 
-insight record is **created**. This flow selects the endpoint that coincides with the user request, and calls one of the bulk endpoints: `analyze-bulk` or `summarize-bulk`.
+`scripts/espo_crm/insight_trigger` has code that triggers when an insight record is **created**. This flow selects the endpoint that coincides with the user request, and calls one of the bulk endpoints: `analyze-bulk` or `summarize-bulk`.
 
 ![Espo flowchart for creating an insight entity](../assets/espo_insight_creation_flow.png)
 
-The two flows build their distinctive `motherPayload`, which is a a json containing all key-value pairs needed by the endpoints. This holds information about the (selected) feedbackitem(s) and their attributes. 
+The two flows build their distinctive `motherPayload` — a JSON object containing all key-value pairs needed by the endpoints. This holds information about the selected feedback item(s) and their attributes. The attributes are saved as metadata in this flow.
+
+## Flowcharts
+
+The two workflows above are implemented as EspoCRM flowcharts, built and maintained inside the EspoCRM UI. Exports of these flowcharts are stored in `scripts/espo_crm/flowcharts/` as CSV files:
+
+- `Feedback_saving_flowchart.csv` — feedback record save trigger
+- `Insight_creation_flowchart.csv` — insight creation trigger
+
+These CSV files serve as the versioning mechanism: whenever a flowchart is updated in the EspoCRM UI, export a fresh copy and commit it. Promoting a flowchart to staging or production is then a matter of importing the CSV through the EspoCRM UI.
+
+> **Version requirement:** Dynamic API URL selection requires EspoCRM **9.2.3 or higher**. On older versions `QFA_API_BASE_URL` cannot be read from App Secrets at runtime and the URL must be hard-coded in the flowchart. Always upgrade to the latest supported version.
+
+### Exporting a flowchart
+
+1. In EspoCRM, go to **Flowcharts**.
+2. Open the folder containing the flowchart you want to export.
+3. Select the flowchart and choose **Actions → Export**.
+4. Select **CSV format** and check **Export all fields**.
+5. Commit the downloaded file to `scripts/espo_crm/flowcharts/`.
+
+### Importing a flowchart
+
+1. In EspoCRM, go to **Import** and select **Flowcharts**.
+2. Upload the CSV file from `scripts/espo_crm/flowcharts/`.
+3. Under **What to do?**, select **Create & Update** if the flowchart already exists, or **Create Only** for a fresh environment.
+4. Click **Next**, then **Run Import**.
+
+<img src="../assets/import_flowchart.png" alt="Import of Flowchart in EspoCRM" width="800"/>
 
 ## Display output
 
-The `-bulk` responses includes a backend-rendered `pretty_output`
-field — a human-readable text block (quality dots, title, summary) ready to
-write straight into an EspoCRM field. The formatting lives entirely in the
-backend, so the scripts do not assemble it.
+The `-bulk` responses include a backend-rendered `pretty_output` field — a human-readable text block (quality dots, title, summary) ready to write straight into an EspoCRM field. The formatting lives entirely in the backend, so the scripts do not assemble it.
 
-Its `QUALITY`/`TITLE`/`SUMMARY` headers are localized to the request's
-`output_language` (the same field that drives the title/summary language).
-Supported languages are English, French, Spanish, Arabic, Russian, Dutch, and
-Ukrainian; any other or absent value falls back to English headers. The
-technical `IDs` label is not localized.
+Its `QUALITY`/`TITLE`/`SUMMARY` headers are localized to the request's `output_language` (the same field that drives the title/summary language). Supported languages are English, French, Spanish, Arabic, Russian, Dutch, and Ukrainian; any other or absent value falls back to English headers. The technical `IDs` label is not localized.
 
 ## Authentication
 
-EspoCRM stores the bearer token as a server-side secret. Provisioning and rotation use the standard flow in [API key management](../operations/auth-management.md). 
+EspoCRM stores the bearer token as a server-side secret. Provisioning and rotation use the standard flow in [API key management](../operations/auth-management.md).
 
-> NOTE: Currently, we cannot select the api url dynamically. We need [Espo Version 9.2.3](https://docs.espocrm.com/administration/app-secrets/) to get the secrets from the App secrets dynamically in Espo script.
+Within your EspoCRM instance, set the following values under _Administration_ → _App Secrets_:
 
-Within your EspoCRM instance, two values are expected in the _Administration_/_App Secrets_:
-- `QFA_API_BASE_URL`| The base URL of QFA, e.g. "https://qfa-dev-backend.azurewebsites.net" ⚠️ Currently not implemented, see note above.
-- `QFA_API_KEY` | Bearer token for the QFA instance.
+| Secret | Value |
+|---|---|
+| `QFA_API_BASE_URL` | Base URL of the QFA backend for that environment, e.g. `https://qfa-dev-backend.azurewebsites.net` |
+| `QFA_API_KEY` | Bearer token for the QFA instance |

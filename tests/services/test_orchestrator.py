@@ -283,6 +283,7 @@ class TestTokenLimit:
                 _make_llm_response(
                     structured=_make_summary_result(),
                 ),
+                _make_llm_response(structured="0.8"),
             ]
         )
         orch = Orchestrator(
@@ -295,7 +296,7 @@ class TestTokenLimit:
 
         await orch.summarize(request, _future_deadline())
 
-        assert len(fake_llm.calls) == 1
+        assert len(fake_llm.calls) == 2
 
 
 class TestNonTransientError:
@@ -326,7 +327,8 @@ class TestNonTransientError:
                     structured=_make_summary_result(
                         summary="- Bullet one\n- Bullet two"
                     )
-                )
+                ),
+                _make_llm_response(structured="0.8"),
             ]
         )
         orch = Orchestrator(
@@ -340,6 +342,7 @@ class TestNonTransientError:
         result = await orch.summarize(_make_summary_request(), _future_deadline())
 
         assert result.summary == "- Bullet one\n- Bullet two"
+        assert result.quality_score == 0.8
         assert fake_llm.calls[0]["response_model"] is SummaryResultModel
 
     @pytest.mark.asyncio
@@ -803,6 +806,7 @@ class TestInjectionSystemPrefix:
         fake_llm = FakeLLMPort(
             responses=[
                 _make_llm_response(structured=_make_summary_result()),
+                _make_llm_response(structured="0.8"),
             ]
         )
         orch = Orchestrator(
@@ -815,7 +819,7 @@ class TestInjectionSystemPrefix:
 
         await orch.summarize(request, _future_deadline())
 
-        assert len(fake_llm.calls) == 1
+        assert len(fake_llm.calls) == 2
 
 
 class TestInjectionNullBytes:
