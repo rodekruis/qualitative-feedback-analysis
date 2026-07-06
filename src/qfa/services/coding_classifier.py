@@ -4,6 +4,9 @@ import json
 
 from pydantic import BaseModel, Field
 
+from qfa.domain.models import FeedbackRecordModel
+from qfa.services.prompts import build_feedback_record_envelope
+
 
 class JudgeResponse(BaseModel):
     """Structured output returned by the LLM judge for one hierarchy level."""
@@ -57,7 +60,7 @@ SYSTEM_PROMPT = _SYSTEM
 
 def _build_user_message(
     *,
-    feedback_text: str,
+    feedback_record: FeedbackRecordModel,
     current_level: str,
     labels: list[str],
     hierarchy_path: list[tuple[str, str]],
@@ -65,15 +68,15 @@ def _build_user_message(
     """Format the user turn: feedback, optional path, current level, numbered options."""
     if hierarchy_path:
         path_lines = "\n".join(f"{label}: {value}" for label, value in hierarchy_path)
-        path_block = f"Hierarchy path already selected:\n{path_lines}\n\n"
+        path_block = f"<hierarchy_path>\n{path_lines}\n</hierarchy_path>\n\n"
     else:
         path_block = ""
     options = "\n".join(f"{i}: {labels[i]}" for i in range(len(labels)))
     return (
-        f"Feedback:\n---\n{feedback_text}\n---\n"
+        f"{build_feedback_record_envelope(feedback_record, include_metadata=False, include_id=False)}\n"
         f"{path_block}"
-        f"Current level:\n{current_level}\n\n"
-        f"Options:\n{options}"
+        f"<current_level>\n{current_level}\n</current_level>\n\n"
+        f"<options>\n{options}\n</options>"
     )
 
 
@@ -98,7 +101,7 @@ def _parse_selected_indices(raw: str, num_options: int) -> list[int]:
 
 def build_pick_messages(
     *,
-    feedback_text: str,
+    feedback_record: FeedbackRecordModel,
     current_level: str,
     labels: list[str],
     hierarchy_path: list[tuple[str, str]] | None = None,
@@ -109,7 +112,7 @@ def build_pick_messages(
 
     path = hierarchy_path or []
     return SYSTEM_PROMPT, _build_user_message(
-        feedback_text=feedback_text,
+        feedback_record=feedback_record,
         current_level=current_level,
         labels=labels,
         hierarchy_path=path,
@@ -154,7 +157,7 @@ Scores between anchors are expected and encouraged. For example, a strong but no
 
 def build_judge_messages(
     *,
-    feedback_text: str,
+    feedback_record: FeedbackRecordModel,
     level: str,
     path: list[tuple[str, str]],
 ) -> tuple[str, str]:
@@ -162,8 +165,8 @@ def build_judge_messages(
 
     Parameters
     ----------
-    feedback_text:
-        Raw text of the feedback record being coded.
+    feedback_record:
+        The feedback record being coded.
     level:
         The hierarchy level being evaluated: ``"Code level 1"``, ``"Code level 2"``, or ``"Code level 3"``.
     path:
@@ -173,8 +176,8 @@ def build_judge_messages(
     """
     path_lines = "\n".join(f"{name}: {label}" for name, label in path)
     user = (
-        f"Feedback:\n---\n{feedback_text}\n---\n\n"
-        f"Code path:\n{path_lines}\n\n"
-        f"Evaluate the {level} assignment."
+        f"{build_feedback_record_envelope(feedback_record, include_metadata=False, include_id=False)}\n"
+        f"<code_path>\n{path_lines}\n</code_path>\n\n"
+        f"<instruction>\nEvaluate the {level} assignment.\n</instruction>"
     )
     return _JUDGE_SYSTEM, user
