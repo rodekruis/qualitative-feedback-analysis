@@ -22,13 +22,18 @@ from qfa.domain.sensitivity_types import SensitivityType
 class FeedbackRecordMetadataModel(BaseModel):
     """Metadata associated with a feedback record.
 
-    Named fields (`created`, `feedback_record_id`, `codes`) match the EspoCRM
-    pipeline convention (see `scripts/espo_crm/`). Additional arbitrary
-    key-value pairs are accepted and round-tripped transparently so that
-    corpus-level fields (e.g. `region`, `year`) continue to work.
+    Named fields (`created`, `coding_level_1`, `coding_level_2`,
+    `coding_level_3`) match the EspoCRM pipeline convention (see
+    `scripts/espo_crm/`). Only these fields are accepted; any other key is
+    rejected rather than silently dropped, matching the API-level
+    `ApiFeedbackRecordMetadata` (`qfa.api.schemas`), which enforces the same
+    restriction at the HTTP boundary. Test/benchmark fixtures that carry
+    richer metadata (e.g. `fixtures/analyze_corpus.yaml`'s `theme`,
+    `language`, `codes`) must project down to these four fields before
+    constructing a `FeedbackRecordModel`.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     created: str = Field(
         default="",

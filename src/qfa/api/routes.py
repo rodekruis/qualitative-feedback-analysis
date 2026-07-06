@@ -189,7 +189,9 @@ async def analyze_bulk(
         FeedbackRecordModel(
             id=doc.id,
             content=doc.content,
-            metadata=FeedbackRecordMetadataModel.model_validate(doc.metadata),
+            metadata=FeedbackRecordMetadataModel.model_validate(
+                doc.metadata.model_dump()
+            ),
         )
         for doc in records
     )
@@ -284,7 +286,9 @@ async def summarize_bulk(
         FeedbackRecordModel(
             id=record.id,
             content=record.content,
-            metadata=FeedbackRecordMetadataModel.model_validate(record.metadata),
+            metadata=FeedbackRecordMetadataModel.model_validate(
+                record.metadata.model_dump()
+            ),
         )
         for record in records
     )
@@ -358,7 +362,7 @@ async def summarize(
             id=body.feedback_record.id,
             content=body.feedback_record.content,
             metadata=FeedbackRecordMetadataModel.model_validate(
-                body.feedback_record.metadata
+                body.feedback_record.metadata.model_dump()
             ),
         ),
         tenant_id=tenant.tenant_id,
@@ -406,7 +410,7 @@ async def assign_codes(
             id=body.feedback_record.id,
             content=body.feedback_record.content,
             metadata=FeedbackRecordMetadataModel.model_validate(
-                body.feedback_record.metadata
+                body.feedback_record.metadata.model_dump()
             ),
         ),
         coding_levels=CodingFramework(
@@ -495,7 +499,7 @@ async def detect_sensitive(
                 id=body.feedback_record.id,
                 content=body.feedback_record.content,
                 metadata=FeedbackRecordMetadataModel.model_validate(
-                    body.feedback_record.metadata
+                    body.feedback_record.metadata.model_dump()
                 ),
             ),
             tenant_id=tenant.tenant_id,

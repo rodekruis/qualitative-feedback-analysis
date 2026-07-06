@@ -158,7 +158,6 @@ class TestRequestIdEqualsCallId:
                         "content": "hello",
                         "metadata": {
                             "created": "2024-06-01T12:00:00Z",
-                            "feedback_record_id": "fi-d1",
                             "coding_level_1": "L1",
                             "coding_level_2": "L2",
                             "coding_level_3": "L3",

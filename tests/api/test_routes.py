@@ -38,7 +38,6 @@ def _make_client(app):
 def _summary_metadata(**overrides):
     base = {
         "created": "2024-01-15T10:00:00+00:00",
-        "feedback_record_id": "fi-doc-1",
         "coding_level_1": "l1",
         "coding_level_2": "l2",
         "coding_level_3": "l3",
