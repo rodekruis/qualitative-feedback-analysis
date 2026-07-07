@@ -30,6 +30,7 @@ sys.modules["is_latest_release"] = is_latest_release
 _spec.loader.exec_module(is_latest_release)
 
 is_latest = is_latest_release.is_latest
+greatest_tag = is_latest_release.greatest_tag
 
 
 def test_greatest_including_drafts_returns_true():
@@ -73,10 +74,26 @@ def test_only_release_is_latest():
     assert is_latest("v0.4.0", ["v0.4.0"]) is True
 
 
-def test_unparseable_tag_raises():
-    """An unparseable tag makes the answer undecidable -> fail closed (scenario 7)."""
+def test_stray_non_semver_tag_is_ignored():
+    """A stray non-semver tag is dropped; the real greatest release still wins (scenario 7a).
+
+    One hand-cut tag (e.g. ``nightly``) must not brick every publish, so it is
+    excluded from the comparison rather than failing the whole guard closed.
+    """
+    assert is_latest("v0.6.0", ["v0.5.0", "v0.6.0", "nightly"]) is True
+    assert is_latest("v0.5.0", ["v0.5.0", "v0.6.0", "nightly"]) is False
+
+
+def test_published_tag_itself_unparseable_raises():
+    """If the *published* tag can't be parsed the answer is undecidable -> fail closed (scenario 7b)."""
     with pytest.raises(ValueError):
-        is_latest("v0.4.0", ["v0.4.0", "not-a-version"])
+        is_latest("not-a-version", ["not-a-version", "v0.4.0"])
+
+
+def test_no_parseable_tags_raises():
+    """If no release tag parses there is nothing to compare -> fail closed (scenario 7c)."""
+    with pytest.raises(ValueError):
+        greatest_tag(["nightly", "latest"])
 
 
 def test_tag_absent_from_list_raises():
@@ -109,8 +126,25 @@ def test_cli_exits_zero_and_reports_false():
     assert "is_greatest=false" in proc.stdout
 
 
-def test_cli_fails_closed_on_error():
-    """CLI exits 2 and emits an ::error:: annotation when latest is undecidable."""
-    proc = _run_cli("v0.4.0", "v0.4.0,not-a-version")
+def test_cli_ignores_stray_tag_and_warns():
+    """CLI drops a stray non-semver tag, still decides, and warns about the drop."""
+    proc = _run_cli("v0.6.0", "v0.5.0,v0.6.0,nightly")
+    assert proc.returncode == 0
+    assert "is_greatest=true" in proc.stdout
+    assert "latest=v0.6.0" in proc.stdout
+    assert "::warning::" in proc.stderr
+    assert "nightly" in proc.stderr
+
+
+def test_cli_fails_closed_when_published_tag_unparseable():
+    """CLI exits 2 and emits an ::error:: annotation when the published tag can't be parsed."""
+    proc = _run_cli("not-a-version", "not-a-version,v0.4.0")
+    assert proc.returncode == 2
+    assert "::error::" in proc.stderr
+
+
+def test_cli_fails_closed_on_empty_tag_list():
+    """CLI exits 2 when no releases are supplied (nothing to compare -> fail closed)."""
+    proc = _run_cli("v0.4.0", "")
     assert proc.returncode == 2
     assert "::error::" in proc.stderr

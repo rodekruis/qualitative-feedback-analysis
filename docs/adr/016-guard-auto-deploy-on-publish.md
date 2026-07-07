@@ -131,8 +131,11 @@ Apply the "never deploy an older version" check everywhere, prod included.
 - If the warning-only skip notice proves too quiet, escalate it (a comment on the
   GitHub Release, or a Slack notification).
 - If release tagging ever stops being strictly semver (e.g. date-based tags), the
-  definition of "latest" in `is_latest_release.py` must be revisited — it
-  currently assumes semver-parseable tags and fails closed on anything else.
+  definition of "latest" in `is_latest_release.py` must be revisited. It currently
+  assumes semver-parseable tags: stray non-semver tags in the release list are
+  ignored (logged via `::warning::`) so one hand-cut tag cannot brick every
+  publish, but the guard still fails closed when the *published* tag itself is
+  unparseable or no parseable release exists.
 
 ## Participants
 

@@ -62,9 +62,18 @@ jobs:
         id: guard
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Bind the tag to an env var rather than interpolating ${{ }} straight
+          # into the run script: a release tag is externally influenced and a
+          # tag containing shell metacharacters would otherwise be a script-
+          # injection vector. The shell — not the Actions template engine —
+          # handles the string via "$RELEASE_TAG".
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
           # List every release tag, drafts included (needs contents: write).
+          # --limit 1000 is effectively unbounded for this repo; if releases
+          # ever exceed it, the newest tags would be dropped and "latest"
+          # miscomputed — revisit the limit before that becomes possible.
           ALL_TAGS=$(gh release list \
             --repo "$GITHUB_REPOSITORY" \
             --limit 1000 \
@@ -76,5 +85,5 @@ jobs:
           # job and blocks the deploy.
           uv run --no-project --with packaging python \
             .github/scripts/is_latest_release.py \
-            --tag "${{ inputs.release_tag }}" \
+            --tag "$RELEASE_TAG" \
             --all-tags "$ALL_TAGS" >> "$GITHUB_OUTPUT"

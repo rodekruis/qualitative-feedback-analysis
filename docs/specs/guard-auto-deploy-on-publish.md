@@ -98,7 +98,9 @@ has a one-line docstring stating what + why; docs cite module/workflow names, no
   | 4b | publish `v1.0.0` while only `v1.0.0-rc.1` exists | `true` |
   | 5 | rc ordering: `v0.6.0-rc.2` vs `v0.6.0-rc.1` | rc.2 → `true` |
   | 6 | tag is the only release | `true` |
-  | 7 | unparseable tag present in list | raises → CLI exit 2 (fail closed) |
+  | 7a | stray non-semver tag alongside real releases | ignored; real greatest wins |
+  | 7b | the **published** tag itself is unparseable | raises → CLI exit 2 (fail closed) |
+  | 7c | no parseable tag in the list at all | raises → CLI exit 2 (fail closed) |
   | 8 | tag absent from list | raises → CLI exit 2 (fail closed) |
 
 - **Manual verification before merge:** on a scratch repo/branch, publish a draft
@@ -139,7 +141,9 @@ has a one-line docstring stating what + why; docs cite module/workflow names, no
    tree**, ranked correctly (`rc` < final) by the semver comparator (not `sort -V`).
 4. `promote-to-staging` / `promote-to-prd` still deploy **any** specified tag
    regardless of version (rollback preserved).
-5. Guard error / unparseable state → run fails **red**, nothing deployed.
+5. Genuinely undecidable state (published tag unparseable, tag absent, or no
+   parseable release at all) → run fails **red**, nothing deployed. A stray
+   non-semver tag *alongside* real releases is ignored (logged), not fatal.
 6. `is_latest_release.py` has passing pytest covering all scenarios in the table.
 7. ADR-016 added and indexed; `release-flow.md` updated; inaccurate reviewer-approval
    claims corrected (reviewers are not codified in Terraform).
