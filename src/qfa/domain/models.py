@@ -19,6 +19,43 @@ from qfa.domain.clustering_models import CodingTrendTable, TrendPeriod
 from qfa.domain.sensitivity_types import SensitivityType
 
 
+class FeedbackRecordMetadataModel(BaseModel):
+    """Metadata associated with a feedback record.
+
+    Named fields (`created`, `coding_level_1`, `coding_level_2`,
+    `coding_level_3`) match the EspoCRM pipeline convention (see
+    `scripts/espo_crm/`). Only these fields are accepted; any other key is
+    rejected rather than silently dropped, matching the API-level
+    `ApiFeedbackRecordMetadata` (`qfa.api.schemas`), which enforces the same
+    restriction at the HTTP boundary. Test/benchmark fixtures that carry
+    richer metadata (e.g. `fixtures/analyze_corpus.yaml`'s `theme`,
+    `language`, `codes`) must project down to these four fields before
+    constructing a `FeedbackRecordModel`.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    created: str = Field(
+        default="",
+        description="ISO 8601 timestamp string for the feedback record.",
+    )
+
+    coding_level_1: str | None = Field(
+        default=None,
+        description="Code level 1 label assigned to the feedback record.",
+    )
+
+    coding_level_2: str | None = Field(
+        default=None,
+        description="Code level 2 label assigned to the feedback record.",
+    )
+
+    coding_level_3: str | None = Field(
+        default=None,
+        description="Code level 3 label assigned to the feedback record.",
+    )
+
+
 class FeedbackRecordModel(BaseModel):
     """A single feedback record submitted for analysis."""
 
@@ -30,9 +67,9 @@ class FeedbackRecordModel(BaseModel):
         max_length=100_000,
         description="Feedback text content.",
     )
-    metadata: dict[str, str | int | float | bool] = Field(
-        default_factory=dict,
-        description="Optional metadata key-value pairs associated with the feedback record.",
+    metadata: FeedbackRecordMetadataModel = Field(
+        default_factory=FeedbackRecordMetadataModel,
+        description="Metadata key-value pairs associated with the feedback record.",
     )
 
 

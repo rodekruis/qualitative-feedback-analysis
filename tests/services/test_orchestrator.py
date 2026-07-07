@@ -12,6 +12,7 @@ from qfa.domain.models import (
     AggregateSummaryResultModel,
     AnalysisRequestModel,
     AnalysisResultModel,
+    FeedbackRecordMetadataModel,
     FeedbackRecordModel,
     FeedbackRecordSummaryModel,
     LLMResponse,
@@ -33,7 +34,11 @@ MAX_TOKENS = 10_000
 
 
 def _make_feedback_record(doc_id="doc-1", content="Some feedback text.", metadata=None):
-    return FeedbackRecordModel(id=doc_id, content=content, metadata=metadata or {})
+    return FeedbackRecordModel(
+        id=doc_id,
+        content=content,
+        metadata=FeedbackRecordMetadataModel.model_validate(metadata or {}),
+    )
 
 
 def _make_request(
@@ -1036,12 +1041,15 @@ class TestAnalyzeHappyPath:
             _make_feedback_record(
                 doc_id="r1",
                 content="water access was limited",
-                metadata={"created": "2024-01-05T10:00:00Z", "codes": "Water"},
+                metadata={"created": "2024-01-05T10:00:00Z", "coding_level_1": "Water"},
             ),
             _make_feedback_record(
                 doc_id="r2",
                 content="health clinic medicine",
-                metadata={"created": "2024-02-02T10:00:00Z", "codes": "Health"},
+                metadata={
+                    "created": "2024-02-02T10:00:00Z",
+                    "coding_level_1": "Health",
+                },
             ),
         )
         request = _make_request(feedback_records=records).model_copy(

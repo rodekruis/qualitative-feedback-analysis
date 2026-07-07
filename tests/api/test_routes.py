@@ -38,7 +38,6 @@ def _make_client(app):
 def _summary_metadata(**overrides):
     base = {
         "created": "2024-01-15T10:00:00+00:00",
-        "feedback_record_id": "fi-doc-1",
         "coding_level_1": "l1",
         "coding_level_2": "l2",
         "coding_level_3": "l3",
@@ -272,7 +271,7 @@ class TestDetectSensitiveSuccess:
             feedback_record={
                 "id": "doc-1",
                 "content": "A staff member asked for a bribe.",
-                "metadata": {"region": "North"},
+                "metadata": {"coding_level_1": "North"},
             }
         )
         async with _make_client(test_app) as c:
@@ -286,7 +285,7 @@ class TestDetectSensitiveSuccess:
         record = (
             test_app.state.orchestrator.last_detect_sensitive_request.feedback_record
         )
-        assert record.metadata == {"region": "North"}
+        assert record.metadata.coding_level_1 == "North"
 
 
 # ------------------------------------------------------------------ #
@@ -394,6 +393,31 @@ class TestValidation:
         assert resp.status_code == 422
         assert resp.json()["error"]["code"] == "validation_error"
         assert resp.json()["error"]["fields"] is not None
+
+    @pytest.mark.asyncio
+    async def test_422_unknown_metadata_field(self, client):
+        """Only created/coding_level_1/2/3 are accepted in metadata.
+
+        Why: ApiFeedbackRecordMetadata used to allow (and silently drop
+        via the domain model) any metadata key; it now rejects unknown
+        keys outright so a typo'd or corpus-only field (e.g. region)
+        fails loudly with a 422 instead of vanishing.
+        """
+        resp = await client.post(
+            "/v1/analyze-bulk",
+            json=_valid_body(
+                feedback_records=[
+                    {
+                        "id": "doc-1",
+                        "content": "Great service!",
+                        "metadata": {"region": "Eastern Province"},
+                    }
+                ]
+            ),
+            headers=_auth_header(),
+        )
+        assert resp.status_code == 422
+        assert resp.json()["error"]["code"] == "validation_error"
 
 
 # ------------------------------------------------------------------ #

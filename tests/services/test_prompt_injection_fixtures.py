@@ -9,7 +9,7 @@ robustness against jailbreaks is tracked in #75 and a future eval suite.
 
 import pytest
 
-from qfa.domain.models import FeedbackRecordModel
+from qfa.domain.models import FeedbackRecordMetadataModel, FeedbackRecordModel
 from qfa.services.prompts import build_analyze_user_message
 
 INJECTION_FIXTURES: list[tuple[str, str, str]] = [
@@ -57,7 +57,9 @@ def test_injection_text_cannot_break_envelope(
     we'd expect the LLM to read must still be intact, and the literal
     payload must appear inside a ``<text>`` block, not at top level.
     """
-    record = FeedbackRecordModel(id="doc-1", content=record_text, metadata={})
+    record = FeedbackRecordModel(
+        id="doc-1", content=record_text, metadata=FeedbackRecordMetadataModel()
+    )
     user_message = build_analyze_user_message("q", (record,))
 
     # No raw closing envelope tag in the middle of the message, only the

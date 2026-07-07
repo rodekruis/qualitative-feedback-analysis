@@ -1,7 +1,7 @@
 """Deterministic, non-LLM coding-trend table.
 
 Counts coding labels over time periods, assembled from feedback-record
-metadata. Best-effort: when the configured date field is absent the
+metadata. Best-effort: when ``created`` is absent or unparseable the
 table is omitted (``None``) and the reduce step degrades to text-only
 synthesis. No LLM, no port — pure ``services`` logic.
 
@@ -13,6 +13,7 @@ where 2024-12-30 would otherwise collide with truly-January-2024
 records.
 """
 
+import logging
 from collections import Counter
 from collections.abc import Sequence
 from datetime import date
@@ -23,6 +24,8 @@ from qfa.domain.clustering_models import (
     TrendPeriod,
 )
 from qfa.domain.models import FeedbackRecordModel
+
+logger = logging.getLogger(__name__)
 
 # Re-exported here for back-compat with call sites that import the alias
 # from ``qfa.services.coding_trends`` (where the bucketing logic lives).
@@ -47,10 +50,10 @@ def _period_of(raw_date: object, period: TrendPeriod) -> str | None:
     Parameters
     ----------
     raw_date : object
-        Metadata value at the configured ``date_field``. Anything that
-        isn't a string returns ``None``; strings are parsed leniently
-        from their leading characters so ``"2024-01-05T10:00:00Z"`` works
-        the same as ``"2024-01-05"``.
+        The record's ``created`` metadata value. Anything that isn't a
+        string returns ``None``; strings are parsed leniently from their
+        leading characters so ``"2024-01-05T10:00:00Z"`` works the same
+        as ``"2024-01-05"``.
     period : TrendPeriod
         Granularity to bucket into.
     """
@@ -113,7 +116,7 @@ def _codes_in_record(
     """
     labels: list[str] = []
     for field in code_fields:
-        raw = record.metadata.get(field)
+        raw = getattr(record.metadata, field, None)
         if not isinstance(raw, str):
             continue
         labels.extend(c.strip() for c in raw.split(",") if c.strip())
@@ -123,7 +126,6 @@ def _codes_in_record(
 def build_coding_trend_table(
     records: tuple[FeedbackRecordModel, ...],
     *,
-    date_field: str,
     code_fields: Sequence[str],
     period: TrendPeriod = "week",
 ) -> CodingTrendTable | None:
@@ -133,9 +135,6 @@ def build_coding_trend_table(
     ----------
     records : tuple[FeedbackRecordModel, ...]
         The full input record set.
-    date_field : str
-        Metadata key holding the record's date (parsed to a ``period``
-        bucket label per :func:`_period_of`).
     code_fields : Sequence[str]
         Metadata keys holding coding labels (comma-separated strings).
     period : TrendPeriod
@@ -147,13 +146,13 @@ def build_coding_trend_table(
     -------
     CodingTrendTable | None
         The assembled table, or ``None`` when no record carries a
-        parseable date in ``date_field`` (best-effort omission).
+        parseable date in ``created`` (best-effort omission).
     """
     counter: Counter[tuple[str, str]] = Counter()
     periods: set[str] = set()
 
     for record in records:
-        bucket = _period_of(record.metadata.get(date_field), period)
+        bucket = _period_of(record.metadata.created, period)
         if bucket is None:
             continue
         periods.add(bucket)
@@ -161,7 +160,20 @@ def build_coding_trend_table(
             counter[(code, bucket)] += 1
 
     if not periods:
+        logger.warning(
+            "coding_trends: `created` matched 0 of %d record(s) — "
+            "check if the values are parseable dates",
+            len(records),
+        )
         return None
+
+    if not counter:
+        logger.warning(
+            "coding_trends: code fields %r matched 0 labels across %d dated record(s) — "
+            "check code fields names and check if the values are comma-separated strings",
+            list(code_fields),
+            len(periods),
+        )
 
     cells = tuple(
         CodingTrendCell(code=code, period=bucket, count=count)

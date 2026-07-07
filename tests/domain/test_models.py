@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from qfa.domain.models import (
     AnalysisRequestModel,
     AnalysisResultModel,
+    FeedbackRecordMetadataModel,
     FeedbackRecordModel,
     LLMResponse,
     SensitivityAnalysisResultModelList,
@@ -22,14 +23,33 @@ class TestFeedbackRecordModel:
         assert doc.id == "doc-1"
         assert doc.content == "Some feedback"
 
-    def test_metadata_defaults_to_empty_dict(self):
+    def test_metadata_default_has_empty_created(self):
         doc = FeedbackRecordModel(id="doc-1", content="Some feedback")
-        assert doc.metadata == {}
+        assert isinstance(doc.metadata, FeedbackRecordMetadataModel)
+        assert doc.metadata.created == ""
+        assert doc.metadata.model_dump(exclude_none=True) == {"created": ""}
 
     def test_metadata_with_values(self):
-        meta = {"source": "email", "score": 5, "weight": 0.8, "urgent": True}
-        doc = FeedbackRecordModel(id="doc-1", content="feedback", metadata=meta)
-        assert doc.metadata == meta
+        doc = FeedbackRecordModel(
+            id="doc-1",
+            content="feedback",
+            metadata=FeedbackRecordMetadataModel(
+                coding_level_1="Water", coding_level_2="Sanitation"
+            ),
+        )
+        assert doc.metadata.coding_level_1 == "Water"
+        assert doc.metadata.coding_level_2 == "Sanitation"
+
+    def test_metadata_rejects_unknown_field(self):
+        """Only created/coding_level_1/2/3 are accepted (extra="forbid").
+
+        Why: FeedbackRecordMetadataModel used to silently drop unknown
+        keys (extra="ignore"); it now rejects them so a typo'd or
+        corpus-only field (e.g. region, theme) fails loudly instead of
+        vanishing.
+        """
+        with pytest.raises(ValidationError):
+            FeedbackRecordMetadataModel.model_validate({"region": "Eastern Province"})
 
     def test_frozen_raises_on_assignment(self):
         doc = FeedbackRecordModel(id="doc-1", content="feedback")
@@ -132,7 +152,9 @@ def test_analysis_request_accepts_hierarchical_mode() -> None:
     Why: #124 introduces the second mode; omitting ``mode`` must still
     default to ``single_pass`` so existing callers are unaffected.
     """
-    record = FeedbackRecordModel(id="r1", content="x", metadata={})
+    record = FeedbackRecordModel(
+        id="r1", content="x", metadata=FeedbackRecordMetadataModel()
+    )
     default = AnalysisRequestModel(
         feedback_records=(record,), prompt="p", tenant_id="t"
     )

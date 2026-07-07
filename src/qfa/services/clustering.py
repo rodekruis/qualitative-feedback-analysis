@@ -52,20 +52,18 @@ def _iso_date_prefix(raw: object) -> str | None:
 
 
 def _sort_by_date(
-    records: tuple[FeedbackRecordModel, ...], date_field: str | None
+    records: tuple[FeedbackRecordModel, ...],
 ) -> tuple[FeedbackRecordModel, ...]:
-    """Order records chronologically by their ``date_field`` metadata.
+    """Order records chronologically by their ``created`` metadata.
 
     Dated records come first, ascending; undated or unparseable-date records
     sort last. Sorting is stable, so records sharing a key (and all the
     undated ones) keep their original relative order — which is what makes
     chunk membership deterministic and runs reproducible.
     """
-    if not date_field:
-        return records
 
     def key(record: FeedbackRecordModel) -> tuple[bool, str]:
-        prefix = _iso_date_prefix(record.metadata.get(date_field))
+        prefix = _iso_date_prefix(record.metadata.created)
         return (prefix is None, prefix or "")
 
     return tuple(sorted(records, key=key))
@@ -151,7 +149,6 @@ def cluster_records(
     chars_per_token: int,
     metric: str = "euclidean",
     target_chunk_tokens: int | None = None,
-    date_field: str | None = None,
 ) -> tuple[Chunk, ...]:
     """Cluster records by their embedding vectors into budget-sized chunks.
 
@@ -177,11 +174,9 @@ def cluster_records(
         split into roughly equal sub-chunks. The effective split budget is
         ``min(target_chunk_tokens, max_total_tokens)``, so the ceiling always
         wins. ``None`` keeps the old behaviour (split only at the ceiling).
-    date_field : str | None
-        Metadata key holding each record's date. When set, records within
-        every chunk are ordered chronologically (undated records last), so a
-        chunk reads as a time series and a split cluster yields contiguous
-        time-windows. ``None`` leaves records in input order.
+    Records within every chunk are always ordered chronologically by their
+    ``created`` metadata (undated records last), so a chunk reads as a time
+    series and a split cluster yields contiguous time-windows.
 
     Returns
     -------
@@ -214,7 +209,7 @@ def cluster_records(
     if len(records) < min_cluster_size:
         return tuple(
             _budgeted_chunks(
-                _sort_by_date(tuple(records), date_field),
+                _sort_by_date(tuple(records)),
                 label=-1,
                 is_uncategorised=True,
                 max_total_tokens=split_budget,
@@ -233,7 +228,7 @@ def cluster_records(
 
     chunks: list[Chunk] = []
     for label, indices in sorted(by_label.items()):
-        group = _sort_by_date(tuple(records[i] for i in indices), date_field)
+        group = _sort_by_date(tuple(records[i] for i in indices))
         chunks.extend(
             _budgeted_chunks(
                 group,

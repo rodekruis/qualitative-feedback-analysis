@@ -35,6 +35,7 @@ from qfa.domain.models import (
     CodingAssignmentRequestModel,
     CodingFramework,
     CodingNode,
+    FeedbackRecordMetadataModel,
     FeedbackRecordModel,
     SensitivityAnalysisRequestModel,
     SingleSummaryRequestModel,
@@ -185,7 +186,13 @@ async def analyze_bulk(
         )
 
     domain_feedback_records = tuple(
-        FeedbackRecordModel(id=doc.id, content=doc.content, metadata=doc.metadata)
+        FeedbackRecordModel(
+            id=doc.id,
+            content=doc.content,
+            metadata=FeedbackRecordMetadataModel.model_validate(
+                doc.metadata.model_dump()
+            ),
+        )
         for doc in records
     )
 
@@ -279,7 +286,9 @@ async def summarize_bulk(
         FeedbackRecordModel(
             id=record.id,
             content=record.content,
-            metadata=record.metadata,
+            metadata=FeedbackRecordMetadataModel.model_validate(
+                record.metadata.model_dump()
+            ),
         )
         for record in records
     )
@@ -352,7 +361,9 @@ async def summarize(
         feedback_record=FeedbackRecordModel(
             id=body.feedback_record.id,
             content=body.feedback_record.content,
-            metadata=body.feedback_record.metadata,
+            metadata=FeedbackRecordMetadataModel.model_validate(
+                body.feedback_record.metadata.model_dump()
+            ),
         ),
         tenant_id=tenant.tenant_id,
     )
@@ -398,7 +409,9 @@ async def assign_codes(
         feedback_record=FeedbackRecordModel(
             id=body.feedback_record.id,
             content=body.feedback_record.content,
-            metadata=body.feedback_record.metadata,
+            metadata=FeedbackRecordMetadataModel.model_validate(
+                body.feedback_record.metadata.model_dump()
+            ),
         ),
         coding_levels=CodingFramework(
             root_codes=[
@@ -485,7 +498,9 @@ async def detect_sensitive(
             feedback_record=FeedbackRecordModel(
                 id=body.feedback_record.id,
                 content=body.feedback_record.content,
-                metadata=body.feedback_record.metadata,
+                metadata=FeedbackRecordMetadataModel.model_validate(
+                    body.feedback_record.metadata.model_dump()
+                ),
             ),
             tenant_id=tenant.tenant_id,
         ),

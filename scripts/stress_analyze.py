@@ -74,6 +74,18 @@ DEFAULT_PROMPT = (
 # server-side rejects, not client-side cut-offs.
 DEFAULT_TIMEOUT_S = 600.0
 
+# ApiFeedbackRecordMetadata (qfa.api.schemas) accepts only these fields
+# (extra="forbid"); the corpus fixture carries extra benchmark-only
+# metadata (dataset, region, country, language, source, year, sensitive,
+# codes, sentence_count, ...), so it must be projected down before hitting
+# the real endpoint or every record gets rejected with a 422.
+KNOWN_METADATA_FIELDS = (
+    "created",
+    "coding_level_1",
+    "coding_level_2",
+    "coding_level_3",
+)
+
 
 # --- Loading & sampling -------------------------------------------------------
 
@@ -116,6 +128,11 @@ def load_sample(
     return rng.sample(corpus, limit)
 
 
+def _known_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    """Project a corpus record's metadata down to what the API will accept."""
+    return {k: v for k, v in metadata.items() if k in KNOWN_METADATA_FIELDS}
+
+
 def build_request(
     records: list[dict[str, Any]],
     prompt: str,
@@ -126,12 +143,19 @@ def build_request(
 ) -> dict[str, Any]:
     """Shape a ``/v1/analyze`` request body from sampled records.
 
-    The API expects ``feedback_records`` (not ``documents``); the
-    fixture YAML stores them as ``{id, content, metadata}`` which already
-    matches the schema, so we copy through unchanged.
+    The API expects ``feedback_records`` (not ``documents``); the fixture
+    YAML stores them as ``{id, content, metadata}``, which already matches
+    the shape, but each record's ``metadata`` is projected down to the
+    fields ``ApiFeedbackRecordMetadata`` actually accepts (``extra="forbid"``)
+    — the fixture's benchmark-only metadata (``dataset``, ``region``,
+    ``theme``, ...) would otherwise 422 the whole request.
     """
+    projected_records = [
+        {**record, "metadata": _known_metadata(record.get("metadata", {}))}
+        for record in records
+    ]
     body: dict[str, Any] = {
-        "feedback_records": records,
+        "feedback_records": projected_records,
         "prompt": prompt,
         "mode": mode,
         "anonymize": anonymize,

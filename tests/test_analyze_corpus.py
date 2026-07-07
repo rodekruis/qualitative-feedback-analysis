@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 import yaml
 
-from qfa.domain.models import FeedbackRecordModel
+from qfa.domain.models import FeedbackRecordMetadataModel, FeedbackRecordModel
 
 FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
 CORPUS_PATH = FIXTURES / "analyze_corpus.yaml"
@@ -23,6 +23,23 @@ FRAMEWORK_PATH = FIXTURES / "coding_framework.json"
 
 MIN_SENTENCES = 1
 MAX_SENTENCES = 15
+
+# FeedbackRecordMetadataModel accepts only these fields (extra="forbid"); the
+# corpus fixture carries extra benchmark-only metadata (theme, language,
+# codes, ...) read directly from the raw dict elsewhere in this module, so it
+# must be projected down before constructing a FeedbackRecordModel.
+_KNOWN_METADATA_FIELDS = (
+    "created",
+    "coding_level_1",
+    "coding_level_2",
+    "coding_level_3",
+)
+
+
+def _known_metadata(metadata: dict[str, Any]) -> FeedbackRecordMetadataModel:
+    return FeedbackRecordMetadataModel(
+        **{k: v for k, v in metadata.items() if k in _KNOWN_METADATA_FIELDS}
+    )
 
 
 def _flatten_framework(framework: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -65,7 +82,11 @@ class TestAnalyzeCorpus:
     ) -> None:
         """Every record must round-trip through ``FeedbackRecordModel`` so the corpus is ready to feed the analyze endpoint without further transformation."""
         for item in corpus:
-            FeedbackRecordModel(**item)
+            FeedbackRecordModel(
+                id=item["id"],
+                content=item["content"],
+                metadata=_known_metadata(item["metadata"]),
+            )
 
     def test_all_ids_are_unique(self, corpus: list[dict[str, Any]]) -> None:
         """Duplicate IDs would silently collapse to one record in any dict-keyed aggregation downstream."""

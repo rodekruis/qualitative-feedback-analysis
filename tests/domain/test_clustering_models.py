@@ -14,11 +14,13 @@ from qfa.domain.clustering_models import (
     CodingTrendCell,
     CodingTrendTable,
 )
-from qfa.domain.models import FeedbackRecordModel
+from qfa.domain.models import FeedbackRecordMetadataModel, FeedbackRecordModel
 
 
 def _record(rec_id: str) -> FeedbackRecordModel:
-    return FeedbackRecordModel(id=rec_id, content="x", metadata={})
+    return FeedbackRecordModel(
+        id=rec_id, content="x", metadata=FeedbackRecordMetadataModel()
+    )
 
 
 def test_chunk_is_frozen() -> None:

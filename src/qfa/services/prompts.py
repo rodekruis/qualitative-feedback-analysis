@@ -199,7 +199,9 @@ def build_feedback_record_envelope(
     if include_metadata:
         metadata_lines = "\n".join(
             f"      {escape_for_tag_envelope(str(k))}={escape_for_tag_envelope(str(v))}"
-            for k, v in feedback_record.metadata.items()
+            for k, v in feedback_record.metadata.model_dump(
+                exclude_defaults=True
+            ).items()
         )
         metadata_block = (
             f"    <metadata>\n{metadata_lines}\n    </metadata>\n"

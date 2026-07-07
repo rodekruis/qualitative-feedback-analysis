@@ -12,7 +12,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Literal, override
 
-from pydantic import BaseModel, Field, computed_field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
 from qfa.domain.clustering_models import TrendPeriod
 
@@ -316,6 +316,36 @@ def _assign_codes_request_examples() -> list[dict[str, Any]]:
     ]
 
 
+class ApiFeedbackRecordMetadata(BaseModel):
+    """Metadata associated with a feedback record in an inference request.
+
+    Mirrors the field shape of ``qfa.domain.models.FeedbackRecordMetadataModel``
+    but is defined independently per ADR-007: request models stay separate
+    from domain models so the wire format doesn't change as a side effect of
+    a domain refactor. Only the fields declared below are accepted; any other
+    key causes a 422 rather than being silently dropped or passed through.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    created: str = Field(
+        default="",
+        description="ISO 8601 timestamp string for the feedback record.",
+    )
+    coding_level_1: str | None = Field(
+        default=None,
+        description="Code level 1 label assigned to the feedback record.",
+    )
+    coding_level_2: str | None = Field(
+        default=None,
+        description="Code level 2 label assigned to the feedback record.",
+    )
+    coding_level_3: str | None = Field(
+        default=None,
+        description="Code level 3 label assigned to the feedback record.",
+    )
+
+
 class ApiFeedbackRecordInput(BaseModel):
     """A single feedback record in an inference request."""
 
@@ -331,9 +361,9 @@ class ApiFeedbackRecordInput(BaseModel):
             " before the domain layer, which keeps a non-empty invariant."
         ),
     )
-    metadata: dict[str, str | int | float | bool] = Field(
-        default_factory=dict,
-        description="Optional metadata key-value pairs associated with the feedback record.",
+    metadata: ApiFeedbackRecordMetadata = Field(
+        default_factory=ApiFeedbackRecordMetadata,
+        description="Metadata associated with the feedback record.",
     )
 
 
@@ -416,12 +446,18 @@ class ApiAnalyzeRequest(ApiBulkInferenceRequestBase):
                         {
                             "id": "doc-001",
                             "content": "The water distribution was well organized but we had to wait for three hours.",
-                            "metadata": {"region": "Eastern Province", "year": 2024},
+                            "metadata": {
+                                "created": "2024-06-01T12:00:00Z",
+                                "coding_level_1": "Water",
+                            },
                         },
                         {
                             "id": "doc-002",
                             "content": "Medical staff were very professional. Medicine supply was insufficient.",
-                            "metadata": {"region": "Northern Province", "year": 2024},
+                            "metadata": {
+                                "created": "2024-06-02T09:30:00Z",
+                                "coding_level_1": "Health",
+                            },
                         },
                     ],
                     "prompt": "Summarize the main themes and sentiment of the feedback.",
@@ -622,7 +658,6 @@ class ApiSummarizeRequest(ApiSingleInferenceRequestBase):
                         ),
                         "metadata": {
                             "created": "2024-06-01T12:00:00Z",
-                            "feedback_record_id": "fi-001",
                             "coding_level_1": "Water",
                             "coding_level_2": "Distribution",
                             "coding_level_3": "Waiting times",

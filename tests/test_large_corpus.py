@@ -11,7 +11,7 @@ from pathlib import Path
 
 import yaml
 
-from qfa.domain.models import FeedbackRecordModel
+from qfa.domain.models import FeedbackRecordMetadataModel, FeedbackRecordModel
 from qfa.services.clustering import cluster_records
 from qfa.services.coding_trends import build_coding_trend_table
 
@@ -23,11 +23,28 @@ CORPUS_PATH = FIXTURES / "large_corpus.yaml"
 SINGLE_CALL_TOKEN_CAP = 10_000
 CHARS_PER_TOKEN = 4
 
+# FeedbackRecordMetadataModel accepts only these fields (extra="forbid"); the
+# corpus fixture carries extra benchmark-only metadata (theme, language, ...)
+# read directly from the raw dict elsewhere in this module, so it must be
+# projected down before constructing a FeedbackRecordModel.
+_KNOWN_METADATA_FIELDS = (
+    "created",
+    "coding_level_1",
+    "coding_level_2",
+    "coding_level_3",
+)
+
 
 def _load() -> list[dict]:
     """Load the large corpus YAML fixture from disk."""
     with CORPUS_PATH.open() as f:
         return yaml.safe_load(f)
+
+
+def _known_metadata(metadata: dict) -> FeedbackRecordMetadataModel:
+    return FeedbackRecordMetadataModel(
+        **{k: v for k, v in metadata.items() if k in _KNOWN_METADATA_FIELDS}
+    )
 
 
 def test_corpus_is_at_least_five_times_the_token_cap() -> None:
@@ -64,7 +81,9 @@ def test_clustering_covers_every_record_with_fake_embedder() -> None:
     corpus = _load()
     records = tuple(
         FeedbackRecordModel(
-            id=item["id"], content=item["content"], metadata=item["metadata"]
+            id=item["id"],
+            content=item["content"],
+            metadata=_known_metadata(item["metadata"]),
         )
         for item in corpus
     )
@@ -95,7 +114,9 @@ def test_coding_trend_table_counts_match_corpus() -> None:
     corpus = _load()
     records = tuple(
         FeedbackRecordModel(
-            id=item["id"], content=item["content"], metadata=item["metadata"]
+            id=item["id"],
+            content=item["content"],
+            metadata=_known_metadata(item["metadata"]),
         )
         for item in corpus
     )
@@ -104,14 +125,14 @@ def test_coding_trend_table_counts_match_corpus() -> None:
     # default granularity is ``week``, but the fixture isn't aligned to
     # ISO weeks.
     table = build_coding_trend_table(
-        records, date_field="created", code_fields=("codes",), period="month"
+        records, code_fields=("coding_level_1",), period="month"
     )
     assert table is not None
     # Hand count of one known (code, period) pair from the fixture.
     expected = sum(
         1
         for item in corpus
-        if "Water" in item["metadata"]["codes"].split(",")
+        if "Water" in item["metadata"]["coding_level_1"].split(",")
         and item["metadata"]["created"].startswith("2024-01")
     )
     got = next(
