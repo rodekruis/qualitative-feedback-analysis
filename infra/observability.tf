@@ -62,16 +62,39 @@ resource "azurerm_monitor_diagnostic_setting" "app_service" {
 # Alerting
 # =============================================================================
 
+# Webhook URL for the Teams channel that receives alerts. The value is managed
+# out-of-band (az keyvault secret set — see key_vault.tf) and only read here,
+# so it never appears in this file. It does, however, land in Terraform state
+# as a plain-text attribute of the action group below: Action Group webhook
+# receivers have no equivalent of App Service's `@Microsoft.KeyVault(...)`
+# app_settings resolver (app_service.tf), so the value has to be materialized
+# into a resource argument at apply time. Accepted deliberately here — a
+# leaked webhook only allows posting to the Teams channel, unlike
+# llm-api-key/auth-api-keys, which stay out of state entirely via that
+# resolver. State itself is only reachable via the AD-authenticated tfstate
+# storage backend (providers.tf).
+data "azurerm_key_vault_secret" "teams_webhook" {
+  name         = "teams-alerts-webhook-url"
+  key_vault_id = azurerm_key_vault.main.id
+}
+
 # Defines where alerts are sent. Reused by all alert rules below so the
-# email address only needs to be changed in one place.
-resource "azurerm_monitor_action_group" "email" {
+# webhook only needs to be changed in one place.
+#
+# use_common_alert_schema = true standardizes the POSTed payload across alert
+# types, but Azure still sends raw JSON — Teams will render it as an
+# unformatted text block, not a styled card. Acceptable for now to get
+# alerting working; revisit with a Power Automate parse step or a Logic App
+# intermediary if the raw payload proves too noisy in practice.
+resource "azurerm_monitor_action_group" "alerts" {
   name                = "qfa-${local.env}-alerts"
   resource_group_name = data.azurerm_resource_group.main.name
   short_name          = "qfa-alerts"
 
-  email_receiver {
-    name          = "olaf" # TODO change to teams channel
-    email_address = "olaf@aurai.com"
+  webhook_receiver {
+    name                    = "teams"
+    service_uri             = data.azurerm_key_vault_secret.teams_webhook.value
+    use_common_alert_schema = true
   }
 }
 
@@ -95,7 +118,7 @@ resource "azurerm_monitor_metric_alert" "http_5xx" {
   }
 
   action {
-    action_group_id = azurerm_monitor_action_group.email.id
+    action_group_id = azurerm_monitor_action_group.alerts.id
   }
 }
 
@@ -120,7 +143,7 @@ resource "azurerm_monitor_metric_alert" "health_check" {
   }
 
   action {
-    action_group_id = azurerm_monitor_action_group.email.id
+    action_group_id = azurerm_monitor_action_group.alerts.id
   }
 }
 
@@ -144,7 +167,7 @@ resource "azurerm_monitor_metric_alert" "high_cpu" {
   }
 
   action {
-    action_group_id = azurerm_monitor_action_group.email.id
+    action_group_id = azurerm_monitor_action_group.alerts.id
   }
 }
 
@@ -169,6 +192,6 @@ resource "azurerm_monitor_metric_alert" "high_memory" {
   }
 
   action {
-    action_group_id = azurerm_monitor_action_group.email.id
+    action_group_id = azurerm_monitor_action_group.alerts.id
   }
 }
