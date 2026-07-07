@@ -11,7 +11,7 @@ from pathlib import Path
 
 import yaml
 
-from qfa.domain.models import FeedbackRecordModel
+from qfa.domain.models import FeedbackRecordMetadataModel, FeedbackRecordModel
 from qfa.services.clustering import cluster_records
 from qfa.services.coding_trends import build_coding_trend_table
 
@@ -41,8 +41,10 @@ def _load() -> list[dict]:
         return yaml.safe_load(f)
 
 
-def _known_metadata(metadata: dict) -> dict:
-    return {k: v for k, v in metadata.items() if k in _KNOWN_METADATA_FIELDS}
+def _known_metadata(metadata: dict) -> FeedbackRecordMetadataModel:
+    return FeedbackRecordMetadataModel(
+        **{k: v for k, v in metadata.items() if k in _KNOWN_METADATA_FIELDS}
+    )
 
 
 def test_corpus_is_at_least_five_times_the_token_cap() -> None:
@@ -123,7 +125,7 @@ def test_coding_trend_table_counts_match_corpus() -> None:
     # default granularity is ``week``, but the fixture isn't aligned to
     # ISO weeks.
     table = build_coding_trend_table(
-        records, date_field="created", code_fields=("coding_level_1",), period="month"
+        records, code_fields=("coding_level_1",), period="month"
     )
     assert table is not None
     # Hand count of one known (code, period) pair from the fixture.

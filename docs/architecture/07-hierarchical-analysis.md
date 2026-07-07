@@ -79,7 +79,7 @@ cross-lingual quality), which requires adding a fetch step to the image build
      count-balanced (not greedy fill-then-remainder), so sub-chunks stay
      uniform and concurrency is used evenly.
    - **Date ordering.** Records inside every chunk are sorted by their
-     `ANALYZE_CODING_TREND_DATE_FIELD` date (undated records last, stably).
+     `created` metadata date (undated records last, stably).
      The map and reduce steps look for trends, so a chunk presented
      chronologically lets the model narrate change over time; and because the
      sort happens *before* the split, each sub-chunk of a big cluster is a

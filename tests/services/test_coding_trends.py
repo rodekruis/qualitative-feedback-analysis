@@ -37,7 +37,6 @@ def test_counts_codes_per_month_period() -> None:
     )
     table = build_coding_trend_table(
         records,
-        date_field="created",
         code_fields=("coding_level_1",),
         period="month",
     )
@@ -66,9 +65,7 @@ def test_counts_codes_per_week_period_default() -> None:
         # 2024-01-08 is the Monday of the next ISO week (2024-W02).
         _record("r3", "2024-01-08T10:00:00Z", "Water"),
     )
-    table = build_coding_trend_table(
-        records, date_field="created", code_fields=("coding_level_1",)
-    )
+    table = build_coding_trend_table(records, code_fields=("coding_level_1",))
     assert table is not None
     assert table.periods == ("2024-W01", "2024-W02")
     counts = {(c.code, c.period): c.count for c in table.cells}
@@ -89,7 +86,7 @@ def test_counts_codes_per_day_period() -> None:
         _record("r3", "2024-01-06T08:00:00Z", "Water"),
     )
     table = build_coding_trend_table(
-        records, date_field="created", code_fields=("coding_level_1",), period="day"
+        records, code_fields=("coding_level_1",), period="day"
     )
     assert table is not None
     counts = {(c.code, c.period): c.count for c in table.cells}
@@ -97,7 +94,7 @@ def test_counts_codes_per_day_period() -> None:
     assert counts[("Water", "2024-01-06")] == 1
 
 
-def test_returns_none_when_date_field_absent() -> None:
+def test_returns_none_when_created_absent() -> None:
     """No date metadata → table omitted (None), reduce degrades to text-only.
 
     Why: the spec mandates best-effort; a missing field must never raise.
@@ -109,9 +106,7 @@ def test_returns_none_when_date_field_absent() -> None:
             metadata=FeedbackRecordMetadataModel(coding_level_1="Water"),
         ),
     )
-    table = build_coding_trend_table(
-        records, date_field="created", code_fields=("coding_level_1",)
-    )
+    table = build_coding_trend_table(records, code_fields=("coding_level_1",))
     assert table is None
 
 
@@ -130,7 +125,7 @@ def test_records_without_codes_are_skipped_not_errored() -> None:
         ),
     )
     table = build_coding_trend_table(
-        records, date_field="created", code_fields=("coding_level_1",), period="month"
+        records, code_fields=("coding_level_1",), period="month"
     )
     assert table is not None
     counts = {(c.code, c.period): c.count for c in table.cells}

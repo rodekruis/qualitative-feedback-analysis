@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 import yaml
 
-from qfa.domain.models import FeedbackRecordModel
+from qfa.domain.models import FeedbackRecordMetadataModel, FeedbackRecordModel
 
 FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
 CORPUS_PATH = FIXTURES / "analyze_corpus.yaml"
@@ -36,8 +36,10 @@ _KNOWN_METADATA_FIELDS = (
 )
 
 
-def _known_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
-    return {k: v for k, v in metadata.items() if k in _KNOWN_METADATA_FIELDS}
+def _known_metadata(metadata: dict[str, Any]) -> FeedbackRecordMetadataModel:
+    return FeedbackRecordMetadataModel(
+        **{k: v for k, v in metadata.items() if k in _KNOWN_METADATA_FIELDS}
+    )
 
 
 def _flatten_framework(framework: dict[str, Any]) -> dict[str, dict[str, Any]]:

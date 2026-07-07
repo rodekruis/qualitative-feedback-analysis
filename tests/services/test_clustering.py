@@ -213,7 +213,6 @@ def test_records_are_sorted_by_date_within_each_chunk() -> None:
         min_cluster_size=2,
         max_total_tokens=100_000,
         chars_per_token=4,
-        date_field="created",
     )
     for chunk in chunks:
         seen = [r.metadata.created for r in chunk.records]
@@ -241,7 +240,6 @@ def test_records_without_a_parseable_date_sort_last_and_stably() -> None:
         min_cluster_size=2,
         max_total_tokens=100_000,
         chars_per_token=4,
-        date_field="created",
     )
     # All records land in one chunk (tight cluster, well under budget).
     assert len(chunks) == 1

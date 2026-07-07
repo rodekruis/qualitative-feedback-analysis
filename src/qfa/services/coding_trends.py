@@ -1,7 +1,7 @@
 """Deterministic, non-LLM coding-trend table.
 
 Counts coding labels over time periods, assembled from feedback-record
-metadata. Best-effort: when the configured date field is absent the
+metadata. Best-effort: when ``created`` is absent or unparseable the
 table is omitted (``None``) and the reduce step degrades to text-only
 synthesis. No LLM, no port — pure ``services`` logic.
 
@@ -50,10 +50,10 @@ def _period_of(raw_date: object, period: TrendPeriod) -> str | None:
     Parameters
     ----------
     raw_date : object
-        Metadata value at the configured ``date_field``. Anything that
-        isn't a string returns ``None``; strings are parsed leniently
-        from their leading characters so ``"2024-01-05T10:00:00Z"`` works
-        the same as ``"2024-01-05"``.
+        The record's ``created`` metadata value. Anything that isn't a
+        string returns ``None``; strings are parsed leniently from their
+        leading characters so ``"2024-01-05T10:00:00Z"`` works the same
+        as ``"2024-01-05"``.
     period : TrendPeriod
         Granularity to bucket into.
     """
@@ -126,7 +126,6 @@ def _codes_in_record(
 def build_coding_trend_table(
     records: tuple[FeedbackRecordModel, ...],
     *,
-    date_field: str,
     code_fields: Sequence[str],
     period: TrendPeriod = "week",
 ) -> CodingTrendTable | None:
@@ -136,9 +135,6 @@ def build_coding_trend_table(
     ----------
     records : tuple[FeedbackRecordModel, ...]
         The full input record set.
-    date_field : str
-        Metadata key holding the record's date (parsed to a ``period``
-        bucket label per :func:`_period_of`).
     code_fields : Sequence[str]
         Metadata keys holding coding labels (comma-separated strings).
     period : TrendPeriod
@@ -150,13 +146,13 @@ def build_coding_trend_table(
     -------
     CodingTrendTable | None
         The assembled table, or ``None`` when no record carries a
-        parseable date in ``date_field`` (best-effort omission).
+        parseable date in ``created`` (best-effort omission).
     """
     counter: Counter[tuple[str, str]] = Counter()
     periods: set[str] = set()
 
     for record in records:
-        bucket = _period_of(getattr(record.metadata, date_field, None), period)
+        bucket = _period_of(record.metadata.created, period)
         if bucket is None:
             continue
         periods.add(bucket)
@@ -165,9 +161,8 @@ def build_coding_trend_table(
 
     if not periods:
         logger.warning(
-            "coding_trends: date field %r matched 0 of %d record(s) — "
-            "check if the field name is exactly the same and if the values are parseable dates",
-            date_field,
+            "coding_trends: `created` matched 0 of %d record(s) — "
+            "check if the values are parseable dates",
             len(records),
         )
         return None

@@ -16,7 +16,7 @@ name in all contexts such as code, documentation, dashboards and training materi
 | Feedback | The umbrella term in IFRC guidance, covering all types of input from community members; not a type by itself. | Question, complaint, case |
 | Feedback description | Qualitative, unstructured content that focuses on meaning rather than channel or format and avoids channel‑specific framing. | Message, note, transcript |
 | Feedback source | Refers to who or what generated the feedback (human or technical), independent of how it entered the system. | Channel, platform (only) |
-| Feedback metadata | Contextual attributes that describe a feedback record for governance, analysis, and responsibility, including operational and ethical flags. | Extra fields, system data |
+| Feedback metadata | Contextual attributes that describe a feedback record for governance, analysis, and responsibility, including operational and ethical flags. Current scope: the schema (`FeedbackRecordMetadataModel`/`ApiFeedbackRecordMetadata`) accepts only `created` and the three `coding_level_*` fields and rejects anything else (`extra="forbid"`); broader governance/ethical flags described here are conceptual scope, not yet implemented. | Extra fields, system data |
 | Feedback dataset | Analytical abstraction that supports aggregation, filtering, and ML workflows across storage backends; may be derived or time‑bound. | Database, table |
 | Coding | Standard qualitative analysis practice emphasising interpretation; a single feedback record may be coded multiple times. | Tagging only |
 | Coding framework | Flexible, evolving structure for organising codes; supports iteration and learning over fixed classification. | Taxonomy, list of tags |

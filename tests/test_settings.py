@@ -234,21 +234,22 @@ def test_embedding_settings_select_bge_m3_family(monkeypatch) -> None:
 
 
 def test_analyze_settings_have_clustering_and_trend_fields() -> None:
-    """``AnalyzeSettings`` exposes clustering params, trend mapping, and period.
+    """``AnalyzeSettings`` exposes clustering params, code-field mapping, and period.
 
     Why: the analyze-endpoint tuning (clustering parameters and the
-    date/code metadata-field mapping) must be tunable without code
-    changes, per the design spec. ``AnalyzeSettings`` is the
-    endpoint-scoped group so the eventual orchestrator decomposition
-    (ADR-011) doesn't require renaming env vars in production. The
-    default period is ``week`` — week is usually the right granularity
-    for the typical 1-3 month operational corpus.
+    code metadata-field mapping) must be tunable without code changes,
+    per the design spec. ``AnalyzeSettings`` is the endpoint-scoped
+    group so the eventual orchestrator decomposition (ADR-011) doesn't
+    require renaming env vars in production. The default period is
+    ``week`` — week is usually the right granularity for the typical
+    1-3 month operational corpus. The date field itself (``created``)
+    is not configurable: it is the only date-shaped field
+    ``FeedbackRecordMetadataModel`` declares.
     """
     from qfa.settings import AnalyzeSettings
 
     settings = AnalyzeSettings()
     assert settings.min_cluster_size >= 2
-    assert isinstance(settings.coding_trend_date_field, str)
     assert isinstance(settings.coding_trend_code_fields, list)
     assert settings.default_coding_trend_period == "week"
 
