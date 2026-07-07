@@ -7,6 +7,13 @@
 # and consumes the artifact uploaded in the same workflow run
 # (actions/deploy-pages cannot reach across runs).
 #
+# Publishing a release deploys the docs ONLY when it is the latest release.
+# The published site reflects the newest release, so publishing an older draft
+# to finalize it must not regress the site to an old commit. The latest-release
+# guard (_is-latest-release.yaml) enforces this for the release path; a manual
+# workflow_dispatch is trusted and deploys unconditionally (doc-only fixes
+# between releases). A guard error fails red and deploys nothing (fail closed).
+#
 # Prerequisite: in repo Settings → Pages, set "Source" to
 # "GitHub Actions". No branch is used as a source.
 name: Docs
@@ -38,9 +45,27 @@ jobs:
         with:
           path: docs/_build/html
 
+  # Only for release events: is the published release the latest? Manual
+  # dispatch skips this job and deploys unconditionally.
+  guard:
+    if: github.event_name == 'release'
+    uses: ./.github/workflows/_is-latest-release.yaml
+    with:
+      release_tag: ${{ github.event.release.tag_name }}
+    permissions:
+      contents: write
+
   deploy:
-    needs: build-docs
-    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    needs: [build-docs, guard]
+    # always() so this still evaluates when `guard` is skipped (dispatch/push).
+    # Deploy on a trusted manual dispatch, or on a release that the guard
+    # confirmed is the latest. A guard failure leaves is_greatest empty -> no
+    # deploy (fail closed).
+    if: >-
+      always() &&
+      needs.build-docs.result == 'success' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'release' && needs.guard.outputs.is_greatest == 'true'))
     runs-on: ubuntu-latest
     permissions:
       pages: write
@@ -52,3 +77,26 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  skipped:
+    needs: guard
+    if: github.event_name == 'release' && needs.guard.outputs.is_greatest == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain why the docs site was not updated
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          LATEST: ${{ needs.guard.outputs.latest_tag }}
+        run: |
+          set -euo pipefail
+          echo "::warning title=Docs not published::Release ${TAG} was published but the docs site was NOT updated — a newer release (${LATEST}) already exists. Run the Docs workflow manually to publish docs for ${TAG} on purpose."
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## ⚠️ Docs site NOT updated for \`${TAG}\`
+
+          The published docs site reflects the latest release (\`${LATEST}\`), so
+          publishing the older release \`${TAG}\` did not rebuild it. **This is
+          expected when you publish an older draft to finalize it.**
+
+          To publish docs for \`${TAG}\` deliberately, run the **Docs** workflow
+          manually (workflow_dispatch) from the branch/commit you want.
+          EOF
