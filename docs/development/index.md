@@ -97,9 +97,19 @@ uv run pytest tests/integration/test_db_postgres.py   # specific file
 - **Every class that implements a port explicitly inherits from it — production adapters *and* test doubles.** Even though Python `Protocol`s support structural typing, we require `class LiteLLMClient(LLMPort):`, `class PresidioAnonymizer(AnonymizationPort):`, and `class FakeLLMPort(LLMPort):` so that "go to definition" in an IDE jumps from any port impl to its contract. Skipping the inheritance is reserved for genuinely ad-hoc cases (e.g. one-shot `MagicMock(spec=Port)` instances, where `spec=` already enforces conformance). See [Components](../architecture/03-components.md) for the full ports/adapters layout.
 - **Import directions are enforced.** `qfa.domain` must not import third-party infra (`litellm`, `presidio_*`, `fastapi`, ...); `qfa.services` may only import `qfa.domain`; the composition root in `qfa.api.app` is the only place that wires concrete adapters into ports. `make lint` runs `lint-imports` to enforce this.
 
+## Knowledge graph
+
+This repo ships a committed [knowledge graph](graphify.md) of the codebase under
+`graphify-out/`, built by [graphify](https://github.com/Graphify-Labs/graphify). On a
+fresh clone your AI assistant reads it immediately — no rebuild. Install the CLI with
+`uv tool install graphifyy`, then run `graphify hook install` once so the graph
+auto-rebuilds after each commit. See the [knowledge graph guide](graphify.md) for the
+full team workflow and query commands.
+
 ## Where to go next
 
 - [Architecture overview](../architecture/01-architecture-style.md) — hexagonal layout, why we picked it
+- [Knowledge graph (graphify)](graphify.md) — install, commit-and-pull workflow, and querying the graph
 - [Components](../architecture/03-components.md) — ports, adapters, orchestrator, composition root
 - [Settings reference](../operations/settings-reference.md) — every environment variable
 - [REST API overview](../rest-api/index.md) — HTTP endpoints and request shapes

@@ -197,3 +197,14 @@ config
 # See https://github.com/mariushelf/copier-devcontainer
 /.devcontainer/
 /.envrc
+
+# graphify knowledge graph — committed so the whole team starts from one shared map.
+# See docs/development/graphify.md. Only local/regenerable bits are ignored below.
+# Per-machine cumulative token tally:
+graphify-out/cost.json
+# Absolute paths written on the machine that built the graph:
+graphify-out/.graphify_python
+graphify-out/.graphify_root
+# Regenerable AST/semantic cache (pinned to the graphify tool version).
+# Optional: comment this out to commit it for a faster first `graphify update`.
+graphify-out/cache/
