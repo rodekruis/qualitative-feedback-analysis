@@ -62,24 +62,18 @@ resource "azurerm_monitor_diagnostic_setting" "app_service" {
 # Alerting
 # =============================================================================
 
-# Webhook URL for the Teams channel that receives alerts. The value is managed
-# out-of-band (az keyvault secret set — see key_vault.tf) and only read here,
-# so it never appears in this file. It does, however, land in Terraform state
-# as a plain-text attribute of the action group below: Action Group webhook
-# receivers have no equivalent of App Service's `@Microsoft.KeyVault(...)`
-# app_settings resolver (app_service.tf), so the value has to be materialized
-# into a resource argument at apply time. Accepted deliberately here — a
-# leaked webhook only allows posting to the Teams channel, unlike
-# llm-api-key/auth-api-keys, which stay out of state entirely via that
-# resolver. State itself is only reachable via the AD-authenticated tfstate
-# storage backend (providers.tf).
-data "azurerm_key_vault_secret" "teams_webhook" {
-  name         = "teams-alerts-webhook-url"
-  key_vault_id = azurerm_key_vault.main.id
-}
-
 # Defines where alerts are sent. Reused by all alert rules below so the
 # webhook only needs to be changed in one place.
+#
+# The webhook URL comes from var.teams_webhook_url (TF_VAR_teams_webhook_url —
+# local shell/.env, or a GitHub Actions secret in CI), not Key Vault: Action
+# Group webhook receivers have no equivalent of App Service's
+# `@Microsoft.KeyVault(...)` app_settings resolver (app_service.tf), so a
+# Key-Vault-backed value would need a `data` source and land in Terraform
+# state either way (plus its own RBAC grant for whoever runs plan/apply).
+# Passing it straight in as a variable gets the same state exposure without
+# that extra Key Vault dependency — acceptable here since a leaked webhook
+# only allows posting to the Teams channel, unlike llm-api-key/auth-api-keys.
 #
 # use_common_alert_schema = true standardizes the POSTed payload across alert
 # types, but Azure still sends raw JSON — Teams will render it as an
@@ -93,7 +87,7 @@ resource "azurerm_monitor_action_group" "alerts" {
 
   webhook_receiver {
     name                    = "teams"
-    service_uri             = data.azurerm_key_vault_secret.teams_webhook.value
+    service_uri             = var.teams_webhook_url
     use_common_alert_schema = true
   }
 }

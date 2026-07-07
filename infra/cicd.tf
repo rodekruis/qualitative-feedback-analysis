@@ -81,17 +81,6 @@ resource "azurerm_role_assignment" "github_tfstate_reader" {
   principal_id         = azurerm_user_assigned_identity.github.principal_id
 }
 
-# Key Vault has rbac_authorization_enabled = true (key_vault.tf), so secret
-# data-plane access (get/list) is governed by RBAC, not vault access policies
-# — the Contributor role above is management-plane only and does not include
-# it. Needed so `terraform plan`/`apply` can resolve the
-# data.azurerm_key_vault_secret.teams_webhook read in observability.tf.
-resource "azurerm_role_assignment" "github_keyvault_secrets_reader" {
-  scope                = azurerm_key_vault.main.id
-  role_definition_name = "Key Vault Secrets User"
-  principal_id         = azurerm_user_assigned_identity.github.principal_id
-}
-
 resource "azurerm_federated_identity_credential" "github_environment" {
   name                      = "gh-qualitative-feedback-analysis-${local.env}"
   user_assigned_identity_id = azurerm_user_assigned_identity.github.id

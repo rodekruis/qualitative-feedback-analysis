@@ -21,12 +21,13 @@ cd infra
 
 ### 2. Export the environment's resource group
 
-`TF_VAR_resource_group_name` is the only per-environment Terraform variable. Re-export it each time you switch environments.
+`TF_VAR_resource_group_name` and `TF_VAR_teams_webhook_url` are the per-environment Terraform variables set via the shell (or a gitignored `.env` you `source`). Re-export them each time you switch environments.
 PostgreSQL Entra admin is configured automatically from the App Service system-assigned managed identity.
 
 ```bash
 export ENV=dev  # or staging, prd, ...
 export TF_VAR_resource_group_name=<your-env-rg-name>
+export TF_VAR_teams_webhook_url=<this-env's-teams-incoming-webhook-url>
 ```
 
 ### 3. Create and select the Terraform workspace
@@ -64,6 +65,11 @@ gh api repos/$REPO/environments/$ENV -X PUT
 gh variable set AZ_CLIENT_ID       --env "$ENV" --repo "$REPO" --body "$(terraform output -raw az_client_id)"
 gh variable set AZ_RESOURCE_GROUP  --env "$ENV" --repo "$REPO" --body "$TF_VAR_resource_group_name"
 gh variable set AZ_APP_NAME        --env "$ENV" --repo "$REPO" --body "qfa-${ENV}-backend"
+
+# Secret (not a variable): CI's `terraform.yaml` reads this into
+# TF_VAR_teams_webhook_url. Uses `gh secret`, not `gh variable`, so the
+# value is masked in Actions logs.
+gh secret set TEAMS_ALERTS_WEBHOOK_URL --env "$ENV" --repo "$REPO" --body "$TF_VAR_teams_webhook_url"
 ```
 
 After this, the `terraform.yaml` workflow can manage this environment's infrastructure autonomously in CI.

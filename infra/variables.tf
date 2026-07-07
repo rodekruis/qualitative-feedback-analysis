@@ -34,6 +34,12 @@ variable "acr_name" {
 }
 
 
+variable "teams_webhook_url" {
+  description = "Microsoft Teams incoming webhook URL that Azure Monitor alerts are POSTed to. Provided via TF_VAR_teams_webhook_url (local shell/.env, or a GitHub Actions secret in CI) — never committed to source or read from Key Vault."
+  type        = string
+  sensitive   = true
+}
+
 variable "github_repo" {
   description = "GitHub repository in owner/name format"
   type        = string

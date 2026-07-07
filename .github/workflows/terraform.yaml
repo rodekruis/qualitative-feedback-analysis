@@ -118,6 +118,7 @@ jobs:
           TF_VAR_acr_resource_group_name: ${{ vars.AZ_ACR_RESOURCE_GROUP }}
           TF_VAR_tf_state_storage_account: ${{ vars.AZ_TF_STATE_STORAGE_ACCOUNT }}
           TF_VAR_tf_state_resource_group_name: ${{ vars.AZ_TF_STATE_RESOURCE_GROUP }}
+          TF_VAR_teams_webhook_url: ${{ secrets.TEAMS_ALERTS_WEBHOOK_URL }}
 
       - name: Terraform apply
         if: inputs.command == 'apply'
@@ -132,3 +133,4 @@ jobs:
           TF_VAR_acr_resource_group_name: ${{ vars.AZ_ACR_RESOURCE_GROUP }}
           TF_VAR_tf_state_storage_account: ${{ vars.AZ_TF_STATE_STORAGE_ACCOUNT }}
           TF_VAR_tf_state_resource_group_name: ${{ vars.AZ_TF_STATE_RESOURCE_GROUP }}
+          TF_VAR_teams_webhook_url: ${{ secrets.TEAMS_ALERTS_WEBHOOK_URL }}
