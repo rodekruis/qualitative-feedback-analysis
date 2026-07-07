@@ -53,7 +53,7 @@ jobs:
           DIGEST=$(printf '%s\n' "$BODY" | grep -oE 'sha256:[a-f0-9]{64}' | head -n 1 || true)
           if [ -z "$DIGEST" ]; then
             echo "::error::Release '${{ inputs.release_tag }}' has no image digest in its body."
-            echo "::error::Was it ever built? build-release-image.yaml writes the digest on release.published."
+            echo "::error::Was it ever built? release.yaml writes the digest into the release body when the draft is created."
             exit 1
           fi
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
