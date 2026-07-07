@@ -1,5 +1,11 @@
 # Developer guide
 
+```{toctree}
+:hidden:
+
+graphify
+```
+
 Everything you need to go from a fresh clone to a green `make test`.
 
 Prefer a container? The devcontainer is an optional, per-developer secure Claude Code sandbox — it installs the project with uv, wires up pre-commit, and adds a default-deny egress firewall. It is no longer shipped in this repo; inject it locally from the [copier template](https://github.com/mariushelf/copier-devcontainer) with `uvx copier copy gh:mariushelf/copier-devcontainer "$(pwd)"`. The rest of this page assumes you're setting up directly on your host.
