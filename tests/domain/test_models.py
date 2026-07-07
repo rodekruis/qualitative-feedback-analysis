@@ -40,6 +40,17 @@ class TestFeedbackRecordModel:
         assert doc.metadata.coding_level_1 == "Water"
         assert doc.metadata.coding_level_2 == "Sanitation"
 
+    def test_metadata_rejects_unknown_field(self):
+        """Only created/coding_level_1/2/3 are accepted (extra="forbid").
+
+        Why: FeedbackRecordMetadataModel used to silently drop unknown
+        keys (extra="ignore"); it now rejects them so a typo'd or
+        corpus-only field (e.g. region, theme) fails loudly instead of
+        vanishing.
+        """
+        with pytest.raises(ValidationError):
+            FeedbackRecordMetadataModel.model_validate({"region": "Eastern Province"})
+
     def test_frozen_raises_on_assignment(self):
         doc = FeedbackRecordModel(id="doc-1", content="feedback")
         with pytest.raises(ValidationError):

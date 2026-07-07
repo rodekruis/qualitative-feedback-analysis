@@ -111,6 +111,30 @@ class TestBuildRequest:
         with_period = stress_analyze.build_request([], prompt="p", period="month")
         assert with_period["period"] == "month"
 
+    def test_metadata_is_projected_to_known_fields(self) -> None:
+        """Corpus-only metadata (region, theme, ...) is dropped before sending.
+
+        Why: ``ApiFeedbackRecordMetadata`` (``qfa.api.schemas``) rejects
+        unknown metadata keys (``extra="forbid"``). The corpus fixture
+        carries richer benchmark-only metadata than the API accepts, so
+        every record would 422 unless it's projected down first.
+        """
+        record = {
+            "id": "doc-001",
+            "content": "text",
+            "metadata": {
+                "created": "2024-06-01T12:00:00Z",
+                "coding_level_1": "Water",
+                "region": "Eastern Province",
+                "dataset": "COVID-19",
+            },
+        }
+        body = stress_analyze.build_request([record], prompt="p")
+        assert body["feedback_records"][0]["metadata"] == {
+            "created": "2024-06-01T12:00:00Z",
+            "coding_level_1": "Water",
+        }
+
 
 class TestSummarize:
     """Aggregate statistics across a batch of results."""
