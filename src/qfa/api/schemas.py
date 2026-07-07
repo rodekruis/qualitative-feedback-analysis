@@ -658,7 +658,6 @@ class ApiSummarizeRequest(ApiSingleInferenceRequestBase):
                         ),
                         "metadata": {
                             "created": "2024-06-01T12:00:00Z",
-                            "feedback_record_id": "fi-001",
                             "coding_level_1": "Water",
                             "coding_level_2": "Distribution",
                             "coding_level_3": "Waiting times",
