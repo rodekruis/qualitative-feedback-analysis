@@ -27,7 +27,7 @@ PostgreSQL Entra admin is configured automatically from the App Service system-a
 ```bash
 export ENV=dev  # or staging, prd, ...
 export TF_VAR_resource_group_name=<your-env-rg-name>
-export TF_VAR_teams_webhook_url=<this-env's-teams-incoming-webhook-url>
+export TF_VAR_teams_webhook_url=<teams-incoming-webhook-url-for-this-env>
 ```
 
 ### 3. Create and select the Terraform workspace
