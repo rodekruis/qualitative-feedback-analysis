@@ -51,22 +51,20 @@ class TestFeedbackRecordModel:
         with pytest.raises(ValidationError):
             FeedbackRecordMetadataModel.model_validate({"region": "Eastern Province"})
 
-    def test_metadata_accepts_deprecated_feedback_record_id(self):
-        """Legacy feedback_record_id is accepted (and ignored), not rejected.
+    def test_metadata_rejects_deprecated_feedback_record_id(self):
+        """The domain model forbids the legacy feedback_record_id key.
 
-        Why: pre-v2.0.1 EspoCRM flowcharts put the record id into metadata.
-        Re-admitting it as a deprecated field lets the backend deploy ahead of
-        the flowchart upgrade without 422-ing those older clients, while every
-        other unknown key still fails fast (extra="forbid" is preserved).
+        Why: pre-v2.0.1 EspoCRM flowcharts copied the record id into metadata
+        as feedback_record_id. That backward-compat shim lives only at the API
+        boundary (ApiFeedbackRecordMetadata / routes._to_domain_metadata), which
+        strips the key before constructing the domain model. Keeping the domain
+        model strict means a mapping that ever forgot to strip it would fail
+        loudly here rather than silently carrying a redundant identifier inward.
         """
-        meta = FeedbackRecordMetadataModel.model_validate(
-            {"created": "2024-06-01T12:00:00Z", "feedback_record_id": "fi-001"}
-        )
-        with pytest.warns(DeprecationWarning):
-            assert meta.feedback_record_id == "fi-001"
-        # Still strict about genuinely unknown keys.
         with pytest.raises(ValidationError):
-            FeedbackRecordMetadataModel.model_validate({"unexpected": "x"})
+            FeedbackRecordMetadataModel.model_validate(
+                {"created": "2024-06-01T12:00:00Z", "feedback_record_id": "fi-001"}
+            )
 
     def test_frozen_raises_on_assignment(self):
         doc = FeedbackRecordModel(id="doc-1", content="feedback")

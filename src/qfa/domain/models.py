@@ -32,10 +32,12 @@ class FeedbackRecordMetadataModel(BaseModel):
     `language`, `codes`) must project down to these four fields before
     constructing a `FeedbackRecordModel`.
 
-    `feedback_record_id` is a deprecated legacy field carried through from the
-    API model so the boundary mapping doesn't have to strip it; it is ignored
-    (the record-level `id` is the identifier the backend uses). See
-    `ApiFeedbackRecordMetadata` for the full rationale.
+    The deprecated `feedback_record_id` key that older EspoCRM flowcharts wrote
+    into metadata is *not* accepted here: it is a wire-compatibility concern
+    stripped at the API boundary (see `ApiFeedbackRecordMetadata` and
+    `qfa.api.routes._to_domain_metadata`), so the domain model keeps a clean,
+    minimal shape and `extra="forbid"` still fails fast if the boundary mapping
+    ever forgets to strip it.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -58,16 +60,6 @@ class FeedbackRecordMetadataModel(BaseModel):
     coding_level_3: str | None = Field(
         default=None,
         description="Code level 3 label assigned to the feedback record.",
-    )
-
-    feedback_record_id: str | None = Field(
-        default=None,
-        deprecated=True,
-        description=(
-            "Deprecated legacy field, accepted for backward compatibility with"
-            " older EspoCRM flowcharts and ignored. The record-level `id` is"
-            " the identifier the backend uses."
-        ),
     )
 
 

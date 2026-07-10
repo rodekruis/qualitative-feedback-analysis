@@ -333,6 +333,12 @@ class ApiFeedbackRecordMetadata(BaseModel):
     older clients; it is declared explicitly rather than switching the model
     to ``extra="ignore"`` so unknown keys still fail fast. New clients must
     not send it.
+
+    This field is confined to the API boundary: ``_to_domain_metadata`` in
+    ``qfa.api.routes`` strips it when translating to the domain
+    ``FeedbackRecordMetadataModel``, which never carries it. That keeps the
+    backward-compat shim in the driving adapter (ADR-007) and the domain model
+    clean.
     """
 
     model_config = ConfigDict(extra="forbid")

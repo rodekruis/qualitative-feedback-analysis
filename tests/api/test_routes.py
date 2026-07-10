@@ -3,6 +3,8 @@
 import httpx
 import pytest
 
+from qfa.api.routes import _to_domain_metadata
+from qfa.api.schemas import ApiFeedbackRecordMetadata
 from qfa.domain.errors import (
     AnalysisError,
     AnalysisTimeoutError,
@@ -66,6 +68,36 @@ def _valid_detect_sensitive_body(**overrides):
     }
     body.update(overrides)
     return body
+
+
+# ------------------------------------------------------------------ #
+# Boundary mapping
+# ------------------------------------------------------------------ #
+
+
+class TestToDomainMetadata:
+    """The API->domain metadata translation strips the legacy compat key."""
+
+    def test_strips_deprecated_feedback_record_id(self):
+        """feedback_record_id is accepted at the boundary and dropped in mapping.
+
+        Why: the deprecated key is a wire-compat concern for pre-v2.0.1 EspoCRM
+        flowcharts. It is confined to the API model; _to_domain_metadata strips
+        it so the domain model (which forbids it) stays clean. Verifies the shim
+        never leaks past the driving adapter.
+        """
+        api_metadata = ApiFeedbackRecordMetadata.model_validate(
+            {"created": "2024-06-01T12:00:00Z", "feedback_record_id": "fi-001"}
+        )
+        # The API model accepts the legacy key...
+        with pytest.warns(DeprecationWarning):
+            assert api_metadata.feedback_record_id == "fi-001"
+
+        domain_metadata = _to_domain_metadata(api_metadata)
+
+        # ...but the domain model neither carries nor exposes it.
+        assert domain_metadata.created == "2024-06-01T12:00:00Z"
+        assert not hasattr(domain_metadata, "feedback_record_id")
 
 
 # ------------------------------------------------------------------ #

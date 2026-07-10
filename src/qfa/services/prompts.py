@@ -199,12 +199,8 @@ def build_feedback_record_envelope(
     if include_metadata:
         metadata_lines = "\n".join(
             f"      {escape_for_tag_envelope(str(k))}={escape_for_tag_envelope(str(v))}"
-            # ``feedback_record_id`` is a deprecated, ignored legacy field
-            # (see FeedbackRecordMetadataModel); it duplicates the record-level
-            # id already emitted on the <feedback_record> tag, so keep it out of
-            # the prompt rather than feeding the model a redundant identifier.
             for k, v in feedback_record.metadata.model_dump(
-                exclude_defaults=True, exclude={"feedback_record_id"}
+                exclude_defaults=True
             ).items()
         )
         metadata_block = (
