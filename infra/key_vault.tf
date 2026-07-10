@@ -16,3 +16,11 @@ resource "azurerm_key_vault" "main" {
 # Key Vault secret names are declared here, but VALUES are managed out-of-band
 # (via az keyvault secret set / the update_auth_api_keys.py script).
 # This avoids storing secrets in Terraform state.
+#
+# Secrets expected in this vault:
+#   - llm-api-base   (app_service.tf, read via @Microsoft.KeyVault app_settings resolver)
+#   - llm-api-key    (app_service.tf, read via @Microsoft.KeyVault app_settings resolver)
+#   - auth-api-keys  (app_service.tf, read via @Microsoft.KeyVault app_settings resolver)
+#
+# The Teams alerting webhook (observability.tf) is deliberately NOT stored
+# here — see var.teams_webhook_url in variables.tf.

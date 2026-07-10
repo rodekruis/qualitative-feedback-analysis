@@ -86,10 +86,222 @@ Returned shape: counts and token totals per operation, plus simple latency distr
 
 If the database is down, both endpoints return 503 with `code=usage_backend_unavailable` — a transient condition, so retry with backoff.
 
-## What's not wired up yet
+## Azure Monitor
 
-- No APM, no metrics export (Prometheus / OpenTelemetry).
-- No log shipping to a central index — App Service log stream is it.
-- No alerting rules.
+App Service logs are shipped to an Azure Log Analytics workspace (`qfa-<env>-logs`) and surfaced in Application Insights (`qfa-<env>-appinsights`). Both are created by Terraform in `infra/observability.tf`. The App Service passes the App Insights connection string to the container as the `APPLICATIONINSIGHTS_CONNECTION_STRING` app setting (wired in `infra/app_service.tf`); when that setting is present, the app enables application telemetry at startup — see [Application Insights (application telemetry)](#application-insights-application-telemetry) below.
 
-These are gaps to fill when operational maturity calls for them.
+### Architecture at a glance
+
+New to Azure? Start here. There are **two independent signal sources**, and they
+answer different questions — confusing them is the single most common source of "the
+deployment looks broken when it mostly isn't":
+
+- **Application logs** — the log lines the app writes. Answers
+  *"what did the app do / why did this request fail?"*
+- **Platform metrics** — CPU / memory / disk / HTTP counters the Azure **host** emits
+  automatically, with zero code. Answers *"is the box healthy / saturated?"*
+
+Plus a third, app-specific channel that is neither of those: **cost/usage** tracked in
+Postgres and exposed via `GET /v1/usage`.
+
+The critical thing the diagram makes explicit is that **Log Analytics and Application
+Insights are two separate sinks filled by two different pipes** — even though
+workspace-based App Insights physically *stores* its data inside the same Log Analytics
+workspace. The **diagnostic setting** pushes `AppService*` log tables into Log Analytics
+with no app involvement; the **OpenTelemetry SDK inside the container** pushes the
+`App*` telemetry tables (`AppRequests`, `AppDependencies`, `AppExceptions`, `AppTraces`)
+into Application Insights over the connection string. They fail independently: logs can
+arrive while App Insights stays empty, or vice-versa.
+
+```mermaid
+flowchart TB
+    subgraph app["Your app (container)"]
+        py["Application logs → stdout<br/>(request_id, tenant, cost, latency)"]
+        otel["Application telemetry<br/>(enabled at startup)<br/>captures requests, outbound calls, exceptions"]
+        db[("Postgres: llm_calls<br/>token/cost tracking")]
+    end
+
+    subgraph host["Azure App Service (host running your container)"]
+        stdout_cap["stdout / stderr capture"]
+        stream["Live Log stream<br/>(real-time tail, ephemeral)"]
+        metrics["Platform metrics (emitted automatically)<br/>CPU% · Memory% · Disk · Http5xx · HealthCheckStatus"]
+    end
+
+    subgraph mon["Azure Monitor"]
+        diag["Diagnostic setting<br/>routes console / HTTP / platform logs + AllMetrics"]
+        law[("Log Analytics workspace<br/>qfa-env-logs · 30-day retention<br/>AppService* tables · query with KQL")]
+        ai["Application Insights (workspace-based)<br/>qfa-env-appinsights<br/>App* tables: AppRequests / AppDependencies /<br/>AppExceptions / AppTraces"]
+        alerts["4 metric alert rules<br/>5xx · health · CPU · memory"]
+        ag["Action group → Teams webhook"]
+    end
+
+    subgraph see["Where YOU look (Azure Portal)"]
+        portal_stream["App Service → Log stream<br/>(live tail)"]
+        portal_logs["Log Analytics → Logs<br/>(KQL, historical)"]
+        portal_metrics["App Service / Plan → Metrics<br/>(CPU / mem / disk / 5xx charts)"]
+        portal_ai["App Insights → Live Metrics /<br/>Transaction search / Application Map"]
+        portal_alerts["Azure Monitor → Alerts → Teams channel"]
+        usage["App API: GET /v1/usage<br/>(cost / token reporting)"]
+    end
+
+    py --> stdout_cap
+    stdout_cap --> stream
+    stdout_cap --> diag
+    stream --> portal_stream
+    host -.emits.-> metrics
+    metrics --> diag
+    metrics --> alerts
+    metrics --> portal_metrics
+    diag --> law
+    law --> portal_logs
+
+    otel -->|"exports via connection string"| ai
+    ai -.stored in.-> law
+    ai --> portal_ai
+
+    alerts --> ag --> portal_alerts
+    db --> usage
+```
+
+The one-line mental model: **host signals** (stdout logs, CPU%, memory%) do *not* need
+the OTel SDK and already have homes — Log stream / Log Analytics for logs, the Metrics
+blade for CPU/memory. **Application telemetry** (per-request traces in the App Insights
+`App*` tables) is what the OTel SDK lights up. Wiring OTel is required for App Insights;
+it is *not* required for logs or host metrics.
+
+### Running these queries in the portal
+
+1. Azure Portal → search for **`qfa-<env>-logs`** (or **Resource group → `qfa-<env>-logs`**) and open the Log Analytics workspace.
+2. In the workspace's left-hand menu, open **Logs**. Dismiss the sample-queries dialog if it appears — you want the empty editor.
+3. Paste a query into the editor and set the time range with the picker above it. If the query already contains a `TimeGenerated` filter, the picker shows *Set in query* and defers to it — don't set both.
+4. Click **Run** (or press Shift+Enter). Click any result row to expand its full set of columns.
+
+Two gotchas: **Run** executes the *whole* editor unless you first select a single query, and a *"failed to resolve table"* error means nothing has been ingested into that table yet — it is not a syntax error. Ingestion also lags the live log stream by a few minutes (see below), so re-run after a short wait if a fresh event is missing.
+
+The Application Insights `App*` tables (populated by the OpenTelemetry SDK — delivery pending verification, see below):
+
+```kql
+// All requests in the last hour
+AppRequests
+| where TimeGenerated > ago(1h)
+| project TimeGenerated, Name, ResultCode, DurationMs
+
+// Exceptions
+AppExceptions
+| where TimeGenerated > ago(1h)
+| project TimeGenerated, ProblemId, OuterMessage
+```
+
+### App Service log tables
+
+The queries above target the Application Insights `App*` tables, which the app's
+telemetry populates (see [Application Insights (application telemetry)](#application-insights-application-telemetry)
+below — delivery is currently pending verification). Independently of that, the App
+Service **diagnostic setting** in `infra/observability.tf` ships three log
+categories straight to the same workspace, so these tables are populated as soon
+as the container runs — they are the authoritative log source today:
+
+- `AppServiceConsoleLogs` — the container's stdout/stderr: the application's own
+  log lines plus web-server output. The message text is in the
+  **`ResultDescription`** column.
+- `AppServicePlatformLogs` — App Service platform lifecycle events: container
+  start/stop, warm-up probe results, and startup failures such as
+  `ContainerTimeout`. The message text is in the **`Message`** column — a
+  *different* column name from the console table, which is easy to trip over in a
+  joint query.
+- `AppServiceHTTPLogs` — one row per HTTP request (method, path, status,
+  latency), written by the front end regardless of whether the app logs.
+
+**Container (console) logs** — the application's own output:
+
+```kql
+AppServiceConsoleLogs
+| where TimeGenerated > ago(1h)
+| project TimeGenerated, ResultDescription
+| order by TimeGenerated desc
+```
+
+**Platform logs** — container lifecycle and startup failures (note `Message`, not
+`ResultDescription`):
+
+```kql
+AppServicePlatformLogs
+| where TimeGenerated > ago(1h)
+| project TimeGenerated, Level, Message
+| order by TimeGenerated desc
+```
+
+**Joint view** — console and platform logs merged into one time-ordered stream
+(the Log Analytics equivalent of `az webapp log tail`). The two tables name their
+message column differently, so `coalesce` picks whichever is populated per row,
+and `Type` records which table each row came from:
+
+```kql
+union AppServiceConsoleLogs, AppServicePlatformLogs
+| where TimeGenerated > ago(1h)
+| extend Msg = coalesce(ResultDescription, Message)
+| project TimeGenerated, Type, Msg
+| order by TimeGenerated desc
+```
+
+Log Analytics ingestion lags the live **App Service → Log stream** (and
+`az webapp log tail`) by roughly 2–5 minutes. Use the log stream for real-time
+debugging and these queries for historical search, filtering, and alerting.
+
+## Alerting
+
+Four metric alert rules are provisioned in `infra/observability.tf`, all routed through the `qfa-<env>-alerts` action group, which POSTs to the Microsoft Teams incoming webhook configured via `var.teams_webhook_url` (see [Set up a new environment](setup-new-env.md)):
+
+| Alert | Metric | Threshold | Severity |
+|---|---|---|---|
+| HTTP 5xx | `Http5xx` | >5 in 5 min | 2 |
+| Health check | `HealthCheckStatus` | <1 (i.e. `/v1/health` failing) | 1 |
+| High CPU | `CpuPercentage` | >80% for 5 min | 2 |
+| High memory | `MemoryPercentage` | >80% for 5 min | 2 |
+
+The health-check alert (severity 1) fires when the App Service platform's built-in health probe of `/v1/health` fails — this is the most direct signal that the container is down or crashed.
+
+## Application Insights (application telemetry)
+
+Application Insights holds *application* telemetry — one record per request
+(`AppRequests`), per outbound call (`AppDependencies`), per exception (`AppExceptions`),
+plus the app's log lines (`AppTraces`). This is a separate signal from the `AppService*`
+log tables above: those arrive via the diagnostic setting and do **not** depend on the
+app, whereas the `App*` tables are emitted by the app itself.
+
+Telemetry turns on automatically when the `APPLICATIONINSIGHTS_CONNECTION_STRING` app
+setting is present — i.e. in deployed environments, where Terraform wires it. Local dev
+leaves the setting unset and emits nothing, so an empty App Insights locally is expected.
+
+> **Look at the `qfa-<env>-appinsights` resource, not the App Service tab.** Open that
+> Application Insights resource directly. Do **not** use `qfa-<env>-backend → Application
+> Insights` — that App Service tab controls Azure's *codeless* auto-instrumentation, a
+> different mechanism this app does not use, so it always shows "Enable Application
+> Insights…" even though telemetry is already wired. **Don't click Enable there** — it
+> would attach an injected agent on top of the app's own telemetry and duplicate every
+> record.
+
+> **Verification pending.** Telemetry is wired but end-to-end delivery has not yet been
+> confirmed against a deployed environment. Until it is, treat the App Service log stream
+> and the `AppService*` tables as the authoritative log source, and verify the `App*`
+> tables populate after the next deploy.
+
+**Validating that App Insights receives telemetry** (fastest → slowest):
+
+1. **Live Metrics** (`qfa-<env>-appinsights` → **Live Metrics**). Near-real-time (~1 s)
+   and it *bypasses* the 2–5 min ingestion lag that affects the KQL tables. Open it, then
+   send a handful of requests (`curl https://<app>/v1/health`). If the server shows as
+   **connected** and the request rate ticks up, telemetry is flowing. If it stays "not
+   connected", the app isn't emitting — check the connection string reached the container
+   and that the app isn't crash-looping (telemetry is batched, so a container killed
+   during a crash-loop can lose it before it is sent).
+2. **Transaction search** — inspect a single request end-to-end (request + dependencies +
+   exceptions), correlated by `OperationId`.
+3. **Logs (KQL)**, after ingestion:
+   `AppRequests | where TimeGenerated > ago(15m) | project TimeGenerated, Name, ResultCode, DurationMs`.
+4. **Application Map** — appears once `AppDependencies` has rows; draws app → Postgres →
+   OpenAI.
+
+Once telemetry is confirmed, your application log lines appear in **both**
+`AppServiceConsoleLogs` (via the diagnostic setting) and `AppTraces` (via App Insights) —
+the same lines in two tables, reaching them by two independent paths.

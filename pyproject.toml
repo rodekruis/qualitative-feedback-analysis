@@ -47,6 +47,7 @@ dependencies = [
     "numpy>=2.4.4",
     "onnxruntime>=1.26.0",
     "tokenizers>=0.22.2",
+    "azure-monitor-opentelemetry>=1.8.8",
 ]
 
 [tool.uv]

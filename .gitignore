@@ -183,6 +183,9 @@ config
 /.import_linter_cache/
 *.db
 
+# macOS Finder metadata
+.DS_Store
+
 # Scratch + ephemeral
 .corpus_work/
 .uncertainty-*.md
