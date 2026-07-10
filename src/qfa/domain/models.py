@@ -31,13 +31,6 @@ class FeedbackRecordMetadataModel(BaseModel):
     richer metadata (e.g. `fixtures/analyze_corpus.yaml`'s `theme`,
     `language`, `codes`) must project down to these four fields before
     constructing a `FeedbackRecordModel`.
-
-    The deprecated `feedback_record_id` key that older EspoCRM flowcharts wrote
-    into metadata is *not* accepted here: it is a wire-compatibility concern
-    stripped at the API boundary (see `ApiFeedbackRecordMetadata` and
-    `qfa.api.routes._to_domain_metadata`), so the domain model keeps a clean,
-    minimal shape and `extra="forbid"` still fails fast if the boundary mapping
-    ever forgets to strip it.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
