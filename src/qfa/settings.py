@@ -295,6 +295,30 @@ class NetworkSettings(BaseSettings):
     port: int = 8000
 
 
+class TelemetrySettings(BaseSettings):
+    """Azure Monitor / Application Insights telemetry configuration.
+
+    Kept as its own group with no required fields so it can be constructed
+    standalone at import time (``qfa.main`` reads it before building the full
+    application graph) without tripping the required env-vars of the other
+    settings groups.
+    """
+
+    # No env_prefix: the Azure App Service injects the fixed variable name
+    # APPLICATIONINSIGHTS_CONNECTION_STRING, which maps to the field below.
+    model_config = SettingsConfigDict()
+
+    applicationinsights_connection_string: SecretStr | None = None
+    """Azure Application Insights connection string.
+
+    Read from ``APPLICATIONINSIGHTS_CONNECTION_STRING`` (set on the App Service
+    by ``infra/app_service.tf``). When present, ``qfa.main`` initialises the
+    Azure Monitor OpenTelemetry SDK with it; unset in local dev, which leaves
+    telemetry export disabled. Held as ``SecretStr`` — it embeds an ingestion
+    key — so it is masked in logs and ``model_dump`` output.
+    """
+
+
 class AppSettings(BaseSettings):
     """Root configuration composing all sub-settings groups."""
 
@@ -306,9 +330,9 @@ class AppSettings(BaseSettings):
     log: LogSettings = Field(default_factory=LogSettings)
     db: DatabaseSettings = Field(default_factory=DatabaseSettings)
     network: NetworkSettings = Field(default_factory=NetworkSettings)
+    telemetry: TelemetrySettings = Field(default_factory=TelemetrySettings)
     debug: bool = False
-    applicationinsights_connection_string: str | None = None
     """Whether to enable debug mode.
-    
+
     This will, e.g., enable code reloading for the uvicorn server.
     """

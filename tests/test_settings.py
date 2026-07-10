@@ -11,6 +11,7 @@ from qfa.settings import (
     DatabaseSettings,
     LLMSettings,
     OrchestratorSettings,
+    TelemetrySettings,
 )
 
 
@@ -316,3 +317,80 @@ class TestAppSettings:
         assert settings.llm.model == "gpt-3.5-turbo"
         assert settings.db.url == "postgresql+asyncpg://user:pass@host/db"
         assert settings.orchestrator.chars_per_token == 8
+
+    def test_composes_telemetry_and_reads_connection_string(self, monkeypatch):
+        """The telemetry group is composed in and picks up the env var.
+
+        qfa.main logs the full AppSettings at startup, so the connection string
+        must be reachable (and masked — see TestTelemetrySettings) via the
+        composed group.
+        """
+        monkeypatch.setenv("LLM_API_KEY", "sk-test")
+        monkeypatch.setenv("DB_URL", "postgresql+asyncpg://user:pass@host/db")
+        monkeypatch.setenv("AUTH_API_KEYS", "[]")
+        monkeypatch.setenv(
+            "APPLICATIONINSIGHTS_CONNECTION_STRING",
+            "InstrumentationKey=00000000-0000-0000-0000-000000000000",
+        )
+        settings = AppSettings()
+        assert settings.telemetry.applicationinsights_connection_string is not None
+        assert (
+            settings.telemetry.applicationinsights_connection_string.get_secret_value()
+            == "InstrumentationKey=00000000-0000-0000-0000-000000000000"
+        )
+
+
+class TestTelemetrySettings:
+    def test_connection_string_defaults_to_none(self, monkeypatch):
+        """Absent the env var, telemetry is off — the field must default to None.
+
+        qfa.main gates configure_azure_monitor() on this value, so a None
+        default is what keeps local dev from exporting telemetry.
+        """
+        monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+        settings = TelemetrySettings()
+        assert settings.applicationinsights_connection_string is None
+
+    def test_constructs_without_other_app_env(self, monkeypatch):
+        """TelemetrySettings has no required fields, so a bare import is safe.
+
+        qfa.main builds it at module scope before the rest of the app config
+        exists; this guards the docs build (Sphinx imports qfa.main with no env
+        set) against regressing back to a ValidationError.
+        """
+        for var in ("LLM_API_KEY", "DB_URL", "AUTH_API_KEYS"):
+            monkeypatch.delenv(var, raising=False)
+        monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+        # Must not raise despite the LLM/DB/auth env being absent.
+        assert TelemetrySettings().applicationinsights_connection_string is None
+
+    def test_connection_string_reads_from_env(self, monkeypatch):
+        """The connection string is sourced from the env var, not hardcoded.
+
+        Confirms the App Service app_setting reaches settings so qfa.main can
+        pass it to the Azure Monitor SDK rather than reading os.environ directly.
+        """
+        monkeypatch.setenv(
+            "APPLICATIONINSIGHTS_CONNECTION_STRING",
+            "InstrumentationKey=00000000-0000-0000-0000-000000000000",
+        )
+        settings = TelemetrySettings()
+        assert settings.applicationinsights_connection_string is not None
+        assert (
+            settings.applicationinsights_connection_string.get_secret_value()
+            == "InstrumentationKey=00000000-0000-0000-0000-000000000000"
+        )
+
+    def test_connection_string_is_masked(self, monkeypatch):
+        """The connection string embeds an ingestion key, so it must not leak.
+
+        qfa.main logs the full settings JSON at startup; SecretStr keeps the
+        value out of repr/str/model_dump so it never lands in the log stream.
+        """
+        monkeypatch.setenv(
+            "APPLICATIONINSIGHTS_CONNECTION_STRING",
+            "InstrumentationKey=super-secret-key",
+        )
+        settings = TelemetrySettings()
+        assert "super-secret-key" not in settings.model_dump_json()
+        assert "super-secret-key" not in str(settings)

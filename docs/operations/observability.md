@@ -88,7 +88,7 @@ If the database is down, both endpoints return 503 with `code=usage_backend_unav
 
 ## Azure Monitor
 
-App Service logs are shipped to an Azure Log Analytics workspace (`qfa-<env>-logs`) and surfaced in Application Insights (`qfa-<env>-appinsights`). Both are created by Terraform in `infra/observability.tf`. The app receives the App Insights connection string via `APPLICATIONINSIGHTS_CONNECTION_STRING`, which Pydantic Settings maps to `AppSettings.applicationinsights_connection_string`.
+App Service logs are shipped to an Azure Log Analytics workspace (`qfa-<env>-logs`) and surfaced in Application Insights (`qfa-<env>-appinsights`). Both are created by Terraform in `infra/observability.tf`. The App Service passes the App Insights connection string to the container as `APPLICATIONINSIGHTS_CONNECTION_STRING` (wired in `infra/app_service.tf`), which Pydantic Settings loads into `AppSettings.telemetry.applicationinsights_connection_string`. The OpenTelemetry SDK is then initialised from that setting at startup — see below.
 
 Query the workspace in the Azure Portal under **Log Analytics workspace → Logs** using KQL. Useful starting queries:
 
@@ -106,7 +106,7 @@ AppExceptions
 
 ## Alerting
 
-Four metric alert rules are provisioned in `infra/observability.tf`, all sending email to `olaf@aurai.com` via the `qfa-<env>-alerts` action group:
+Four metric alert rules are provisioned in `infra/observability.tf`, all routed through the `qfa-<env>-alerts` action group, which POSTs to the Microsoft Teams incoming webhook configured via `var.teams_webhook_url` (see [Set up a new environment](setup-new-env.md)):
 
 | Alert | Metric | Threshold | Severity |
 |---|---|---|---|
@@ -117,6 +117,16 @@ Four metric alert rules are provisioned in `infra/observability.tf`, all sending
 
 The health-check alert (severity 1) fires when the App Service platform's built-in health probe of `/v1/health` fails — this is the most direct signal that the container is down or crashed.
 
-## What's not wired up yet
+## OpenTelemetry SDK
 
-- No OpenTelemetry SDK instrumentation — `APPLICATIONINSIGHTS_CONNECTION_STRING` is passed to the app but the SDK is not yet initialised, so `AppRequests`/`AppDependencies` tables in Log Analytics remain empty. App Service log stream is still the primary trace source.
+`src/qfa/main.py` calls `configure_azure_monitor()` at startup, gated on
+`TelemetrySettings.applicationinsights_connection_string` (so local dev, where the setting
+is unset, is unaffected). The connection string is passed explicitly from settings rather than
+re-read from the environment by the SDK. This auto-instruments FastAPI, SQLAlchemy, and
+httpx and exports traces to Application Insights, populating the `AppRequests`,
+`AppDependencies`, and `AppExceptions` tables queried above.
+
+> **Verification pending.** The SDK call is in place but end-to-end delivery has not yet
+> been confirmed against a deployed environment. Until it is, treat the App Service log
+> stream as the authoritative trace source and verify the `App*` tables are populated after
+> the next deploy.
