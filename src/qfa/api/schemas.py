@@ -324,6 +324,15 @@ class ApiFeedbackRecordMetadata(BaseModel):
     from domain models so the wire format doesn't change as a side effect of
     a domain refactor. Only the fields declared below are accepted; any other
     key causes a 422 rather than being silently dropped or passed through.
+
+    ``feedback_record_id`` is a deprecated legacy field: pre-v2.0.1 EspoCRM
+    flowcharts copied the record id into metadata even though the backend
+    already correlates results by the record-level ``id`` and never reads
+    the metadata copy. It is accepted (and ignored) only so the backend can
+    be deployed ahead of the EspoCRM flowchart upgrade without 422-ing those
+    older clients; it is declared explicitly rather than switching the model
+    to ``extra="ignore"`` so unknown keys still fail fast. New clients must
+    not send it.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -343,6 +352,15 @@ class ApiFeedbackRecordMetadata(BaseModel):
     coding_level_3: str | None = Field(
         default=None,
         description="Code level 3 label assigned to the feedback record.",
+    )
+    feedback_record_id: str | None = Field(
+        default=None,
+        deprecated=True,
+        description=(
+            "Deprecated legacy field, accepted for backward compatibility with"
+            " older EspoCRM flowcharts and ignored. The record-level ``id`` is"
+            " the identifier the backend uses; do not send this in new clients."
+        ),
     )
 
 

@@ -35,6 +35,8 @@ The two workflows above are implemented as EspoCRM flowcharts, built and maintai
 
 These CSV files serve as the versioning mechanism: whenever a flowchart is updated in the EspoCRM UI, export a fresh copy and commit it. Promoting a flowchart to staging or production is then a matter of importing the CSV through the EspoCRM UI.
 
+> **Backend/flowchart deploy independence:** The request `metadata` object accepts a fixed set of keys (`created`, `coding_level_1`, `coding_level_2`, `coding_level_3`) and rejects unknown ones. It also still tolerates a deprecated `feedback_record_id` key that older flowcharts wrote into metadata (it is ignored — the record-level `id` is the identifier the backend uses). Because of this, a new backend can be deployed without importing updated flowcharts first, and vice versa. New flowcharts should not send `feedback_record_id`.
+
 > **Version requirement:** Dynamic API URL selection requires EspoCRM **9.2.3 or higher**. On older versions `QFA_API_BASE_URL` cannot be read from App Secrets at runtime and the URL must be hard-coded in the flowchart. Always upgrade to the latest supported version.
 
 ### Exporting a flowchart

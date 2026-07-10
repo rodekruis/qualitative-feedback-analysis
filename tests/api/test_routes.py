@@ -86,6 +86,37 @@ class TestAnalyzeSuccess:
         assert "request_id" in data
 
     @pytest.mark.asyncio
+    async def test_accepts_legacy_espocrm_metadata_with_feedback_record_id(
+        self, client
+    ):
+        """Old EspoCRM payloads carrying feedback_record_id in metadata get 200.
+
+        Why: pre-v2.0.1 flowcharts copied the record id into metadata as
+        feedback_record_id. The formalized metadata forbids unknown keys, so
+        without re-admitting this legacy field the backend would 422 every
+        feedback/insight save from an un-upgraded EspoCRM. This locks in the
+        backward compatibility that lets the backend deploy independently of
+        the flowchart upgrade.
+        """
+        legacy_record = {
+            "id": "fi-001",
+            "content": "The water distribution was well organized.",
+            "metadata": {
+                "created": "2024-06-01T12:00:00Z",
+                "coding_level_1": "Water",
+                "coding_level_2": "Distribution",
+                "coding_level_3": "Waiting times",
+                "feedback_record_id": "fi-001",
+            },
+        }
+        resp = await client.post(
+            "/v1/analyze-bulk",
+            json=_valid_body(feedback_records=[legacy_record]),
+            headers=_auth_header(),
+        )
+        assert resp.status_code == 200
+
+    @pytest.mark.asyncio
     async def test_feedback_record_count_matches_input(self, client):
         docs = [
             {"id": "1", "content": "Doc one"},
