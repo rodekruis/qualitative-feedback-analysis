@@ -23,11 +23,13 @@ Secrets reach the App Service as
 [Key Vault references](https://learn.microsoft.com/en-us/azure/app-service/app-service-key-vault-references)
 (e.g. `@Microsoft.KeyVault(SecretUri=…)`) in the app settings. App Service
 **caches** the resolved values, so a freshly rotated secret does not take effect
-immediately — the platform refreshes the cache periodically (within a few
-minutes to ~24h), and always re-reads every reference on startup.
+immediately: for a versionless reference the platform refetches the cache on its
+own only [about every 24 hours](https://learn.microsoft.com/en-us/azure/app-service/app-service-key-vault-references#understand-rotation),
+so a rotation can take up to a day to land unless you force it.
 
-To force an immediate re-read, recycle the app. Any app-setting change triggers
-a worker restart, so writing a throwaway setting does the job:
+To force an immediate re-read, change any app setting. [Per Microsoft](https://learn.microsoft.com/en-us/azure/app-service/app-service-key-vault-references#understand-rotation),
+"any configuration change to the app causes an app restart and an immediate
+refetch of all referenced secrets" — so writing a throwaway setting does the job:
 
 ```bash
 # Substitute -n / -g for your environment from the table above.
@@ -37,19 +39,27 @@ az webapp config appsettings set \
 ```
 
 `KV_REFRESH_TOUCH` is an arbitrary, unused setting; the `$(date +%s)` value just
-guarantees it changes each run so the save always recycles the app. The app
-re-resolves **all** Key Vault references on the restart that follows.
+guarantees it changes each run, so every save is a real configuration change and
+therefore forces the refetch of **all** references.
 
-Equivalent alternatives:
+Alternatives:
 
-- **Restart only** (leaves no throwaway setting behind):
+- **Refresh API** — forces re-resolution with no throwaway setting *and* no
+  restart, by [POSTing to the `configreferences` refresh endpoint](https://learn.microsoft.com/en-us/azure/app-service/app-service-key-vault-references#understand-rotation):
   ```bash
-  az webapp restart -n qfa-prd-backend -g qualitative-feedback-analysis-production
+  az rest --method post --url \
+    "https://management.azure.com/subscriptions/<sub-id>/resourceGroups/qualitative-feedback-analysis-production/providers/Microsoft.Web/sites/qfa-prd-backend/config/configreferences/appsettings/refresh?api-version=2022-03-01"
   ```
-- **Portal**: open the App Service → **Restart**, or add/save any setting under
-  **Settings → Environment variables**. The Portal also shows a per-setting
-  resolution status, which is the quickest way to confirm a reference resolved
-  rather than silently keeping a stale value.
+- **Portal**: open the App Service → **Settings → Environment variables** and
+  add/save any setting. The Portal also shows a per-setting resolution status,
+  which is the quickest way to confirm a reference resolved rather than silently
+  keeping a stale value.
+
+> **Don't rely on a bare restart.** `az webapp restart` (or Portal → **Restart**)
+> *without* a configuration change is **not** documented to re-read Key Vault
+> references, and in practice it often keeps serving the cached values. Force a
+> refresh with a configuration change or the refresh API above — not a restart
+> alone.
 
 > **Tip — token staleness on the CLI.** If `az` returns `AuthorizationFailed`
 > for `Microsoft.Web/sites/config/list/action` right after a role was granted
@@ -61,7 +71,9 @@ Equivalent alternatives:
 
 If a Key Vault reference's `SecretUri` ends with a version GUID
 (`…/secrets/<name>/<version>`), App Service is pinned to that exact version and
-will **never** pick up a rotated secret — even after a restart — until the app
-setting itself is changed. Use a **versionless** URI (trailing `/`, no version)
-so rotations are picked up by the periodic refresh or a recycle. The
-Terraform-managed references in `app_service.tf` are versionless by design.
+will **never** pick up a rotated secret — even after a restart or a
+configuration change — until the app setting itself is repointed. Use a
+**versionless** URI (no `/<version>` suffix, e.g. `…/secrets/<name>`) so
+rotations are picked up by the periodic (~24 h) refresh, or immediately via a
+configuration change / the refresh API above. The Terraform-managed references
+in `app_service.tf` are versionless by design.

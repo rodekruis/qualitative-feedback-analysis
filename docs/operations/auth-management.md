@@ -92,7 +92,7 @@ Key rotation steps:
 3. Wait until you've verified the tenant is using the new key (look for the new `key_id` in logs).
 4. `--replace <tenant>` with their now-confirmed new key, or `--remove <tenant>` plus `--add` if you want a clean cut.
 
-App Service picks up Key Vault changes within a few minutes. To force an immediate refresh, see [Operational how-tos § Force refresh of changed Key Vault values](how-to.md#force-refresh-of-changed-key-vault-values).
+App Service can take up to ~24 hours to pick up a rotated Key Vault value on its own — it caches references and refetches them only about once a day. To force an immediate refresh, see [Operational how-tos § Force refresh of changed Key Vault values](how-to.md#force-refresh-of-changed-key-vault-values).
 
 ## Local dev
 
