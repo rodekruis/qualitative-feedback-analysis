@@ -11,6 +11,7 @@ The rendered version of this site is hosted on [GitHub Pages](https://rodekruis.
 ## Develop
 
 - [Developer guide](development/index.md) — getting from a fresh clone to a green `make test`. Covers local env setup (direnv + `.env`), pre-commit hooks, and the coding conventions we expect on PRs.
+- [Implementing a new endpoint](development/implementing-a-new-endpoint.md) — a how-to for adding an HTTP endpoint end to end: domain and API models, the orchestrator use case, authentication, and usage tracking.
 - [Devcontainer](https://github.com/mariushelf/copier-devcontainer) — an optional, per-developer secure Claude Code sandbox (uv, pre-commit, and a default-deny egress firewall). It is not shipped in this repo; inject it locally with `uvx copier copy gh:mariushelf/copier-devcontainer "$(pwd)"`.
 
 ## Architecture
