@@ -45,8 +45,9 @@ terraform workspace new "$ENV"
 terraform apply
 ```
 
-This provisions the App Service, Key Vault, managed identity, and federated identity credential for this environment.
-This manual step is especially required because GitHub Actions need the federated identity credential
+This provisions the App Service, Key Vault, two managed identities (one for CI/CD deployments,
+one for Terraform), and their federated identity credentials for this environment.
+This manual step is especially required because GitHub Actions need the federated identity credentials
 to modify the resource group in subsequent CI/CD runs. This is a chicken-and-egg problem
 -- without this manual run CI/CD does not have access to Azure.
 
@@ -55,18 +56,19 @@ That path is the supported production migration flow for Entra-authenticated dat
 
 ### 5. Configure the environment's GitHub variables
 
-`terraform output -raw az_client_id` reads from the current workspace's state, so this step must follow the `terraform apply` above.
+`terraform output -raw az_client_id` and `terraform output -raw az_terraform_client_id` read from the current workspace's state, so this step must follow the `terraform apply` above.
 
 ```bash
 REPO="rodekruis/qualitative-feedback-analysis"
 
 gh api repos/$REPO/environments/$ENV -X PUT
-gh variable set AZ_CLIENT_ID       --env "$ENV" --repo "$REPO" --body "$(terraform output -raw az_client_id)"
-gh variable set AZ_RESOURCE_GROUP  --env "$ENV" --repo "$REPO" --body "$TF_VAR_resource_group_name"
-gh variable set AZ_APP_NAME        --env "$ENV" --repo "$REPO" --body "qfa-${ENV}-backend"
+gh variable set AZ_CLIENT_ID            --env "$ENV" --repo "$REPO" --body "$(terraform output -raw az_client_id)"
+gh variable set AZ_TERRAFORM_CLIENT_ID  --env "$ENV" --repo "$REPO" --body "$(terraform output -raw az_terraform_client_id)"
+gh variable set AZ_RESOURCE_GROUP       --env "$ENV" --repo "$REPO" --body "$TF_VAR_resource_group_name"
+gh variable set AZ_APP_NAME             --env "$ENV" --repo "$REPO" --body "qfa-${ENV}-backend"
 ```
 
-After this, the `terraform.yaml` workflow can manage this environment's infrastructure autonomously in CI.
+After this, the `terraform.yaml` workflow (using `AZ_TERRAFORM_CLIENT_ID`) can manage this environment's infrastructure autonomously in CI, and the build/release/promote workflows (using `AZ_CLIENT_ID`) can deploy images.
 
 ### 6. Seed Key Vault secrets
 
@@ -106,7 +108,7 @@ Without these secrets the App Service will start and pass health checks, but API
 
 ## Re-running after `terraform destroy`
 
-If the managed identity is ever recreated (e.g. after `terraform destroy`), re-run steps 4 and 5 for the affected environment to update `AZ_CLIENT_ID` in its GitHub environment.
+If the managed identities are ever recreated (e.g. after `terraform destroy`), re-run steps 4 and 5 for the affected environment to update `AZ_CLIENT_ID` and `AZ_TERRAFORM_CLIENT_ID` in its GitHub environment.
 
 ## Debugging database connectivity
 
