@@ -2,7 +2,7 @@
 
 How application code and infrastructure changes reach `dev`, `staging`, and `prd`.
 
-For the *runtime* picture (what runs once a release is live), see [Deployment: runtime overview](deployment.md). For first-time provisioning, see [Infrastructure bootstrap](bootstrap.md) and [Set up a new environment](setup-new-env.md).
+For the *runtime* picture (what runs once a release is live), see [Deployment: runtime overview](deployment.md). To find out what is *currently* live in each environment, see [Check deployed versions](check-deployed-versions.md). For first-time provisioning, see [Infrastructure bootstrap](bootstrap.md) and [Set up a new environment](setup-new-env.md).
 
 ## App releases — promotion at a glance
 

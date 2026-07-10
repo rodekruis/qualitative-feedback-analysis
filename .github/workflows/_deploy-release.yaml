@@ -40,6 +40,8 @@ jobs:
   deploy:
     environment: ${{ inputs.environment }}
     runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.resolve.outputs.digest }}
     steps:
       - name: Resolve image digest from release body
         id: resolve
@@ -77,3 +79,88 @@ jobs:
             --resource-group "${{ vars.AZ_RESOURCE_GROUP }}" \
             --container-image-name "${IMAGE}@${DIGEST}" \
             --container-registry-url "https://${{ vars.AZ_ACR_NAME }}.azurecr.io"
+
+      # Advisory metadata only — never fail a real deploy if stamping fails.
+      - name: Stamp version onto App Service tags and run summary
+        continue-on-error: true
+        env:
+          APP_NAME: ${{ vars.AZ_APP_NAME }}
+          RESOURCE_GROUP: ${{ vars.AZ_RESOURCE_GROUP }}
+          TAG: ${{ inputs.release_tag }}
+          DIGEST: ${{ steps.resolve.outputs.digest }}
+          ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          DEPLOYED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          # Azure resource tags are control-plane metadata, so writing them does
+          # NOT restart the app (unlike app settings, which recycle the worker).
+          # `az webapp show --query tags` keeps answering "what's deployed?" even
+          # when the container is down. Terraform ignores these tag keys
+          # (see infra/app_service.tf) so a later `terraform apply` won't wipe
+          # them.
+          az webapp update \
+            --name "$APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --set tags.deployed_version="$TAG" \
+                  tags.deployed_digest="$DIGEST" \
+                  tags.deployed_at="$DEPLOYED_AT" \
+                  tags.deployed_by="$GITHUB_ACTOR" \
+            --output none \
+            || echo "::warning::Failed to stamp deployed-version tags (deploy itself is unaffected)."
+
+          # Surface the deploy on the run summary page so the Actions list is
+          # readable without opening logs.
+          {
+            echo "### Deployed \`$TAG\` to **$ENVIRONMENT**"
+            echo ""
+            echo "| field | value |"
+            echo "| --- | --- |"
+            echo "| version | \`$TAG\` |"
+            echo "| digest | \`$DIGEST\` |"
+            echo "| deployed at | $DEPLOYED_AT |"
+            echo "| deployed by | @$GITHUB_ACTOR |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  annotate:
+    # Records the deployed version on the GitHub deployment that the `deploy`
+    # job's `environment:` key created. This runs as a separate job — after
+    # `deploy` has fully finished — on purpose: GitHub writes its own final
+    # "success" status when the deploy job ends, so a status posted from within
+    # that job would be superseded. Posting here makes our description the
+    # latest status, so the Environments page shows the release tag instead of
+    # the deployment ref (promotions deploy from `main`, an uninformative ref).
+    needs: deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - name: Record deployed version on the GitHub deployment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.release_tag }}
+          DIGEST: ${{ needs.deploy.outputs.digest }}
+          ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          DEPLOYMENT_ID=$(gh api \
+            "repos/$GITHUB_REPOSITORY/deployments?environment=$ENVIRONMENT&sha=$GITHUB_SHA&per_page=1" \
+            --jq '.[0].id // empty')
+          if [ -z "$DEPLOYMENT_ID" ]; then
+            echo "::warning::No GitHub deployment found for $ENVIRONMENT @ $GITHUB_SHA; skipping version annotation."
+            exit 0
+          fi
+          # Set log_url so this (now the latest) status keeps pointing at the
+          # run: it preserves the "View deployment" link on the Environments
+          # page, and keeps target_url populated so tooling that recovers the
+          # originating workflow from the latest status (scripts/
+          # show_deployed_versions.sh, docs/operations/check-deployed-versions.md)
+          # still works. GitHub mirrors log_url into the legacy target_url field.
+          gh api "repos/$GITHUB_REPOSITORY/deployments/$DEPLOYMENT_ID/statuses" \
+            -f state=success \
+            -f environment="$ENVIRONMENT" \
+            -f description="$TAG @ $DIGEST" \
+            -f log_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --silent
+          echo "Annotated deployment $DEPLOYMENT_ID ($ENVIRONMENT) with $TAG @ $DIGEST"
