@@ -88,7 +88,7 @@ If the database is down, both endpoints return 503 with `code=usage_backend_unav
 
 ## Azure Monitor
 
-App Service logs are shipped to an Azure Log Analytics workspace (`qfa-<env>-logs`) and surfaced in Application Insights (`qfa-<env>-appinsights`). Both are created by Terraform in `infra/observability.tf`. The App Service passes the App Insights connection string to the container as `APPLICATIONINSIGHTS_CONNECTION_STRING` (wired in `infra/app_service.tf`), which Pydantic Settings loads into `AppSettings.telemetry.applicationinsights_connection_string`. The OpenTelemetry SDK is then initialised from that setting at startup — see below.
+App Service logs are shipped to an Azure Log Analytics workspace (`qfa-<env>-logs`) and surfaced in Application Insights (`qfa-<env>-appinsights`). Both are created by Terraform in `infra/observability.tf`. The App Service passes the App Insights connection string to the container as the `APPLICATIONINSIGHTS_CONNECTION_STRING` app setting (wired in `infra/app_service.tf`); when that setting is present, the app enables application telemetry at startup — see [Application Insights (application telemetry)](#application-insights-application-telemetry) below.
 
 ### Architecture at a glance
 
@@ -96,8 +96,8 @@ New to Azure? Start here. There are **two independent signal sources**, and they
 answer different questions — confusing them is the single most common source of "the
 deployment looks broken when it mostly isn't":
 
-- **Application logs** — text the Python code emits (`logging.getLogger(...)`). Answers
-  *"what did the code do / why did this request fail?"*
+- **Application logs** — the log lines the app writes. Answers
+  *"what did the app do / why did this request fail?"*
 - **Platform metrics** — CPU / memory / disk / HTTP counters the Azure **host** emits
   automatically, with zero code. Answers *"is the box healthy / saturated?"*
 
@@ -115,9 +115,9 @@ arrive while App Insights stays empty, or vice-versa.
 
 ```mermaid
 flowchart TB
-    subgraph app["Your app (FastAPI container)"]
-        py["Python logging → stdout<br/>(request_id, tenant, cost, latency)"]
-        otel["OpenTelemetry SDK<br/>configure_azure_monitor() in main.py<br/>auto-instruments FastAPI / SQLAlchemy / httpx"]
+    subgraph app["Your app (container)"]
+        py["Application logs → stdout<br/>(request_id, tenant, cost, latency)"]
+        otel["Application telemetry<br/>(enabled at startup)<br/>captures requests, outbound calls, exceptions"]
         db[("Postgres: llm_calls<br/>token/cost tracking")]
     end
 
@@ -194,15 +194,15 @@ AppExceptions
 
 ### App Service log tables
 
-The queries above target the Application Insights `App*` tables, which the
-OpenTelemetry SDK populates (see the **OpenTelemetry SDK** section below —
-delivery is currently pending verification). Independently of the SDK, the App
+The queries above target the Application Insights `App*` tables, which the app's
+telemetry populates (see [Application Insights (application telemetry)](#application-insights-application-telemetry)
+below — delivery is currently pending verification). Independently of that, the App
 Service **diagnostic setting** in `infra/observability.tf` ships three log
 categories straight to the same workspace, so these tables are populated as soon
 as the container runs — they are the authoritative log source today:
 
-- `AppServiceConsoleLogs` — the container's stdout/stderr: the application's
-  `qfa.*` log lines plus gunicorn output. The message text is in the
+- `AppServiceConsoleLogs` — the container's stdout/stderr: the application's own
+  log lines plus web-server output. The message text is in the
   **`ResultDescription`** column.
 - `AppServicePlatformLogs` — App Service platform lifecycle events: container
   start/stop, warm-up probe results, and startup failures such as
@@ -261,29 +261,40 @@ Four metric alert rules are provisioned in `infra/observability.tf`, all routed 
 
 The health-check alert (severity 1) fires when the App Service platform's built-in health probe of `/v1/health` fails — this is the most direct signal that the container is down or crashed.
 
-## OpenTelemetry SDK
+## Application Insights (application telemetry)
 
-`src/qfa/main.py` calls `configure_azure_monitor()` at startup, gated on
-`TelemetrySettings.applicationinsights_connection_string` (so local dev, where the setting
-is unset, is unaffected). The connection string is passed explicitly from settings rather than
-re-read from the environment by the SDK. This auto-instruments FastAPI, SQLAlchemy, and
-httpx and exports traces to Application Insights, populating the `AppRequests`,
-`AppDependencies`, and `AppExceptions` tables queried above.
+Application Insights holds *application* telemetry — one record per request
+(`AppRequests`), per outbound call (`AppDependencies`), per exception (`AppExceptions`),
+plus the app's log lines (`AppTraces`). This is a separate signal from the `AppService*`
+log tables above: those arrive via the diagnostic setting and do **not** depend on the
+app, whereas the `App*` tables are emitted by the app itself.
 
-> **Verification pending.** The SDK call is in place but end-to-end delivery has not yet
-> been confirmed against a deployed environment. Until it is, treat the App Service log
-> stream as the authoritative trace source and verify the `App*` tables are populated after
-> the next deploy.
+Telemetry turns on automatically when the `APPLICATIONINSIGHTS_CONNECTION_STRING` app
+setting is present — i.e. in deployed environments, where Terraform wires it. Local dev
+leaves the setting unset and emits nothing, so an empty App Insights locally is expected.
+
+> **Look at the `qfa-<env>-appinsights` resource, not the App Service tab.** Open that
+> Application Insights resource directly. Do **not** use `qfa-<env>-backend → Application
+> Insights` — that App Service tab controls Azure's *codeless* auto-instrumentation, a
+> different mechanism this app does not use, so it always shows "Enable Application
+> Insights…" even though telemetry is already wired. **Don't click Enable there** — it
+> would attach an injected agent on top of the app's own telemetry and duplicate every
+> record.
+
+> **Verification pending.** Telemetry is wired but end-to-end delivery has not yet been
+> confirmed against a deployed environment. Until it is, treat the App Service log stream
+> and the `AppService*` tables as the authoritative log source, and verify the `App*`
+> tables populate after the next deploy.
 
 **Validating that App Insights receives telemetry** (fastest → slowest):
 
-1. **App Insights → Live Metrics** (`qfa-<env>-appinsights`). Near-real-time (~1 s) and
-   it *bypasses* the 2–5 min ingestion lag that affects the KQL tables. Open it, then
+1. **Live Metrics** (`qfa-<env>-appinsights` → **Live Metrics**). Near-real-time (~1 s)
+   and it *bypasses* the 2–5 min ingestion lag that affects the KQL tables. Open it, then
    send a handful of requests (`curl https://<app>/v1/health`). If the server shows as
-   **connected** and the request rate ticks up, OTel is exporting. If it stays "not
-   connected", the SDK isn't emitting (check the connection string reached the container
-   and the app is not crash-looping — a batched exporter loses telemetry if the container
-   is `SIGKILL`ed before it flushes).
+   **connected** and the request rate ticks up, telemetry is flowing. If it stays "not
+   connected", the app isn't emitting — check the connection string reached the container
+   and that the app isn't crash-looping (telemetry is batched, so a container killed
+   during a crash-loop can lose it before it is sent).
 2. **Transaction search** — inspect a single request end-to-end (request + dependencies +
    exceptions), correlated by `OperationId`.
 3. **Logs (KQL)**, after ingestion:
@@ -291,7 +302,6 @@ httpx and exports traces to Application Insights, populating the `AppRequests`,
 4. **Application Map** — appears once `AppDependencies` has rows; draws app → Postgres →
    OpenAI.
 
-Because `configure_azure_monitor()` also exports Python `logging` records as `AppTraces`,
-once OTel is confirmed working your application logs appear in **both**
-`AppServiceConsoleLogs` (via the diagnostic setting) and `AppTraces` (via the SDK) — the
-same lines, two tables, two independent delivery paths.
+Once telemetry is confirmed, your application log lines appear in **both**
+`AppServiceConsoleLogs` (via the diagnostic setting) and `AppTraces` (via App Insights) —
+the same lines in two tables, reaching them by two independent paths.
