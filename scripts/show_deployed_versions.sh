@@ -43,6 +43,10 @@ for env in "${ENVIRONMENTS[@]}"; do
     # that actually has a target_url rather than blindly the newest.
     target_url=$(gh api "repos/$REPO/deployments/$id/statuses" \
       --jq 'first(.[] | select(.target_url != "") | .target_url) // ""')
+    # No target_url means no status we can trace back to a run, so we can't tell
+    # which workflow produced this deployment — skip it rather than let the
+    # empty-string `grep` in run_id_from_url trip `set -o pipefail` and abort.
+    [ -n "$target_url" ] || continue
     run_id=$(run_id_from_url "$target_url")
     run_meta=$(gh api "repos/$REPO/actions/runs/$run_id" --jq '"\(.name)|\(.event)"' 2>/dev/null || echo '?|?')
     workflow=${run_meta%%|*}
