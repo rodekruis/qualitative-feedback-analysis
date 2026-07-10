@@ -2,7 +2,7 @@
 # GitHub Pages only when a release is published or when triggered
 # manually from the Actions tab.
 #
-# The build job runs everywhere and uploads the Pages artifact so that
+# The build-docs job runs everywhere and uploads the Pages artifact so that
 # doc-rot is caught early. The deploy job is gated on the event type
 # and consumes the artifact uploaded in the same workflow run
 # (actions/deploy-pages cannot reach across runs).
@@ -21,7 +21,7 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  build-docs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -39,7 +39,7 @@ jobs:
           path: docs/_build/html
 
   deploy:
-    needs: build
+    needs: build-docs
     if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:

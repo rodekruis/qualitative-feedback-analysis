@@ -4,6 +4,14 @@
 #   - Automatically runs `plan` on any PR that touches infra/
 #   - Can also be triggered manually via the Actions tab
 #
+# On pull requests the workflow *always* starts, and a `changes` job detects
+# whether infra/ was touched. The real `terraform` job then runs only when it
+# was, and is otherwise skipped. This is deliberate: the `terraform` check can
+# be marked as a required status check in the branch ruleset without blocking
+# PRs that don't touch infra/ — a required check that never reports (which is
+# what a trigger-level `paths` filter produces) would leave those PRs stuck
+# "waiting", whereas a skipped check is treated as passing.
+#
 # Usage (manual):
 #   1. Select environment (dev or prd)
 #   2. Select command (plan or apply)
@@ -16,8 +24,6 @@ on:
     paths:
       - "infra/**"
   pull_request:
-    paths:
-      - "infra/**"
   workflow_dispatch:
     inputs:
       environment:
@@ -41,7 +47,31 @@ permissions:
   id-token: write
 
 jobs:
+  # Detect whether this PR touches infra/. Runs only on pull_request; on
+  # push/workflow_dispatch it is skipped and the terraform job falls back to
+  # its original always-run behaviour. On pull_request events dorny/paths-filter
+  # reads the changed-file list from the GitHub API, so no checkout is needed.
+  changes:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      infra: ${{ steps.filter.outputs.infra }}
+    steps:
+      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        id: filter
+        with:
+          filters: |
+            infra:
+              - 'infra/**'
+
   terraform:
+    needs: changes
+    # Run for push/workflow_dispatch as before; on pull_request only when
+    # infra/ changed. always() lets this evaluate even though `changes` is
+    # skipped on non-PR events (a skipped need would otherwise skip this job).
+    if: >-
+      always() &&
+      (github.event_name != 'pull_request' || needs.changes.outputs.infra == 'true')
     environment: ${{ inputs.environment || 'dev' }}
     runs-on: ubuntu-latest
     defaults:
