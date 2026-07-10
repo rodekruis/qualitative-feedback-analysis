@@ -90,7 +90,16 @@ If the database is down, both endpoints return 503 with `code=usage_backend_unav
 
 App Service logs are shipped to an Azure Log Analytics workspace (`qfa-<env>-logs`) and surfaced in Application Insights (`qfa-<env>-appinsights`). Both are created by Terraform in `infra/observability.tf`. The App Service passes the App Insights connection string to the container as `APPLICATIONINSIGHTS_CONNECTION_STRING` (wired in `infra/app_service.tf`), which Pydantic Settings loads into `AppSettings.telemetry.applicationinsights_connection_string`. The OpenTelemetry SDK is then initialised from that setting at startup — see below.
 
-Query the workspace in the Azure Portal under **Log Analytics workspace → Logs** using KQL. Useful starting queries:
+### Running these queries in the portal
+
+1. Azure Portal → search for **`qfa-<env>-logs`** (or **Resource group → `qfa-<env>-logs`**) and open the Log Analytics workspace.
+2. In the workspace's left-hand menu, open **Logs**. Dismiss the sample-queries dialog if it appears — you want the empty editor.
+3. Paste a query into the editor and set the time range with the picker above it. If the query already contains a `TimeGenerated` filter, the picker shows *Set in query* and defers to it — don't set both.
+4. Click **Run** (or press Shift+Enter). Click any result row to expand its full set of columns.
+
+Two gotchas: **Run** executes the *whole* editor unless you first select a single query, and a *"failed to resolve table"* error means nothing has been ingested into that table yet — it is not a syntax error. Ingestion also lags the live log stream by a few minutes (see below), so re-run after a short wait if a fresh event is missing.
+
+The Application Insights `App*` tables (populated by the OpenTelemetry SDK — delivery pending verification, see below):
 
 ```kql
 // All requests in the last hour
@@ -103,6 +112,62 @@ AppExceptions
 | where TimeGenerated > ago(1h)
 | project TimeGenerated, ProblemId, OuterMessage
 ```
+
+### App Service log tables
+
+The queries above target the Application Insights `App*` tables, which the
+OpenTelemetry SDK populates (see the **OpenTelemetry SDK** section below —
+delivery is currently pending verification). Independently of the SDK, the App
+Service **diagnostic setting** in `infra/observability.tf` ships three log
+categories straight to the same workspace, so these tables are populated as soon
+as the container runs — they are the authoritative log source today:
+
+- `AppServiceConsoleLogs` — the container's stdout/stderr: the application's
+  `qfa.*` log lines plus gunicorn output. The message text is in the
+  **`ResultDescription`** column.
+- `AppServicePlatformLogs` — App Service platform lifecycle events: container
+  start/stop, warm-up probe results, and startup failures such as
+  `ContainerTimeout`. The message text is in the **`Message`** column — a
+  *different* column name from the console table, which is easy to trip over in a
+  joint query.
+- `AppServiceHTTPLogs` — one row per HTTP request (method, path, status,
+  latency), written by the front end regardless of whether the app logs.
+
+**Container (console) logs** — the application's own output:
+
+```kql
+AppServiceConsoleLogs
+| where TimeGenerated > ago(1h)
+| project TimeGenerated, ResultDescription
+| order by TimeGenerated desc
+```
+
+**Platform logs** — container lifecycle and startup failures (note `Message`, not
+`ResultDescription`):
+
+```kql
+AppServicePlatformLogs
+| where TimeGenerated > ago(1h)
+| project TimeGenerated, Level, Message
+| order by TimeGenerated desc
+```
+
+**Joint view** — console and platform logs merged into one time-ordered stream
+(the Log Analytics equivalent of `az webapp log tail`). The two tables name their
+message column differently, so `coalesce` picks whichever is populated per row,
+and `Type` records which table each row came from:
+
+```kql
+union AppServiceConsoleLogs, AppServicePlatformLogs
+| where TimeGenerated > ago(1h)
+| extend Msg = coalesce(ResultDescription, Message)
+| project TimeGenerated, Type, Msg
+| order by TimeGenerated desc
+```
+
+Log Analytics ingestion lags the live **App Service → Log stream** (and
+`az webapp log tail`) by roughly 2–5 minutes. Use the log stream for real-time
+debugging and these queries for historical search, filtering, and alerting.
 
 ## Alerting
 
