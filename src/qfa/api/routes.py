@@ -24,6 +24,7 @@ from qfa.api.schemas import (
     ApiDetectSensitiveRequest,
     ApiDetectSensitiveResponse,
     ApiFeedbackRecordInput,
+    ApiFeedbackRecordMetadata,
     ApiHealthResponse,
     ApiSummarizeBulkRequest,
     ApiSummarizeBulkResponse,
@@ -59,6 +60,22 @@ def _to_domain_coding_node(node: ApiCodingNode) -> CodingNode:
         id=node.id,
         name=node.name,
         children=[_to_domain_coding_node(c) for c in node.children],
+    )
+
+
+def _to_domain_metadata(
+    metadata: ApiFeedbackRecordMetadata,
+) -> FeedbackRecordMetadataModel:
+    """Translate request metadata into the domain metadata value object.
+
+    The deprecated ``feedback_record_id`` key that older EspoCRM flowcharts
+    write into metadata is accepted at the API boundary but stripped here: it
+    is ignored (the record-level ``id`` is the identifier the backend uses) and
+    the domain model forbids it, so the backward-compat shim stays confined to
+    the driving adapter (ADR-007).
+    """
+    return FeedbackRecordMetadataModel.model_validate(
+        metadata.model_dump(exclude={"feedback_record_id"})
     )
 
 
@@ -189,9 +206,7 @@ async def analyze_bulk(
         FeedbackRecordModel(
             id=doc.id,
             content=doc.content,
-            metadata=FeedbackRecordMetadataModel.model_validate(
-                doc.metadata.model_dump()
-            ),
+            metadata=_to_domain_metadata(doc.metadata),
         )
         for doc in records
     )
@@ -286,9 +301,7 @@ async def summarize_bulk(
         FeedbackRecordModel(
             id=record.id,
             content=record.content,
-            metadata=FeedbackRecordMetadataModel.model_validate(
-                record.metadata.model_dump()
-            ),
+            metadata=_to_domain_metadata(record.metadata),
         )
         for record in records
     )
@@ -361,9 +374,7 @@ async def summarize(
         feedback_record=FeedbackRecordModel(
             id=body.feedback_record.id,
             content=body.feedback_record.content,
-            metadata=FeedbackRecordMetadataModel.model_validate(
-                body.feedback_record.metadata.model_dump()
-            ),
+            metadata=_to_domain_metadata(body.feedback_record.metadata),
         ),
         tenant_id=tenant.tenant_id,
     )
@@ -409,9 +420,7 @@ async def assign_codes(
         feedback_record=FeedbackRecordModel(
             id=body.feedback_record.id,
             content=body.feedback_record.content,
-            metadata=FeedbackRecordMetadataModel.model_validate(
-                body.feedback_record.metadata.model_dump()
-            ),
+            metadata=_to_domain_metadata(body.feedback_record.metadata),
         ),
         coding_levels=CodingFramework(
             root_codes=[
@@ -498,9 +507,7 @@ async def detect_sensitive(
             feedback_record=FeedbackRecordModel(
                 id=body.feedback_record.id,
                 content=body.feedback_record.content,
-                metadata=FeedbackRecordMetadataModel.model_validate(
-                    body.feedback_record.metadata.model_dump()
-                ),
+                metadata=_to_domain_metadata(body.feedback_record.metadata),
             ),
             tenant_id=tenant.tenant_id,
         ),

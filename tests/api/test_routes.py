@@ -3,6 +3,8 @@
 import httpx
 import pytest
 
+from qfa.api.routes import _to_domain_metadata
+from qfa.api.schemas import ApiFeedbackRecordMetadata
 from qfa.domain.errors import (
     AnalysisError,
     AnalysisTimeoutError,
@@ -69,6 +71,36 @@ def _valid_detect_sensitive_body(**overrides):
 
 
 # ------------------------------------------------------------------ #
+# Boundary mapping
+# ------------------------------------------------------------------ #
+
+
+class TestToDomainMetadata:
+    """The API->domain metadata translation strips the legacy compat key."""
+
+    def test_strips_deprecated_feedback_record_id(self):
+        """feedback_record_id is accepted at the boundary and dropped in mapping.
+
+        Why: the deprecated key is a wire-compat concern for pre-v2.0.1 EspoCRM
+        flowcharts. It is confined to the API model; _to_domain_metadata strips
+        it so the domain model (which forbids it) stays clean. Verifies the shim
+        never leaks past the driving adapter.
+        """
+        api_metadata = ApiFeedbackRecordMetadata.model_validate(
+            {"created": "2024-06-01T12:00:00Z", "feedback_record_id": "fi-001"}
+        )
+        # The API model accepts the legacy key...
+        with pytest.warns(DeprecationWarning):
+            assert api_metadata.feedback_record_id == "fi-001"
+
+        domain_metadata = _to_domain_metadata(api_metadata)
+
+        # ...but the domain model neither carries nor exposes it.
+        assert domain_metadata.created == "2024-06-01T12:00:00Z"
+        assert not hasattr(domain_metadata, "feedback_record_id")
+
+
+# ------------------------------------------------------------------ #
 # Success cases
 # ------------------------------------------------------------------ #
 
@@ -84,6 +116,37 @@ class TestAnalyzeSuccess:
         assert "analysis" in data
         assert "feedback_record_count" in data
         assert "request_id" in data
+
+    @pytest.mark.asyncio
+    async def test_accepts_legacy_espocrm_metadata_with_feedback_record_id(
+        self, client
+    ):
+        """Old EspoCRM payloads carrying feedback_record_id in metadata get 200.
+
+        Why: pre-v2.0.1 flowcharts copied the record id into metadata as
+        feedback_record_id. The formalized metadata forbids unknown keys, so
+        without re-admitting this legacy field the backend would 422 every
+        feedback/insight save from an un-upgraded EspoCRM. This locks in the
+        backward compatibility that lets the backend deploy independently of
+        the flowchart upgrade.
+        """
+        legacy_record = {
+            "id": "fi-001",
+            "content": "The water distribution was well organized.",
+            "metadata": {
+                "created": "2024-06-01T12:00:00Z",
+                "coding_level_1": "Water",
+                "coding_level_2": "Distribution",
+                "coding_level_3": "Waiting times",
+                "feedback_record_id": "fi-001",
+            },
+        }
+        resp = await client.post(
+            "/v1/analyze-bulk",
+            json=_valid_body(feedback_records=[legacy_record]),
+            headers=_auth_header(),
+        )
+        assert resp.status_code == 200
 
     @pytest.mark.asyncio
     async def test_feedback_record_count_matches_input(self, client):

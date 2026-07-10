@@ -51,6 +51,21 @@ class TestFeedbackRecordModel:
         with pytest.raises(ValidationError):
             FeedbackRecordMetadataModel.model_validate({"region": "Eastern Province"})
 
+    def test_metadata_rejects_deprecated_feedback_record_id(self):
+        """The domain model forbids the legacy feedback_record_id key.
+
+        Why: pre-v2.0.1 EspoCRM flowcharts copied the record id into metadata
+        as feedback_record_id. That backward-compat shim lives only at the API
+        boundary (ApiFeedbackRecordMetadata / routes._to_domain_metadata), which
+        strips the key before constructing the domain model. Keeping the domain
+        model strict means a mapping that ever forgot to strip it would fail
+        loudly here rather than silently carrying a redundant identifier inward.
+        """
+        with pytest.raises(ValidationError):
+            FeedbackRecordMetadataModel.model_validate(
+                {"created": "2024-06-01T12:00:00Z", "feedback_record_id": "fi-001"}
+            )
+
     def test_frozen_raises_on_assignment(self):
         doc = FeedbackRecordModel(id="doc-1", content="feedback")
         with pytest.raises(ValidationError):
