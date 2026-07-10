@@ -1,0 +1,85 @@
+# Composite action: record the deployed version on the App Service and the run
+# summary. Shared by _deploy-release.yaml (release + promotes) and
+# build-from-commit.yaml (ephemeral dev deploys) so the tag schema and summary
+# format live in one place.
+#
+# Requires the caller to have already run `azure/login` — this action only
+# writes tags, it does not authenticate.
+#
+# Writing Azure resource tags is control-plane metadata, so it does NOT restart
+# the app (unlike app settings, which recycle the worker). `az webapp show
+# --query tags` keeps answering "what's deployed?" even when the container is
+# down. Terraform ignores these tag keys (see infra/app_service.tf) so a later
+# `terraform apply` won't wipe them.
+name: Stamp deployed version
+description: Record deployed_version/digest/at/by on App Service tags and the run summary.
+
+inputs:
+  app-name:
+    description: App Service name.
+    required: true
+  resource-group:
+    description: Resource group of the App Service.
+    required: true
+  tag:
+    description: Deployed version (release tag, or ephemeral tag for build-from-commit).
+    required: true
+  digest:
+    description: Image digest (sha256:...).
+    required: true
+  environment:
+    description: Target environment (dev, staging, prd).
+    required: true
+  ephemeral:
+    description: "true when the image is an ephemeral build (not a release); changes the summary wording."
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Stamp version onto App Service tags and run summary
+      shell: bash
+      env:
+        APP_NAME: ${{ inputs.app-name }}
+        RESOURCE_GROUP: ${{ inputs.resource-group }}
+        TAG: ${{ inputs.tag }}
+        DIGEST: ${{ inputs.digest }}
+        ENVIRONMENT: ${{ inputs.environment }}
+        EPHEMERAL: ${{ inputs.ephemeral }}
+      run: |
+        set -euo pipefail
+        DEPLOYED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+        # Best-effort: the app is already deployed by the time we get here, so a
+        # failure to stamp the advisory tags must NOT fail the deploy. Warn and
+        # continue.
+        az webapp update \
+          --name "$APP_NAME" \
+          --resource-group "$RESOURCE_GROUP" \
+          --set tags.deployed_version="$TAG" \
+                tags.deployed_digest="$DIGEST" \
+                tags.deployed_at="$DEPLOYED_AT" \
+                tags.deployed_by="$GITHUB_ACTOR" \
+          --output none \
+          || echo "::warning::Failed to stamp deployed-version tags on $APP_NAME (deploy itself is unaffected)."
+
+        # Surface the deploy on the run summary page so the Actions list is
+        # readable without opening logs.
+        if [ "$EPHEMERAL" = "true" ]; then
+          TITLE="Deployed ephemeral \`$TAG\` to **$ENVIRONMENT**"
+          VERSION_CELL="\`$TAG\` (ephemeral — not a release)"
+        else
+          TITLE="Deployed \`$TAG\` to **$ENVIRONMENT**"
+          VERSION_CELL="\`$TAG\`"
+        fi
+        {
+          echo "### $TITLE"
+          echo ""
+          echo "| field | value |"
+          echo "| --- | --- |"
+          echo "| version | $VERSION_CELL |"
+          echo "| digest | \`$DIGEST\` |"
+          echo "| deployed at | $DEPLOYED_AT |"
+          echo "| deployed by | @$GITHUB_ACTOR |"
+        } >> "$GITHUB_STEP_SUMMARY"

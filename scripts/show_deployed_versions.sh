@@ -38,7 +38,11 @@ for env in "${ENVIRONMENTS[@]}"; do
   for id in $(gh api "repos/$REPO/deployments?environment=$env&per_page=20" --jq '.[].id'); do
     $app_done && $infra_done && break
 
-    target_url=$(gh api "repos/$REPO/deployments/$id/statuses?per_page=1" --jq '.[0].target_url // ""')
+    # The latest status is the version annotation (which carries a log_url →
+    # target_url); older/other statuses may lack one, so take the first status
+    # that actually has a target_url rather than blindly the newest.
+    target_url=$(gh api "repos/$REPO/deployments/$id/statuses" \
+      --jq 'first(.[] | select(.target_url != "") | .target_url) // ""')
     run_id=$(run_id_from_url "$target_url")
     run_meta=$(gh api "repos/$REPO/actions/runs/$run_id" --jq '"\(.name)|\(.event)"' 2>/dev/null || echo '?|?')
     workflow=${run_meta%%|*}
@@ -59,4 +63,10 @@ for env in "${ENVIRONMENTS[@]}"; do
       app_done=true
     fi
   done
+
+  # Make the window's limit visible: absence here means "not among the last 20
+  # deployment records", not "never deployed" — a burst of records (incl.
+  # Terraform plans) can push an older app/infra deploy past the window.
+  $app_done   || printf '  app:   <none found in last 20 deployment records>\n'
+  $infra_done || printf '  infra: <none found in last 20 deployment records>\n'
 done

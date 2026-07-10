@@ -98,7 +98,9 @@ fall back to the run logs (below) for those.
 ```
 
 The reliable disambiguator is the **originating workflow name**. Each deployment
-has a status whose `target_url` points at the workflow run that created it:
+has a status whose `target_url` points at the workflow run that created it (the
+`annotate` job's version status sets it too, via `log_url`; read the first
+status that has a `target_url`, since some may not):
 
 | Originating workflow | What the record means |
 |---|---|
@@ -173,7 +175,8 @@ exposing the `ref`/`sha` and timestamp in one pass:
 for env in dev staging prd; do
   echo "===== $env ====="
   for id in $(gh api "repos/{owner}/{repo}/deployments?environment=$env&per_page=5" --jq '.[].id'); do
-    url=$(gh api "repos/{owner}/{repo}/deployments/$id/statuses?per_page=1" --jq '.[0].target_url')
+    url=$(gh api "repos/{owner}/{repo}/deployments/$id/statuses" \
+      --jq 'first(.[] | select(.target_url != "") | .target_url) // ""')
     run=$(echo "$url" | grep -oE 'runs/[0-9]+' | grep -oE '[0-9]+')
     wf=$(gh api "repos/{owner}/{repo}/actions/runs/$run" --jq '.name')
     meta=$(gh api "repos/{owner}/{repo}/deployments/$id" --jq '{ref, sha: .sha[0:12], created_at}')
