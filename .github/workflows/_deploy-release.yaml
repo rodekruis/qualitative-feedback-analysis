@@ -80,23 +80,47 @@ jobs:
             --container-image-name "${IMAGE}@${DIGEST}" \
             --container-registry-url "https://${{ vars.AZ_ACR_NAME }}.azurecr.io"
 
-      # Needed only so the local composite action below is on disk (this job
-      # otherwise works purely via the gh/az APIs and needs no source).
-      - name: Check out for the stamp action
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          sparse-checkout: .github/actions/stamp-deployed-version
-
       # Advisory metadata only — never fail a real deploy if stamping fails.
       - name: Stamp version onto App Service tags and run summary
         continue-on-error: true
-        uses: ./.github/actions/stamp-deployed-version
-        with:
-          app-name: ${{ vars.AZ_APP_NAME }}
-          resource-group: ${{ vars.AZ_RESOURCE_GROUP }}
-          tag: ${{ inputs.release_tag }}
-          digest: ${{ steps.resolve.outputs.digest }}
-          environment: ${{ inputs.environment }}
+        env:
+          APP_NAME: ${{ vars.AZ_APP_NAME }}
+          RESOURCE_GROUP: ${{ vars.AZ_RESOURCE_GROUP }}
+          TAG: ${{ inputs.release_tag }}
+          DIGEST: ${{ steps.resolve.outputs.digest }}
+          ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          DEPLOYED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          # Azure resource tags are control-plane metadata, so writing them does
+          # NOT restart the app (unlike app settings, which recycle the worker).
+          # `az webapp show --query tags` keeps answering "what's deployed?" even
+          # when the container is down. Terraform ignores these tag keys
+          # (see infra/app_service.tf) so a later `terraform apply` won't wipe
+          # them.
+          az webapp update \
+            --name "$APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --set tags.deployed_version="$TAG" \
+                  tags.deployed_digest="$DIGEST" \
+                  tags.deployed_at="$DEPLOYED_AT" \
+                  tags.deployed_by="$GITHUB_ACTOR" \
+            --output none \
+            || echo "::warning::Failed to stamp deployed-version tags (deploy itself is unaffected)."
+
+          # Surface the deploy on the run summary page so the Actions list is
+          # readable without opening logs.
+          {
+            echo "### Deployed \`$TAG\` to **$ENVIRONMENT**"
+            echo ""
+            echo "| field | value |"
+            echo "| --- | --- |"
+            echo "| version | \`$TAG\` |"
+            echo "| digest | \`$DIGEST\` |"
+            echo "| deployed at | $DEPLOYED_AT |"
+            echo "| deployed by | @$GITHUB_ACTOR |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   annotate:
     # Records the deployed version on the GitHub deployment that the `deploy`
