@@ -90,6 +90,85 @@ If the database is down, both endpoints return 503 with `code=usage_backend_unav
 
 App Service logs are shipped to an Azure Log Analytics workspace (`qfa-<env>-logs`) and surfaced in Application Insights (`qfa-<env>-appinsights`). Both are created by Terraform in `infra/observability.tf`. The App Service passes the App Insights connection string to the container as `APPLICATIONINSIGHTS_CONNECTION_STRING` (wired in `infra/app_service.tf`), which Pydantic Settings loads into `AppSettings.telemetry.applicationinsights_connection_string`. The OpenTelemetry SDK is then initialised from that setting at startup — see below.
 
+### Architecture at a glance
+
+New to Azure? Start here. There are **two independent signal sources**, and they
+answer different questions — confusing them is the single most common source of "the
+deployment looks broken when it mostly isn't":
+
+- **Application logs** — text the Python code emits (`logging.getLogger(...)`). Answers
+  *"what did the code do / why did this request fail?"*
+- **Platform metrics** — CPU / memory / disk / HTTP counters the Azure **host** emits
+  automatically, with zero code. Answers *"is the box healthy / saturated?"*
+
+Plus a third, app-specific channel that is neither of those: **cost/usage** tracked in
+Postgres and exposed via `GET /v1/usage`.
+
+The critical thing the diagram makes explicit is that **Log Analytics and Application
+Insights are two separate sinks filled by two different pipes** — even though
+workspace-based App Insights physically *stores* its data inside the same Log Analytics
+workspace. The **diagnostic setting** pushes `AppService*` log tables into Log Analytics
+with no app involvement; the **OpenTelemetry SDK inside the container** pushes the
+`App*` telemetry tables (`AppRequests`, `AppDependencies`, `AppExceptions`, `AppTraces`)
+into Application Insights over the connection string. They fail independently: logs can
+arrive while App Insights stays empty, or vice-versa.
+
+```mermaid
+flowchart TB
+    subgraph app["Your app (FastAPI container)"]
+        py["Python logging → stdout<br/>(request_id, tenant, cost, latency)"]
+        otel["OpenTelemetry SDK<br/>configure_azure_monitor() in main.py<br/>auto-instruments FastAPI / SQLAlchemy / httpx"]
+        db[("Postgres: llm_calls<br/>token/cost tracking")]
+    end
+
+    subgraph host["Azure App Service (host running your container)"]
+        stdout_cap["stdout / stderr capture"]
+        stream["Live Log stream<br/>(real-time tail, ephemeral)"]
+        metrics["Platform metrics (emitted automatically)<br/>CPU% · Memory% · Disk · Http5xx · HealthCheckStatus"]
+    end
+
+    subgraph mon["Azure Monitor"]
+        diag["Diagnostic setting<br/>routes console / HTTP / platform logs + AllMetrics"]
+        law[("Log Analytics workspace<br/>qfa-env-logs · 30-day retention<br/>AppService* tables · query with KQL")]
+        ai["Application Insights (workspace-based)<br/>qfa-env-appinsights<br/>App* tables: AppRequests / AppDependencies /<br/>AppExceptions / AppTraces"]
+        alerts["4 metric alert rules<br/>5xx · health · CPU · memory"]
+        ag["Action group → Teams webhook"]
+    end
+
+    subgraph see["Where YOU look (Azure Portal)"]
+        portal_stream["App Service → Log stream<br/>(live tail)"]
+        portal_logs["Log Analytics → Logs<br/>(KQL, historical)"]
+        portal_metrics["App Service / Plan → Metrics<br/>(CPU / mem / disk / 5xx charts)"]
+        portal_ai["App Insights → Live Metrics /<br/>Transaction search / Application Map"]
+        portal_alerts["Azure Monitor → Alerts → Teams channel"]
+        usage["App API: GET /v1/usage<br/>(cost / token reporting)"]
+    end
+
+    py --> stdout_cap
+    stdout_cap --> stream
+    stdout_cap --> diag
+    stream --> portal_stream
+    host -.emits.-> metrics
+    metrics --> diag
+    metrics --> alerts
+    metrics --> portal_metrics
+    diag --> law
+    law --> portal_logs
+
+    otel -->|"exports via connection string"| ai
+    ai -.stored in.-> law
+    ai --> portal_ai
+
+    alerts --> ag --> portal_alerts
+    db --> usage
+```
+
+The one-line mental model: **host signals** (stdout logs, CPU%, memory%) do *not* need
+the OTel SDK and already have homes — Log stream / Log Analytics for logs, the Metrics
+blade for CPU/memory. **Application telemetry** (per-request traces in the App Insights
+`App*` tables) is what the OTel SDK lights up. Wiring OTel is required for App Insights;
+it is *not* required for logs or host metrics.
+
 ### Running these queries in the portal
 
 1. Azure Portal → search for **`qfa-<env>-logs`** (or **Resource group → `qfa-<env>-logs`**) and open the Log Analytics workspace.
@@ -195,3 +274,24 @@ httpx and exports traces to Application Insights, populating the `AppRequests`,
 > been confirmed against a deployed environment. Until it is, treat the App Service log
 > stream as the authoritative trace source and verify the `App*` tables are populated after
 > the next deploy.
+
+**Validating that App Insights receives telemetry** (fastest → slowest):
+
+1. **App Insights → Live Metrics** (`qfa-<env>-appinsights`). Near-real-time (~1 s) and
+   it *bypasses* the 2–5 min ingestion lag that affects the KQL tables. Open it, then
+   send a handful of requests (`curl https://<app>/v1/health`). If the server shows as
+   **connected** and the request rate ticks up, OTel is exporting. If it stays "not
+   connected", the SDK isn't emitting (check the connection string reached the container
+   and the app is not crash-looping — a batched exporter loses telemetry if the container
+   is `SIGKILL`ed before it flushes).
+2. **Transaction search** — inspect a single request end-to-end (request + dependencies +
+   exceptions), correlated by `OperationId`.
+3. **Logs (KQL)**, after ingestion:
+   `AppRequests | where TimeGenerated > ago(15m) | project TimeGenerated, Name, ResultCode, DurationMs`.
+4. **Application Map** — appears once `AppDependencies` has rows; draws app → Postgres →
+   OpenAI.
+
+Because `configure_azure_monitor()` also exports Python `logging` records as `AppTraces`,
+once OTel is confirmed working your application logs appear in **both**
+`AppServiceConsoleLogs` (via the diagnostic setting) and `AppTraces` (via the SDK) — the
+same lines, two tables, two independent delivery paths.
