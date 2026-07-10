@@ -50,7 +50,7 @@ Settle three things before writing code:
   and grouped in the OpenAPI docs by an `Inference` tag.
 - The request and response fields, and their validation bounds.
 - Which **operation** the endpoint represents. Operations are the unit of
-  usage accounting (see step 6); an endpoint maps to exactly one.
+  usage accounting (see step 7); an endpoint maps to exactly one.
 
 Per-record endpoints (`/v1/summarize`, `/v1/assign-codes`) take a single
 `feedback_record` and return one result; bulk endpoints (`/v1/analyze-bulk`)
@@ -103,7 +103,7 @@ appropriate method.
 
 A use-case method takes the domain request and an absolute `deadline`, and
 returns a domain result. The established shape — visible on the existing
-`summarize`, `analyze`, and `assign_codes` methods — is:
+`summarize`, `analyze_bulk`, and `assign_codes` methods — is:
 
 1. Derive a per-call timeout from the deadline, so a slow endpoint cannot run
    past the request budget.
@@ -120,9 +120,10 @@ async def classify(
 ) -> ClassificationResultModel:
     """Assign one label to a feedback record via a single LLM call."""
     timeout = self._check_deadline_and_get_timeout(deadline)
-    anonymised, mapping = self._anonymizer.anonymize(
-        str(request.feedback_record)
+    user_message = build_feedback_record_envelope(
+        request.feedback_record, include_metadata=False
     )
+    anonymised, mapping = self._anonymizer.anonymize(user_message)
     completion = await self._llm.complete(
         system_message=_CLASSIFY_PROMPT,
         user_message=anonymised,
@@ -136,9 +137,15 @@ async def classify(
     return ClassificationResultModel.model_validate_json(restored)
 ```
 
+The system message (`_CLASSIFY_PROMPT` above) is a module-level constant kept
+with the other prompts — either in `qfa.services.orchestrator` alongside
+`_DEFAULT_SUMMARIZATION_PROMPT`, or in `qfa.services.prompts` (which is also
+where `build_feedback_record_envelope` lives). The record text always reaches
+the model through that envelope helper, never a raw `str()` of the model.
+
 The orchestrator depends only on ports — `LLMPort`, `AnonymizationPort`,
 `EmbeddingPort` — declared in `qfa.domain.ports`. Reuse them. Only introduce a
-**new** port (and wire its adapter in the composition root, step 7) when the
+**new** port (and wire its adapter in the composition root, step 8) when the
 endpoint needs an external dependency the orchestrator does not already hold;
 most endpoints need none. The anonymisation round-trip and the
 deadline/timeout/retry policy are documented under
@@ -215,7 +222,7 @@ async def classify(
         feedback_record=FeedbackRecordModel(
             id=body.feedback_record.id,
             content=body.feedback_record.content,
-            metadata=body.feedback_record.metadata,
+            metadata=_to_domain_metadata(body.feedback_record.metadata),
         ),
         labels=tuple(body.labels),
         tenant_id=tenant.tenant_id,
@@ -232,12 +239,15 @@ The three dependencies are the standard contract for an authenticated
 inference route:
 
 - `authenticate_request` validates the Bearer key and yields the
-  `TenantApiKey` (security, below).
+  `TenantApiKey` (step 6).
 - `get_orchestrator` injects the orchestrator wired at startup.
-- `call_scope_for(Operation.CLASSIFY)` opens the usage-tracking scope (step 6).
+- `call_scope_for(Operation.CLASSIFY)` opens the usage-tracking scope (step 7).
 
 The route is also where the API ↔ domain mapping happens — never pass an API
 schema into the orchestrator, and never return a domain model from the route.
+API value objects are mapped to their domain equivalents here too: the
+`_to_domain_metadata` helper converts an `ApiFeedbackRecordMetadata` into the
+domain `FeedbackRecordMetadataModel` before it enters `FeedbackRecordModel`.
 
 ### Documenting the endpoint
 
@@ -246,7 +256,7 @@ carries the full semantics and edge cases. The
 [REST API reference](../rest-api/index.md) carries a happy-path summary and the
 field tables; add the new endpoint to both, in the same change.
 
-## Security and authentication
+## 6. Security and authentication
 
 Every endpoint except the liveness probe `GET /v1/health` requires an
 `Authorization: Bearer <key>` header, per
@@ -265,15 +275,15 @@ carrying the `tenant_id` and an `is_superuser` flag.
   envelope by the handlers registered in `qfa.api.app`; a route does not
   format them itself.
 
-## 6. Wire usage and cost tracking
+## 7. Wire usage and cost tracking
 
 Cost is tracked per LLM call, not per endpoint, and the wiring is almost
 automatic. Two edits connect a new endpoint:
 
 1. Add a member to the `Operation` enum in `qfa.domain.usage_models` (for the
    example, `CLASSIFY = "classify"`). Operations are stored as plain strings,
-   so no database migration is needed; never remove or renumber existing
-   members, which would orphan historical rows.
+   so no database migration is needed; never remove an existing member or
+   change its string value, which would orphan historical rows.
 2. Declare `call_scope_for(Operation.CLASSIFY)` as a route dependency, as in
    step 5.
 
@@ -283,7 +293,8 @@ That dependency opens a `call_scope` for the request, publishing a
 root — reads that context and records every LLM attempt, successful or failed,
 into the `llm_calls` table with its token counts and computed cost. The
 [call-context-and-usage-tracking section](../architecture/04-crosscutting.md#call-context-and-usage-tracking)
-explains the correlation bridge, and the
+explains the correlation bridge — how the `ContextVar` scope opened by the route
+reaches the adapter that records the call — and the
 [data model page](../architecture/05-data-model.md) documents the `llm_calls`
 schema. An endpoint that fans out to several LLM calls records one row per
 call, all sharing the request id, so per-invocation cost aggregates correctly.
@@ -291,7 +302,7 @@ call, all sharing the request id, so per-invocation cost aggregates correctly.
 The new operation then appears automatically in the responses of the existing
 usage endpoints; no further work is needed there.
 
-## 7. Wire a new dependency only if you need one
+## 8. Wire a new dependency only if you need one
 
 Skip this step for an endpoint that reuses the existing LLM and anonymisation
 ports — the common case. The composition root
@@ -304,7 +315,7 @@ port in `qfa.domain.ports`, implement an adapter that **explicitly inherits**
 the port (the project requires the inheritance even though `Protocol`s allow
 structural typing), and pass it into the orchestrator where it is built.
 
-## 8. Map any new domain errors to HTTP
+## 9. Map any new domain errors to HTTP
 
 If the use case raises a domain error that is not already handled, register a
 handler in `register_exception_handlers` in `qfa.api.app` so it produces the
@@ -314,7 +325,7 @@ is in the cross-cutting
 [error handling](../architecture/04-crosscutting.md) section; keep it in sync
 when adding a mapping.
 
-## 9. Test across the tiers
+## 10. Test across the tiers
 
 Endpoint tests live under `tests/api/`. The suite is split by pytest marker,
 and `make test` runs only the unit tier; integration and end-to-end tests are
@@ -330,11 +341,12 @@ For a unit test, add a method for the new use case to `FakeOrchestrator` in
 `tests/api/conftest.py`, then drive the route through the `client` fixture and
 assert on status and body. Cover the success path, the missing/invalid key
 (401), schema validation failure (422), and the empty-content short-circuit.
-The [test seam](../architecture/03-components.md#test-seam) describes why the
-fakes sit where they do. Every test function carries at least a one-line
+The [test seam](../architecture/03-components.md#test-seam) — the boundary where
+the fakes stand in for the real adapters — describes why the fakes sit where they
+do. Every test function carries at least a one-line
 docstring stating what it checks and why.
 
-## 10. Verify and update the docs
+## 11. Verify and update the docs
 
 Run the project gates before opening a pull request:
 
