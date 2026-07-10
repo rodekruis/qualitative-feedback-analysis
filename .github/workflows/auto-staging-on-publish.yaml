@@ -1,21 +1,26 @@
-# Auto-deploy a release to staging the moment it is published.
+# Auto-deploy a release to staging the moment it is published — but only if it
+# is the latest release.
 #
-# Publishing a draft release on the Releases page is the human sign-off
-# that dev validation has passed and the release is ready for the next
-# environment. Under the deployment model, that next environment is
-# staging — so this workflow exists to bind the publish event to the
-# staging deploy automatically. The publish click is the trigger; no
-# extra workflow run is needed.
+# Publishing a draft release on the Releases page is the human sign-off that dev
+# validation has passed. It is also GitHub's only way to make a release visible
+# / un-draft it. To keep those two meanings from colliding, this workflow first
+# asks the latest-release guard (_is-latest-release.yaml) whether the published
+# release is the greatest version among all releases (drafts included):
 #
-# Pre-releases (vX.Y.Z-rc.N etc.) are *not* filtered out — publishing a
-# pre-release also auto-deploys it to staging. That's intentional:
-# release candidates are exactly the thing you want to validate under
-# prod-like config in staging before cutting the final release. Prd
-# remains protected from pre-releases by promote-to-prd.yaml.
+#   - Latest release      -> deploy the digest to staging (the normal path).
+#   - NOT the latest      -> deploy nothing; emit a loud warning + job summary
+#     explaining that publishing an older draft to finalize it is expected and
+#     how to deploy it deliberately. The run stays green.
+#   - Guard cannot decide -> the guard job fails red and nothing deploys
+#     (fail closed).
 #
-# For re-deploying staging to a previous release (rollback), or for
-# pointing staging at a release that was published while staging was
-# down, use the manual promote-to-staging.yaml workflow instead.
+# Pre-releases (vX.Y.Z-rc.N) are still eligible for staging — the guard ranks
+# them correctly (a pre-release is older than its final), so an rc auto-deploys
+# only while it is genuinely the top of the version tree. Prd remains protected
+# from pre-releases by promote-to-prd.yaml.
+#
+# For deploying an older release to staging on purpose (rollback / re-staging),
+# use the manual promote-to-staging.yaml workflow — it is version-unguarded.
 name: Auto-deploy published release to staging
 
 on:
@@ -27,7 +32,16 @@ permissions:
   id-token: write
 
 jobs:
+  guard:
+    uses: ./.github/workflows/_is-latest-release.yaml
+    with:
+      release_tag: ${{ github.event.release.tag_name }}
+    permissions:
+      contents: write
+
   deploy:
+    needs: guard
+    if: needs.guard.outputs.is_greatest == 'true'
     uses: ./.github/workflows/_deploy-release.yaml
     with:
       release_tag: ${{ github.event.release.tag_name }}
@@ -35,3 +49,29 @@ jobs:
     permissions:
       contents: write
       id-token: write
+
+  skipped:
+    needs: guard
+    if: needs.guard.outputs.is_greatest == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain why nothing was deployed
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          LATEST: ${{ needs.guard.outputs.latest_tag }}
+        run: |
+          set -euo pipefail
+          echo "::warning title=Publish did not deploy::Release ${TAG} was published but NOT deployed — a newer release (${LATEST}) already exists. See the job summary for how to deploy ${TAG} on purpose."
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## ⚠️ Release \`${TAG}\` is now published and visible — but NOTHING was deployed.
+
+          Staging and the docs site were **NOT** updated, because a newer release
+          (\`${LATEST}\`) already exists. Auto-deploy on publish only runs for the
+          latest version. **This is expected when you publish an older draft to finalize it.**
+
+          If you really did mean to deploy \`${TAG}\`:
+
+          - **Staging** → run **Promote to staging** with tag \`${TAG}\`
+          - **Docs** → run the **Docs** workflow manually (workflow_dispatch)
+          - **Prod** → run **Promote to prd** with tag \`${TAG}\`
+          EOF

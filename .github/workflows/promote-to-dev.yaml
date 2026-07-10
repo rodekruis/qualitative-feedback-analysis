@@ -1,8 +1,8 @@
 # Manually redeploy a released image to dev.
 #
-# Normal path: publishing a release auto-deploys it to dev via
-# build-release-image.yaml. Use this workflow when you want to point dev at a
-# *specific* (possibly older) release — e.g. to reproduce a bug against an
+# Normal path: cutting a release (release.yaml) auto-deploys the new image to
+# dev at release-creation time. Use this workflow when you want to point dev at
+# a *specific* (possibly older) release — e.g. to reproduce a bug against an
 # earlier version, to rehearse a rollback, or to reset dev after running an
 # ephemeral build-from-commit.yaml image.
 #

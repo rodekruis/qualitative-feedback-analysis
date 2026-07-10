@@ -1,0 +1,89 @@
+# Reusable workflow — decides whether a release tag is the latest release.
+#
+# The publish-triggered auto-deploy paths (auto-staging-on-publish.yaml and the
+# docs.yaml Pages deploy) call this so that publishing an *older* draft release
+# to finalize it does not regress an environment. Auto-deploy runs only when the
+# just-published release is the greatest semver among ALL releases (drafts
+# included).
+#
+# Outputs:
+#   is_greatest — "true" if release_tag is the greatest version, else "false"
+#   latest_tag  — the greatest release tag found (used in the skip message)
+#
+# Fails closed: if the latest release cannot be determined (an unparseable tag,
+# or release_tag absent from the release list), the guard job exits non-zero
+# (red) and callers must not deploy. The semver comparison lives in the
+# unit-tested .github/scripts/is_latest_release.py; this workflow only gathers
+# the tag list and surfaces the verdict.
+#
+# `contents: write` is required because draft releases are invisible to a
+# read-only token — without it a newer draft would be missed and the guard
+# would wrongly report the published release as latest.
+#
+# The script is read from the default branch (not the release's own commit),
+# because a release event checks out the tag's commit by default and an older
+# draft's commit predates this guard.
+name: _is-latest-release
+
+on:
+  workflow_call:
+    inputs:
+      release_tag:
+        description: "Release tag to evaluate (e.g. v0.4.0)"
+        required: true
+        type: string
+    outputs:
+      is_greatest:
+        description: "'true' if release_tag is the greatest release, else 'false'"
+        value: ${{ jobs.check.outputs.is_greatest }}
+      latest_tag:
+        description: "The greatest release tag found"
+        value: ${{ jobs.check.outputs.latest_tag }}
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      is_greatest: ${{ steps.guard.outputs.is_greatest }}
+      latest_tag: ${{ steps.guard.outputs.latest }}
+    steps:
+      - name: Check out the guard script from the default branch
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+
+      - name: Determine whether this is the latest release
+        id: guard
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Bind the tag to an env var rather than interpolating ${{ }} straight
+          # into the run script: a release tag is externally influenced and a
+          # tag containing shell metacharacters would otherwise be a script-
+          # injection vector. The shell — not the Actions template engine —
+          # handles the string via "$RELEASE_TAG".
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          # List every release tag, drafts included (needs contents: write).
+          # --limit 1000 is effectively unbounded for this repo; if releases
+          # ever exceed it, the newest tags would be dropped and "latest"
+          # miscomputed — revisit the limit before that becomes possible.
+          ALL_TAGS=$(gh release list \
+            --repo "$GITHUB_REPOSITORY" \
+            --limit 1000 \
+            --json tagName \
+            --jq '[.[].tagName] | join(",")')
+          echo "All release tags: $ALL_TAGS"
+          # The script prints `is_greatest=<bool>` and `latest=<tag>` to stdout,
+          # which become step outputs. A non-zero exit (fail closed) fails this
+          # job and blocks the deploy.
+          uv run --no-project --with packaging python \
+            .github/scripts/is_latest_release.py \
+            --tag "$RELEASE_TAG" \
+            --all-tags "$ALL_TAGS" >> "$GITHUB_OUTPUT"
