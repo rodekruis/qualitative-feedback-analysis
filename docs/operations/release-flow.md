@@ -12,7 +12,7 @@ stateDiagram-v2
     state "GitHub draft release created<br/>Auto-deployed to dev" as Dev
     state "Release published<br/>Auto-deployed to staging (only if latest)" as Published
     state "Deployed to prd" as Prd
-    state "Ephemeral release<br/>(Build from commit)" as Ephemeral
+    state "Ephemeral release" as Ephemeral
 
     [*] --> Dev: Run Release workflow
     Dev --> Published: Click Publish on draft release
