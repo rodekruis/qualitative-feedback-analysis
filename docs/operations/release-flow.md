@@ -12,13 +12,20 @@ stateDiagram-v2
     state "GitHub draft release created<br/>Auto-deployed to dev" as Dev
     state "Release published<br/>Auto-deployed to staging (only if latest)" as Published
     state "Deployed to prd" as Prd
+    state "Ephemeral deployment to dev" as Ephemeral
 
     [*] --> Dev: Run Release workflow
     Dev --> Published: Click Publish on draft release
     Published --> Prd: Run Promote to prd
+    [*] --> Ephemeral: Run Build from commit
 ```
 
 Three human actions drive the whole flow: run the Release workflow, click Publish on the draft release, and run Promote to prd. Publishing is the sign-off that dev validation passed *and* the trigger for two auto-deploys — the click fires `auto-staging-on-publish.yaml` (deploys the same digest to staging) and `docs.yaml` (publishes the Sphinx docs to GitHub Pages), both with no extra workflow run. **Both auto-deploys are guarded**: they only run when the published release is the *latest* version, so finalizing an older draft has no deploy side effects (see [Publishing an older draft](#publishing-an-older-draft-to-finalize-it) and [ADR-016](../adr/016-guard-auto-deploy-on-publish.md)). The same image digest flows through all three app-runtime states — no rebuilds between environments.
+
+**Another way onto `dev`: Build from commit.** The forward flow above is not the only route into `dev`. **Build from commit** with `deploy_to_dev: true` builds an ephemeral image from any branch, tag, or SHA and deploys it straight to `dev` — no release cut, no promotion. Because it never writes a release body, that image is a dead end: it *cannot* flow onward to staging or prd. Use it to try an in-flight feature branch in `dev`; run **Promote to dev** with a released tag to return `dev` to the normal flow. See [Testing a feature branch in dev without cutting a release](#testing-a-feature-branch-in-dev-without-cutting-a-release).
+
+> [!IMPORTANT]
+> **Infrastructure changes ride a separate track — mind them.** Application releases (this section) move as a single image digest; Terraform-managed infrastructure is deployed **independently** and does *not* travel with that digest. When a release depends on new infrastructure (a Key Vault reference, an env-var binding, a new managed identity), the infra change must be applied to each environment *before* the app release that needs it — otherwise the App Service starts but fails at runtime. See [Infrastructure changes](#infrastructure-changes) below.
 
 ### Normal release (e.g. v0.4.0)
 
