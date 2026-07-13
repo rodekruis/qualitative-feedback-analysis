@@ -12,13 +12,12 @@ stateDiagram-v2
     state "GitHub draft release created<br/>Auto-deployed to dev" as Dev
     state "Release published<br/>Auto-deployed to staging (only if latest)" as Published
     state "Deployed to prd" as Prd
-    state "Ephemeral image on dev<br/>(feature branch, no release)" as Ephemeral
+    state "Ephemeral release<br/>(Build from commit — dead end)" as Ephemeral
 
     [*] --> Dev: Run Release workflow
     Dev --> Published: Click Publish on draft release
     Published --> Prd: Run Promote to prd
     [*] --> Ephemeral: Run Build from commit
-    Ephemeral --> Dev: Run Promote to dev (rejoin the release flow)
 ```
 
 Three human actions drive the whole flow: run the Release workflow, click Publish on the draft release, and run Promote to prd. Publishing is the sign-off that dev validation passed *and* the trigger for two auto-deploys — the click fires `auto-staging-on-publish.yaml` (deploys the same digest to staging) and `docs.yaml` (publishes the Sphinx docs to GitHub Pages), both with no extra workflow run. **Both auto-deploys are guarded**: they only run when the published release is the *latest* version, so finalizing an older draft has no deploy side effects (see [Publishing an older draft](#publishing-an-older-draft-to-finalize-it) and [ADR-016](../adr/016-guard-auto-deploy-on-publish.md)). The same image digest flows through all three app-runtime states — no rebuilds between environments.
