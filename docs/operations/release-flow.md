@@ -12,10 +12,13 @@ stateDiagram-v2
     state "GitHub draft release created<br/>Auto-deployed to dev" as Dev
     state "Release published<br/>Auto-deployed to staging (only if latest)" as Published
     state "Deployed to prd" as Prd
+    state "Ephemeral image on dev<br/>(feature branch, no release)" as Ephemeral
 
     [*] --> Dev: Run Release workflow
     Dev --> Published: Click Publish on draft release
     Published --> Prd: Run Promote to prd
+    [*] --> Ephemeral: Run Build from commit
+    Ephemeral --> Dev: Run Promote to dev (rejoin the release flow)
 ```
 
 Three human actions drive the whole flow: run the Release workflow, click Publish on the draft release, and run Promote to prd. Publishing is the sign-off that dev validation passed *and* the trigger for two auto-deploys — the click fires `auto-staging-on-publish.yaml` (deploys the same digest to staging) and `docs.yaml` (publishes the Sphinx docs to GitHub Pages), both with no extra workflow run. **Both auto-deploys are guarded**: they only run when the published release is the *latest* version, so finalizing an older draft has no deploy side effects (see [Publishing an older draft](#publishing-an-older-draft-to-finalize-it) and [ADR-016](../adr/016-guard-auto-deploy-on-publish.md)). The same image digest flows through all three app-runtime states — no rebuilds between environments.
@@ -31,8 +34,7 @@ Three human actions drive the whole flow: run the Release workflow, click Publis
 > [!NOTE]
 > **Production has no required-reviewer gate.** `promote-to-prd.yaml` enforces only "published and not a pre-release"; deployment then proceeds. The `prd` GitHub environment is *not* configured with required reviewers (none is defined in Terraform). This is a deliberate choice for a small team — a reviewer gate that cannot be serviced quickly would block rollbacks during incidents. If the team grows, add required reviewers to the `prd` environment as an extra gate (see [ADR-016](../adr/016-guard-auto-deploy-on-publish.md)).
 
-> [!NOTE]
-> The manual `Promote to dev` and `Promote to staging` workflows exist as **secondary** paths — used to restore an environment to a specific released tag outside the normal forward flow. Typical uses: re-point dev back to a release after an ephemeral feature-branch build (see below), roll staging back to a prior release, or re-stage an older release for re-validation. They are not part of the normal forward flow.
+The manual `Promote to dev` and `Promote to staging` workflows exist as **secondary** paths — used to restore an environment to a specific released tag outside the normal forward flow. Typical uses: re-point dev back to a release after an ephemeral feature-branch build (see below), roll staging back to a prior release, or re-stage an older release for re-validation. They are not part of the normal forward flow.
 
 ### Rollback (e.g. v0.4.0 → v0.3.7)
 
