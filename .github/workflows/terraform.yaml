@@ -44,7 +44,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   # Detect whether this PR touches infra/. Runs only on pull_request; on
@@ -73,7 +72,11 @@ jobs:
       always() &&
       (github.event_name != 'pull_request' || needs.changes.outputs.infra == 'true')
     environment: ${{ inputs.environment || 'dev' }}
-    runs-on: ubuntu-latest
+    # Self-hosted runner living in qfa_vnet (#176) — the only path left to the
+    # network-locked-down tfstate storage account. See infra/cicd.tf and
+    # infra/lockdown-tfstate-network.sh. Do NOT point this at ubuntu-latest
+    # again without also re-widening the storage account's network rules.
+    runs-on: [self-hosted, qfa-tfstate-runner]
     defaults:
       run:
         working-directory: infra
@@ -81,35 +84,35 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Login to Azure
-        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
-        with:
-          client-id: ${{ vars.AZ_CLIENT_ID }}
-          tenant-id: ${{ vars.AZ_TENANT_ID }}
-          subscription-id: ${{ vars.AZ_SUBSCRIPTION_ID }}
-
       - uses: hashicorp/setup-terraform@5e8dbf3c6d9deaf4193ca7a8fb23f2ac83bb6c85 # v4.0.0
 
+      # No azure/login step: this runner authenticates as the github_terraform
+      # user-assigned identity attached to the VM (`az vm identity assign`),
+      # via IMDS — not GitHub-federated OIDC. ARM_USE_MSI + ARM_CLIENT_ID below
+      # is what tells the azurerm provider (and az CLI, if used) to use it.
       - name: Terraform init
         run: |
           terraform init \
             -backend-config="resource_group_name=${{ vars.AZ_TF_STATE_RESOURCE_GROUP }}" \
             -backend-config="storage_account_name=${{ vars.AZ_TF_STATE_STORAGE_ACCOUNT }}"
         env:
-          ARM_USE_OIDC: true
+          ARM_USE_MSI: true
+          ARM_CLIENT_ID: ${{ vars.AZ_TERRAFORM_CLIENT_ID }}
           ARM_USE_AZUREAD: true
 
       - name: Select workspace
         run: terraform workspace select ${{ inputs.environment || 'dev' }}
         env:
-          ARM_USE_OIDC: true
+          ARM_USE_MSI: true
+          ARM_CLIENT_ID: ${{ vars.AZ_TERRAFORM_CLIENT_ID }}
           ARM_USE_AZUREAD: true
 
       - name: Terraform plan
         if: ${{ inputs.command != 'apply' }}
         run: terraform plan -input=false
         env:
-          ARM_USE_OIDC: true
+          ARM_USE_MSI: true
+          ARM_CLIENT_ID: ${{ vars.AZ_TERRAFORM_CLIENT_ID }}
           ARM_USE_AZUREAD: true
           TF_VAR_subscription_id: ${{ vars.AZ_SUBSCRIPTION_ID }}
           TF_VAR_tenant_id: ${{ vars.AZ_TENANT_ID }}
@@ -124,7 +127,8 @@ jobs:
         if: inputs.command == 'apply'
         run: terraform apply -auto-approve
         env:
-          ARM_USE_OIDC: true
+          ARM_USE_MSI: true
+          ARM_CLIENT_ID: ${{ vars.AZ_TERRAFORM_CLIENT_ID }}
           ARM_USE_AZUREAD: true
           TF_VAR_subscription_id: ${{ vars.AZ_SUBSCRIPTION_ID }}
           TF_VAR_tenant_id: ${{ vars.AZ_TENANT_ID }}
