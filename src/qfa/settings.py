@@ -75,7 +75,7 @@ class LLMSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="LLM_")
 
-    model: str = "azure_ai/mistral-medium-2505"
+    model: str = "azure/gpt-5.4"
     api_key: SecretStr = Field(default=...)  # required, no default
     api_base: str = ""
     api_version: str = ""
