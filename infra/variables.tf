@@ -51,7 +51,7 @@ variable "github_repo" {
 variable "llm_model" {
   description = "LLM model name"
   type        = string
-  default     = "azure_ai/gpt-5.4"
+  default     = "azure/gpt-5.4"
 }
 
 variable "llm_api_version" {

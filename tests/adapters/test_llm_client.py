@@ -23,7 +23,7 @@ from qfa.domain.errors import (
 )
 from qfa.domain.models import LLMResponse
 
-MODEL = "azure_ai/gpt-5.4"
+MODEL = "azure/gpt-5.4"
 SYSTEM_MSG = "You are a helpful assistant."
 USER_MSG = "Summarize the feedback."
 TIMEOUT = 2.0

@@ -32,7 +32,7 @@ class TestLLMSettings:
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
         monkeypatch.delenv("LLM_MODEL", raising=False)
         settings = LLMSettings()
-        assert settings.model == "azure_ai/gpt-5.4"
+        assert settings.model == "azure/gpt-5.4"
 
     def test_default_timeout_seconds(self, monkeypatch):
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
@@ -64,13 +64,13 @@ class TestLLMSettings:
 
     def test_azure_ai_model_with_api_base(self, monkeypatch):
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
-        monkeypatch.setenv("LLM_MODEL", "azure_ai/gpt-5.4")
+        monkeypatch.setenv("LLM_MODEL", "azure/gpt-5.4")
         monkeypatch.setenv(
             "LLM_API_BASE",
             "https://gpt-5.4.eastus2.inference.ai.azure.com/",
         )
         settings = LLMSettings()
-        assert settings.model == "azure_ai/gpt-5.4"
+        assert settings.model == "azure/gpt-5.4"
         assert settings.api_base == "https://gpt-5.4.eastus2.inference.ai.azure.com/"
 
     def test_azure_openai_model_with_api_base_and_version(self, monkeypatch):
