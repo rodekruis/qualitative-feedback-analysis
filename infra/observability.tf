@@ -123,17 +123,17 @@ resource "azurerm_monitor_metric_alert" "health_check" {
   name                = "qfa-${local.env}-health-check"
   resource_group_name = data.azurerm_resource_group.main.name
   scopes              = [azurerm_linux_web_app.backend.id]
-  description         = "Alert when the /v1/health endpoint fails"
+  description         = "Alert when the /v1/health endpoint fails, meaning that the app is down."
   severity            = 1
-  frequency           = "PT5M"
-  window_size         = "PT5M"
+  frequency           = "PT1M"
+  window_size         = "PT15M"
 
   criteria {
     metric_namespace = "Microsoft.Web/sites"
     metric_name      = "HealthCheckStatus"
     aggregation      = "Count"
     operator         = "LessThan"
-    threshold        = 4
+    threshold        = 11
   }
 
   action {
