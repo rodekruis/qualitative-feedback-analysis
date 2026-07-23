@@ -131,9 +131,9 @@ resource "azurerm_monitor_metric_alert" "health_check" {
   criteria {
     metric_namespace = "Microsoft.Web/sites"
     metric_name      = "HealthCheckStatus"
-    aggregation      = "Average"
+    aggregation      = "Count"
     operator         = "LessThan"
-    threshold        = 1
+    threshold        = 4
   }
 
   action {
