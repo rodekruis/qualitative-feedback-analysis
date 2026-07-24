@@ -1,5 +1,6 @@
 <?php // Do not copy this tag into EspoCRM
 // Fetch real attributes
+// Fetch real attributes
 $feedbackDescription = record\attribute('CFeedbackData', id, 'feedbackDescription');
 $codingLevel1 = record\attribute('CFeedbackData', id, 'codingLevel1Name');    
 $codingLevel2 = record\attribute('CFeedbackData', id, 'codingLevel2Name');    
@@ -10,7 +11,7 @@ $createdAt = record\attribute('CFeedbackData', id, 'createdAt');
 // Clean the feedback description string
 $feedbackDescription = string\replace($feedbackDescription, "\n", " ");
 $feedbackDescription = string\replace($feedbackDescription, "\r", "");
-
+$feedbackDescription = string\replace($feedbackDescription, '"', '-');
 // Fill metadata JSON string
 $metadata = string\concatenate(
     '{',
