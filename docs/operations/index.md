@@ -9,6 +9,7 @@ Running, deploying, and observing the service.
 | [Check deployed versions](check-deployed-versions.md) | Find which app version and infra commit are live per environment (works when the app is down) |
 | [Infrastructure bootstrap](bootstrap.md) | One-time setup of the shared Terraform backend and container registry |
 | [Set up a new environment](setup-new-env.md) | Per-environment provisioning (`dev`, `staging`, `prd`) |
+| [Restricting CI/CD blast radius](tfstate-network-lockdown.md) | Split CI/CD identities + locking the Terraform state account behind a private endpoint |
 | [API key management](auth-management.md) | Adding, rotating, and revoking API keys |
 | [Settings reference](settings-reference.md) | Every environment variable the app reads |
 | [Observability](observability.md) | What gets logged, request tracing, usage queries |
@@ -24,6 +25,7 @@ release-flow
 check-deployed-versions
 bootstrap
 setup-new-env
+tfstate-network-lockdown
 auth-management
 settings-reference
 observability
