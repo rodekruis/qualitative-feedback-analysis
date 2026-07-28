@@ -26,6 +26,24 @@ These use all single-feedback record endpoints such as `summarize`, `detect-sens
 
 The two flows build their distinctive `motherPayload` — a JSON object containing all key-value pairs needed by the endpoints. This holds information about the selected feedback item(s) and their attributes. The attributes are saved as metadata in this flow.
 
+## Error handling
+
+Both flows wrap each outbound call in an EspoCRM error-boundary event. On success, the relevant status field is set to `completed`; on failure, the boundary runs an "error notification" step instead, which sets the status field to `failed` and stores the underlying error via `bpm\caughtErrorCode()` / `bpm\caughtErrorMessage()`. All of these are plain fields on the triggering feedback record or insight, so the outcome and any error detail are visible directly on that record in the EspoCRM UI — there is no separate error log to check.
+
+### Single-feedback record script
+
+Each of the three calls tracks its own status field on the feedback record, moving through `requested` → `processing` → `completed` (or `failed`). The trigger itself only fires while at least one of these fields is `requested`:
+
+| Endpoint | Status field | Error fields |
+|---|---|---|
+| `summarize` | `autoSummaryStatus` | `autoSummaryErrorCode`, `autoSummaryErrorMessage` |
+| `assign-codes` | `autoCodingStatus` | `autoCodingErrorCode`, `autoCodingErrorMessage` |
+| `detect-sensitive` | `autoSensitiveStatus` | `autoSensitiveErrorCode`, `autoSensitiveErrorMessage` |
+
+### Insight saving script
+
+The insight call tracks a single status field, `autoInsightStatus`, moving through the same `processing` → `completed` (or `failed`) states, alongside `autoInsightErrorCode` and `autoInsightErrorMessage` on failure.
+
 ## Flowcharts
 
 The two workflows above are implemented as EspoCRM flowcharts, built and maintained inside the EspoCRM UI. Exports of these flowcharts are stored in `scripts/espo_crm/flowcharts/` as CSV files:

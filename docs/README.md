@@ -27,6 +27,6 @@ The rendered version of this site is hosted on [GitHub Pages](https://rodekruis.
 
 - [REST API overview](rest-api/index.md) — HTTP endpoint reference, the error envelope, and a pointer to the live OpenAPI docs served from a running instance.
 - [Python API reference](python-api/index.md) — auto-generated reference for the `qfa` Python package (only rendered in the built Sphinx site).
-- [EspoCRM connector scripts](integrations/espo-crm.md) — what the EspoCRM server-side scripts call and how they authenticate.
+- [EspoCRM connector scripts](integrations/espo-crm.md) — what the EspoCRM server-side scripts call, how they authenticate, and how failures surface on the record.
 - [Migration guide for 0.14.0](migration/0.14.0-breaking-changes.md) — breaking field renames in 0.14.0.
 - [GitHub releases](https://github.com/rodekruis/qualitative-feedback-analysis/releases) — the source of truth for what shipped in each version.

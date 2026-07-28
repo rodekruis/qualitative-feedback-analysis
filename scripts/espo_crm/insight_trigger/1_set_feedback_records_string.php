@@ -6,7 +6,7 @@ $$backendIDs = record\findRelatedMany('CInsight', id, 'feedbackDatas', 9999,'cre
 $i = 0;
 $recordsString = '';
 $count = array\length($$backendIDs);
-
+autoInsightStatus = 'processing';
 // Loop through real records
 while($i < $count) {
   $$backendID = array\at($$backendIDs, $i);
