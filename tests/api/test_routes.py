@@ -278,8 +278,8 @@ class TestSummarizeBulkSuccess:
         """output_language localizes bulk headers without leaking the field.
 
         The request's output_language is threaded into the response renderer so
-        QUALITY/TITLE/SUMMARY come back translated, the technical IDs label is
-        not, and output_language stays out of the serialized body.
+        QUALITY/TITLE/SUMMARY come back translated, and output_language stays
+        out of the serialized body.
         """
         body = {
             "feedback_records": [
@@ -295,10 +295,10 @@ class TestSummarizeBulkSuccess:
         pretty = data["pretty_output"]
         assert "QUALITÉ" in pretty
         assert "QUALITY:" not in pretty
-        # Technical label is not localized.
-        assert "IDs:" in pretty
         # Presentation-only field is excluded from the response.
         assert "output_language" not in data
+        # Feedback record ids are not part of the response.
+        assert "ids" not in data
 
 
 class TestDetectSensitiveSuccess:
@@ -538,11 +538,12 @@ class TestEmptyFeedbackContent:
         assert body["analysis"] == ""
 
     @pytest.mark.asyncio
-    async def test_summarize_bulk_drops_empty_records_and_processes_rest(self, client):
+    async def test_summarize_bulk_drops_empty_records_and_processes_rest(
+        self, client, test_app
+    ):
         """summarize-bulk aggregates only non-empty records in a mixed batch.
 
-        The dropped record's id must not appear in the aggregate ``ids``,
-        confirming it never reached the orchestrator.
+        The dropped record must not reach the orchestrator at all.
         """
         records = [
             {
@@ -558,7 +559,8 @@ class TestEmptyFeedbackContent:
             headers=_auth_header(),
         )
         assert resp.status_code == 200
-        assert resp.json()["ids"] == ["keep-1"]
+        forwarded = test_app.state.orchestrator.last_summarize_bulk_request
+        assert [r.id for r in forwarded.feedback_records] == ["keep-1"]
 
     @pytest.mark.asyncio
     async def test_summarize_bulk_all_empty_returns_empty_result(self, client):
@@ -573,7 +575,6 @@ class TestEmptyFeedbackContent:
         )
         assert resp.status_code == 200
         body = resp.json()
-        assert body["ids"] == []
         assert body["title"] == ""
         assert body["summary"] == ""
 

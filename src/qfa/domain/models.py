@@ -241,9 +241,6 @@ class AggregateSummaryResultModel(BaseModel):
     # TODO come up with nice solution for non-mutable quality-score, so this can be a frozen class.
     """
 
-    ids: tuple[str, ...] = Field(
-        description="Identifiers of all source feedback records."
-    )
     title: str = Field(description="Generated short title for the aggregate summary.")
     summary: str = Field(
         description="Generated bullet-point summary ordered by theme frequency."

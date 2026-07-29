@@ -261,10 +261,9 @@ async def summarize_bulk(
     """Summarize all submitted feedback records as a single aggregate summary.
 
     Records with empty ``content`` are dropped before summarization (a blank
-    EspoCRM description must not fail the whole batch — issue #138); their ids
-    do not appear in the response ``ids``. If *every* record is empty the
-    response is a 200 empty aggregate (``ids=[]``, blank ``title``/``summary``,
-    ``quality_score=0.0``).
+    EspoCRM description must not fail the whole batch — issue #138). If
+    *every* record is empty the response is a 200 empty aggregate (blank
+    ``title``/``summary``, ``quality_score=0.0``).
 
     Parameters
     ----------
@@ -289,7 +288,6 @@ async def summarize_bulk(
         # All records were empty: nothing to summarize. Return a 200 empty
         # aggregate rather than failing the request.
         return ApiSummarizeBulkResponse(
-            ids=[],
             title="",
             summary="",
             quality_score=0.0,
@@ -312,7 +310,6 @@ async def summarize_bulk(
     result = await orchestrator.summarize_bulk(domain_request, deadline)
 
     return ApiSummarizeBulkResponse(
-        ids=list(result.ids),
         title=result.title,
         summary=result.summary,
         quality_score=result.quality_score,

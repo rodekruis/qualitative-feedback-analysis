@@ -101,11 +101,8 @@ def _make_summary_result(
     )
 
 
-def _make_aggregate_summary_result(
-    ids=("doc-1",), title="Title", summary="- Point", quality_score=0.0
-):
+def _make_aggregate_summary_result(title="Title", summary="- Point", quality_score=0.0):
     return AggregateSummaryResultModel(
-        ids=ids,
         title=title,
         summary=summary,
         quality_score=quality_score,

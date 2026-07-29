@@ -1134,9 +1134,6 @@ class Orchestrator:
         quality_score = _parse_judge_quality_score(judge_response.structured)
 
         response.structured.quality_score = quality_score
-        response.structured.ids = tuple(
-            record.id for record in request.feedback_records
-        )
 
         return_model_as_string = response.structured.model_dump_json()
         unanonymized_return_model_as_string = self._anonymizer.deanonymize(

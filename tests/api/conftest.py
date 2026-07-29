@@ -133,6 +133,7 @@ class FakeOrchestrator:
         self._error = error
         self.last_detect_sensitive_request = None
         self.last_analyze_request = None
+        self.last_summarize_bulk_request = None
 
     async def analyze_bulk(
         self,
@@ -171,10 +172,10 @@ class FakeOrchestrator:
         request: SummaryRequestModel,
         deadline: datetime,
     ) -> AggregateSummaryResultModel:
+        self.last_summarize_bulk_request = request
         if self._error is not None:
             raise self._error
         return AggregateSummaryResultModel(
-            ids=tuple(record.id for record in request.feedback_records),
             title="Fake aggregate title",
             summary="- Fake aggregate point",
             quality_score=0.9,
