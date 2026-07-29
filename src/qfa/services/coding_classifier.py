@@ -12,7 +12,9 @@ class JudgeResponse(BaseModel):
     """Structured output returned by the LLM judge for one hierarchy level."""
 
     score: float = Field(description="Confidence score between 0 and 1.")
-    explanation: str = Field(description="Reason for this score.")
+    explanation: str = Field(
+        description="Reason for this score, in at most two sentences."
+    )
 
 
 _SYSTEM = """You are a classification agent for feedback records from community members.
@@ -152,7 +154,10 @@ Reference anchors:
 - 0.25: the fit is weak or speculative
 - 0.0: the feedback does not support this assignment or the assignment is clearly wrong
 
-Scores between anchors are expected and encouraged. For example, a strong but not perfect match might be 0.85."""
+Scores between anchors are expected and encouraged. For example, a strong but not perfect match might be 0.85.
+
+Explanation:
+Keep the explanation to at most two sentences."""
 
 
 def build_judge_messages(
