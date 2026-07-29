@@ -101,11 +101,8 @@ def _make_summary_result(
     )
 
 
-def _make_aggregate_summary_result(
-    ids=("doc-1",), title="Title", summary="- Point", quality_score=0.0
-):
+def _make_aggregate_summary_result(title="Title", summary="- Point", quality_score=0.0):
     return AggregateSummaryResultModel(
-        ids=ids,
         title=title,
         summary=summary,
         quality_score=quality_score,
@@ -602,6 +599,41 @@ class TestAnalyzeOutputLanguage:
         assert "Dutch" in fake_llm.calls[0]["system_message"]
 
     @pytest.mark.asyncio
+    async def test_output_language_instructs_judge_system_message(self, settings):
+        """``output_language`` also reaches the judge call's system message.
+
+        Why: the judge's ``uncertainty_explanation`` is free text returned to
+        the analyst, so it must honour ``output_language`` too, not just the
+        analysis text produced by the first LLM call.
+        """
+        from qfa.services.orchestrator import AnalyzeJudgeResult
+
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured="analysis"),
+                _make_llm_response(
+                    structured=AnalyzeJudgeResult(
+                        quality_score=0.5, uncertainty_explanation="ok"
+                    )
+                ),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        await orch.analyze_bulk(
+            _make_request(output_language="Dutch"),
+            _future_deadline(),
+        )
+
+        assert "Dutch" in fake_llm.calls[1]["system_message"]
+
+    @pytest.mark.asyncio
     async def test_output_language_is_not_embedded_in_the_user_message(self, settings):
         """``output_language`` reaches the analyse system message only, never the user message.
 
@@ -731,6 +763,85 @@ class TestAggregateSummaryOutputLanguage:
         assert (
             "Write the title and summary in" not in fake_llm.calls[0]["system_message"]
         )
+
+
+class TestNoTrailingQuestion:
+    """The system message forbids ending with a question or follow-up offer.
+
+    Why: the model's default "helpful assistant" behaviour tends to close
+    analyses and summaries with something like "Would you like me to dig
+    deeper into X?" — not wanted in any of these outputs.
+    """
+
+    @pytest.mark.asyncio
+    async def test_analyze_bulk_system_message_forbids_trailing_questions(
+        self, settings
+    ):
+        from qfa.services.orchestrator import AnalyzeJudgeResult
+
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured="analysis"),
+                _make_llm_response(
+                    structured=AnalyzeJudgeResult(
+                        quality_score=0.5, uncertainty_explanation="ok"
+                    )
+                ),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        await orch.analyze_bulk(_make_request(), _future_deadline())
+
+        assert "Do not end with a question" in fake_llm.calls[0]["system_message"]
+
+    @pytest.mark.asyncio
+    async def test_summarize_bulk_system_message_forbids_trailing_questions(
+        self, settings
+    ):
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=_make_aggregate_summary_result()),
+                _make_llm_response(structured="0.82\n"),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        await orch.summarize_bulk(_make_aggregate_request(), _future_deadline())
+
+        assert "Do not end with a question" in fake_llm.calls[0]["system_message"]
+
+    @pytest.mark.asyncio
+    async def test_summarize_system_message_forbids_trailing_questions(self, settings):
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=_make_summary_result()),
+                _make_llm_response(structured="0.8"),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        await orch.summarize(_make_summary_request(), _future_deadline())
+
+        assert "Do not end with a question" in fake_llm.calls[0]["system_message"]
 
 
 class TestInjectionSystemPrefix:
@@ -940,10 +1051,9 @@ class TestAnalyzeJudgeResultParsing:
 
 class TestAnalyzeHappyPath:
     @pytest.mark.asyncio
-    async def test_returns_disclaimer_prefixed_text_and_judge_fields(self, settings):
-        """Happy path: result carries disclaimer prefix + judge score/explanation."""
+    async def test_returns_analysis_text_and_judge_fields(self, settings):
+        """Happy path: result carries analysis text + judge score/explanation."""
         from qfa.services.orchestrator import AnalyzeJudgeResult, Orchestrator
-        from qfa.services.prompts import ANALYZE_DISCLAIMER
 
         analysis_text = "Top themes are A and B."
         judge = AnalyzeJudgeResult(
@@ -966,7 +1076,6 @@ class TestAnalyzeHappyPath:
 
         result = await orch.analyze_bulk(_make_request(), _future_deadline())
 
-        assert result.result.startswith(ANALYZE_DISCLAIMER)
         assert "Top themes are A and B." in result.result
         assert result.quality_score == 0.82
         assert result.uncertainty_explanation == "Coverage high, faithfulness strong."
@@ -1094,16 +1203,9 @@ class TestAnalyzeJudgeFailure:
 
 class TestAnalyzeAnonymizationOrdering:
     @pytest.mark.asyncio
-    async def test_disclaimer_sits_above_deanonymised_text(self, settings):
-        """With anonymisation on, the result is deanonymised then disclaimed.
-
-        Order matters: the disclaimer is *prepended* to the final result
-        the analyst sees, after PII placeholders are restored. So the
-        disclaimer appears exactly once at the very top, and any
-        ``<PERSON_0>``-style placeholder must be gone from the body.
-        """
+    async def test_result_is_deanonymised_text(self, settings):
+        """With anonymisation on, the result the analyst sees is deanonymised."""
         from qfa.services.orchestrator import AnalyzeJudgeResult, Orchestrator
-        from qfa.services.prompts import ANALYZE_DISCLAIMER
 
         class DeanonymisingFakeAnonymizer:
             def anonymize(self, text):
@@ -1134,12 +1236,7 @@ class TestAnalyzeAnonymizationOrdering:
 
         result = await orch.analyze_bulk(_make_request(), _future_deadline())
 
-        assert result.result.count(ANALYZE_DISCLAIMER) == 1
-        assert result.result.startswith(ANALYZE_DISCLAIMER)
-        # The disclaimer itself mentions ``<PERSON_0>`` as an example; the
-        # assertion targets the analysis body only.
-        body = result.result.removeprefix(ANALYZE_DISCLAIMER)
-        assert "<PERSON_0>" not in body
+        assert "<PERSON_0>" not in result.result
 
     @pytest.mark.asyncio
     async def test_person_placeholders_are_retained_in_output(self, settings):
@@ -1191,19 +1288,14 @@ class TestAnalyzeAnonymizationOrdering:
 
         result = await orch.analyze_bulk(_make_request(), _future_deadline())
 
-        from qfa.services.prompts import ANALYZE_DISCLAIMER
-
-        # Assertions target the analysis body, not the disclaimer (which
-        # mentions ``<PERSON_0>`` as an example token).
-        body = result.result.removeprefix(ANALYZE_DISCLAIMER)
         # PERSON placeholders remain — analyst never sees the underlying name.
-        assert "<PERSON_0>" in body
-        assert "Alice" not in body
+        assert "<PERSON_0>" in result.result
+        assert "Alice" not in result.result
         # Other entity types are still deanonymised as before.
-        assert "<LOCATION_0>" not in body
-        assert "Atlanta" in body
-        assert "<EMAIL_ADDRESS_0>" not in body
-        assert "alice@example.com" in body
+        assert "<LOCATION_0>" not in result.result
+        assert "Atlanta" in result.result
+        assert "<EMAIL_ADDRESS_0>" not in result.result
+        assert "alice@example.com" in result.result
 
     @pytest.mark.asyncio
     async def test_judge_call_does_not_see_raw_analyst_prompt_when_anonymized(

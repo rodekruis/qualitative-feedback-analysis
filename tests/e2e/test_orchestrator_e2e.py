@@ -143,9 +143,7 @@ class TestRequestIdEqualsCallId:
         # summary itself, then a judge call that scores the summary as a
         # plain float string. Queue both.
         e2e_fake_llm.queue_response(
-            _ok(
-                text='{"ids": ["d1"], "title": "t", "summary": "s", "quality_score": 0.5}'
-            )
+            _ok(text='{"title": "t", "summary": "s", "quality_score": 0.5}')
         )
         e2e_fake_llm.queue_response(_ok(text="0.9"))
 

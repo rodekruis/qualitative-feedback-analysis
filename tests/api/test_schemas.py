@@ -538,33 +538,12 @@ def test_create_pretty_output_translates_headers_to_requested_language():
     assert "85%" in out
 
 
-def test_create_pretty_output_aggregate_translates_headers_but_not_ids_label():
-    """The aggregate ids= path localizes headers while the IDs label stays as-is.
-
-    The technical ``IDs`` label is not localized even when QUALITY/TITLE/
-    SUMMARY are; this exercises the multi-record path used by the bulk endpoint.
-    """
-    out = _create_pretty_output(
-        ids=["doc-1", "doc-2"],
-        quality_score=0.85,
-        title="Un titre",
-        summary="Un résumé",
-        language="French",
-    )
-    assert "QUALITÉ" in out
-    assert "QUALITY:" not in out
-    # Technical IDs label is not localized and lists both ids.
-    assert "IDs:" in out
-    assert "doc-1, doc-2" in out
-
-
 def test_summarize_bulk_response_localizes_pretty_output():
     """ApiSummarizeBulkResponse renders pretty_output in the configured language.
 
     The computed field must pick up the excluded output_language render input.
     """
     response = ApiSummarizeBulkResponse(
-        ids=["doc-1", "doc-2"],
         title="Un titre",
         summary="Un résumé",
         quality_score=0.85,
@@ -580,7 +559,6 @@ def test_summarize_bulk_response_output_language_excluded_from_serialization():
     presentation concern.
     """
     response = ApiSummarizeBulkResponse(
-        ids=["doc-1", "doc-2"],
         title="t",
         summary="s",
         quality_score=0.5,

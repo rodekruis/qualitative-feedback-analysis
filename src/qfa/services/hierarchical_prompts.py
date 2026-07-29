@@ -36,12 +36,18 @@ _REDUCE_ACTION_PROMPT = (
 )
 
 
-def build_map_system_message() -> str:
-    """Build the leaf (map) system message: role + guardrails + map action."""
+def build_map_system_message(output_language: str | None = None) -> str:
+    """Build the leaf (map) system message: role + guardrails + map action.
+
+    ``output_language``, when given, is appended here too, so each partial is
+    already produced in the target language rather than leaving translation
+    of a whole mixed-language corpus to the single final reduce call.
+    """
     return (
         f"{ANALYZE_SYSTEM_PROMPT}\n\n"
         f"{ANALYZE_GUARDRAILS_PROMPT}\n\n"
         f"{_MAP_ACTION_PROMPT}"
+        f"{build_output_language_instruction(output_language)}"
     )
 
 
@@ -49,8 +55,9 @@ def build_reduce_system_message(output_language: str | None = None) -> str:
     """Build the synthesis (reduce) system message: role + guardrails + reduce action.
 
     The reduce step produces the final, user-facing analysis, so the optional
-    ``output_language`` directive is appended here (and not at the map step,
-    whose partials are intermediate) to honour ``output_language`` (#154).
+    ``output_language`` directive is appended here too, to honour
+    ``output_language`` (#154) even if a partial slips through in another
+    language.
     """
     return (
         f"{ANALYZE_SYSTEM_PROMPT}\n\n"

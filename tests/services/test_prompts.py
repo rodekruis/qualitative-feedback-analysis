@@ -2,11 +2,24 @@
 
 from qfa.domain.models import FeedbackRecordMetadataModel, FeedbackRecordModel
 from qfa.services.prompts import (
+    ANALYZE_GUARDRAILS_PROMPT,
     build_analyze_judge_system_message,
     build_analyze_user_message,
     build_output_language_instruction,
     escape_for_tag_envelope,
 )
+
+
+def test_guardrails_forbid_trailing_questions():
+    """The guardrails forbid ending with a question or invitation for follow-up.
+
+    Why: the model's default "helpful assistant" behaviour tends to close
+    with something like "Would you like me to dig deeper into X?" — this is
+    shared by analyze-bulk single-pass, the hierarchical map step, and the
+    hierarchical reduce step (all three compose ``ANALYZE_GUARDRAILS_PROMPT``
+    verbatim), so a fix here covers all three at once.
+    """
+    assert "Do not end with a question" in ANALYZE_GUARDRAILS_PROMPT
 
 
 class TestBuildOutputLanguageInstruction:
@@ -42,10 +55,8 @@ class TestBuildOutputLanguageInstruction:
         and hierarchical-reduce callers rely on the default subject staying
         "analysis" so their prompts are unchanged.
         """
-        assert (
-            build_output_language_instruction("Dutch")
-            == "\n\nWrite the analysis in Dutch."
-        )
+        out = build_output_language_instruction("Dutch")
+        assert out.startswith("\n\nWrite the analysis in Dutch,")
 
     def test_subject_param_customizes_the_noun(self):
         """A custom subject noun is interpolated into the directive.
@@ -53,10 +64,8 @@ class TestBuildOutputLanguageInstruction:
         Why: #161 — summarize-aggregate reuses this builder with subject
         "title and summary", so the noun must be parameterizable.
         """
-        assert (
-            build_output_language_instruction("Dutch", subject="title and summary")
-            == "\n\nWrite the title and summary in Dutch."
-        )
+        out = build_output_language_instruction("Dutch", subject="title and summary")
+        assert out.startswith("\n\nWrite the title and summary in Dutch,")
 
     def test_does_not_sanitize_its_input(self):
         """The builder is a dumb formatter and does not clean its input.
@@ -64,10 +73,22 @@ class TestBuildOutputLanguageInstruction:
         Why: #161 — sanitization happens once at the API boundary; the builder
         must interpolate verbatim so it stays simple and single-responsibility.
         """
-        assert (
-            build_output_language_instruction("Eng. lish")
-            == "\n\nWrite the analysis in Eng. lish."
-        )
+        out = build_output_language_instruction("Eng. lish")
+        assert out.startswith("\n\nWrite the analysis in Eng. lish,")
+
+    def test_takes_precedence_over_record_language_and_analyst_prompt(self):
+        """The directive explicitly claims precedence over two conflict sources.
+
+        Why: the reported bug was the model ignoring ``output_language`` when
+        the feedback records were in another language, or when the analyst's
+        own free-text prompt requested a different language. The directive
+        must say outright that it wins in both cases, not just name the
+        target language.
+        """
+        out = build_output_language_instruction("Dutch")
+        assert "regardless of the language the feedback records are written in" in out
+        assert "takes precedence over any other language request" in out
+        assert "analyst's own instruction" in out
 
 
 class TestEscapeForTagEnvelope:
@@ -262,3 +283,23 @@ class TestBuildAnalyzeJudgeSystemMessage:
         )
         assert '{"quality_score":' in out
         assert '{{"quality_score":' not in out
+
+    def test_output_language_pins_the_uncertainty_explanation_language(self):
+        """``output_language`` adds a directive naming ``uncertainty_explanation``.
+
+        Why: the judge's ``uncertainty_explanation`` is the only free text in
+        its response that reaches the analyst, so it must honour
+        ``output_language`` the same way the analysis text does.
+        """
+        out = build_analyze_judge_system_message(
+            source_text="s", analyst_prompt="p", analysis="a", output_language="Dutch"
+        )
+        assert "Dutch" in out
+        assert "uncertainty_explanation" in out
+
+    def test_no_language_directive_when_output_language_unset(self):
+        """Omitting ``output_language`` leaves the judge prompt unchanged."""
+        out = build_analyze_judge_system_message(
+            source_text="s", analyst_prompt="p", analysis="a"
+        )
+        assert "Write the" not in out

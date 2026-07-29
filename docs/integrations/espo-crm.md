@@ -78,7 +78,7 @@ These CSV files serve as the versioning mechanism: whenever a flowchart is updat
 
 The `-bulk` responses include a backend-rendered `pretty_output` field — a human-readable text block (quality dots, title, summary) ready to write straight into an EspoCRM field. The formatting lives entirely in the backend, so the scripts do not assemble it.
 
-Its `QUALITY`/`TITLE`/`SUMMARY` headers are localized to the request's `output_language` (the same field that drives the title/summary language). Supported languages are English, French, Spanish, Arabic, Russian, Dutch, and Ukrainian; any other or absent value falls back to English headers. The technical `IDs` label is not localized.
+Its `QUALITY`/`TITLE`/`SUMMARY` headers are localized to the request's `output_language` (the same field that drives the title/summary language). Supported languages are English, French, Spanish, Arabic, Russian, Dutch, and Ukrainian; any other or absent value falls back to English headers.
 
 ## Authentication
 

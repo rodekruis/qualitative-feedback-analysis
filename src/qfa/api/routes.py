@@ -45,7 +45,6 @@ from qfa.domain.models import (
 )
 from qfa.domain.usage_models import CallContext, Operation
 from qfa.services.orchestrator import Orchestrator
-from qfa.services.prompts import ANALYZE_DISCLAIMER
 
 logger = logging.getLogger(__name__)
 
@@ -132,8 +131,7 @@ async def analyze_bulk(
 
     The analyst prompt in ``body.prompt`` is wrapped in a structural
     envelope together with the feedback records, and the model is
-    instructed to treat record text as data, not instructions.  A
-    server-side disclaimer is prepended to every analysis output.
+    instructed to treat record text as data, not instructions.
 
     A second LLM call (AI-as-judge) scores the analysis and produces a
     natural-language ``uncertainty_explanation`` the analyst can use to
@@ -162,7 +160,8 @@ async def analyze_bulk(
       EspoCRM description must not fail the whole batch — issue #138).
       ``feedback_record_count`` reflects the records actually analyzed. If
       *every* record is empty the response is a 200 with
-      ``feedback_record_count=0`` and a disclaimer-only ``analysis``.
+      ``feedback_record_count=0`` and a fallback ``analysis`` explaining
+      that no analysis was performed.
     - Injection-like text in record content or metadata is neutralised
       structurally by the envelope; regex-based detection is a separate
       guard handled by the LLM adapter.
@@ -191,9 +190,9 @@ async def analyze_bulk(
     records = _drop_empty_records(body.feedback_records)
     if not records:
         # All records were empty: nothing to analyze. Return a 200 empty
-        # result (disclaimer preserved) rather than failing the request.
+        # result rather than failing the request.
         return ApiAnalyzeBulkResponse(
-            analysis=ANALYZE_DISCLAIMER,
+            analysis="All records were empty: no analysis was performed.",
             quality_score=None,
             uncertainty_explanation=_NO_CONTENT_EXPLANATION,
             feedback_record_count=0,
@@ -263,10 +262,10 @@ async def summarize_bulk(
     """Summarize all submitted feedback records as a single aggregate summary.
 
     Records with empty ``content`` are dropped before summarization (a blank
-    EspoCRM description must not fail the whole batch — issue #138); their ids
-    do not appear in the response ``ids``. If *every* record is empty the
-    response is a 200 empty aggregate (``ids=[]``, blank ``title``/``summary``,
-    ``quality_score=0.0``).
+    EspoCRM description must not fail the whole batch — issue #138). If
+    *every* record is empty the response is a 200 empty aggregate (blank
+    ``title``, a fallback ``summary`` explaining that no analysis was
+    performed, ``quality_score=0.0``).
 
     Parameters
     ----------
@@ -291,9 +290,8 @@ async def summarize_bulk(
         # All records were empty: nothing to summarize. Return a 200 empty
         # aggregate rather than failing the request.
         return ApiSummarizeBulkResponse(
-            ids=[],
             title="",
-            summary="",
+            summary="All records were empty: no analysis was performed.",
             quality_score=0.0,
         )
 
@@ -314,7 +312,6 @@ async def summarize_bulk(
     result = await orchestrator.summarize_bulk(domain_request, deadline)
 
     return ApiSummarizeBulkResponse(
-        ids=list(result.ids),
         title=result.title,
         summary=result.summary,
         quality_score=result.quality_score,
