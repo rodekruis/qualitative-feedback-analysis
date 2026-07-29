@@ -261,6 +261,15 @@ Four metric alert rules are provisioned in `infra/observability.tf`, all routed 
 
 The health-check alert (severity 1) fires when the App Service platform's built-in health probe of `/v1/health` fails — this is the most direct signal that the container is down or crashed.
 
+## Posting to teams channel.
+
+If one of the alerts, as described above, is triggered, a webhook is triggered. This webhook is stored as a git secret with the variable name `TEAMS_ALERTS_WEBHOOK_URL`. For now we use the same channel for dev/stg/prd alerts, so this one variable is used for all of the environments.
+
+
+The webhook is linked to a workflow. This workflow posts the alert as an adaptive card in the teams channel `QFA Monitor` (in `510 - Community Engagement & Accountability`). To see this workflow you need to press on the three dots on the `QFA Monitor` channel and then press `Workflows`. From there you will see the workflow.
+
+The workflow does three things:m receive the alert, parse the json and post it as adaptive card in the teams channel.
+
 ## Application Insights (application telemetry)
 
 Application Insights holds *application* telemetry — one record per request
