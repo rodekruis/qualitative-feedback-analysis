@@ -45,7 +45,6 @@ from qfa.domain.models import (
 )
 from qfa.domain.usage_models import CallContext, Operation
 from qfa.services.orchestrator import Orchestrator
-from qfa.services.prompts import ANALYZE_DISCLAIMER
 
 logger = logging.getLogger(__name__)
 
@@ -132,8 +131,7 @@ async def analyze_bulk(
 
     The analyst prompt in ``body.prompt`` is wrapped in a structural
     envelope together with the feedback records, and the model is
-    instructed to treat record text as data, not instructions.  A
-    server-side disclaimer is prepended to every analysis output.
+    instructed to treat record text as data, not instructions.
 
     A second LLM call (AI-as-judge) scores the analysis and produces a
     natural-language ``uncertainty_explanation`` the analyst can use to
@@ -162,7 +160,7 @@ async def analyze_bulk(
       EspoCRM description must not fail the whole batch — issue #138).
       ``feedback_record_count`` reflects the records actually analyzed. If
       *every* record is empty the response is a 200 with
-      ``feedback_record_count=0`` and a disclaimer-only ``analysis``.
+      ``feedback_record_count=0`` and an empty ``analysis``.
     - Injection-like text in record content or metadata is neutralised
       structurally by the envelope; regex-based detection is a separate
       guard handled by the LLM adapter.
@@ -191,9 +189,9 @@ async def analyze_bulk(
     records = _drop_empty_records(body.feedback_records)
     if not records:
         # All records were empty: nothing to analyze. Return a 200 empty
-        # result (disclaimer preserved) rather than failing the request.
+        # result rather than failing the request.
         return ApiAnalyzeBulkResponse(
-            analysis=ANALYZE_DISCLAIMER,
+            analysis="",
             quality_score=None,
             uncertainty_explanation=_NO_CONTENT_EXPLANATION,
             feedback_record_count=0,

@@ -118,11 +118,11 @@ sequential pipeline.
    (coverage-weighted mean). The lowest single-chunk score is reported as a
    floor in `uncertainty_explanation`, so a small badly-grounded chunk stays
    visible even when the weighted mean is high.
-10. **De-anonymise + disclaimer.** As with `analyze`, the synthesis is
-   de-anonymised except for `<PERSON_*>` placeholders (see
-   [Prompt envelope](06-prompt-envelope.md#selective-de-anonymisation-person-retention)),
-   then `ANALYZE_DISCLAIMER` is prepended. The result carries `result`,
-   `confidence`, `uncertainty_explanation`, and `coding_trends`.
+10. **De-anonymise.** As with `analyze`, the synthesis is de-anonymised
+   except for `<PERSON_*>` placeholders (see
+   [Prompt envelope](06-prompt-envelope.md#selective-de-anonymisation-person-retention)).
+   The result carries `result`, `confidence`, `uncertainty_explanation`, and
+   `coding_trends`.
 
 ### Two ways the budget is respected
 
@@ -160,7 +160,7 @@ flowchart TD
     tree --> synth
     judge --> conf[Coverage-weighted confidence<br/>+ min-score floor]
     synth --> conf
-    conf --> deanon[De-anonymise except PERSON<br/>+ prepend disclaimer]
+    conf --> deanon[De-anonymise except PERSON]
     deanon --> out([AnalysisResultModel:<br/>result, confidence,<br/>uncertainty, coding_trends])
 ```
 

@@ -60,7 +60,6 @@ from qfa.services.hierarchical_prompts import (
 )
 from qfa.services.prompts import (
     ANALYZE_ACTION_PROMPT,
-    ANALYZE_DISCLAIMER,
     ANALYZE_GUARDRAILS_PROMPT,
     ANALYZE_SYSTEM_PROMPT,
     JUDGE_UNAVAILABLE_EXPLANATION,
@@ -421,7 +420,7 @@ class Orchestrator:
         )
 
         return AnalysisResultModel(
-            result=f"{ANALYZE_DISCLAIMER}{analysis_text}",
+            result=analysis_text,
             quality_score=quality_score,
             uncertainty_explanation=uncertainty_explanation,
             coding_trends=trend_table,
@@ -764,7 +763,7 @@ class Orchestrator:
         )
 
         return AnalysisResultModel(
-            result=f"{ANALYZE_DISCLAIMER}{analysis_text}",
+            result=analysis_text,
             confidence=confidence,
             uncertainty_explanation=uncertainty,
             coding_trends=trend_table,

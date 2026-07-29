@@ -940,10 +940,9 @@ class TestAnalyzeJudgeResultParsing:
 
 class TestAnalyzeHappyPath:
     @pytest.mark.asyncio
-    async def test_returns_disclaimer_prefixed_text_and_judge_fields(self, settings):
-        """Happy path: result carries disclaimer prefix + judge score/explanation."""
+    async def test_returns_analysis_text_and_judge_fields(self, settings):
+        """Happy path: result carries analysis text + judge score/explanation."""
         from qfa.services.orchestrator import AnalyzeJudgeResult, Orchestrator
-        from qfa.services.prompts import ANALYZE_DISCLAIMER
 
         analysis_text = "Top themes are A and B."
         judge = AnalyzeJudgeResult(
@@ -966,7 +965,6 @@ class TestAnalyzeHappyPath:
 
         result = await orch.analyze_bulk(_make_request(), _future_deadline())
 
-        assert result.result.startswith(ANALYZE_DISCLAIMER)
         assert "Top themes are A and B." in result.result
         assert result.quality_score == 0.82
         assert result.uncertainty_explanation == "Coverage high, faithfulness strong."
@@ -1094,16 +1092,9 @@ class TestAnalyzeJudgeFailure:
 
 class TestAnalyzeAnonymizationOrdering:
     @pytest.mark.asyncio
-    async def test_disclaimer_sits_above_deanonymised_text(self, settings):
-        """With anonymisation on, the result is deanonymised then disclaimed.
-
-        Order matters: the disclaimer is *prepended* to the final result
-        the analyst sees, after PII placeholders are restored. So the
-        disclaimer appears exactly once at the very top, and any
-        ``<PERSON_0>``-style placeholder must be gone from the body.
-        """
+    async def test_result_is_deanonymised_text(self, settings):
+        """With anonymisation on, the result the analyst sees is deanonymised."""
         from qfa.services.orchestrator import AnalyzeJudgeResult, Orchestrator
-        from qfa.services.prompts import ANALYZE_DISCLAIMER
 
         class DeanonymisingFakeAnonymizer:
             def anonymize(self, text):
@@ -1134,12 +1125,7 @@ class TestAnalyzeAnonymizationOrdering:
 
         result = await orch.analyze_bulk(_make_request(), _future_deadline())
 
-        assert result.result.count(ANALYZE_DISCLAIMER) == 1
-        assert result.result.startswith(ANALYZE_DISCLAIMER)
-        # The disclaimer itself mentions ``<PERSON_0>`` as an example; the
-        # assertion targets the analysis body only.
-        body = result.result.removeprefix(ANALYZE_DISCLAIMER)
-        assert "<PERSON_0>" not in body
+        assert "<PERSON_0>" not in result.result
 
     @pytest.mark.asyncio
     async def test_person_placeholders_are_retained_in_output(self, settings):
@@ -1191,19 +1177,14 @@ class TestAnalyzeAnonymizationOrdering:
 
         result = await orch.analyze_bulk(_make_request(), _future_deadline())
 
-        from qfa.services.prompts import ANALYZE_DISCLAIMER
-
-        # Assertions target the analysis body, not the disclaimer (which
-        # mentions ``<PERSON_0>`` as an example token).
-        body = result.result.removeprefix(ANALYZE_DISCLAIMER)
         # PERSON placeholders remain — analyst never sees the underlying name.
-        assert "<PERSON_0>" in body
-        assert "Alice" not in body
+        assert "<PERSON_0>" in result.result
+        assert "Alice" not in result.result
         # Other entity types are still deanonymised as before.
-        assert "<LOCATION_0>" not in body
-        assert "Atlanta" in body
-        assert "<EMAIL_ADDRESS_0>" not in body
-        assert "alice@example.com" in body
+        assert "<LOCATION_0>" not in result.result
+        assert "Atlanta" in result.result
+        assert "<EMAIL_ADDRESS_0>" not in result.result
+        assert "alice@example.com" in result.result
 
     @pytest.mark.asyncio
     async def test_judge_call_does_not_see_raw_analyst_prompt_when_anonymized(

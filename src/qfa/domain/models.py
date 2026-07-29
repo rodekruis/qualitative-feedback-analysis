@@ -146,7 +146,7 @@ class AnalysisResultModel(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    result: str = Field(description="Analysis output text (disclaimer prepended).")
+    result: str = Field(description="Analysis output text.")
     quality_score: float | None = Field(
         default=None,
         ge=0.0,
