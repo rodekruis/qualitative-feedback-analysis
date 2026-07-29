@@ -200,7 +200,7 @@ def build_analyze_judge_system_message(
         analyst_prompt=analyst_prompt,
         analysis=analysis,
     ) + build_output_language_instruction(
-        output_language, subject="uncertainty_explanation"
+        output_language, subject="uncertainty explanation"
     )
 
 

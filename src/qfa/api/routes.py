@@ -160,7 +160,8 @@ async def analyze_bulk(
       EspoCRM description must not fail the whole batch — issue #138).
       ``feedback_record_count`` reflects the records actually analyzed. If
       *every* record is empty the response is a 200 with
-      ``feedback_record_count=0`` and an empty ``analysis``.
+      ``feedback_record_count=0`` and a fallback ``analysis`` explaining
+      that no analysis was performed.
     - Injection-like text in record content or metadata is neutralised
       structurally by the envelope; regex-based detection is a separate
       guard handled by the LLM adapter.
@@ -191,7 +192,7 @@ async def analyze_bulk(
         # All records were empty: nothing to analyze. Return a 200 empty
         # result rather than failing the request.
         return ApiAnalyzeBulkResponse(
-            analysis="",
+            analysis="All records were empty: no analysis was performed.",
             quality_score=None,
             uncertainty_explanation=_NO_CONTENT_EXPLANATION,
             feedback_record_count=0,
@@ -263,7 +264,8 @@ async def summarize_bulk(
     Records with empty ``content`` are dropped before summarization (a blank
     EspoCRM description must not fail the whole batch — issue #138). If
     *every* record is empty the response is a 200 empty aggregate (blank
-    ``title``/``summary``, ``quality_score=0.0``).
+    ``title``, a fallback ``summary`` explaining that no analysis was
+    performed, ``quality_score=0.0``).
 
     Parameters
     ----------
@@ -289,7 +291,7 @@ async def summarize_bulk(
         # aggregate rather than failing the request.
         return ApiSummarizeBulkResponse(
             title="",
-            summary="",
+            summary="All records were empty: no analysis was performed.",
             quality_score=0.0,
         )
 

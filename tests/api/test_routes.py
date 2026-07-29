@@ -522,10 +522,10 @@ class TestEmptyFeedbackContent:
 
     @pytest.mark.asyncio
     async def test_analyze_bulk_all_empty_returns_empty_result(self, client):
-        """All-blank batch returns 200 with a zero-record, empty analysis.
+        """All-blank batch returns 200 with a zero-record, fallback analysis.
 
         The domain request (which requires >=1 record) is never built; the
-        route short-circuits to an empty analysis without an LLM call.
+        route short-circuits to a fallback analysis without an LLM call.
         """
         resp = await client.post(
             "/v1/analyze-bulk",
@@ -535,7 +535,7 @@ class TestEmptyFeedbackContent:
         assert resp.status_code == 200
         body = resp.json()
         assert body["feedback_record_count"] == 0
-        assert body["analysis"] == ""
+        assert body["analysis"] == "All records were empty: no analysis was performed."
 
     @pytest.mark.asyncio
     async def test_summarize_bulk_drops_empty_records_and_processes_rest(
@@ -576,7 +576,7 @@ class TestEmptyFeedbackContent:
         assert resp.status_code == 200
         body = resp.json()
         assert body["title"] == ""
-        assert body["summary"] == ""
+        assert body["summary"] == "All records were empty: no analysis was performed."
 
     @pytest.mark.asyncio
     async def test_summarize_empty_content_returns_empty_result(self, client):
