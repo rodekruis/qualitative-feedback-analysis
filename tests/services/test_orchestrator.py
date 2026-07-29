@@ -768,6 +768,85 @@ class TestAggregateSummaryOutputLanguage:
         )
 
 
+class TestNoTrailingQuestion:
+    """The system message forbids ending with a question or follow-up offer.
+
+    Why: the model's default "helpful assistant" behaviour tends to close
+    analyses and summaries with something like "Would you like me to dig
+    deeper into X?" — not wanted in any of these outputs.
+    """
+
+    @pytest.mark.asyncio
+    async def test_analyze_bulk_system_message_forbids_trailing_questions(
+        self, settings
+    ):
+        from qfa.services.orchestrator import AnalyzeJudgeResult
+
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured="analysis"),
+                _make_llm_response(
+                    structured=AnalyzeJudgeResult(
+                        quality_score=0.5, uncertainty_explanation="ok"
+                    )
+                ),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        await orch.analyze_bulk(_make_request(), _future_deadline())
+
+        assert "Do not end with a question" in fake_llm.calls[0]["system_message"]
+
+    @pytest.mark.asyncio
+    async def test_summarize_bulk_system_message_forbids_trailing_questions(
+        self, settings
+    ):
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=_make_aggregate_summary_result()),
+                _make_llm_response(structured="0.82\n"),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        await orch.summarize_bulk(_make_aggregate_request(), _future_deadline())
+
+        assert "Do not end with a question" in fake_llm.calls[0]["system_message"]
+
+    @pytest.mark.asyncio
+    async def test_summarize_system_message_forbids_trailing_questions(self, settings):
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=_make_summary_result()),
+                _make_llm_response(structured="0.8"),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        await orch.summarize(_make_summary_request(), _future_deadline())
+
+        assert "Do not end with a question" in fake_llm.calls[0]["system_message"]
+
+
 class TestInjectionSystemPrefix:
     @pytest.mark.asyncio
     async def test_system_prefix_forwarded_to_llm(self, settings):

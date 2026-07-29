@@ -2,11 +2,24 @@
 
 from qfa.domain.models import FeedbackRecordMetadataModel, FeedbackRecordModel
 from qfa.services.prompts import (
+    ANALYZE_GUARDRAILS_PROMPT,
     build_analyze_judge_system_message,
     build_analyze_user_message,
     build_output_language_instruction,
     escape_for_tag_envelope,
 )
+
+
+def test_guardrails_forbid_trailing_questions():
+    """The guardrails forbid ending with a question or invitation for follow-up.
+
+    Why: the model's default "helpful assistant" behaviour tends to close
+    with something like "Would you like me to dig deeper into X?" — this is
+    shared by analyze-bulk single-pass, the hierarchical map step, and the
+    hierarchical reduce step (all three compose ``ANALYZE_GUARDRAILS_PROMPT``
+    verbatim), so a fix here covers all three at once.
+    """
+    assert "Do not end with a question" in ANALYZE_GUARDRAILS_PROMPT
 
 
 class TestBuildOutputLanguageInstruction:

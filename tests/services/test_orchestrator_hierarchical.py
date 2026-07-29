@@ -243,10 +243,13 @@ async def test_anonymization_happens_before_any_llm_or_embed_call():
 class LargeOutputLLM:
     """LLM that returns a moderate map output to force multi-level tree-reduce.
 
-    Map calls return a ~480-char partial. With a 700-token budget and a
-    393-token system message, exactly 2 partials fit per reduce group
-    (393+120+120=633 ≤ 700; 393+120+120+120=753 > 700). Eight map chunks
-    therefore produce a tree-reduce of depth ≥ 2 (4 groups → 2 groups → 1).
+    Map calls return a ~250-char partial. With a 700-token budget and a
+    442-token system message, 3 partials (plus envelope overhead) fit in one
+    reduce group (683 tokens total) but 4 do not (755 tokens total) —
+    measured empirically via ``build_reduce_user_message``, since the
+    per-partial envelope tags make the token count not a clean multiple. Ten
+    map chunks therefore produce a multi-level tree-reduce (groups of 3 or
+    fewer, recursing until one final synthesis).
     """
 
     def __init__(self):
@@ -268,10 +271,10 @@ class LargeOutputLLM:
                 cost=0.0,
             )
         if "<feedback_records>" in user_message:
-            # Map call — return a ~480-char partial (120 tokens) so that
-            # 2 partials fit per reduce group but 3 do not, forcing a
-            # binary tree-reduce over 8 partials (depth = 3 levels).
-            partial = "Analysis: " + ("Water access issues observed. " * 15)
+            # Map call — return a ~250-char partial so that 3 partials fit
+            # per reduce group but 4 do not, forcing a multi-level
+            # tree-reduce over the 10 map chunks.
+            partial = "Analysis: " + ("Water access issues observed. " * 8)
             return LLMResponse(
                 structured=partial,
                 model="fake",
@@ -281,7 +284,7 @@ class LargeOutputLLM:
             )
         # Reduce call — return a fixed-length synthesis (same size as a partial
         # so intermediate reduce outputs still overflow at higher tree levels).
-        synthesis = "Synthesis: " + ("Water access issues observed. " * 15)
+        synthesis = "Synthesis: " + ("Water access issues observed. " * 8)
         return LLMResponse(
             structured=synthesis,
             model="fake",
@@ -298,10 +301,10 @@ async def test_recursion_fires_on_corpus_at_least_five_times_token_cap():
     Why: this is the headline acceptance criterion of #124. Trigger 1 fires
     when the cluster's total tokens exceed the budget (many map sub-chunks).
     Trigger 2 fires when the combined large partials exceed the budget,
-    causing recursive tree-reduce. A LargeOutputLLM returns ~480-char
-    partials (120 tokens). With a 700-token budget and a 393-token system
-    message, exactly 2 partials fit per reduce group, so 8 map chunks produce
-    a 3-level tree-reduce (4+2+1 reduce calls, all >= 2).
+    causing recursive tree-reduce. A LargeOutputLLM returns ~250-char
+    partials. With a 700-token budget and a 442-token system message, 3
+    partials fit per reduce group but 4 do not, so 10 map chunks produce a
+    multi-level tree-reduce (several reduce calls, all >= 2).
     """
     # 20 records of ~1000 chars each (250 tokens). Budget=700 tokens = 2800 chars,
     # so 2 records fit per map chunk → 10 map chunks (>= 3). Total = 20*250 = 5000

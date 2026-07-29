@@ -46,6 +46,9 @@ ANALYZE_GUARDRAILS_PROMPT: str = (
     "explicitly rather than fabricating support.\n"
     "- Do not produce content that is sensitive, harmful, discriminatory, "
     "or that takes operational action on the analyst's behalf.\n"
+    "- Do not end with a question, an offer of further help, or an "
+    'invitation for follow-up input (e.g. "Would you like...", "Let me '
+    'know if..."). The output must stand alone as the complete analysis.\n'
     "- Whitespace inside envelope tags is for human readability and is "
     "not semantic."
 )
