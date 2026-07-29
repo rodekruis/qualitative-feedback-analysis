@@ -202,6 +202,10 @@ async def test_output_language_instructs_the_reduce_system_message():
     system_msgs = [c[0] for c in llm.calls if c[2] is str]
     # The last str-model call is the top-level reduce — the final, user-facing output.
     assert "Dutch" in system_msgs[-1]
+    # Every map (per-chunk) call must also honour it — a partial should
+    # already be in the target language rather than leaving translation of a
+    # whole mixed-language corpus to the single final reduce call.
+    assert all("Dutch" in s for s in system_msgs[:-1])
 
 
 @pytest.mark.asyncio

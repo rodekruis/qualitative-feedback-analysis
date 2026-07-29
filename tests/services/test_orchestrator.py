@@ -602,6 +602,41 @@ class TestAnalyzeOutputLanguage:
         assert "Dutch" in fake_llm.calls[0]["system_message"]
 
     @pytest.mark.asyncio
+    async def test_output_language_instructs_judge_system_message(self, settings):
+        """``output_language`` also reaches the judge call's system message.
+
+        Why: the judge's ``uncertainty_explanation`` is free text returned to
+        the analyst, so it must honour ``output_language`` too, not just the
+        analysis text produced by the first LLM call.
+        """
+        from qfa.services.orchestrator import AnalyzeJudgeResult
+
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured="analysis"),
+                _make_llm_response(
+                    structured=AnalyzeJudgeResult(
+                        quality_score=0.5, uncertainty_explanation="ok"
+                    )
+                ),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        await orch.analyze_bulk(
+            _make_request(output_language="Dutch"),
+            _future_deadline(),
+        )
+
+        assert "Dutch" in fake_llm.calls[1]["system_message"]
+
+    @pytest.mark.asyncio
     async def test_output_language_is_not_embedded_in_the_user_message(self, settings):
         """``output_language`` reaches the analyse system message only, never the user message.
 

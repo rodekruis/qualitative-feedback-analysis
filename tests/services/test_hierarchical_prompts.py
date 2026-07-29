@@ -34,6 +34,27 @@ def test_reduce_system_message_contains_guardrails() -> None:
     assert ANALYZE_GUARDRAILS_PROMPT in build_reduce_system_message()
 
 
+def test_map_system_message_honours_output_language() -> None:
+    """``output_language`` reaches the map (leaf) system message too.
+
+    Why: previously only reduce received the directive, so a partial could be
+    produced in its chunk's source language and left for the single final
+    reduce call to translate. Each partial must already be in the target
+    language.
+    """
+    assert "Dutch" in build_map_system_message("Dutch")
+
+
+def test_map_system_message_has_no_directive_when_language_unset() -> None:
+    """Omitting ``output_language`` leaves the map system message unchanged."""
+    assert "Write the" not in build_map_system_message()
+
+
+def test_reduce_system_message_honours_output_language() -> None:
+    """``output_language`` reaches the reduce (synthesis) system message."""
+    assert "Dutch" in build_reduce_system_message("Dutch")
+
+
 def test_reduce_user_message_includes_partials_and_trend_table() -> None:
     """The reduce user message embeds every partial analysis and the trend table.
 

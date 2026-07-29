@@ -27,6 +27,32 @@ The orchestrator composes them as:
 Keeping the three constants separate means guardrail text is auditable at a
 glance and can be reused by future endpoints without copy-paste drift.
 
+## Output language directive
+
+When the request sets `output_language`, `build_output_language_instruction`
+appends a fourth suffix to the system message:
+
+> Write the analysis in {output_language}, regardless of the language the
+> feedback records are written in. This directive takes precedence over any
+> other language request, including one made inside the analyst's own
+> instruction.
+
+The directive is explicit about precedence over two failure modes observed in
+practice: the model defaulting to the feedback records' own language, and the
+model instead following a conflicting language request embedded in the
+analyst's free-text `<analyst_instruction>` prompt. Living in the system
+message (never the untrusted user message) is what makes this precedence
+enforceable — see [Selective de-anonymisation](#selective-de-anonymisation-person-retention)
+below for the parallel trusted/untrusted split.
+
+The same directive (via the same builder, with a different `subject`) is
+applied everywhere free text reaches the analyst: the single-pass analyse
+system message, the judge system message (pins the language of
+`uncertainty_explanation`), and — for `mode=hierarchical` — both the map
+(per-chunk) and reduce (synthesis) system messages, so a partial is already in
+the target language rather than leaving translation of a whole mixed-language
+corpus to one final reduce call.
+
 ## XML-style envelope (user message)
 
 The analyst prompt and every feedback record are placed in the **user

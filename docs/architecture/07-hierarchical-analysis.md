@@ -89,7 +89,11 @@ cross-lingual quality), which requires adding a fetch step to the image build
    Chunks are independent and dominated by LLM round-trip latency, so they are
    mapped **concurrently** (`asyncio.gather`); `gather` preserves chunk order so
    partials stay aligned with their records. Only the partials are on the
-   critical path to reduce, so the leaf judge (step 7) is deferred.
+   critical path to reduce, so the leaf judge (step 7) is deferred. When set,
+   `output_language` is passed to every map call too (not just reduce), so a
+   partial is already in the target language rather than leaving translation
+   of a whole mixed-language corpus to the final reduce call — see
+   [Output language directive](06-prompt-envelope.md#output-language-directive).
 7. **Leaf judge (concurrent with reduce).** Each partial is scored by a **leaf
    judge** call for how faithful it is to *its own chunk*. Judging at the leaf is
    deliberate: the top-level synthesis never sees the raw records, so it cannot

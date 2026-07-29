@@ -117,6 +117,12 @@ def build_output_language_instruction(
     default prompt. The directive lives in the *system* message — never the
     untrusted user message — so a feedback record cannot spoof or override it.
 
+    The instruction is explicit that it takes precedence over both the
+    feedback records' own language and any conflicting language request
+    inside the analyst's free-text prompt — otherwise the model tends to
+    mirror the source records' language, or defer to a language mentioned
+    in the analyst's own instruction, regardless of this directive.
+
     This is a dumb formatter: it does NOT sanitize ``output_language``.
     Sanitization happens once at the API boundary
     (:func:`qfa.api.schemas.sanitize_output_language`), so the value reaching
@@ -124,7 +130,12 @@ def build_output_language_instruction(
     """
     if not output_language:
         return ""
-    return f"\n\nWrite the {subject} in {output_language}."
+    return (
+        f"\n\nWrite the {subject} in {output_language}, regardless of the "
+        f"language the feedback records are written in. This directive "
+        f"takes precedence over any other language request, including one "
+        f"made inside the analyst's own instruction."
+    )
 
 
 def escape_for_tag_envelope(text: str) -> str:
@@ -169,13 +180,24 @@ def build_analyze_user_message(
 
 
 def build_analyze_judge_system_message(
-    source_text: str, analyst_prompt: str, analysis: str
+    source_text: str,
+    analyst_prompt: str,
+    analysis: str,
+    output_language: str | None = None,
 ) -> str:
-    """Fill :data:`ANALYZE_JUDGE_PROMPT` with source, question, and analysis."""
+    """Fill :data:`ANALYZE_JUDGE_PROMPT` with source, question, and analysis.
+
+    ``output_language``, when given, pins the language of the judge's
+    ``uncertainty_explanation`` — the only free text in the judge's response
+    that reaches the analyst — to the same language requested for the
+    analysis itself.
+    """
     return ANALYZE_JUDGE_PROMPT.format(
         source_text=source_text,
         analyst_prompt=analyst_prompt,
         analysis=analysis,
+    ) + build_output_language_instruction(
+        output_language, subject="uncertainty_explanation"
     )
 
 

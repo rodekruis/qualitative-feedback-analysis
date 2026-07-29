@@ -383,6 +383,7 @@ class Orchestrator:
                 source_text=anonymized_user_message,
                 analyst_prompt=anonymized_prompt,
                 analysis=analyse_response.structured,
+                output_language=request.output_language,
             )
             judge_response = await self._llm.complete(
                 system_message=judge_system,
@@ -563,6 +564,7 @@ class Orchestrator:
                     deadline,
                     semaphore,
                     timing=timing,
+                    output_language=request.output_language,
                 )
             logger.debug(
                 "map chunk %d/%d done in %.2fs (queued=%.2fs call=%.2fs)",
@@ -844,6 +846,7 @@ class Orchestrator:
         deadline: datetime,
         semaphore: asyncio.Semaphore,
         timing: _SlotTiming | None = None,
+        output_language: str | None = None,
     ) -> str:
         """Produce one partial analysis for a chunk (no judging).
 
@@ -854,7 +857,7 @@ class Orchestrator:
         """
         response = await self._bounded_complete(
             semaphore,
-            system_message=build_map_system_message(),
+            system_message=build_map_system_message(output_language),
             user_message=build_analyze_user_message(analyst_prompt, records),
             tenant_id=tenant_id,
             response_model=str,
@@ -886,6 +889,10 @@ class Orchestrator:
             return None
         user_message = build_analyze_user_message(analyst_prompt, records)
         try:
+            # No output_language here: only quality_score below is used, and
+            # this leaf judge's uncertainty_explanation is discarded (the
+            # hierarchical result's uncertainty_explanation is a deterministic
+            # string built from the aggregated scores, not LLM text).
             judge_system = build_analyze_judge_system_message(
                 source_text=user_message,
                 analyst_prompt=analyst_prompt,
