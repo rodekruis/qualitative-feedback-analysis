@@ -219,6 +219,18 @@ class _ScoredCode:
         )
 
 
+def _combine_rejected_explanations(rejected: list[_ScoredCode]) -> str:
+    """Join every threshold-rejected candidate's explanation into one string.
+
+    Highest-scoring rejection first, each labelled with its hierarchy path
+    so a reader can tell which candidate an explanation belongs to.
+    """
+    ordered = sorted(rejected, key=lambda c: c.confidence_aggregate, reverse=True)
+    return " | ".join(
+        f"{' > '.join(name for _, name in c.path)}: {c.explanation}" for c in ordered
+    )
+
+
 @dataclass
 class _SlotTiming:
     """Split timing for one semaphore-bounded hierarchical LLM call.
@@ -1232,7 +1244,12 @@ class Orchestrator:
         Returns
         -------
         CodingAssignmentResult
-            Per-record leaf codes from ``classify_feedback``.
+            Per-record leaf codes from ``classify_feedback``. If
+            ``confidence_threshold`` filters out every candidate, the record's
+            ``assigned_codes`` holds a single entry with null
+            ``coding_level_*``/``confidence_*`` fields and an ``explanation``
+            combining every rejected candidate's reasoning, highest-scoring
+            first.
 
         Raises
         ------
@@ -1249,6 +1266,7 @@ class Orchestrator:
         self._check_coding_deadline(deadline)
 
         candidates: list[_ScoredCode] = []
+        rejected: list[_ScoredCode] = []
         await self._traverse_coding_level(
             feedback_record=feedback_record,
             level_nodes=list(request.coding_levels.root_codes),
@@ -1261,33 +1279,46 @@ class Orchestrator:
             tenant_id=request.tenant_id,
             deadline=deadline,
             candidates=candidates,
+            rejected=rejected,
         )
 
         candidates.sort(key=lambda c: c.confidence_aggregate, reverse=True)
         top = candidates[: request.max_codes]
 
-        coded: list[CodedFeedbackRecordModel] = []
-        coded.append(
+        assigned_codes: list[AssignedCodeModel]
+        if top:
+            assigned_codes = [
+                AssignedCodeModel(
+                    coding_level_1_id=c.path[0][0],
+                    coding_level_1_name=c.path[0][1],
+                    coding_level_2_id=c.path[1][0] if len(c.path) > 1 else None,
+                    coding_level_2_name=c.path[1][1] if len(c.path) > 1 else None,
+                    coding_level_3_id=c.path[2][0] if len(c.path) > 2 else None,
+                    coding_level_3_name=c.path[2][1] if len(c.path) > 2 else None,
+                    confidence_level_1=c.scores[0],
+                    confidence_level_2=c.scores[1] if len(c.scores) > 1 else None,
+                    confidence_level_3=c.scores[2] if len(c.scores) > 2 else None,
+                    confidence_aggregate=c.confidence_aggregate,
+                    explanation=c.explanation,
+                )
+                for c in top
+            ]
+        elif rejected:
+            # Every candidate was filtered out by confidence_threshold: surface
+            # every rejected candidate's explanation instead of an
+            # unexplained empty list.
+            assigned_codes = [
+                AssignedCodeModel(explanation=_combine_rejected_explanations(rejected))
+            ]
+        else:
+            assigned_codes = []
+
+        coded = [
             CodedFeedbackRecordModel(
                 feedback_record_id=feedback_record.id,
-                assigned_codes=tuple(
-                    AssignedCodeModel(
-                        coding_level_1_id=c.path[0][0],
-                        coding_level_1_name=c.path[0][1],
-                        coding_level_2_id=c.path[1][0] if len(c.path) > 1 else None,
-                        coding_level_2_name=c.path[1][1] if len(c.path) > 1 else None,
-                        coding_level_3_id=c.path[2][0] if len(c.path) > 2 else None,
-                        coding_level_3_name=c.path[2][1] if len(c.path) > 2 else None,
-                        confidence_level_1=c.scores[0],
-                        confidence_level_2=c.scores[1] if len(c.scores) > 1 else None,
-                        confidence_level_3=c.scores[2] if len(c.scores) > 2 else None,
-                        confidence_aggregate=c.confidence_aggregate,
-                        explanation=c.explanation,
-                    )
-                    for c in top
-                ),
+                assigned_codes=tuple(assigned_codes),
             )
-        )
+        ]
 
         return CodingAssignmentResultModel(coded_feedback_records=tuple(coded))
 
@@ -1384,6 +1415,7 @@ class Orchestrator:
         tenant_id: str,
         deadline: datetime,
         candidates: list[_ScoredCode],
+        rejected: list[_ScoredCode],
     ) -> None:
         """Recursively pick and judge codes at one level, descending into children."""
         level_label = f"Code level {level_num}"
@@ -1405,11 +1437,16 @@ class Orchestrator:
                 tenant_id=tenant_id,
                 deadline=deadline,
             )
-            if threshold is not None and judge.score < threshold:
-                continue
             new_path = [*path_ids_names, (node.id, node.name)]
             new_scores = [*accumulated_scores, judge.score]
             new_explanations = [*accumulated_explanations, judge.explanation]
+            if threshold is not None and judge.score < threshold:
+                rejected.append(
+                    _ScoredCode(
+                        path=new_path, scores=new_scores, explanations=new_explanations
+                    )
+                )
+                continue
             if node.children:
                 await self._traverse_coding_level(
                     feedback_record=feedback_record,
@@ -1423,6 +1460,7 @@ class Orchestrator:
                     tenant_id=tenant_id,
                     deadline=deadline,
                     candidates=candidates,
+                    rejected=rejected,
                 )
             else:
                 candidates.append(
