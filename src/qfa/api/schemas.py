@@ -825,8 +825,8 @@ class ApiAssignedCode(BaseModel):
         description=(
             "Judge explanation combining reasoning from all hierarchy "
             "levels. When no code cleared the confidence threshold, this "
-            "holds the explanation for the highest-scoring rejected "
-            "candidate instead."
+            "combines every rejected candidate's explanation instead, "
+            "highest-scoring first."
         )
     )
 

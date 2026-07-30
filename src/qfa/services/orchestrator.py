@@ -219,6 +219,18 @@ class _ScoredCode:
         )
 
 
+def _combine_rejected_explanations(rejected: list[_ScoredCode]) -> str:
+    """Join every threshold-rejected candidate's explanation into one string.
+
+    Highest-scoring rejection first, each labelled with its hierarchy path
+    so a reader can tell which candidate an explanation belongs to.
+    """
+    ordered = sorted(rejected, key=lambda c: c.confidence_aggregate, reverse=True)
+    return " | ".join(
+        f"{' > '.join(name for _, name in c.path)}: {c.explanation}" for c in ordered
+    )
+
+
 @dataclass
 class _SlotTiming:
     """Split timing for one semaphore-bounded hierarchical LLM call.
@@ -1236,7 +1248,8 @@ class Orchestrator:
             ``confidence_threshold`` filters out every candidate, the record's
             ``assigned_codes`` holds a single entry with null
             ``coding_level_*``/``confidence_*`` fields and an ``explanation``
-            describing the highest-scoring rejected candidate.
+            combining every rejected candidate's reasoning, highest-scoring
+            first.
 
         Raises
         ------
@@ -1253,7 +1266,7 @@ class Orchestrator:
         self._check_coding_deadline(deadline)
 
         candidates: list[_ScoredCode] = []
-        best_rejected: list[_ScoredCode | None] = [None]
+        rejected: list[_ScoredCode] = []
         await self._traverse_coding_level(
             feedback_record=feedback_record,
             level_nodes=list(request.coding_levels.root_codes),
@@ -1266,7 +1279,7 @@ class Orchestrator:
             tenant_id=request.tenant_id,
             deadline=deadline,
             candidates=candidates,
-            best_rejected=best_rejected,
+            rejected=rejected,
         )
 
         candidates.sort(key=lambda c: c.confidence_aggregate, reverse=True)
@@ -1290,12 +1303,12 @@ class Orchestrator:
                 )
                 for c in top
             ]
-        elif not candidates and best_rejected[0] is not None:
+        elif rejected:
             # Every candidate was filtered out by confidence_threshold: surface
-            # the highest-scoring rejected candidate's explanation instead of
-            # an unexplained empty list.
+            # every rejected candidate's explanation instead of an
+            # unexplained empty list.
             assigned_codes = [
-                AssignedCodeModel(explanation=best_rejected[0].explanation)
+                AssignedCodeModel(explanation=_combine_rejected_explanations(rejected))
             ]
         else:
             assigned_codes = []
@@ -1402,7 +1415,7 @@ class Orchestrator:
         tenant_id: str,
         deadline: datetime,
         candidates: list[_ScoredCode],
-        best_rejected: list[_ScoredCode | None],
+        rejected: list[_ScoredCode],
     ) -> None:
         """Recursively pick and judge codes at one level, descending into children."""
         level_label = f"Code level {level_num}"
@@ -1428,15 +1441,11 @@ class Orchestrator:
             new_scores = [*accumulated_scores, judge.score]
             new_explanations = [*accumulated_explanations, judge.explanation]
             if threshold is not None and judge.score < threshold:
-                rejected = _ScoredCode(
-                    path=new_path, scores=new_scores, explanations=new_explanations
+                rejected.append(
+                    _ScoredCode(
+                        path=new_path, scores=new_scores, explanations=new_explanations
+                    )
                 )
-                if (
-                    best_rejected[0] is None
-                    or rejected.confidence_aggregate
-                    > best_rejected[0].confidence_aggregate
-                ):
-                    best_rejected[0] = rejected
                 continue
             if node.children:
                 await self._traverse_coding_level(
@@ -1451,7 +1460,7 @@ class Orchestrator:
                     tenant_id=tenant_id,
                     deadline=deadline,
                     candidates=candidates,
-                    best_rejected=best_rejected,
+                    rejected=rejected,
                 )
             else:
                 candidates.append(

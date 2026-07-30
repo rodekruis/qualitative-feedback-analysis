@@ -335,8 +335,9 @@ class AssignedCodeModel(BaseModel):
     explanation: str = Field(
         description=(
             "Judge explanation combining scores from all hierarchy levels. "
-            "When no code cleared the confidence threshold, this holds the "
-            "explanation for the highest-scoring rejected candidate instead."
+            "When no code cleared the confidence threshold, this combines "
+            "every rejected candidate's explanation instead, highest-scoring "
+            "first."
         )
     )
 

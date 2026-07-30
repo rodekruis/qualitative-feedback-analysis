@@ -1386,8 +1386,8 @@ class TestAssignCodesConfidenceThreshold:
         """Confirm the near-miss fallback replaces an unexplained empty list.
 
         When confidence_threshold filters out every candidate, the result
-        carries one null-coded entry explaining the best near-miss rather
-        than an unexplained empty list.
+        carries one null-coded entry explaining the rejected candidate
+        rather than an unexplained empty list.
         """
         fake_llm = FakeLLMPort(
             responses=[
@@ -1445,11 +1445,11 @@ class TestAssignCodesConfidenceThreshold:
         assert result.coded_feedback_records[0].assigned_codes == ()
 
     @pytest.mark.asyncio
-    async def test_best_near_miss_is_reported_across_multiple_branches(self, settings):
-        """Confirm the higher-scoring rejection wins across branches.
+    async def test_all_rejected_explanations_are_combined_highest_first(self, settings):
+        """Confirm every rejected branch's explanation is surfaced.
 
-        With two root candidates both rejected, the higher-scoring
-        rejection's explanation wins.
+        With two root candidates both rejected, both explanations appear in
+        the combined result, higher-scoring rejection first.
         """
         root_codes = [
             CodingNode(id="code-1", name="Code A"),
@@ -1480,5 +1480,8 @@ class TestAssignCodesConfidenceThreshold:
         )
 
         code = result.coded_feedback_records[0].assigned_codes[0]
+        assert "Weak fit A." in code.explanation
         assert "Weak fit B." in code.explanation
-        assert "Weak fit A." not in code.explanation
+        assert code.explanation.index("Weak fit B.") < code.explanation.index(
+            "Weak fit A."
+        )
