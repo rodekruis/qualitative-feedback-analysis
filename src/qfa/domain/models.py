@@ -280,8 +280,20 @@ class AssignedCodeModel(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    coding_level_1_id: str = Field(description="ID of the selected level 1 code.")
-    coding_level_1_name: str = Field(description="Name of the selected level 1 code.")
+    coding_level_1_id: str | None = Field(
+        default=None,
+        description=(
+            "ID of the selected level 1 code; null when no code cleared the "
+            "confidence threshold (see explanation)."
+        ),
+    )
+    coding_level_1_name: str | None = Field(
+        default=None,
+        description=(
+            "Name of the selected level 1 code; null when no code cleared the "
+            "confidence threshold (see explanation)."
+        ),
+    )
     coding_level_2_id: str | None = Field(
         default=None,
         description="ID of the selected level 2 code; null when depth < 2.",
@@ -298,8 +310,12 @@ class AssignedCodeModel(BaseModel):
         default=None,
         description="Name of the selected level 3 code; null when depth < 3.",
     )
-    confidence_level_1: float = Field(
-        description="Judge confidence that the level 1 code fits the feedback record (0-1)."
+    confidence_level_1: float | None = Field(
+        default=None,
+        description=(
+            "Judge confidence that the level 1 code fits the feedback record "
+            "(0-1); null when no code cleared the confidence threshold."
+        ),
     )
     confidence_level_2: float | None = Field(
         default=None,
@@ -309,11 +325,19 @@ class AssignedCodeModel(BaseModel):
         default=None,
         description="Judge confidence that the level 3 code fits the feedback record (0-1); null when depth < 3.",
     )
-    confidence_aggregate: float = Field(
-        description="Overall confidence, computed as min of per-level confidences."
+    confidence_aggregate: float | None = Field(
+        default=None,
+        description=(
+            "Overall confidence, computed as min of per-level confidences; "
+            "null when no code cleared the confidence threshold."
+        ),
     )
     explanation: str = Field(
-        description="Judge explanation combining scores from all hierarchy levels."
+        description=(
+            "Judge explanation combining scores from all hierarchy levels. "
+            "When no code cleared the confidence threshold, this holds the "
+            "explanation for the highest-scoring rejected candidate instead."
+        )
     )
 
 

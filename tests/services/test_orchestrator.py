@@ -12,6 +12,9 @@ from qfa.domain.models import (
     AggregateSummaryResultModel,
     AnalysisRequestModel,
     AnalysisResultModel,
+    CodingAssignmentRequestModel,
+    CodingFramework,
+    CodingNode,
     FeedbackRecordMetadataModel,
     FeedbackRecordModel,
     FeedbackRecordSummaryModel,
@@ -25,6 +28,7 @@ from qfa.domain.models import (
 )
 from qfa.domain.ports import AnonymizationPort, LLMPort
 from qfa.domain.sensitivity_types import SensitivityType
+from qfa.services.coding_classifier import JudgeResponse
 from qfa.services.orchestrator import Orchestrator
 from qfa.settings import OrchestratorSettings
 
@@ -1352,3 +1356,129 @@ class TestAnalyzeAnonymizationOrdering:
         judge_system = fake_llm.calls[1]["system_message"]
         assert sensitive_token not in judge_system
         assert "<PERSON_0>" in judge_system
+
+
+def _make_coding_request(
+    feedback_record=None,
+    root_codes=None,
+    max_codes=5,
+    confidence_threshold=None,
+    tenant_id=TENANT_ID,
+):
+    if feedback_record is None:
+        feedback_record = _make_feedback_record()
+    if root_codes is None:
+        root_codes = [CodingNode(id="code-1", name="Code A")]
+    return CodingAssignmentRequestModel(
+        feedback_record=feedback_record,
+        coding_levels=CodingFramework(root_codes=root_codes),
+        max_codes=max_codes,
+        confidence_threshold=confidence_threshold,
+        tenant_id=tenant_id,
+    )
+
+
+class TestAssignCodesConfidenceThreshold:
+    @pytest.mark.asyncio
+    async def test_all_candidates_rejected_returns_null_codes_with_explanation(
+        self, settings
+    ):
+        """Confirm the near-miss fallback replaces an unexplained empty list.
+
+        When confidence_threshold filters out every candidate, the result
+        carries one null-coded entry explaining the best near-miss rather
+        than an unexplained empty list.
+        """
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured='{"selected": [0]}'),
+                _make_llm_response(
+                    structured=JudgeResponse(
+                        score=0.5, explanation="Only loosely related."
+                    )
+                ),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        result = await orch.assign_codes(
+            _make_coding_request(confidence_threshold=0.9), _future_deadline()
+        )
+
+        assigned = result.coded_feedback_records[0].assigned_codes
+        assert len(assigned) == 1
+        code = assigned[0]
+        assert code.coding_level_1_id is None
+        assert code.coding_level_1_name is None
+        assert code.confidence_level_1 is None
+        assert code.confidence_aggregate is None
+        assert "Only loosely related." in code.explanation
+
+    @pytest.mark.asyncio
+    async def test_llm_never_picks_anything_returns_plain_empty_list(self, settings):
+        """Confirm a genuine empty pick is not treated as a near-miss.
+
+        A genuine empty pick (no threshold rejection ever happened) still
+        returns a plain empty list, not a null-coded near-miss entry.
+        """
+        fake_llm = FakeLLMPort(
+            responses=[_make_llm_response(structured='{"selected": []}')]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        result = await orch.assign_codes(
+            _make_coding_request(confidence_threshold=0.9), _future_deadline()
+        )
+
+        assert result.coded_feedback_records[0].assigned_codes == ()
+
+    @pytest.mark.asyncio
+    async def test_best_near_miss_is_reported_across_multiple_branches(self, settings):
+        """Confirm the higher-scoring rejection wins across branches.
+
+        With two root candidates both rejected, the higher-scoring
+        rejection's explanation wins.
+        """
+        root_codes = [
+            CodingNode(id="code-1", name="Code A"),
+            CodingNode(id="code-2", name="Code B"),
+        ]
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured='{"selected": [0, 1]}'),
+                _make_llm_response(
+                    structured=JudgeResponse(score=0.4, explanation="Weak fit A.")
+                ),
+                _make_llm_response(
+                    structured=JudgeResponse(score=0.7, explanation="Weak fit B.")
+                ),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        result = await orch.assign_codes(
+            _make_coding_request(root_codes=root_codes, confidence_threshold=0.9),
+            _future_deadline(),
+        )
+
+        code = result.coded_feedback_records[0].assigned_codes[0]
+        assert "Weak fit B." in code.explanation
+        assert "Weak fit A." not in code.explanation

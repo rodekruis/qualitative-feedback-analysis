@@ -60,6 +60,8 @@ Per-record inference endpoints (`/v1/summarize`, `/v1/assign-codes`, `/v1/detect
 
 Empty `content` is accepted on every endpoint and never causes a 422. A record with empty content carries no information, so it is dropped (bulk) or short-circuited to a 200 empty result with no LLM call (per-record) — see each endpoint's reference for the exact empty-result shape. This keeps a single blank EspoCRM description from silently failing a whole request (issue #138).
 
+`POST /v1/assign-codes` accepts an optional `confidence_threshold`; codes whose judge score falls below it are filtered out. If every candidate at every hierarchy level is filtered out this way, the response is a 200 with a single `assigned_codes` entry whose `coding_level_*`/`confidence_*` fields are `null` and whose `explanation` describes the highest-scoring rejected candidate — instead of an unexplained empty list.
+
 ## Usage endpoint response shape
 
 All usage endpoints return aggregated stats in two parallel views:

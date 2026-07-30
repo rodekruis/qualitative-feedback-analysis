@@ -405,6 +405,11 @@ async def assign_codes(
 
     If the record's ``content`` is empty the response is a 200 with an empty
     ``assigned_codes`` list, returned without an LLM call (issue #138).
+
+    If every candidate is filtered out by ``confidence_threshold``, the
+    response is a 200 with a single ``assigned_codes`` entry whose
+    ``coding_level_*``/``confidence_*`` fields are null and whose
+    ``explanation`` describes the highest-scoring rejected candidate.
     """
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
