@@ -74,6 +74,15 @@ resource "azurerm_linux_web_app" "backend" {
   }
 
   logs {
+    # "Application Logging (Filesystem)" in the Portal. This is what captures
+    # the container's stdout/stderr (Python `logging` output) into the
+    # AppServiceConsoleLogs category at all — without it there is nothing for
+    # the Log stream or the diagnostic setting (observability.tf) to show,
+    # regardless of what the app itself logs.
+    application_logs {
+      file_system_level = "Information"
+    }
+
     http_logs {
       file_system {
         retention_in_days = 3
