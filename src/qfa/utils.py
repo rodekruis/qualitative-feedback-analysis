@@ -56,7 +56,15 @@ def setup_logging(log_settings: LogSettings | None = None) -> None:
         ``LogSettings`` instance is created.
     """
     log_config = log_settings or LogSettings()
-    logging.basicConfig(level=log_config.loglevel_3rdparty, **log_config.basicConfig)
+    # force=True: qfa.main calls configure_azure_monitor() before this runs
+    # whenever APPLICATIONINSIGHTS_CONNECTION_STRING is set (every deployed
+    # environment). That call attaches its own handler to the root logger,
+    # which makes a plain basicConfig() a silent no-op — every log call in the
+    # app would still "succeed" but never reach stdout/stderr, only the
+    # separately-configured OTel export.
+    logging.basicConfig(
+        level=log_config.loglevel_3rdparty, force=True, **log_config.basicConfig
+    )
 
     our_loglevel = log_config.loglevel
     for package in log_config.our_packages:
