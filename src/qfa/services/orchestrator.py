@@ -213,8 +213,8 @@ class _ScoredCode:
 
     @property
     def explanation(self) -> str:
-        return " ".join(
-            f"Level {i + 1} ({score:.2f}): {expl}"
+        return "\n".join(
+            f"- Level {i + 1} ({score:.2f}): {expl}"
             for i, (score, expl) in enumerate(zip(self.scores, self.explanations))
         )
 
@@ -226,8 +226,8 @@ def _combine_rejected_explanations(rejected: list[_ScoredCode]) -> str:
     so a reader can tell which candidate an explanation belongs to.
     """
     ordered = sorted(rejected, key=lambda c: c.confidence_aggregate, reverse=True)
-    return " | ".join(
-        f"{' > '.join(name for _, name in c.path)}: {c.explanation}" for c in ordered
+    return "\n\n".join(
+        f"{' > '.join(name for _, name in c.path)}:\n{c.explanation}" for c in ordered
     )
 
 
