@@ -5,8 +5,6 @@ analyzer and anonymizer engines. Owns the heavy spaCy-backed pipelines
 so the application service layer never imports Presidio directly.
 """
 
-import logging
-
 from langdetect import detect
 from langdetect.lang_detect_exception import LangDetectException
 from presidio_analyzer import AnalyzerEngine
@@ -14,8 +12,6 @@ from presidio_analyzer.nlp_engine import NlpEngineProvider
 from presidio_anonymizer import AnonymizerEngine, OperatorConfig
 
 from qfa.domain.ports import AnonymizationPort
-
-logger = logging.getLogger(__name__)
 
 LANGUAGES_AND_ANONYMIZATION_MODEL_PAIRINGS = [
     {"lang_code": "en", "model_name": "en_core_web_sm"},
@@ -114,17 +110,10 @@ class PresidioAnonymizer(AnonymizationPort):
             analyzer_results=results,  # type: ignore[ty:invalid-argument-type]
             operators=operators,
         )
-        # TEMPORARY — REMOVE BEFORE MERGE. Logs raw PII values, which
-        # violates the "never log feedback content" rule in
-        # docs/operations/observability.md. Requested for one-off
-        # debugging of the JSON-escaping 500; strip once confirmed.
-        logger.debug("TEMP PII DEBUG: anonymize mapping=%r", mapping)
         return anonymized.text, mapping
 
     def deanonymize(self, text: str, mapping: dict[str, str]) -> str:
         """Restore original values in ``text`` using ``mapping``."""
-        # TEMPORARY — REMOVE BEFORE MERGE. See note in anonymize() above.
-        logger.debug("TEMP PII DEBUG: deanonymize mapping=%r", mapping)
         for placeholder, original in mapping.items():
             text = text.replace(placeholder, original)
         return text

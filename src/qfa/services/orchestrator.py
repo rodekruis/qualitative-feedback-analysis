@@ -222,25 +222,25 @@ _JSON_UNSAFE_CHARS = ('"', "\\", "\n", "\r", "\t")
 def _log_deanonymize_json_failure(
     operation: str, anonymized_json: str, mapping: dict[str, str]
 ) -> None:
-    """Log PII-safe diagnostics for a deanonymize-then-reparse failure.
+    """Log diagnostics for a deanonymize-then-reparse failure.
 
-    Deliberately logs only the still-anonymized JSON and *which*
-    placeholders held a value needing JSON-escaping, not the values
-    themselves — see ``PresidioAnonymizer`` for the (temporary, raw-value)
-    debug logging used to inspect this failure mode directly.
+    TEMPORARY: logs the raw PII value(s) that triggered the JSON escaping
+    bug, to confirm the root cause via the Azure log stream. This is
+    beneficiary feedback data — remove the ``unsafe_values`` logging
+    below once the fix is confirmed in production; do not let it linger.
     """
-    unsafe_placeholders = [
-        placeholder
+    unsafe_values = {
+        placeholder: value
         for placeholder, value in mapping.items()
         if any(ch in value for ch in _JSON_UNSAFE_CHARS)
-    ]
+    }
     logger.error(
         "%s: failed to re-parse JSON after deanonymization. "
-        "anonymized_json=%r placeholder_count=%d unsafe_placeholders=%r",
+        "anonymized_json=%r placeholder_count=%d unsafe_values=%r",
         operation,
         anonymized_json,
         len(mapping),
-        unsafe_placeholders,
+        unsafe_values,
     )
 
 
