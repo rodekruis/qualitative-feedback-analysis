@@ -58,6 +58,21 @@ resource "azurerm_monitor_diagnostic_setting" "app_service" {
   }
 }
 
+# Saved query giving a single place to see every API call and the status code
+# it returned, without hand-writing KQL each time. Shows up in the workspace
+# under Logs -> Queries -> Saved Queries (category below).
+resource "azurerm_log_analytics_saved_search" "api_calls_overview" {
+  name                       = "qfa-${local.env}-api-calls-overview"
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
+  category                   = "qfa-monitoring"
+  display_name               = "QFA API calls overview (method, path, status, duration)"
+  query                      = <<-QUERY
+    AppServiceHTTPLogs
+    | project TimeGenerated, CsMethod, CsUriStem, ScStatus, TimeTaken
+    | order by TimeGenerated desc
+    QUERY
+}
+
 # =============================================================================
 # Alerting
 # =============================================================================

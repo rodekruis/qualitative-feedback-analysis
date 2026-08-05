@@ -4,9 +4,11 @@ Logging, request tracing, and usage reporting.
 
 ## Where logs go
 
-The app writes structured logs to stdout. On Azure App Service these are picked up by the App Service log stream and any attached log sink. Locally, they show up in your terminal.
+The app writes structured logs to stdout/stderr. On Azure App Service these are picked up by the App Service log stream and any attached log sink. Locally, they show up in your terminal.
 
-The log level is controlled by `LOG_LOGLEVEL` for application packages (default `DEBUG`) and `LOG_LOGLEVEL_3RDPARTY` for third-party libraries (default `WARNING`). Both accept either a numeric level or a string (`"debug"`, `"info"`, `"warning"`, `"error"`, `"critical"`).
+Capture depends on **Application Logging (Filesystem)** being on for the App Service — this is the `application_logs { file_system_level = "Information" }` block on `azurerm_linux_web_app.backend.logs` in `infra/app_service.tf`. This is a separate setting from `http_logs` (raw per-request access log) and from the diagnostic setting in `infra/observability.tf` (which ships both into Log Analytics) — without it, the container's stdout/stderr is never captured at all, so there's nothing in the Log stream and nothing for the diagnostic setting to route, regardless of what the app logs or how the diagnostic setting is configured.
+
+The log level is controlled by `LOG_LOGLEVEL` for application packages (default `DEBUG`) and `LOG_LOGLEVEL_3RDPARTY` for third-party libraries (default `WARNING`). Both accept either a numeric level or a string (`"debug"`, `"info"`, `"warning"`, `"error"`, `"critical"`). `file_system_level` above is a second, independent filter on the App Service side — raising it (e.g. to `Warning`) will silently drop lines even if `LOG_LOGLEVEL` would have let them through.
 
 ## Hard prohibitions
 
@@ -211,6 +213,18 @@ as the container runs — they are the authoritative log source today:
   joint query.
 - `AppServiceHTTPLogs` — one row per HTTP request (method, path, status,
   latency), written by the front end regardless of whether the app logs.
+
+For "what API calls have been made and what did they return" specifically, skip
+hand-writing KQL: `infra/observability.tf` provisions a saved query,
+**`qfa-<env>-api-calls-overview`** (category `qfa-monitoring`), against
+`AppServiceHTTPLogs`. Find it in the Log Analytics workspace under **Logs →
+Queries → Saved Queries**, or run it directly:
+
+```kql
+AppServiceHTTPLogs
+| project TimeGenerated, CsMethod, CsUriStem, ScStatus, TimeTaken
+| order by TimeGenerated desc
+```
 
 **Container (console) logs** — the application's own output:
 

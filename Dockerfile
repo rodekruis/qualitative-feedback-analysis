@@ -36,6 +36,12 @@ ARG EMBEDDING_E5_REVISION
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 WORKDIR /app
 
+# Force stdout/stderr unbuffered. Without this, Python block-buffers output
+# that isn't attached to a TTY (always true in a container), so log lines can
+# sit in a buffer indefinitely instead of reaching the App Service log
+# pipeline in anything like real time.
+ENV PYTHONUNBUFFERED=1
+
 # Model layer first: it's large and rarely changes, so keeping it above the
 # frequently-churning app code means it stays cached (and isn't re-pushed)
 # until the pinned revision changes. Only the default model (e5-base) is
