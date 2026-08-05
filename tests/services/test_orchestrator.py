@@ -388,6 +388,47 @@ class TestNonTransientError:
         assert "- Point one" in fake_llm.calls[1]["system_message"]
 
     @pytest.mark.asyncio
+    async def test_summary_deanonymization_escapes_json_unsafe_characters(
+        self, settings
+    ):
+        """A PII value with a quote must not corrupt the JSON re-parse.
+
+        Regression test: deanonymization substitutes raw PII text into an
+        already-serialized JSON string. Restoring an unescaped value like
+        'Alice "Ally" Smith' used to break JSON syntax and raise an
+        unhandled ValidationError (a 500 in production).
+        """
+
+        class RawSubstitutionAnonymizer:
+            def anonymize(self, text):
+                return text, {"<PERSON_0>": 'Alice "Ally" Smith'}
+
+            def deanonymize(self, text, mapping):
+                for placeholder, value in mapping.items():
+                    text = text.replace(placeholder, value)
+                return text
+
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(
+                    structured=_make_summary_result(summary="Feedback from <PERSON_0>.")
+                ),
+                _make_llm_response(structured="0.8"),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=RawSubstitutionAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        result = await orch.summarize(_make_summary_request(), _future_deadline())
+
+        assert result.summary == 'Feedback from Alice "Ally" Smith.'
+
+    @pytest.mark.asyncio
     async def test_judge_non_numeric_raises_analysis_error(self, settings):
         fake_llm = FakeLLMPort(
             responses=[
