@@ -642,6 +642,58 @@ class TestEmptyFeedbackContent:
 
 
 # ------------------------------------------------------------------ #
+# EspoCRM hyperlink fields (url_id / espo_feedback_base_url)
+# ------------------------------------------------------------------ #
+
+
+class TestFeedbackUrlFieldsForwarded:
+    """``url_id`` and ``espo_feedback_base_url`` reach the domain request unchanged."""
+
+    @pytest.mark.asyncio
+    async def test_analyze_bulk_forwards_url_id_and_base_url(self, client, test_app):
+        docs = [
+            {
+                "id": "Form-07762",
+                "content": "Real feedback",
+                "url_id": "abc123",
+            }
+        ]
+        resp = await client.post(
+            "/v1/analyze-bulk",
+            json=_valid_body(feedback_records=docs)
+            | {"espo_feedback_base_url": "https://espo.example.com/feedback"},
+            headers=_auth_header(),
+        )
+        assert resp.status_code == 200
+        forwarded = test_app.state.orchestrator.last_analyze_request
+        assert forwarded.feedback_records[0].url_id == "abc123"
+        assert forwarded.espo_feedback_base_url == "https://espo.example.com/feedback"
+
+    @pytest.mark.asyncio
+    async def test_summarize_bulk_forwards_url_id_and_base_url(self, client, test_app):
+        records = [
+            {
+                "id": "Form-07762",
+                "content": "Real feedback",
+                "metadata": _summary_metadata(),
+                "url_id": "abc123",
+            }
+        ]
+        resp = await client.post(
+            "/v1/summarize-bulk",
+            json={
+                "feedback_records": records,
+                "espo_feedback_base_url": "https://espo.example.com/feedback",
+            },
+            headers=_auth_header(),
+        )
+        assert resp.status_code == 200
+        forwarded = test_app.state.orchestrator.last_summarize_bulk_request
+        assert forwarded.feedback_records[0].url_id == "abc123"
+        assert forwarded.espo_feedback_base_url == "https://espo.example.com/feedback"
+
+
+# ------------------------------------------------------------------ #
 # Error mapping
 # ------------------------------------------------------------------ #
 

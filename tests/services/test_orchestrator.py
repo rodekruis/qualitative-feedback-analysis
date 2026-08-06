@@ -37,11 +37,14 @@ LLM_TIMEOUT = 30.0
 MAX_TOKENS = 10_000
 
 
-def _make_feedback_record(doc_id="doc-1", content="Some feedback text.", metadata=None):
+def _make_feedback_record(
+    doc_id="doc-1", content="Some feedback text.", metadata=None, url_id=""
+):
     return FeedbackRecordModel(
         id=doc_id,
         content=content,
         metadata=FeedbackRecordMetadataModel.model_validate(metadata or {}),
+        url_id=url_id,
     )
 
 
@@ -810,6 +813,67 @@ class TestAggregateSummaryOutputLanguage:
         )
 
 
+class TestSummarizeBulkHyperlinks:
+    @pytest.mark.asyncio
+    async def test_hyperlinks_form_reference_in_summary(self, settings):
+        """A record id mentioned in the aggregate summary becomes a hyperlink."""
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(
+                    structured=_make_aggregate_summary_result(
+                        summary="- Water access raised in Form-07762"
+                    )
+                ),
+                _make_llm_response(structured="0.8"),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+        records = (_make_feedback_record(doc_id="Form-07762", url_id="abc123"),)
+        request = _make_aggregate_request(feedback_records=records).model_copy(
+            update={"espo_feedback_base_url": "https://espo.example.com/feedback"}
+        )
+
+        result = await orch.summarize_bulk(request, _future_deadline())
+
+        assert (
+            "[Form-07762](https://espo.example.com/feedback/abc123)" in result.summary
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_hyperlink_without_base_url(self, settings):
+        """No base URL → the aggregate summary keeps the plain-text id."""
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(
+                    structured=_make_aggregate_summary_result(
+                        summary="- Water access raised in Form-07762"
+                    )
+                ),
+                _make_llm_response(structured="0.8"),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+        records = (_make_feedback_record(doc_id="Form-07762", url_id="abc123"),)
+
+        result = await orch.summarize_bulk(
+            _make_aggregate_request(feedback_records=records), _future_deadline()
+        )
+
+        assert result.summary == "- Water access raised in Form-07762"
+
+
 class TestNoTrailingQuestion:
     """The system message forbids ending with a question or follow-up offer.
 
@@ -1216,6 +1280,112 @@ class TestAnalyzeHappyPath:
         assert result.coding_trends.periods == ("2024-01", "2024-02")
         counts = {(c.code, c.period): c.count for c in result.coding_trends.cells}
         assert counts == {("Water", "2024-01"): 1, ("Health", "2024-02"): 1}
+
+    @pytest.mark.asyncio
+    async def test_hyperlinks_form_reference_when_base_url_and_url_id_given(
+        self, settings
+    ):
+        """A record id mentioned in the analysis becomes a markdown hyperlink."""
+        from qfa.services.orchestrator import AnalyzeJudgeResult, Orchestrator
+
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured="See Form-07762 for context."),
+                _make_llm_response(
+                    structured=AnalyzeJudgeResult(
+                        quality_score=0.7, uncertainty_explanation="ok"
+                    )
+                ),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+        records = (_make_feedback_record(doc_id="Form-07762", url_id="abc123"),)
+        request = _make_request(feedback_records=records).model_copy(
+            update={"espo_feedback_base_url": "https://espo.example.com/feedback"}
+        )
+
+        result = await orch.analyze_bulk(request, _future_deadline())
+
+        assert (
+            "See [Form-07762](https://espo.example.com/feedback/abc123) for context."
+            in result.result
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_hyperlink_without_base_url(self, settings):
+        """No base URL → the id is left as plain text, even with a url_id set."""
+        from qfa.services.orchestrator import AnalyzeJudgeResult, Orchestrator
+
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured="See Form-07762 for context."),
+                _make_llm_response(
+                    structured=AnalyzeJudgeResult(
+                        quality_score=0.7, uncertainty_explanation="ok"
+                    )
+                ),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+        records = (_make_feedback_record(doc_id="Form-07762", url_id="abc123"),)
+
+        result = await orch.analyze_bulk(
+            _make_request(feedback_records=records), _future_deadline()
+        )
+
+        assert result.result == "See Form-07762 for context."
+
+    @pytest.mark.asyncio
+    async def test_hyperlink_does_not_match_id_substring(self, settings):
+        """Form-1 must not match inside Form-10 — word-boundary safety."""
+        from qfa.services.orchestrator import AnalyzeJudgeResult, Orchestrator
+
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(
+                    structured="Form-1 and Form-10 both raised this issue."
+                ),
+                _make_llm_response(
+                    structured=AnalyzeJudgeResult(
+                        quality_score=0.7, uncertainty_explanation="ok"
+                    )
+                ),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+        records = (
+            _make_feedback_record(doc_id="Form-1", content="a", url_id="id-1"),
+            _make_feedback_record(doc_id="Form-10", content="b", url_id="id-10"),
+        )
+        request = _make_request(feedback_records=records).model_copy(
+            update={"espo_feedback_base_url": "https://espo.example.com/feedback"}
+        )
+
+        result = await orch.analyze_bulk(request, _future_deadline())
+
+        assert (
+            "[Form-1](https://espo.example.com/feedback/id-1) and "
+            "[Form-10](https://espo.example.com/feedback/id-10) both raised"
+            in result.result
+        )
 
 
 class TestAnalyzeJudgeFailure:

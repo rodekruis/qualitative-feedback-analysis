@@ -80,6 +80,10 @@ The `-bulk` responses include a backend-rendered `pretty_output` field — a hum
 
 Its `QUALITY`/`TITLE`/`SUMMARY` headers are localized to the request's `output_language` (the same field that drives the title/summary language). Supported languages are English, French, Spanish, Arabic, Russian, Dutch, and Ukrainian; any other or absent value falls back to English headers.
 
+### Hyperlinking feedback records in insight text
+
+When the `motherPayload` for `analyze-bulk` or `summarize-bulk` includes `espo_feedback_base_url` and each feedback record's `url_id`, any mention of a record's `id` in the generated insight text (analysis or summary) is rewritten as a markdown hyperlink back to that record in EspoCRM — see [REST API § Hyperlinking feedback records](../rest-api/index.md#hyperlinking-feedback-records) for the exact mechanics. This flows through `pretty_output` automatically, so a markdown-aware EspoCRM field renders it as a clickable link with no extra flowchart step. Older flowcharts that don't send these fields are unaffected — the output stays plain text.
+
 ## Authentication
 
 EspoCRM stores the bearer token as a server-side secret. Provisioning and rotation use the standard flow in [API key management](../operations/auth-management.md).
