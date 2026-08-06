@@ -216,34 +216,6 @@ def _json_escape_mapping(mapping: dict[str, str]) -> dict[str, str]:
     }
 
 
-_JSON_UNSAFE_CHARS = ('"', "\\", "\n", "\r", "\t")
-
-
-def _log_deanonymize_json_failure(
-    operation: str, anonymized_json: str, mapping: dict[str, str]
-) -> None:
-    """Log PII-safe diagnostics for a deanonymize-then-reparse failure.
-
-    Deliberately logs only the still-anonymized JSON and *which*
-    placeholders held a value needing JSON-escaping, not the values
-    themselves — see docs/operations/observability.md's hard prohibition
-    on logging feedback content.
-    """
-    unsafe_placeholders = [
-        placeholder
-        for placeholder, value in mapping.items()
-        if any(ch in value for ch in _JSON_UNSAFE_CHARS)
-    ]
-    logger.error(
-        "%s: failed to re-parse JSON after deanonymization. "
-        "anonymized_json=%r placeholder_count=%d unsafe_placeholders=%r",
-        operation,
-        anonymized_json,
-        len(mapping),
-        unsafe_placeholders,
-    )
-
-
 @dataclass
 class _ScoredCode:
     path: list[tuple[str, str]]  # (id, name) per level, root → leaf
@@ -1194,15 +1166,9 @@ class Orchestrator:
         unanonymized_return_model_as_string = self._anonymizer.deanonymize(
             return_model_as_string, _json_escape_mapping(anonymization_mapping)
         )
-        try:
-            return AggregateSummaryResultModel.model_validate_json(
-                unanonymized_return_model_as_string
-            )
-        except ValidationError:
-            _log_deanonymize_json_failure(
-                "summarize_aggregate", return_model_as_string, anonymization_mapping
-            )
-            raise
+        return AggregateSummaryResultModel.model_validate_json(
+            unanonymized_return_model_as_string
+        )
 
     async def summarize(
         self,
@@ -1268,15 +1234,9 @@ class Orchestrator:
         unanonymized_return_model_as_string = self._anonymizer.deanonymize(
             return_model_as_string, _json_escape_mapping(anonymization_mapping)
         )
-        try:
-            result = SummaryResultModel.model_validate_json(
-                unanonymized_return_model_as_string
-            )
-        except ValidationError:
-            _log_deanonymize_json_failure(
-                "summarize", return_model_as_string, anonymization_mapping
-            )
-            raise
+        result = SummaryResultModel.model_validate_json(
+            unanonymized_return_model_as_string
+        )
 
         return result.feedback_record_summaries[0].model_copy(
             update={"id": request.feedback_record.id, "quality_score": quality_score}
@@ -1416,15 +1376,9 @@ class Orchestrator:
         unanonymized_return_model_as_string = self._anonymizer.deanonymize(
             return_model_as_string, _json_escape_mapping(anonymization_mapping)
         )
-        try:
-            structured = SensitivityAnalysisResultModelList.model_validate_json(
-                unanonymized_return_model_as_string
-            )
-        except ValidationError:
-            _log_deanonymize_json_failure(
-                "analyze", return_model_as_string, anonymization_mapping
-            )
-            raise
+        structured = SensitivityAnalysisResultModelList.model_validate_json(
+            unanonymized_return_model_as_string
+        )
 
         raw = structured.results[0] if structured.results else None
         return SensitivityAnalysisResultModel(
