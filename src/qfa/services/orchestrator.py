@@ -5,6 +5,7 @@ manages retries with exponential backoff, and enforces deadlines.
 """
 
 import asyncio
+import json
 import logging
 import time
 from dataclasses import dataclass
@@ -199,6 +200,20 @@ def _parse_judge_quality_score(raw: str) -> float:
 def _build_judge_system_message(source_text: str, summary: str) -> str:
     """Fill the judge prompt with the provided source text and summary."""
     return _JUDGE_PROMPT.format(source_text=source_text, summary=summary)
+
+
+def _json_escape_mapping(mapping: dict[str, str]) -> dict[str, str]:
+    """Escape mapping values for safe substitution into a JSON string.
+
+    ``AnonymizationPort.deanonymize`` does a raw substring replace, so
+    restoring a PII value that contains a quote, backslash, or control
+    character (e.g. a newline in an address) directly into an
+    already-serialized JSON string corrupts it. Escaping each value the
+    way ``json.dumps`` would keeps the result valid JSON.
+    """
+    return {
+        placeholder: json.dumps(value)[1:-1] for placeholder, value in mapping.items()
+    }
 
 
 @dataclass
@@ -1149,7 +1164,7 @@ class Orchestrator:
 
         return_model_as_string = response.structured.model_dump_json()
         unanonymized_return_model_as_string = self._anonymizer.deanonymize(
-            return_model_as_string, anonymization_mapping
+            return_model_as_string, _json_escape_mapping(anonymization_mapping)
         )
         return AggregateSummaryResultModel.model_validate_json(
             unanonymized_return_model_as_string
@@ -1217,7 +1232,7 @@ class Orchestrator:
 
         return_model_as_string = llm_completion.structured.model_dump_json()
         unanonymized_return_model_as_string = self._anonymizer.deanonymize(
-            return_model_as_string, anonymization_mapping
+            return_model_as_string, _json_escape_mapping(anonymization_mapping)
         )
         result = SummaryResultModel.model_validate_json(
             unanonymized_return_model_as_string
@@ -1359,7 +1374,7 @@ class Orchestrator:
 
         return_model_as_string = response.structured.model_dump_json()
         unanonymized_return_model_as_string = self._anonymizer.deanonymize(
-            return_model_as_string, anonymization_mapping
+            return_model_as_string, _json_escape_mapping(anonymization_mapping)
         )
         structured = SensitivityAnalysisResultModelList.model_validate_json(
             unanonymized_return_model_as_string
