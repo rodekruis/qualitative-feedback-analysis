@@ -53,9 +53,18 @@ jobs:
             exit 1
           fi
           echo "$TAG is a published release — OK to promote to staging."
-
-  deploy:
+  terraform:
     needs: verify
+    uses: ./.github/workflows/terraform.yaml
+    with:
+      environment: staging
+      command: apply
+    permissions:
+      contents: read
+      id-token: write
+    secrets: inherit
+  deploy:
+    needs: terraform
     uses: ./.github/workflows/_deploy-release.yaml
     with:
       release_tag: ${{ inputs.release_tag }}

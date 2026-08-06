@@ -24,6 +24,16 @@ on:
     paths:
       - "infra/**"
   pull_request:
+  workflow_call:
+    inputs:
+      environment:
+        description: "Target environment (Terraform workspace)"
+        type: string
+        default: dev
+      command:
+        description: "Terraform command to run (plan or apply)"
+        type: string
+        default: plan
   workflow_dispatch:
     inputs:
       environment:

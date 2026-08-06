@@ -53,9 +53,18 @@ jobs:
             exit 1
           fi
           echo "$TAG is a published final release — OK to promote to prd."
-
-  deploy:
+  terraform:
+    uses: ./.github/workflows/terraform.yaml
     needs: verify
+    with:
+      environment: prd
+      command: apply
+    permissions:
+      contents: read
+      id-token: write
+    secrets: inherit
+  deploy:
+    needs: terraform
     uses: ./.github/workflows/_deploy-release.yaml
     with:
       release_tag: ${{ inputs.release_tag }}
