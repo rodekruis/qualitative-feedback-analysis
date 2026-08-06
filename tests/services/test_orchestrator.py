@@ -28,7 +28,7 @@ from qfa.domain.models import (
 )
 from qfa.domain.ports import AnonymizationPort, LLMPort
 from qfa.domain.sensitivity_types import SensitivityType
-from qfa.services.coding_classifier import JudgeResponse
+from qfa.services.coding_classifier import CodeSelection, CodingResponse
 from qfa.services.orchestrator import Orchestrator
 from qfa.settings import OrchestratorSettings
 
@@ -1378,6 +1378,138 @@ def _make_coding_request(
     )
 
 
+class TestAssignCodesOneShot:
+    @pytest.mark.asyncio
+    async def test_issues_exactly_one_llm_call(self, settings):
+        """The classifier selects code(s) in a single call, no separate judge call."""
+        root_codes = [
+            CodingNode(
+                id="type-a",
+                name="Type A",
+                children=[
+                    CodingNode(
+                        id="cat-a1",
+                        name="Cat A1",
+                        children=[CodingNode(id="code-a1-1", name="Code A1.1")],
+                    )
+                ],
+            )
+        ]
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(
+                    structured=CodingResponse(
+                        selected=[
+                            CodeSelection(
+                                index=2, confidence=0.9, explanation="Clear fit."
+                            )
+                        ]
+                    )
+                ),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        result = await orch.assign_codes(
+            _make_coding_request(root_codes=root_codes), _future_deadline()
+        )
+
+        assert len(fake_llm.calls) == 1
+        code = result.coded_feedback_records[0].assigned_codes[0]
+        assert code.coding_level_1_id == "type-a"
+        assert code.coding_level_2_id == "cat-a1"
+        assert code.coding_level_3_id == "code-a1-1"
+        assert code.confidence_level_1 == 0.9
+        assert code.confidence_level_2 == 0.9
+        assert code.confidence_level_3 == 0.9
+        assert code.confidence_aggregate == 0.9
+
+    @pytest.mark.asyncio
+    async def test_selecting_a_non_leaf_option_leaves_deeper_levels_null(
+        self, settings
+    ):
+        """A level-1-only (non-leaf) selection is a valid final answer, not a partial pick."""
+        root_codes = [
+            CodingNode(
+                id="type-a",
+                name="Type A",
+                children=[CodingNode(id="cat-a1", name="Cat A1")],
+            )
+        ]
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(
+                    structured=CodingResponse(
+                        selected=[
+                            CodeSelection(
+                                index=0, confidence=0.8, explanation="General fit."
+                            )
+                        ]
+                    )
+                ),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        result = await orch.assign_codes(
+            _make_coding_request(root_codes=root_codes), _future_deadline()
+        )
+
+        code = result.coded_feedback_records[0].assigned_codes[0]
+        assert code.coding_level_1_id == "type-a"
+        assert code.coding_level_2_id is None
+        assert code.confidence_level_2 is None
+
+    @pytest.mark.asyncio
+    async def test_out_of_range_and_duplicate_indices_are_ignored(self, settings):
+        """Bad indices from the LLM (out of range or repeated) are dropped, not errors."""
+        root_codes = [CodingNode(id="code-1", name="Code A")]
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(
+                    structured=CodingResponse(
+                        selected=[
+                            CodeSelection(index=0, confidence=0.9, explanation="Fits."),
+                            CodeSelection(
+                                index=0, confidence=0.5, explanation="Duplicate."
+                            ),
+                            CodeSelection(
+                                index=99, confidence=0.9, explanation="Out of range."
+                            ),
+                        ]
+                    )
+                ),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        result = await orch.assign_codes(
+            _make_coding_request(root_codes=root_codes), _future_deadline()
+        )
+
+        assigned = result.coded_feedback_records[0].assigned_codes
+        assert len(assigned) == 1
+        assert assigned[0].explanation == "Fits."
+
+
 class TestAssignCodesConfidenceThreshold:
     @pytest.mark.asyncio
     async def test_all_candidates_rejected_returns_null_codes_with_explanation(
@@ -1391,10 +1523,15 @@ class TestAssignCodesConfidenceThreshold:
         """
         fake_llm = FakeLLMPort(
             responses=[
-                _make_llm_response(structured='{"selected": [0]}'),
                 _make_llm_response(
-                    structured=JudgeResponse(
-                        score=0.5, explanation="Only loosely related."
+                    structured=CodingResponse(
+                        selected=[
+                            CodeSelection(
+                                index=0,
+                                confidence=0.5,
+                                explanation="Only loosely related.",
+                            )
+                        ]
                     )
                 ),
             ]
@@ -1428,7 +1565,7 @@ class TestAssignCodesConfidenceThreshold:
         returns a plain empty list, not a null-coded near-miss entry.
         """
         fake_llm = FakeLLMPort(
-            responses=[_make_llm_response(structured='{"selected": []}')]
+            responses=[_make_llm_response(structured=CodingResponse(selected=[]))]
         )
         orch = Orchestrator(
             llm=fake_llm,
@@ -1446,7 +1583,7 @@ class TestAssignCodesConfidenceThreshold:
 
     @pytest.mark.asyncio
     async def test_all_rejected_explanations_are_combined_highest_first(self, settings):
-        """Confirm every rejected branch's explanation is surfaced.
+        """Confirm every rejected candidate's explanation is surfaced.
 
         With two root candidates both rejected, both explanations appear in
         the combined result, higher-scoring rejection first.
@@ -1457,12 +1594,17 @@ class TestAssignCodesConfidenceThreshold:
         ]
         fake_llm = FakeLLMPort(
             responses=[
-                _make_llm_response(structured='{"selected": [0, 1]}'),
                 _make_llm_response(
-                    structured=JudgeResponse(score=0.4, explanation="Weak fit A.")
-                ),
-                _make_llm_response(
-                    structured=JudgeResponse(score=0.7, explanation="Weak fit B.")
+                    structured=CodingResponse(
+                        selected=[
+                            CodeSelection(
+                                index=0, confidence=0.4, explanation="Weak fit A."
+                            ),
+                            CodeSelection(
+                                index=1, confidence=0.7, explanation="Weak fit B."
+                            ),
+                        ]
+                    )
                 ),
             ]
         )

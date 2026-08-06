@@ -60,13 +60,13 @@ Per-record inference endpoints (`/v1/summarize`, `/v1/assign-codes`, `/v1/detect
 
 Empty `content` is accepted on every endpoint and never causes a 422. A record with empty content carries no information, so it is dropped (bulk) or short-circuited to a 200 empty result with no LLM call (per-record) — see each endpoint's reference for the exact empty-result shape. This keeps a single blank EspoCRM description from silently failing a whole request (issue #138).
 
-`POST /v1/assign-codes` accepts an optional `confidence_threshold`; codes whose judge score falls below it are filtered out. If every candidate at every hierarchy level is filtered out this way, the response is a 200 with a single `assigned_codes` entry whose `coding_level_*`/`confidence_*` fields are `null` and whose `explanation` combines every rejected candidate's explanation (highest-scoring first) — instead of an unexplained empty list.
+`POST /v1/assign-codes` accepts an optional `confidence_threshold`; candidates whose self-reported confidence falls below it are filtered out. If every candidate the classifier selected is filtered out this way, the response is a 200 with a single `assigned_codes` entry whose `coding_level_*`/`confidence_*` fields are `null` and whose `explanation` combines every rejected candidate's explanation (highest-scoring first) — instead of an unexplained empty list.
 
 ## Usage endpoint response shape
 
 All usage endpoints return aggregated stats in two parallel views:
 
-- **Per REST API call** (top-level fields): each distinct call to one of the analysis endpoints (`/v1/analyze-bulk`, `/v1/summarize`, `/v1/summarize-bulk`, `/v1/assign-codes`) counts as one. An endpoint like `/v1/assign-codes` that fans out to several LLM calls internally still shows up as a single entry here.
+- **Per REST API call** (top-level fields): each distinct call to one of the analysis endpoints (`/v1/analyze-bulk`, `/v1/summarize`, `/v1/summarize-bulk`, `/v1/assign-codes`) counts as one. An endpoint like `/v1/summarize` that fans out to several LLM calls internally (a summary call plus a judge call) still shows up as a single entry here.
 - **Per LLM call** (`llm_call_stats`): each individual LLM provider call counts as one. Use this view when you want to see raw provider traffic — for example to compute the LLM-calls-per-API-call ratio (`llm_call_stats.total_calls / total_calls`).
 
 `GET /v1/usage` and `GET /v1/usage/all/by-tenant` carry an `operations` breakdown under each tenant block, sorted by `total_cost_usd` desc (ties: operation asc), with empty operations omitted. `GET /v1/usage/all/by-operation` flips the hierarchy: operations are top-level, each carrying a nested `tenants` breakdown (sorted by `total_cost_usd` desc, ties broken by `tenant_id` asc). Every block — at any level — carries its own `llm_call_stats`.

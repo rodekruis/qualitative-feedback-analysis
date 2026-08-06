@@ -802,31 +802,32 @@ class ApiAssignedCode(BaseModel):
     confidence_level_1: float | None = Field(
         default=None,
         description=(
-            "Judge confidence at level 1 (0-1); null when no code cleared "
-            "the confidence threshold."
+            "Classifier's self-reported confidence for this code (0-1), "
+            "mirrored across every populated level; null when no code "
+            "cleared the confidence threshold."
         ),
     )
     confidence_level_2: float | None = Field(
         default=None,
-        description="Judge confidence at level 2 (0-1); null when depth < 2.",
+        description="Same self-reported confidence as level 1; null when depth < 2.",
     )
     confidence_level_3: float | None = Field(
         default=None,
-        description="Judge confidence at level 3 (0-1); null when depth < 3.",
+        description="Same self-reported confidence as level 1; null when depth < 3.",
     )
     confidence_aggregate: float | None = Field(
         default=None,
         description=(
-            "Minimum of the per-level confidences; null when no code "
-            "cleared the confidence threshold."
+            "The classifier's self-reported confidence for this code path; "
+            "null when no code cleared the confidence threshold."
         ),
     )
     explanation: str = Field(
         description=(
-            "Judge explanation combining reasoning from all hierarchy "
-            "levels. When no code cleared the confidence threshold, this "
-            "combines every rejected candidate's explanation instead, "
-            "highest-scoring first."
+            "The classifier's reasoning for this selection. When no code "
+            "cleared the confidence threshold, this combines every "
+            "rejected candidate's explanation instead, highest-scoring "
+            "first."
         )
     )
 

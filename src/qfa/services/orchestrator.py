@@ -31,7 +31,6 @@ from qfa.domain.models import (
     CodedFeedbackRecordModel,
     CodingAssignmentRequestModel,
     CodingAssignmentResultModel,
-    CodingNode,
     FeedbackRecordModel,
     FeedbackRecordSummaryModel,
     LLMResponse,
@@ -47,10 +46,9 @@ from qfa.domain.ports import AnonymizationPort, EmbeddingPort, LLMPort
 from qfa.domain.sensitivity_types import SENSITIVITY_TYPE_DESCRIPTIONS
 from qfa.services.clustering import cluster_records
 from qfa.services.coding_classifier import (
-    JudgeResponse,
-    build_judge_messages,
-    build_pick_messages,
-    parse_selected_indices,
+    CodingResponse,
+    build_coding_messages,
+    flatten_coding_nodes,
 )
 from qfa.services.coding_trends import build_coding_trend_table
 from qfa.services.hierarchical_prompts import (
@@ -202,32 +200,25 @@ def _build_judge_system_message(source_text: str, summary: str) -> str:
 
 
 @dataclass
-class _ScoredCode:
-    path: list[tuple[str, str]]  # (id, name) per level, root → leaf
-    scores: list[float]  # per-level judge scores, aligned with path
-    explanations: list[str]  # per-level judge explanations, aligned with path
+class _CodeCandidate:
+    path: list[tuple[str, str]]  # (id, name) per level, root → selected node
+    confidence: float  # self-reported by the classifier in the one-shot call
+    explanation: str
 
     @property
-    def confidence_aggregate(self) -> float:
-        return min(self.scores)
-
-    @property
-    def explanation(self) -> str:
-        return "\n".join(
-            f"- Level {i + 1} ({score:.2f}): {expl}"
-            for i, (score, expl) in enumerate(zip(self.scores, self.explanations))
-        )
+    def label(self) -> str:
+        return " > ".join(name for _, name in self.path)
 
 
-def _combine_rejected_explanations(rejected: list[_ScoredCode]) -> str:
+def _combine_rejected_explanations(rejected: list[_CodeCandidate]) -> str:
     """Join every threshold-rejected candidate's explanation into one string.
 
     Highest-scoring rejection first, each labelled with its hierarchy path
     so a reader can tell which candidate an explanation belongs to.
     """
-    ordered = sorted(rejected, key=lambda c: c.confidence_aggregate, reverse=True)
+    ordered = sorted(rejected, key=lambda c: c.confidence, reverse=True)
     return "\n\n".join(
-        f"{' > '.join(name for _, name in c.path)}:\n{c.explanation}" for c in ordered
+        f"{c.label} ({c.confidence:.2f}): {c.explanation}" for c in ordered
     )
 
 
@@ -1232,7 +1223,12 @@ class Orchestrator:
         request: CodingAssignmentRequestModel,
         deadline: datetime,
     ) -> CodingAssignmentResultModel:
-        """Assign hierarchical codes to a feedback record.
+        """Assign hierarchical codes to a feedback record in a single LLM call.
+
+        The full coding framework is flattened into one option per node (at
+        every depth, not just leaves) and the classifier picks the
+        best-fitting path(s) directly, self-reporting a confidence score for
+        each — no separate per-level pick/judge calls.
 
         Parameters
         ----------
@@ -1244,7 +1240,7 @@ class Orchestrator:
         Returns
         -------
         CodingAssignmentResult
-            Per-record leaf codes from ``classify_feedback``. If
+            Per-record codes ordered by confidence, highest first. If
             ``confidence_threshold`` filters out every candidate, the record's
             ``assigned_codes`` holds a single entry with null
             ``coding_level_*``/``confidence_*`` fields and an ``explanation``
@@ -1265,24 +1261,54 @@ class Orchestrator:
         feedback_record = request.feedback_record
         self._check_coding_deadline(deadline)
 
-        candidates: list[_ScoredCode] = []
-        rejected: list[_ScoredCode] = []
-        await self._traverse_coding_level(
-            feedback_record=feedback_record,
-            level_nodes=list(request.coding_levels.root_codes),
-            level_num=1,
-            hierarchy_path=[],
-            path_ids_names=[],
-            accumulated_scores=[],
-            accumulated_explanations=[],
-            threshold=request.confidence_threshold,
-            tenant_id=request.tenant_id,
-            deadline=deadline,
-            candidates=candidates,
-            rejected=rejected,
+        options = flatten_coding_nodes(list(request.coding_levels.root_codes))
+        system_message, user_message = build_coding_messages(
+            feedback_record=feedback_record, options=options
         )
 
-        candidates.sort(key=lambda c: c.confidence_aggregate, reverse=True)
+        if not user_message:
+            coded = [
+                CodedFeedbackRecordModel(
+                    feedback_record_id=feedback_record.id, assigned_codes=()
+                )
+            ]
+            return CodingAssignmentResultModel(coded_feedback_records=tuple(coded))
+
+        self._check_token_limit(system_message, user_message)
+        anonymized_user_message, _ = self._anonymizer.anonymize(user_message)
+        timeout = self._check_deadline_and_get_timeout(deadline)
+
+        response = await self._llm.complete(
+            system_message=system_message,
+            user_message=anonymized_user_message,
+            tenant_id=request.tenant_id,
+            response_model=CodingResponse,
+            timeout=timeout,
+        )
+
+        candidates: list[_CodeCandidate] = []
+        rejected: list[_CodeCandidate] = []
+        seen_indices: set[int] = set()
+        for selection in response.structured.selected:
+            if not 0 <= selection.index < len(options):
+                continue
+            if selection.index in seen_indices:
+                continue
+            seen_indices.add(selection.index)
+            candidate = _CodeCandidate(
+                path=list(options[selection.index].path),
+                confidence=selection.confidence,
+                explanation=selection.explanation,
+            )
+            if (
+                request.confidence_threshold is not None
+                and candidate.confidence < request.confidence_threshold
+            ):
+                rejected.append(candidate)
+                continue
+            candidates.append(candidate)
+
+        candidates.sort(key=lambda c: c.confidence, reverse=True)
         top = candidates[: request.max_codes]
 
         assigned_codes: list[AssignedCodeModel]
@@ -1295,10 +1321,10 @@ class Orchestrator:
                     coding_level_2_name=c.path[1][1] if len(c.path) > 1 else None,
                     coding_level_3_id=c.path[2][0] if len(c.path) > 2 else None,
                     coding_level_3_name=c.path[2][1] if len(c.path) > 2 else None,
-                    confidence_level_1=c.scores[0],
-                    confidence_level_2=c.scores[1] if len(c.scores) > 1 else None,
-                    confidence_level_3=c.scores[2] if len(c.scores) > 2 else None,
-                    confidence_aggregate=c.confidence_aggregate,
+                    confidence_level_1=c.confidence,
+                    confidence_level_2=c.confidence if len(c.path) > 1 else None,
+                    confidence_level_3=c.confidence if len(c.path) > 2 else None,
+                    confidence_aggregate=c.confidence,
                     explanation=c.explanation,
                 )
                 for c in top
@@ -1400,138 +1426,6 @@ class Orchestrator:
             raise AnalysisTimeoutError(
                 "Coding deadline exceeded before all feedback records were processed"
             )
-
-    async def _traverse_coding_level(
-        self,
-        *,
-        feedback_record: FeedbackRecordModel,
-        level_nodes: list[CodingNode],
-        level_num: int,
-        hierarchy_path: list[tuple[str, str]],
-        path_ids_names: list[tuple[str, str]],
-        accumulated_scores: list[float],
-        accumulated_explanations: list[str],
-        threshold: float | None,
-        tenant_id: str,
-        deadline: datetime,
-        candidates: list[_ScoredCode],
-        rejected: list[_ScoredCode],
-    ) -> None:
-        """Recursively pick and judge codes at one level, descending into children."""
-        level_label = f"Code level {level_num}"
-        indices = await self._pick_code_indices(
-            feedback_record=feedback_record,
-            current_level=level_label,
-            entries=level_nodes,
-            hierarchy_path=hierarchy_path,
-            tenant_id=tenant_id,
-            deadline=deadline,
-        )
-        for idx in indices:
-            node = level_nodes[idx]
-            current_path = [*hierarchy_path, (level_label, node.name)]
-            judge = await self._judge_code_level(
-                feedback_record=feedback_record,
-                level=level_label,
-                path=current_path,
-                tenant_id=tenant_id,
-                deadline=deadline,
-            )
-            new_path = [*path_ids_names, (node.id, node.name)]
-            new_scores = [*accumulated_scores, judge.score]
-            new_explanations = [*accumulated_explanations, judge.explanation]
-            if threshold is not None and judge.score < threshold:
-                rejected.append(
-                    _ScoredCode(
-                        path=new_path, scores=new_scores, explanations=new_explanations
-                    )
-                )
-                continue
-            if node.children:
-                await self._traverse_coding_level(
-                    feedback_record=feedback_record,
-                    level_nodes=node.children,
-                    level_num=level_num + 1,
-                    hierarchy_path=current_path,
-                    path_ids_names=new_path,
-                    accumulated_scores=new_scores,
-                    accumulated_explanations=new_explanations,
-                    threshold=threshold,
-                    tenant_id=tenant_id,
-                    deadline=deadline,
-                    candidates=candidates,
-                    rejected=rejected,
-                )
-            else:
-                candidates.append(
-                    _ScoredCode(
-                        path=new_path,
-                        scores=new_scores,
-                        explanations=new_explanations,
-                    )
-                )
-
-    async def _pick_code_indices(
-        self,
-        *,
-        feedback_record: FeedbackRecordModel,
-        current_level: str,
-        entries: list[CodingNode],
-        hierarchy_path: list[tuple[str, str]] | None,
-        tenant_id: str,
-        deadline: datetime,
-    ) -> list[int]:
-        """Build one coding prompt, call the LLM, and parse selected indices."""
-        labels = [entry.name for entry in entries]
-        system_message, user_message = build_pick_messages(
-            feedback_record=feedback_record,
-            current_level=current_level,
-            labels=labels,
-            hierarchy_path=hierarchy_path,
-        )
-        if not user_message:
-            return []
-
-        self._check_coding_deadline(deadline)
-        self._check_token_limit(system_message, user_message)
-
-        anonymized_user_message, _ = self._anonymizer.anonymize(user_message)
-
-        response = await self._llm.complete(
-            system_message=system_message,
-            user_message=anonymized_user_message,
-            tenant_id=tenant_id,
-            response_model=str,
-        )
-        return parse_selected_indices(response.structured, len(labels))
-
-    async def _judge_code_level(
-        self,
-        *,
-        feedback_record: FeedbackRecordModel,
-        level: str,
-        path: list[tuple[str, str]],
-        tenant_id: str,
-        deadline: datetime,
-    ) -> JudgeResponse:
-        """Call the judge LLM for one hierarchy level; return structured score and explanation."""
-        system_message, user_message = build_judge_messages(
-            feedback_record=feedback_record,
-            level=level,
-            path=path,
-        )
-        self._check_coding_deadline(deadline)
-        self._check_token_limit(system_message, user_message)
-        user_message, _ = self._anonymizer.anonymize(user_message)
-        response = await self._llm.complete(
-            system_message=system_message,
-            user_message=user_message,
-            tenant_id=tenant_id,
-            response_model=JudgeResponse,
-        )
-        if not 0.0 <= response.structured.score <= 1.0:
-            raise AnalysisError("LLM judge returned score outside 0.0-1.0")
-        return response.structured
 
     # ------------------------------------------------------------------
     # Token estimation
