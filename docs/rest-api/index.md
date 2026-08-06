@@ -30,12 +30,13 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `feedback_records` | list | — | Non-empty list of `{id, content, metadata?}` records. Individual records may have empty `content` (e.g. a blank EspoCRM description) — those are dropped before analysis rather than failing the request. |
+| `feedback_records` | list | — | Non-empty list of `{id, content, metadata?, url_id?}` records. Individual records may have empty `content` (e.g. a blank EspoCRM description) — those are dropped before analysis rather than failing the request. |
 | `prompt` | string | — | Analyst question (1–4000 chars). |
 | `output_language` | string or null | `null` | Free-text target language for the analysis output (e.g. `"Dutch"`, `"Brazilian Portuguese"`) — any language the model can produce. Prefer an ISO 639-1 code (`"nl"`) or English language name (`"Dutch"`) for the most predictable results. The value is sanitized and never rejected. Omit (or `null`) to let the model answer in the language of the input records. |
 | `anonymize` | bool | `true` | Anonymize record text before the LLM call. |
 | `mode` | `"single_pass"` \| `"hierarchical"` | `"single_pass"` | `single_pass` runs one LLM call under the token cap (input over the cap → 413). `hierarchical` runs embed → cluster → map → reduce over large corpora and additionally returns `confidence`. |
 | `period` | `"day"` \| `"week"` \| `"month"` \| null | `null` → server default (`week`) | Granularity for the deterministic `coding_trends` table. `day` for short-window deep-dives, `week` for the typical 1-3 month operational corpus, `month` for multi-year corpora. Omit to use the server-side default (`ANALYZE_DEFAULT_CODING_TREND_PERIOD`). |
+| `espo_feedback_base_url` | string or null | `null` | Base URL for the EspoCRM feedback record detail view. See [Hyperlinking feedback records](#hyperlinking-feedback-records) below. |
 
 ### Response (200 OK)
 
@@ -61,6 +62,18 @@ Per-record inference endpoints (`/v1/summarize`, `/v1/assign-codes`, `/v1/detect
 Empty `content` is accepted on every endpoint and never causes a 422. A record with empty content carries no information, so it is dropped (bulk) or short-circuited to a 200 empty result with no LLM call (per-record) — see each endpoint's reference for the exact empty-result shape. This keeps a single blank EspoCRM description from silently failing a whole request (issue #138).
 
 `POST /v1/assign-codes` accepts an optional `confidence_threshold`; codes whose judge score falls below it are filtered out. If every candidate at every hierarchy level is filtered out this way, the response is a 200 with a single `assigned_codes` entry whose `coding_level_*`/`confidence_*` fields are `null` and whose `explanation` combines every rejected candidate's explanation (highest-scoring first) — instead of an unexplained empty list.
+
+## Hyperlinking feedback records
+
+`/v1/analyze-bulk` and `/v1/summarize-bulk` accept an optional `espo_feedback_base_url` alongside `feedback_records`. When it's set, any mention of a feedback record's `id` in the output text (e.g. an analysis citing `Form-07762` as supporting evidence) is rewritten as a markdown hyperlink:
+
+```
+[Form-07762](espo_feedback_base_url/url_id)
+```
+
+`url_id` is a separate, optional field on each feedback record — the EspoCRM URL path segment for that record (distinct from `id`, which is the citation-friendly identifier the model sees and may repeat in prose). A record is only hyperlinked if both `espo_feedback_base_url` is set on the request **and** that record's `url_id` is non-empty; otherwise its `id` is left as plain text. Matching is exact and word-boundary-safe (`Form-1` never matches inside `Form-10`).
+
+This is presentational only — it rewrites the already-generated `analysis`/`summary` text before it's returned, including the `pretty_output` block, so no extra rendering step is needed on the EspoCRM side beyond the flowchart's existing markdown-aware field display.
 
 ## Usage endpoint response shape
 

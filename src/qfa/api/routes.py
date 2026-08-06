@@ -206,6 +206,7 @@ async def analyze_bulk(
             id=doc.id,
             content=doc.content,
             metadata=_to_domain_metadata(doc.metadata),
+            url_id=doc.url_id,
         )
         for doc in records
     )
@@ -217,6 +218,7 @@ async def analyze_bulk(
         tenant_id=tenant.tenant_id,
         mode=body.mode,
         period=body.period,
+        espo_feedback_base_url=body.espo_feedback_base_url,
     )
 
     if body.mode == "hierarchical":
@@ -300,6 +302,7 @@ async def summarize_bulk(
             id=record.id,
             content=record.content,
             metadata=_to_domain_metadata(record.metadata),
+            url_id=record.url_id,
         )
         for record in records
     )
@@ -307,6 +310,7 @@ async def summarize_bulk(
         feedback_records=feedback_records,
         output_language=body.output_language,
         tenant_id=tenant.tenant_id,
+        espo_feedback_base_url=body.espo_feedback_base_url,
     )
 
     result = await orchestrator.summarize_bulk(domain_request, deadline)

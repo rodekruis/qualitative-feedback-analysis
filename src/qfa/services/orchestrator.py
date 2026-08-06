@@ -7,6 +7,7 @@ manages retries with exponential backoff, and enforces deadlines.
 import asyncio
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -216,6 +217,33 @@ def _json_escape_mapping(mapping: dict[str, str]) -> dict[str, str]:
     }
 
 
+def _hyperlink_form_references(
+    text: str,
+    feedback_records: tuple[FeedbackRecordModel, ...],
+    espo_feedback_base_url: str | None,
+) -> str:
+    """Rewrite feedback-record-id mentions in ``text`` as EspoCRM hyperlinks.
+
+    When the analysis/summary text names a feedback record by its ``id``
+    (e.g. ``Form-07762``), rewrite that mention as
+    ``[Form-07762](espo_feedback_base_url/url_id)`` so it renders as a
+    clickable link back to the record in EspoCRM. No-op when
+    ``espo_feedback_base_url`` is not provided; per-record no-op when that
+    record has no ``url_id``. Matches on word boundaries so one record's id
+    cannot match as a substring of another's (e.g. ``Form-1`` vs
+    ``Form-10``).
+    """
+    if not espo_feedback_base_url:
+        return text
+    base = espo_feedback_base_url.rstrip("/")
+    for record in feedback_records:
+        if not record.url_id:
+            continue
+        link = f"[{record.id}]({base}/{record.url_id})"
+        text = re.sub(rf"\b{re.escape(record.id)}\b", link, text)
+    return text
+
+
 @dataclass
 class _ScoredCode:
     path: list[tuple[str, str]]  # (id, name) per level, root → leaf
@@ -403,6 +431,10 @@ class Orchestrator:
             analysis_text = self._anonymizer.deanonymize(
                 analysis_text, restorable_mapping
             )
+
+        analysis_text = _hyperlink_form_references(
+            analysis_text, request.feedback_records, request.espo_feedback_base_url
+        )
 
         quality_score: float | None
         uncertainty_explanation: str
@@ -771,6 +803,10 @@ class Orchestrator:
                 if not self._is_retained_analyze_placeholder(placeholder)
             }
             analysis_text = self._anonymizer.deanonymize(analysis_text, restorable)
+
+        analysis_text = _hyperlink_form_references(
+            analysis_text, request.feedback_records, request.espo_feedback_base_url
+        )
 
         # One-line breakdown so a single log line answers "where did the time
         # go?" without scrolling. The total is the sum of the timed phases
@@ -1166,8 +1202,17 @@ class Orchestrator:
         unanonymized_return_model_as_string = self._anonymizer.deanonymize(
             return_model_as_string, _json_escape_mapping(anonymization_mapping)
         )
-        return AggregateSummaryResultModel.model_validate_json(
+        result = AggregateSummaryResultModel.model_validate_json(
             unanonymized_return_model_as_string
+        )
+        return result.model_copy(
+            update={
+                "summary": _hyperlink_form_references(
+                    result.summary,
+                    request.feedback_records,
+                    request.espo_feedback_base_url,
+                )
+            }
         )
 
     async def summarize(
