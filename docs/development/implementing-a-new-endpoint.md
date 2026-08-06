@@ -212,7 +212,7 @@ async def classify(
 
     An empty ``content`` returns a 200 empty result with no LLM call.
     """
-    deadline = datetime.now(UTC) + timedelta(seconds=120)
+    deadline = datetime.now(UTC) + timedelta(seconds=240)
 
     if not body.feedback_record.content:
         return ApiClassifyResponse(label="", confidence=None,

@@ -185,7 +185,7 @@ async def analyze_bulk(
         populated for both modes whenever metadata permits; ``confidence``
         is populated only for ``hierarchical`` mode.
     """
-    deadline = datetime.now(UTC) + timedelta(seconds=600)
+    deadline = datetime.now(UTC) + timedelta(seconds=1200)
 
     records = _drop_empty_records(body.feedback_records)
     if not records:
@@ -283,7 +283,7 @@ async def summarize_bulk(
     ApiSummarizeBulkResponse
         A single summary with themes ordered by frequency across all feedback records.
     """
-    deadline = datetime.now(UTC) + timedelta(seconds=120)
+    deadline = datetime.now(UTC) + timedelta(seconds=240)
 
     records = _drop_empty_records(body.feedback_records)
     if not records:
@@ -355,7 +355,7 @@ async def summarize(
     ApiSummarizeResponse
         The per-feedback-record titles and summaries.
     """
-    deadline = datetime.now(UTC) + timedelta(seconds=120)
+    deadline = datetime.now(UTC) + timedelta(seconds=240)
 
     if not body.feedback_record.content:
         # Nothing to summarize: return a 200 empty summary that still
@@ -412,7 +412,7 @@ async def assign_codes(
     ``explanation`` combines every rejected candidate's explanation,
     highest-scoring first.
     """
-    deadline = datetime.now(UTC) + timedelta(seconds=120)
+    deadline = datetime.now(UTC) + timedelta(seconds=240)
 
     if not body.feedback_record.content:
         # No content to code: return a 200 empty assignment without an LLM
@@ -493,7 +493,7 @@ async def detect_sensitive(
     ApiDetectSensitiveResponse
         Sensitivity rating for each submitted feedback item.
     """
-    deadline = datetime.now(UTC) + timedelta(seconds=120)
+    deadline = datetime.now(UTC) + timedelta(seconds=240)
 
     if not body.feedback_record.content:
         # No content to evaluate: report not-sensitive without an LLM call

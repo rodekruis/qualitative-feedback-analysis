@@ -79,7 +79,7 @@ class LLMSettings(BaseSettings):
     api_key: SecretStr = Field(default=...)  # required, no default
     api_base: str = ""
     api_version: str = ""
-    timeout_seconds: float = 115.0
+    timeout_seconds: float = 230.0
     max_total_tokens: int = 100_000
     chars_per_token: int = 4
 

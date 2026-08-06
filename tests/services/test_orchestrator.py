@@ -185,7 +185,7 @@ class FakeLLMPort(LLMPort):
         user_message,
         tenant_id,
         response_model=str,
-        timeout=20.0,
+        timeout=40.0,
     ):
         self.calls.append(
             {

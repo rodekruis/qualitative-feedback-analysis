@@ -37,7 +37,7 @@ class TestLLMSettings:
     def test_default_timeout_seconds(self, monkeypatch):
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
         settings = LLMSettings()
-        assert settings.timeout_seconds == 115.0
+        assert settings.timeout_seconds == 230.0
 
     def test_default_max_total_tokens(self, monkeypatch):
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
