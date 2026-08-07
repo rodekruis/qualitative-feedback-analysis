@@ -9,10 +9,30 @@ from qfa.settings import (
     AppSettings,
     AuthSettings,
     DatabaseSettings,
+    JudgeLLMSettings,
     LLMSettings,
     OrchestratorSettings,
     TelemetrySettings,
 )
+
+JUDGE_ENV_VARS = (
+    "JUDGE_LLM_MODEL",
+    "JUDGE_LLM_API_KEY",
+    "JUDGE_LLM_API_BASE",
+    "JUDGE_LLM_API_VERSION",
+)
+
+
+@pytest.fixture
+def no_judge_env(monkeypatch):
+    """Clear every ``JUDGE_LLM_*`` variable that a developer's ``.env`` may set.
+
+    The judge block's whole contract is "unset means inherit", so a value
+    leaking in from the ambient environment would silently invalidate the
+    default-state assertions rather than fail them loudly.
+    """
+    for var in JUDGE_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
 
 
 class TestLLMSettings:
@@ -82,6 +102,76 @@ class TestLLMSettings:
         assert settings.model == "azure/my-gpt4-deployment"
         assert settings.api_base == "https://example.openai.azure.com"
         assert settings.api_version == "2025-01-01-preview"
+
+
+class TestJudgeLLMSettings:
+    """The optional ``JUDGE_LLM_*`` overrides for the judge connection."""
+
+    def test_every_field_defaults_to_none(self, no_judge_env):
+        """All fields are optional and default to ``None`` (= inherit from ``LLM_*``).
+
+        This is the property that keeps enabling a judge model free of any new
+        secret: no field of the judge block is independently required, so the
+        block can exist without an operator providing anything at all.
+        """
+        settings = JudgeLLMSettings()
+
+        assert settings.model is None
+        assert settings.api_key is None
+        assert settings.api_base is None
+        assert settings.api_version is None
+
+    def test_constructs_without_an_api_key(self, no_judge_env, monkeypatch):
+        """Unlike ``LLMSettings``, the judge block never requires an API key.
+
+        ``LLMSettings.api_key`` is ``Field(default=...)``; had the judge block
+        been written as a subclass it would have inherited that required-ness
+        and forced a second Key Vault secret per environment.
+        """
+        monkeypatch.delenv("LLM_API_KEY", raising=False)
+
+        assert JudgeLLMSettings().api_key is None
+
+    def test_reads_from_judge_llm_prefixed_env_vars(self, no_judge_env, monkeypatch):
+        """Each field is populated from its ``JUDGE_LLM_``-prefixed variable."""
+        monkeypatch.setenv("JUDGE_LLM_MODEL", "azure_ai/mistral-medium-2505")
+        monkeypatch.setenv("JUDGE_LLM_API_KEY", "sk-judge")
+        monkeypatch.setenv(
+            "JUDGE_LLM_API_BASE", "https://res.services.ai.azure.com/models"
+        )
+        monkeypatch.setenv("JUDGE_LLM_API_VERSION", "2024-05-01-preview")
+
+        settings = JudgeLLMSettings()
+
+        assert settings.model == "azure_ai/mistral-medium-2505"
+        assert settings.api_key is not None
+        assert settings.api_key.get_secret_value() == "sk-judge"
+        assert settings.api_base == "https://res.services.ai.azure.com/models"
+        assert settings.api_version == "2024-05-01-preview"
+
+    def test_does_not_read_the_primary_llm_env_vars(self, no_judge_env, monkeypatch):
+        """The judge prefix is distinct: ``LLM_*`` must not bleed into the block.
+
+        Inheritance is applied later, at composition — if it also happened
+        implicitly here, an explicitly-empty override would be impossible to
+        distinguish from an unset one.
+        """
+        monkeypatch.setenv("LLM_MODEL", "azure/gpt-5.4")
+        monkeypatch.setenv("LLM_API_BASE", "https://res.openai.azure.com/")
+
+        settings = JudgeLLMSettings()
+
+        assert settings.model is None
+        assert settings.api_base is None
+
+    def test_api_key_is_secret(self, no_judge_env, monkeypatch):
+        """The judge key, when set, is masked in reprs like the primary one is."""
+        monkeypatch.setenv("JUDGE_LLM_API_KEY", "sk-judge-super-secret")
+
+        settings = JudgeLLMSettings()
+
+        assert "sk-judge-super-secret" not in repr(settings)
+        assert "sk-judge-super-secret" not in str(settings)
 
 
 class TestOrchestratorSettings:
@@ -269,7 +359,7 @@ def test_analyze_settings_default_period_overridable_via_env(monkeypatch) -> Non
 
 
 class TestAppSettings:
-    def test_composes_all_sub_settings(self, monkeypatch):
+    def test_composes_all_sub_settings(self, no_judge_env, monkeypatch):
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
         monkeypatch.setenv("DB_URL", "postgresql+asyncpg://user:pass@host/db")
         monkeypatch.setenv(
@@ -287,6 +377,7 @@ class TestAppSettings:
         )
         settings = AppSettings()
         assert settings.llm.api_key.get_secret_value() == "sk-test"
+        assert settings.judge_llm.model is None
         assert settings.db.url == "postgresql+asyncpg://user:pass@host/db"
         assert len(settings.auth.api_keys) == 1
         assert settings.auth.api_keys[0].tenant_id == "tenant-1"

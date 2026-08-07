@@ -16,6 +16,57 @@ Every environment variable the app reads. Settings are loaded by `pydantic-setti
 | `LLM_MAX_TOTAL_TOKENS` | no | `100000` | Token budget guard. Estimated as `len(text) / LLM_CHARS_PER_TOKEN`. |
 | `LLM_CHARS_PER_TOKEN` | no | `4` | Conversion ratio used by the token budget guard. |
 
+## Judge LLM (`JUDGE_LLM_*`)
+
+An optional *second* LLM connection used only for the LLM-as-judge quality
+scores, so the model that produces an analysis or summary is not the one that
+grades it. It applies to four call sites: the `analyze` judge, the hierarchical
+leaf judges, and the judges in `summarize` and `summarize_aggregate`. The
+per-level judge inside `assign_codes` stays on the primary connection.
+
+**Every variable below is optional, and an unset one inherits the matching
+`LLM_*` value** — including `LLM_API_KEY`. That inheritance is the whole point
+of the block: enabling a judge model needs **no new Key Vault secret** and no
+credential provisioning, only non-secret variables.
+
+`JUDGE_LLM_MODEL` is the switch. While it is unset (the default), no judge
+client is built and judge calls run on the primary connection exactly as they
+did before this block existed. Setting it alone is a complete, valid
+configuration — the app will not fail to start for want of a matching key or
+base URL.
+
+| Variable | Required | Default | Notes |
+|---|---|---|---|
+| `JUDGE_LLM_MODEL` | no | unset → judge calls use the primary connection | Enables the separate judge connection. Same LiteLLM prefix routing as `LLM_MODEL`. |
+| `JUDGE_LLM_API_KEY` | no | inherits `LLM_API_KEY` | Only needed for a judge on a different Azure resource or provider. Stored as `SecretStr`. |
+| `JUDGE_LLM_API_BASE` | no | inherits `LLM_API_BASE` | Needed when the judge sits on a different provider *route* — e.g. `azure_ai/…` uses `https://<resource>.services.ai.azure.com/models` while `azure/…` uses `https://<resource>.openai.azure.com/`. Non-secret. |
+| `JUDGE_LLM_API_VERSION` | no | inherits `LLM_API_VERSION` | API version where the judge provider expects a different one. |
+
+There are no judge-side equivalents of `LLM_TIMEOUT_SECONDS`,
+`LLM_MAX_TOTAL_TOKENS` or `LLM_CHARS_PER_TOKEN`: both connections always share
+the primary values, so the two clients cannot drift apart on timeout or token
+accounting.
+
+Minimum configuration — a judge on the same provider route as generation, one
+variable:
+
+```
+JUDGE_LLM_MODEL=azure/<some-azure-openai-deployment>
+```
+
+A judge on the other provider route of the same Azure Foundry resource needs
+two, both non-secret; the API key is still inherited:
+
+```
+JUDGE_LLM_MODEL=azure_ai/mistral-medium-2505
+JUDGE_LLM_API_BASE=https://<resource>.services.ai.azure.com/models
+```
+
+Cost and usage are recorded for judge calls exactly as for generation calls:
+the judge client is wrapped in the same `TrackingLLMAdapter`, and each
+`llm_calls` row carries the model that actually served the call, so a run with
+two models in play remains attributable per model.
+
 ## Embedding (`EMBEDDING_*`)
 
 Only consumed by `mode=hierarchical`. The path defaults to *empty* at the

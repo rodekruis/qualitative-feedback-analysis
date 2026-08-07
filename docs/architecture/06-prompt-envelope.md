@@ -164,6 +164,7 @@ sequenceDiagram
     participant orch as Orchestrator
     participant anon as AnonymizationPort
     participant llm as LLMPort
+    participant judge as LLMPort (judge)
 
     route->>orch: analyze(request, deadline)
     orch->>orch: build_analyze_user_message(prompt, records)
@@ -177,7 +178,11 @@ sequenceDiagram
     orch->>anon: deanonymize(analysis_text, filtered_mapping)
     anon-->>orch: partially-deanonymised_text
     orch->>orch: build_analyze_judge_system_message(anonymised_msg, anonymised_prompt, analysis_text)
-    orch->>llm: complete(judge_system_msg, ".", response_model=AnalyzeJudgeResult)
-    llm-->>orch: AnalyzeJudgeResult(quality_score, uncertainty_explanation)
+    orch->>judge: complete(judge_system_msg, ".", response_model=AnalyzeJudgeResult)
+    judge-->>orch: AnalyzeJudgeResult(quality_score, uncertainty_explanation)
     orch-->>route: AnalysisResultModel(result, quality_score, uncertainty_explanation)
 ```
+
+The judge participant is a *separate* `LLMPort` only when `JUDGE_LLM_MODEL` is
+configured; otherwise it is the same client as `llm` and the exchange is
+unchanged. See [The judge connection](03-components.md#the-judge-connection).
