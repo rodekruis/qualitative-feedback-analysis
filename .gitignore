@@ -200,3 +200,5 @@ config
 # See https://github.com/mariushelf/copier-devcontainer
 /.devcontainer/
 /.envrc
+.graphify-out
+
