@@ -59,9 +59,26 @@ the single-pass response too.
 
 Per-record inference endpoints (`/v1/summarize`, `/v1/assign-codes`, `/v1/detect-sensitive`) accept a single `feedback_record` and return one result object, unlike bulk endpoints that accept multiple records and return aggregated output.
 
-Empty `content` is accepted on every endpoint and never causes a 422. A record with empty content carries no information, so it is dropped (bulk) or short-circuited to a 200 empty result with no LLM call (per-record) — see each endpoint's reference for the exact empty-result shape. This keeps a single blank EspoCRM description from silently failing a whole request (issue #138).
+Empty `content` is accepted on every endpoint and never causes a 422. A record with empty content carries no information, so it is dropped (bulk) or short-circuited to a 200 with no LLM call (per-record) — see each endpoint's reference for the exact result shape. This keeps a single blank EspoCRM description from silently failing a whole request (issue #138).
 
-`POST /v1/assign-codes` accepts an optional `confidence_threshold`; codes whose judge score falls below it are filtered out. If every candidate at every hierarchy level is filtered out this way, the response is a 200 with a single `assigned_codes` entry whose `coding_level_*`/`confidence_*` fields are `null` and whose `explanation` combines every rejected candidate's explanation (highest-scoring first) — instead of an unexplained empty list.
+`POST /v1/assign-codes` accepts an optional `confidence_threshold`; codes whose judge score falls below it are filtered out. Its `assigned_codes` list is never empty: whenever no code is applied — because the content was empty, because no candidate reached the threshold, or because nothing in the framework was judged relevant — the response is a 200 with exactly one entry whose `coding_level_*`/`confidence_*` fields are `null` and whose `explanation` begins with the line `NO CODING APPLIED.` followed by the reason. A client therefore always has something to show the user instead of an unexplained empty list.
+
+When the threshold is what blocked coding, the explanation names the threshold as a percentage and lists the closest near misses (at most three, highest-scoring first, each with its decisive level's reasoning), then counts any remainder:
+
+```text
+NO CODING APPLIED.
+No code reached the 10% confidence threshold, so this record needs human review.
+
+Shelter > Repairs > Roofing — 4%
+  No mention of roof damage; the feedback concerns rent costs.
+
+Water — 3%
+  No reference to water access.
+
+5 further codes scored below 3%.
+```
+
+These explanations are English only, regardless of the language of the feedback.
 
 ## Hyperlinking feedback records
 

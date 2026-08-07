@@ -44,7 +44,10 @@ from qfa.domain.models import (
     TenantApiKey,
 )
 from qfa.domain.usage_models import CallContext, Operation
-from qfa.services.orchestrator import Orchestrator
+from qfa.services.orchestrator import (
+    NO_CODING_EMPTY_CONTENT_EXPLANATION,
+    Orchestrator,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -407,21 +410,33 @@ async def assign_codes(
 ) -> ApiAssignCodesResponse:
     """Assign codes via iterative LLM picks at each level of the framework.
 
-    If the record's ``content`` is empty the response is a 200 with an empty
-    ``assigned_codes`` list, returned without an LLM call (issue #138).
-
-    If every candidate is filtered out by ``confidence_threshold``, the
-    response is a 200 with a single ``assigned_codes`` entry whose
+    ``assigned_codes`` is never an empty list. Whenever no code is applied
+    the response is a 200 carrying exactly one entry whose
     ``coding_level_*``/``confidence_*`` fields are null and whose
-    ``explanation`` combines every rejected candidate's explanation,
-    highest-scoring first.
+    ``explanation`` begins with the line ``NO CODING APPLIED.`` followed by
+    the reason (#256), so a client always has something to show the user:
+
+    - the record's ``content`` is empty — returned without an LLM call
+      (issue #138);
+    - every candidate was filtered out by ``confidence_threshold`` — the
+      explanation names the threshold and lists the closest near misses,
+      highest-scoring first;
+    - no code was selected at any level — the explanation states that
+      nothing in the framework was judged relevant.
+
+    The explanation is English only, regardless of the feedback language.
     """
     deadline = datetime.now(UTC) + timedelta(seconds=240)
 
     if not body.feedback_record.content:
-        # No content to code: return a 200 empty assignment without an LLM
-        # call (issue #138).
-        return ApiAssignCodesResponse(assigned_codes=[])
+        # No content to code: return a 200 without an LLM call (issue #138),
+        # explaining the empty text rather than returning a bare empty list
+        # the client would have to interpret (#256).
+        return ApiAssignCodesResponse(
+            assigned_codes=[
+                ApiAssignedCode(explanation=NO_CODING_EMPTY_CONTENT_EXPLANATION)
+            ]
+        )
 
     domain_request = CodingAssignmentRequestModel(
         feedback_record=FeedbackRecordModel(

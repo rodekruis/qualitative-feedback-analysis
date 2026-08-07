@@ -29,7 +29,12 @@ from qfa.domain.models import (
 from qfa.domain.ports import AnonymizationPort, LLMPort
 from qfa.domain.sensitivity_types import SensitivityType
 from qfa.services.coding_classifier import JudgeResponse
-from qfa.services.orchestrator import Orchestrator
+from qfa.services.orchestrator import (
+    NO_CODING_NOTHING_RELEVANT_EXPLANATION,
+    Orchestrator,
+    _combine_rejected_explanations,
+    _ScoredCode,
+)
 from qfa.settings import OrchestratorSettings
 
 TENANT_ID = "tenant-42"
@@ -1589,6 +1594,142 @@ def _make_coding_request(
     )
 
 
+def _make_scored_code(names, scores, explanations):
+    """Build a ``_ScoredCode`` from level names, scores and explanations."""
+    return _ScoredCode(
+        path=[(f"id-{name}", name) for name in names],
+        scores=list(scores),
+        explanations=list(explanations),
+    )
+
+
+class TestNoCodingAppliedMessage:
+    """Formatting of the ``NO CODING APPLIED.`` below-threshold explanation."""
+
+    def test_message_matches_the_documented_layout(self):
+        """Pin the whole rendered message against the format agreed in #256.
+
+        Asserting the exact string (rather than a handful of substrings) is
+        what makes this the contract: lead line, threshold sentence, blank
+        line separators, ``name — percentage`` headers, indented decisive
+        explanations and the trailing remainder count.
+        """
+        rejected = [
+            _make_scored_code(
+                ["Shelter", "Repairs", "Roofing"],
+                [0.8, 0.5, 0.04],
+                [
+                    "Housing is mentioned.",
+                    "Repairs are plausible.",
+                    "No mention of roof damage; the feedback concerns rent costs.",
+                ],
+            ),
+            _make_scored_code(["Water"], [0.03], ["No reference to water access."]),
+            _make_scored_code(
+                ["Food Security"], [0.02], ["Concerns housing, not food."]
+            ),
+            *[
+                _make_scored_code([f"Other {i}"], [0.01], [f"Unrelated {i}."])
+                for i in range(5)
+            ],
+        ]
+
+        message = _combine_rejected_explanations(rejected, threshold=0.1)
+
+        assert message == (
+            "NO CODING APPLIED.\n"
+            "No code reached the 10% confidence threshold, so this record "
+            "needs human review.\n"
+            "\n"
+            "Shelter > Repairs > Roofing — 4%\n"
+            "  No mention of roof damage; the feedback concerns rent costs.\n"
+            "\n"
+            "Water — 3%\n"
+            "  No reference to water access.\n"
+            "\n"
+            "Food Security — 2%\n"
+            "  Concerns housing, not food.\n"
+            "\n"
+            "5 further codes scored below 2%."
+        )
+
+    def test_candidates_are_listed_highest_scoring_first(self):
+        """Order by score descending so the closest near-miss is read first.
+
+        The traversal appends rejections in framework order, not score
+        order, so the formatter must sort rather than rely on input order.
+        """
+        rejected = [
+            _make_scored_code(["Low"], [0.01], ["Barely related."]),
+            _make_scored_code(["High"], [0.09], ["Almost made it."]),
+        ]
+
+        message = _combine_rejected_explanations(rejected, threshold=0.1)
+
+        assert message.index("High — 9%") < message.index("Low — 1%")
+
+    def test_remainder_line_is_absent_when_three_or_fewer_rejected(self):
+        """No "further codes" line when the list is already complete.
+
+        A count line reading "0 further codes" would be noise; the absence
+        of the line is what tells the reader nothing was truncated.
+        """
+        rejected = [
+            _make_scored_code([f"Code {i}"], [0.01 * i], [f"Weak {i}."])
+            for i in range(1, 4)
+        ]
+
+        message = _combine_rejected_explanations(rejected, threshold=0.1)
+
+        assert "further code" not in message
+
+    def test_remainder_line_is_singular_for_exactly_one_extra(self):
+        """Use "1 further code", not "1 further codes", in user-facing text."""
+        rejected = [
+            _make_scored_code([f"Code {i}"], [0.09 - i / 100], [f"Weak {i}."])
+            for i in range(4)
+        ]
+
+        message = _combine_rejected_explanations(rejected, threshold=0.1)
+
+        assert message.endswith("1 further code scored below 7%.")
+
+    def test_only_the_decisive_level_explanation_is_shown(self):
+        """Show the level that caused rejection, not one line per level.
+
+        The traversal stops descending at the first sub-threshold level, so
+        the last accumulated level is both the lowest-scoring one and the
+        reason the candidate was dropped. The earlier levels passed and
+        would only add noise.
+        """
+        rejected = [
+            _make_scored_code(
+                ["Shelter", "Roofing"],
+                [0.8, 0.04],
+                ["Housing is mentioned.", "No mention of roof damage."],
+            )
+        ]
+
+        message = _combine_rejected_explanations(rejected, threshold=0.1)
+
+        assert "No mention of roof damage." in message
+        assert "Housing is mentioned." not in message
+
+    def test_confidences_render_as_whole_percentages_not_decimals(self):
+        """Percentages read naturally to non-technical EspoCRM users.
+
+        The pre-#256 format emitted raw ``0.04``-style decimals next to a
+        "Level 2" label, which users had to mentally convert.
+        """
+        rejected = [_make_scored_code(["Water"], [0.04], ["No water mentioned."])]
+
+        message = _combine_rejected_explanations(rejected, threshold=0.15)
+
+        assert "4%" in message
+        assert "15%" in message
+        assert "0.04" not in message
+
+
 class TestAssignCodesConfidenceThreshold:
     @pytest.mark.asyncio
     async def test_all_candidates_rejected_returns_null_codes_with_explanation(
@@ -1632,11 +1773,16 @@ class TestAssignCodesConfidenceThreshold:
         assert "Only loosely related." in code.explanation
 
     @pytest.mark.asyncio
-    async def test_llm_never_picks_anything_returns_plain_empty_list(self, settings):
-        """Confirm a genuine empty pick is not treated as a near-miss.
+    async def test_llm_never_picks_anything_explains_that_nothing_was_relevant(
+        self, settings
+    ):
+        """Confirm a genuine empty pick is explained rather than returned bare.
 
-        A genuine empty pick (no threshold rejection ever happened) still
-        returns a plain empty list, not a null-coded near-miss entry.
+        A genuine empty pick (no threshold rejection ever happened) used to
+        return an empty list, which left EspoCRM with nothing to show while
+        still marking the record completed (#256). It now returns a single
+        null-coded entry whose explanation distinguishes "nothing was
+        relevant" from the near-miss case.
         """
         fake_llm = FakeLLMPort(
             responses=[_make_llm_response(structured='{"selected": []}')]
@@ -1653,7 +1799,12 @@ class TestAssignCodesConfidenceThreshold:
             _make_coding_request(confidence_threshold=0.9), _future_deadline()
         )
 
-        assert result.coded_feedback_records[0].assigned_codes == ()
+        assigned = result.coded_feedback_records[0].assigned_codes
+        assert len(assigned) == 1
+        assert assigned[0].coding_level_1_id is None
+        assert assigned[0].confidence_aggregate is None
+        assert assigned[0].explanation == NO_CODING_NOTHING_RELEVANT_EXPLANATION
+        assert assigned[0].explanation.startswith("NO CODING APPLIED.\n")
 
     @pytest.mark.asyncio
     async def test_all_rejected_explanations_are_combined_highest_first(self, settings):

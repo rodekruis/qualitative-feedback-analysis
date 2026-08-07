@@ -846,9 +846,11 @@ class ApiAssignedCode(BaseModel):
     explanation: str = Field(
         description=(
             "Judge explanation combining reasoning from all hierarchy "
-            "levels. When no code cleared the confidence threshold, this "
-            "combines every rejected candidate's explanation instead, "
-            "highest-scoring first."
+            "levels. When no code was applied, this instead begins with "
+            "the line 'NO CODING APPLIED.' followed by the reason — empty "
+            "feedback text, no candidate reaching the confidence threshold "
+            "(listing the closest near misses), or nothing in the "
+            "framework being judged relevant. English only."
         )
     )
 

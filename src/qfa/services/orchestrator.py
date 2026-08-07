@@ -261,17 +261,85 @@ class _ScoredCode:
             for i, (score, expl) in enumerate(zip(self.scores, self.explanations))
         )
 
+    @property
+    def decisive_explanation(self) -> str:
+        """The judge explanation for the level that decided this candidate.
 
-def _combine_rejected_explanations(rejected: list[_ScoredCode]) -> str:
-    """Join every threshold-rejected candidate's explanation into one string.
+        ``_traverse_coding_level`` stops descending at the first level that
+        falls below the threshold, so for a *rejected* candidate the last
+        accumulated level is both its lowest-scoring one and the reason it
+        was dropped. The levels before it passed and would only add noise
+        to a message whose whole point is "why was nothing applied".
+        """
+        return self.explanations[-1]
 
-    Highest-scoring rejection first, each labelled with its hierarchy path
-    so a reader can tell which candidate an explanation belongs to.
+
+NO_CODING_LEAD = "NO CODING APPLIED."
+"""Literal first line of every explanation returned when no code is applied.
+
+EspoCRM surfaces ``assigned_codes.0.explanation`` verbatim as
+``autoCodingExplanation``, so this line is what a user reads first when a
+record comes back uncoded (#256).
+"""
+
+NO_CODING_EMPTY_CONTENT_EXPLANATION = (
+    f"{NO_CODING_LEAD}\nThe feedback text was empty, so there was nothing to code."
+)
+"""Explanation for a record whose ``content`` is empty (issue #138)."""
+
+NO_CODING_NOTHING_RELEVANT_EXPLANATION = (
+    f"{NO_CODING_LEAD}\nNo code in the framework was judged relevant to this feedback."
+)
+"""Explanation for when the LLM selected nothing at any hierarchy level."""
+
+_MAX_LISTED_REJECTIONS = 3
+"""How many near-miss candidates to spell out before collapsing to a count."""
+
+
+def _as_whole_percentage(confidence: float) -> str:
+    """Render a 0-1 confidence as a whole percentage (``0.04`` -> ``"4%"``).
+
+    Non-technical EspoCRM readers see these numbers directly, and a
+    ``0.04`` next to a "Level 2" label reads as noise where "4%" reads as
+    a judgement.
+    """
+    return f"{round(confidence * 100)}%"
+
+
+def _combine_rejected_explanations(
+    rejected: list[_ScoredCode], threshold: float
+) -> str:
+    """Explain in prose why every candidate was rejected by the threshold.
+
+    Leads with :data:`NO_CODING_LEAD` and a sentence naming the threshold,
+    then lists at most :data:`_MAX_LISTED_REJECTIONS` candidates —
+    highest-scoring (closest to being applied) first — as a
+    ``path — percentage`` header over the decisive level's explanation.
+    Any remainder collapses into a single count line rather than an
+    unbounded wall of text.
     """
     ordered = sorted(rejected, key=lambda c: c.confidence_aggregate, reverse=True)
-    return "\n\n".join(
-        f"{' > '.join(name for _, name in c.path)}:\n{c.explanation}" for c in ordered
-    )
+    listed = ordered[:_MAX_LISTED_REJECTIONS]
+
+    blocks = [
+        f"{NO_CODING_LEAD}\n"
+        f"No code reached the {_as_whole_percentage(threshold)} confidence "
+        f"threshold, so this record needs human review."
+    ]
+    blocks += [
+        f"{' > '.join(name for _, name in c.path)} — "
+        f"{_as_whole_percentage(c.confidence_aggregate)}\n"
+        f"  {c.decisive_explanation}"
+        for c in listed
+    ]
+
+    remainder = len(ordered) - len(listed)
+    if remainder:
+        noun = "code" if remainder == 1 else "codes"
+        cutoff = _as_whole_percentage(listed[-1].confidence_aggregate)
+        blocks.append(f"{remainder} further {noun} scored below {cutoff}.")
+
+    return "\n\n".join(blocks)
 
 
 @dataclass
@@ -1304,12 +1372,13 @@ class Orchestrator:
         Returns
         -------
         CodingAssignmentResult
-            Per-record leaf codes from ``classify_feedback``. If
-            ``confidence_threshold`` filters out every candidate, the record's
-            ``assigned_codes`` holds a single entry with null
-            ``coding_level_*``/``confidence_*`` fields and an ``explanation``
-            combining every rejected candidate's reasoning, highest-scoring
-            first.
+            Per-record leaf codes from ``classify_feedback``. ``assigned_codes``
+            is never empty: when no code is applied it holds exactly one entry
+            with null ``coding_level_*``/``confidence_*`` fields and an
+            ``explanation`` leading with ``NO CODING APPLIED.`` (#256). That
+            explanation lists the near misses when ``confidence_threshold``
+            filtered every candidate out, and states that nothing was relevant
+            when no code was selected at any level.
 
         Raises
         ------
@@ -1363,15 +1432,24 @@ class Orchestrator:
                 )
                 for c in top
             ]
-        elif rejected:
-            # Every candidate was filtered out by confidence_threshold: surface
-            # every rejected candidate's explanation instead of an
-            # unexplained empty list.
+        elif rejected and request.confidence_threshold is not None:
+            # Every candidate was filtered out by confidence_threshold: list
+            # the near misses instead of an unexplained empty list. Nothing
+            # can be rejected without a threshold, so the second condition
+            # only narrows the type — it never rules a real case out.
             assigned_codes = [
-                AssignedCodeModel(explanation=_combine_rejected_explanations(rejected))
+                AssignedCodeModel(
+                    explanation=_combine_rejected_explanations(
+                        rejected, request.confidence_threshold
+                    )
+                )
             ]
         else:
-            assigned_codes = []
+            # Nothing was picked at any level. Still return an entry so the
+            # caller never has to explain an empty list to a user (#256).
+            assigned_codes = [
+                AssignedCodeModel(explanation=NO_CODING_NOTHING_RELEVANT_EXPLANATION)
+            ]
 
         coded = [
             CodedFeedbackRecordModel(
