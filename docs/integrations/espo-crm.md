@@ -40,6 +40,8 @@ Each of the three calls tracks its own status field on the feedback record, movi
 | `assign-codes` | `autoCodingStatus` | `autoCodingErrorCode`, `autoCodingErrorMessage` |
 | `detect-sensitive` | `autoSensitiveStatus` | `autoSensitiveErrorCode`, `autoSensitiveErrorMessage` |
 
+The `assign-codes` step copies `assigned_codes.0.explanation` into `autoCodingExplanation`. A record can legitimately come back with no code applied while `autoCodingStatus` is still `completed` — that is a successful call, not an error, so it sets none of the error fields. The API guarantees that `assigned_codes` is never empty, so in that case `autoCodingExplanation` holds a message beginning with `NO CODING APPLIED.` explaining why. See the [REST API reference](../rest-api/index.md) for the exact wording.
+
 ### Insight saving script
 
 The insight call tracks a single status field, `autoInsightStatus`, moving through the same `processing` → `completed` (or `failed`) states, alongside `autoInsightErrorCode` and `autoInsightErrorMessage` on failure.
