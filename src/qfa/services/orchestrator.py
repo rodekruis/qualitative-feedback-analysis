@@ -2,13 +2,18 @@
 
 Assembles prompts, enforces token limits, filters prompt injection,
 manages retries with exponential backoff, and enforces deadlines.
+
+The scaffolding those last three share across use cases — anonymise a batch
+of records, derive a per-call timeout from the deadline, guard the token
+budget, run a semaphore-bounded completion — lives on the injected
+:class:`~qfa.services.llm_call_executor.LLMCallExecutor` rather than on this
+class (ADR-017).
 """
 
 import asyncio
 import json
 import logging
 import re
-import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import ClassVar, Optional, TypeVar
@@ -20,7 +25,6 @@ from qfa.domain.clustering_models import CodingTrendTable
 from qfa.domain.errors import (
     AnalysisError,
     AnalysisTimeoutError,
-    FeedbackTooLargeError,
     LLMError,
     LLMRateLimitError,
     LLMTimeoutError,
@@ -36,14 +40,12 @@ from qfa.domain.models import (
     CodingNode,
     FeedbackRecordModel,
     FeedbackRecordSummaryModel,
-    LLMResponse,
     SensitivityAnalysisRequestModel,
     SensitivityAnalysisResultModel,
     SensitivityAnalysisResultModelList,
     SingleSummaryRequestModel,
     SummaryRequestModel,
     SummaryResultModel,
-    T_Response,
 )
 from qfa.domain.ports import AnonymizationPort, EmbeddingPort, LLMPort
 from qfa.domain.sensitivity_types import SENSITIVITY_TYPE_DESCRIPTIONS
@@ -60,6 +62,7 @@ from qfa.services.hierarchical_prompts import (
     build_reduce_system_message,
     build_reduce_user_message,
 )
+from qfa.services.llm_call_executor import LLMCallExecutor, SlotTiming
 from qfa.services.prompts import (
     ANALYZE_ACTION_PROMPT,
     ANALYZE_GUARDRAILS_PROMPT,
@@ -72,7 +75,6 @@ from qfa.services.prompts import (
     build_output_language_instruction,
 )
 from qfa.settings import (
-    LLM_RETRY_BUDGET_MULTIPLIER,
     AnalyzeSettings,
     OrchestratorSettings,
 )
@@ -163,9 +165,6 @@ Output rules:
 - No extra text
 - Example output: 0.82
 """
-
-#: Minimum time (seconds) required for an LLM attempt to be viable.
-_MINIMUM_ATTEMPT_WINDOW = 10.0
 
 _JUDGE_USER_MESSAGE = "."
 
@@ -342,28 +341,17 @@ def _combine_rejected_explanations(
     return "\n\n".join(blocks)
 
 
-@dataclass
-class _SlotTiming:
-    """Split timing for one semaphore-bounded hierarchical LLM call.
-
-    ``queued_seconds`` is the time spent waiting to acquire the concurrency
-    semaphore; ``call_seconds`` is the LLM completion itself, measured only
-    *after* the slot was acquired. Keeping them apart makes the per-chunk
-    debug lines honest: a single combined duration folds queue-wait into
-    "call time", so a 5s call that waited 100s in the queue looked like a
-    110s call (and like a near-timeout when it was nothing of the sort).
-    """
-
-    queued_seconds: float = 0.0
-    call_seconds: float = 0.0
-
-
 class Orchestrator:
     """Core orchestration service for feedback analysis.
 
     Assembles prompts from feedback records, validates input,
     calls the LLM through the ``LLMPort``, and manages retries
     with exponential backoff and deadline enforcement.
+
+    Deadline arithmetic, the token-budget guard, batch anonymisation and
+    semaphore-bounded completions are delegated to the injected
+    :class:`~qfa.services.llm_call_executor.LLMCallExecutor` (``executor``
+    below), so this class holds use-case logic rather than call scaffolding.
 
     Parameters
     ----------
@@ -399,6 +387,16 @@ class Orchestrator:
         judges, and the judges in ``summarize_aggregate`` and ``summarize``.
         The per-level judge inside ``assign_codes`` deliberately stays on
         ``llm``.
+    executor : LLMCallExecutor | None
+        The shared LLM-call scaffolding (anonymise-records, deadline→timeout
+        derivation, token-budget guard, semaphore-bounded completion) this
+        orchestrator delegates to, per ADR-017. The composition root
+        (:func:`qfa.api.composition.build_orchestrator`) constructs it
+        explicitly. ``None`` (the default) builds one over the same ``llm``,
+        ``anonymizer``, ``settings``, ``llm_timeout_seconds`` and
+        ``max_total_tokens`` this constructor already received, so callers
+        that don't care about the collaborator — scripts, notebooks, and the
+        bulk of the test suite — need not thread it through.
     """
 
     # Entity types whose placeholders are NOT restored in `analyze` output.
@@ -422,6 +420,7 @@ class Orchestrator:
         analyze_settings: AnalyzeSettings | None = None,
         embedder: EmbeddingPort | None = None,
         judge_llm: LLMPort | None = None,
+        executor: LLMCallExecutor | None = None,
     ) -> None:
         self._llm = llm
         # Judge calls run on their own connection when one is configured, so
@@ -440,6 +439,18 @@ class Orchestrator:
         self._analyze_settings = analyze_settings or AnalyzeSettings()
         self._llm_timeout_seconds = llm_timeout_seconds
         self._max_total_tokens = max_total_tokens
+        # Shared LLM-call scaffolding (ADR-017): an injected collaborator, not a
+        # base class. Default-constructed from the arguments above so the
+        # composition root can inject one without every other construction site
+        # having to. Either way it is built over the *primary* llm; judge calls
+        # pass ``llm=self._judge_llm`` per call.
+        self._executor = executor or LLMCallExecutor(
+            llm=llm,
+            anonymizer=anonymizer,
+            settings=settings,
+            llm_timeout_seconds=llm_timeout_seconds,
+            max_total_tokens=max_total_tokens,
+        )
 
     @classmethod
     def _is_retained_analyze_placeholder(cls, placeholder: str) -> bool:
@@ -500,7 +511,7 @@ class Orchestrator:
             )
             anonymized_prompt, _ = self._anonymizer.anonymize(request.prompt)
 
-        analyse_timeout = self._check_deadline_and_get_timeout(deadline)
+        analyse_timeout = self._executor.check_deadline_and_get_timeout(deadline)
         analyse_response = await self._llm.complete(
             system_message=system_message,
             user_message=anonymized_user_message,
@@ -527,7 +538,7 @@ class Orchestrator:
         quality_score: float | None
         uncertainty_explanation: str
         try:
-            judge_timeout = self._check_deadline_and_get_timeout(deadline)
+            judge_timeout = self._executor.check_deadline_and_get_timeout(deadline)
             judge_system = build_analyze_judge_system_message(
                 source_text=anonymized_user_message,
                 analyst_prompt=anonymized_prompt,
@@ -623,7 +634,7 @@ class Orchestrator:
             "Starting anonymization of %d records...", len(request.feedback_records)
         )
         with timed() as anonymize_sw:
-            anonymized_records, mapping = self._anonymize_records(
+            anonymized_records, mapping = self._executor.anonymize_records(
                 request.feedback_records, anonymize
             )
             anonymized_prompt = request.prompt
@@ -704,7 +715,7 @@ class Orchestrator:
                 len(chunks),
                 len(chunk.records),
             )
-            timing = _SlotTiming()
+            timing = SlotTiming()
             with timed() as chunk_sw:
                 partial = await self._map_chunk(
                     anonymized_prompt,
@@ -772,7 +783,7 @@ class Orchestrator:
                 index: int, chunk: Chunk, partial: Optional[str]
             ) -> float | None:
                 logger.debug("starting judge chunk %d/%d", index, len(chunks))
-                timing = _SlotTiming()
+                timing = SlotTiming()
                 with timed() as judge_sw:
                     score = await self._judge_chunk(
                         anonymized_prompt,
@@ -924,80 +935,6 @@ class Orchestrator:
             coding_trends=trend_table,
         )
 
-    def _anonymize_records(
-        self,
-        records: tuple[FeedbackRecordModel, ...],
-        anonymize: bool,
-    ) -> tuple[tuple[FeedbackRecordModel, ...], dict[str, str]]:
-        """Anonymise each record's text, returning new records + merged mapping.
-
-        Metadata is left untouched (codes/dates are not PII and feed the
-        deterministic trend table). When ``anonymize`` is False, records are
-        returned unchanged with an empty mapping.
-        """
-        if not anonymize:
-            return records, {}
-        merged: dict[str, str] = {}
-        new_records: list[FeedbackRecordModel] = []
-        for record in records:
-            redacted, mapping = self._anonymizer.anonymize(record.content)
-            merged.update(mapping)
-            new_records.append(record.model_copy(update={"content": redacted}))
-        return tuple(new_records), merged
-
-    async def _bounded_complete(
-        self,
-        semaphore: asyncio.Semaphore,
-        *,
-        llm: LLMPort,
-        system_message: str,
-        user_message: str,
-        tenant_id: str,
-        response_model: type[T_Response],
-        deadline: datetime,
-        timing: _SlotTiming | None = None,
-    ) -> LLMResponse[T_Response]:
-        """Run one LLM completion on ``llm``, bounded by ``semaphore`` and the deadline.
-
-        ``semaphore`` caps how many completions run at once across the whole
-        hierarchical pipeline (map, leaf judge, reduce), so concurrency stays
-        within ``max_concurrent_chunks`` across every phase. The
-        deadline/timeout is computed *after* acquiring a slot, so a
-        completion that queued behind others still honours the remaining budget
-        (and raises ``AnalysisTimeoutError`` if the deadline passed while it
-        waited).
-
-        ``llm`` is explicit rather than always ``self._llm`` because this helper
-        serves both map/reduce and the leaf judges, which may run on different
-        connections (see ``judge_llm``). It stays a required argument so each
-        call site states which client it uses. Note the semaphore is shared
-        regardless: the bound is on total in-flight calls, not per connection.
-
-        When ``timing`` is supplied it is populated with the queue-wait and the
-        post-acquire call duration as two separate fields, so callers can log
-        them apart rather than reporting one combined number that hides how long
-        the call sat waiting for a slot.
-        """
-        queue_start = time.perf_counter()
-        async with semaphore:
-            acquired_at = time.perf_counter()
-            if timing is not None:
-                timing.queued_seconds = acquired_at - queue_start
-            # Compute the timeout only now: queue-wait already elapsed, so the
-            # per-call window reflects the budget that actually remains.
-            timeout = self._check_deadline_and_get_timeout(deadline)
-            try:
-                return await llm.complete(
-                    system_message=system_message,
-                    user_message=user_message,
-                    tenant_id=tenant_id,
-                    response_model=response_model,
-                    timeout=timeout,
-                )
-            finally:
-                if timing is not None:
-                    timing.call_seconds = time.perf_counter() - acquired_at
-
     async def _map_chunk(
         self,
         analyst_prompt: str,
@@ -1005,7 +942,7 @@ class Orchestrator:
         tenant_id: str,
         deadline: datetime,
         semaphore: asyncio.Semaphore,
-        timing: _SlotTiming | None = None,
+        timing: SlotTiming | None = None,
         output_language: str | None = None,
     ) -> str:
         """Produce one partial analysis for a chunk (no judging).
@@ -1015,7 +952,7 @@ class Orchestrator:
         partials, and deferring the judges keeps a time-starved judge phase
         from discarding the already-produced synthesis.
         """
-        response = await self._bounded_complete(
+        response = await self._executor.bounded_complete(
             semaphore,
             llm=self._llm,
             system_message=build_map_system_message(output_language),
@@ -1035,7 +972,7 @@ class Orchestrator:
         tenant_id: str,
         deadline: datetime,
         semaphore: asyncio.Semaphore,
-        timing: _SlotTiming | None = None,
+        timing: SlotTiming | None = None,
     ) -> float | None:
         """Leaf-judge a partial against its own (anonymised) chunk.
 
@@ -1059,7 +996,7 @@ class Orchestrator:
                 analyst_prompt=analyst_prompt,
                 analysis=partial,
             )
-            judge_response = await self._bounded_complete(
+            judge_response = await self._executor.bounded_complete(
                 semaphore,
                 llm=self._judge_llm,
                 system_message=judge_system,
@@ -1125,7 +1062,7 @@ class Orchestrator:
 
         async def _reduce_once(items: tuple[str, ...]) -> str:
             """Synthesise ``items`` (with the trend table) in one reduce call."""
-            response = await self._bounded_complete(
+            response = await self._executor.bounded_complete(
                 semaphore,
                 llm=self._llm,
                 system_message=system_message,
@@ -1269,7 +1206,7 @@ class Orchestrator:
             user_message
         )
 
-        timeout = self._check_deadline_and_get_timeout(deadline)
+        timeout = self._executor.check_deadline_and_get_timeout(deadline)
         response = await self._llm.complete(
             system_message=system_message,
             user_message=anonymized_user_message,
@@ -1283,7 +1220,7 @@ class Orchestrator:
             anonymized_user_message, response.structured.summary
         )
 
-        judge_timeout = self._check_deadline_and_get_timeout(deadline)
+        judge_timeout = self._executor.check_deadline_and_get_timeout(deadline)
         judge_response = await self._judge_llm.complete(
             system_message=judge_system,
             user_message=_JUDGE_USER_MESSAGE,
@@ -1338,7 +1275,7 @@ class Orchestrator:
             When the LLM returns invalid output or another non-recoverable
             error occurs.
         """
-        timeout = self._check_deadline_and_get_timeout(deadline)
+        timeout = self._executor.check_deadline_and_get_timeout(deadline)
         system_message = _DEFAULT_SUMMARIZATION_PROMPT
 
         user_message = build_feedback_record_envelope(
@@ -1363,7 +1300,7 @@ class Orchestrator:
             anonymized_user_message,
             llm_completion.structured.feedback_record_summaries[0].summary,
         )
-        judge_timeout = self._check_deadline_and_get_timeout(deadline)
+        judge_timeout = self._executor.check_deadline_and_get_timeout(deadline)
         judge_response = await self._judge_llm.complete(
             system_message=judge_system,
             user_message=_JUDGE_USER_MESSAGE,
@@ -1507,7 +1444,7 @@ class Orchestrator:
         SensitivityAnalysisResultModel
             The sensitivity analysis result for the feedback record.
         """
-        timeout = self._check_deadline_and_get_timeout(deadline)
+        timeout = self._executor.check_deadline_and_get_timeout(deadline)
         system_message = _DEFAULT_SENSITIVITY_DETECTION_PROMPT
         user_message = build_feedback_record_envelope(
             request.feedback_record, include_metadata=True, include_id=True
@@ -1539,28 +1476,6 @@ class Orchestrator:
             sensitivity_types=raw.sensitivity_types if raw else (),
             explanation=raw.explanation if raw else "No sensitive content detected.",
         )
-
-    def _check_deadline_and_get_timeout(self, deadline: datetime) -> float:
-        """Raise if the deadline has passed or too little time remains.
-
-        Return a timeout (seconds) bounded by the deadline and the
-        configured per-call limit.
-        """
-        remaining = (deadline - datetime.now(UTC)).total_seconds()
-        if remaining <= 0:
-            raise AnalysisTimeoutError("Deadline exceeded")
-        if remaining < _MINIMUM_ATTEMPT_WINDOW:
-            raise AnalysisTimeoutError(
-                f"Insufficient time remaining ({remaining:.1f}s) for an LLM attempt"
-            )
-        # A single ``LLMPort.complete`` may retry internally, spending up to
-        # ``LLM_RETRY_BUDGET_MULTIPLIER`` times this per-attempt timeout in worst
-        # case (see ``qfa.adapters.llm_client``). Divide the remaining deadline
-        # by the same factor so even a fully-retried last call finishes before
-        # the deadline. With a generous deadline the per-call cap binds first, so
-        # this only bites as the deadline approaches.
-        per_attempt_budget = remaining / LLM_RETRY_BUDGET_MULTIPLIER
-        return min(self._llm_timeout_seconds, per_attempt_budget)
 
     def _check_coding_deadline(self, deadline: datetime) -> None:
         """Raise when the coding deadline is exceeded."""
@@ -1661,7 +1576,7 @@ class Orchestrator:
             return []
 
         self._check_coding_deadline(deadline)
-        self._check_token_limit(system_message, user_message)
+        self._executor.check_token_limit(system_message, user_message)
 
         anonymized_user_message, _ = self._anonymizer.anonymize(user_message)
 
@@ -1689,7 +1604,7 @@ class Orchestrator:
             path=path,
         )
         self._check_coding_deadline(deadline)
-        self._check_token_limit(system_message, user_message)
+        self._executor.check_token_limit(system_message, user_message)
         user_message, _ = self._anonymizer.anonymize(user_message)
         response = await self._llm.complete(
             system_message=system_message,
@@ -1700,35 +1615,3 @@ class Orchestrator:
         if not 0.0 <= response.structured.score <= 1.0:
             raise AnalysisError("LLM judge returned score outside 0.0-1.0")
         return response.structured
-
-    # ------------------------------------------------------------------
-    # Token estimation
-    # ------------------------------------------------------------------
-
-    def _check_token_limit(self, system_message: str, user_message: str) -> None:
-        """Estimate total tokens and raise if over the limit.
-
-        Parameters
-        ----------
-        system_message : str
-            The assembled system message.
-        user_message : str
-            The assembled user message containing the feedback records.
-
-        Raises
-        ------
-        FeedbackTooLargeError
-            When estimated tokens exceed the configured limit.
-        """
-        assembled_text = system_message + user_message
-        estimated_tokens = len(assembled_text) // self._settings.chars_per_token
-        if estimated_tokens > self._max_total_tokens:
-            msg = (
-                f"Estimated tokens ({estimated_tokens}) exceed limit "
-                f"({self._max_total_tokens})"
-            )
-            raise FeedbackTooLargeError(
-                msg,
-                estimated_tokens=estimated_tokens,
-                limit=self._max_total_tokens,
-            )
