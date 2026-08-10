@@ -177,6 +177,7 @@ sequenceDiagram
     participant anon as AnonymizationPort
     participant emb as EmbeddingPort
     participant llm as LLMPort
+    participant judge as LLMPort (judge)
 
     route->>orch: analyze_hierarchical(request, deadline)
     orch->>anon: anonymize(each record text, prompt)
@@ -189,10 +190,10 @@ sequenceDiagram
         orch->>llm: complete(map system msg, chunk records)
         llm-->>orch: partial analysis
     end
-    note over orch,llm: leaf JUDGE and REDUCE run concurrently (one shared semaphore caps total in-flight ≤ max_concurrent_chunks)
+    note over orch,judge: leaf JUDGE and REDUCE run concurrently (one shared semaphore caps total in-flight ≤ max_concurrent_chunks, across both clients)
     par leaf judge per chunk
-        orch->>llm: complete(leaf judge msg, partial)
-        llm-->>orch: faithfulness score
+        orch->>judge: complete(leaf judge msg, partial)
+        judge-->>orch: faithfulness score
     and reduce (tree-reduce on overflow)
         orch->>llm: complete(reduce system msg, partials + trend table on final)
         llm-->>orch: synthesis
@@ -202,3 +203,9 @@ sequenceDiagram
     anon-->>orch: partially de-anonymised text
     orch-->>route: AnalysisResultModel(result, confidence, uncertainty, coding_trends)
 ```
+
+The leaf judges run on a separate `LLMPort` only when `JUDGE_LLM_MODEL` is
+configured; otherwise `judge` is the same client as `llm`. Either way map,
+judge and reduce share the one semaphore, so splitting the client does not
+raise the concurrency ceiling. See
+[The judge connection](03-components.md#the-judge-connection).

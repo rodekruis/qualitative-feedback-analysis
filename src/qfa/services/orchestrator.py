@@ -368,7 +368,8 @@ class Orchestrator:
     Parameters
     ----------
     llm : LLMPort
-        The LLM provider adapter.
+        The LLM provider adapter used for every generation call (analysis,
+        hierarchical map/reduce, summarisation, code assignment).
     anonymizer : AnonymizationPort
         The anonymisation adapter used to redact PII before LLM calls.
     settings : OrchestratorSettings
@@ -386,6 +387,18 @@ class Orchestrator:
     embedder : EmbeddingPort | None
         Optional embedder for ``mode=hierarchical``. ``None`` makes the
         hierarchical path raise :class:`AnalysisError` at request time.
+    judge_llm : LLMPort | None
+        Optional separate adapter for the LLM-as-judge quality-score calls,
+        so judging can run on a different model than generation. ``None``
+        (the default) routes judge calls to ``llm``, which is the behaviour
+        when no ``JUDGE_LLM_MODEL`` is configured. Configured via
+        ``JUDGE_LLM_*`` and resolved in
+        :func:`qfa.api.composition.resolve_judge_llm_settings`.
+
+        Four call sites use it: the ``analyze`` judge, the hierarchical leaf
+        judges, and the judges in ``summarize_aggregate`` and ``summarize``.
+        The per-level judge inside ``assign_codes`` deliberately stays on
+        ``llm``.
     """
 
     # Entity types whose placeholders are NOT restored in `analyze` output.
@@ -408,8 +421,15 @@ class Orchestrator:
         max_total_tokens: int,
         analyze_settings: AnalyzeSettings | None = None,
         embedder: EmbeddingPort | None = None,
+        judge_llm: LLMPort | None = None,
     ) -> None:
         self._llm = llm
+        # Judge calls run on their own connection when one is configured, so
+        # the generator does not grade its own output. Falling back to the
+        # primary client keeps the default (no JUDGE_LLM_MODEL) behaviour
+        # identical to before the judge connection existed, and means call
+        # sites never branch — they just use _judge_llm.
+        self._judge_llm = judge_llm if judge_llm is not None else llm
         self._anonymizer: AnonymizationPort = anonymizer
         self._embedder = embedder
         self._settings = settings
@@ -514,7 +534,7 @@ class Orchestrator:
                 analysis=analyse_response.structured,
                 output_language=request.output_language,
             )
-            judge_response = await self._llm.complete(
+            judge_response = await self._judge_llm.complete(
                 system_message=judge_system,
                 user_message=_JUDGE_USER_MESSAGE,
                 tenant_id=request.tenant_id,
@@ -929,6 +949,7 @@ class Orchestrator:
         self,
         semaphore: asyncio.Semaphore,
         *,
+        llm: LLMPort,
         system_message: str,
         user_message: str,
         tenant_id: str,
@@ -936,7 +957,7 @@ class Orchestrator:
         deadline: datetime,
         timing: _SlotTiming | None = None,
     ) -> LLMResponse[T_Response]:
-        """Run one LLM completion, bounded by ``semaphore`` and the deadline.
+        """Run one LLM completion on ``llm``, bounded by ``semaphore`` and the deadline.
 
         ``semaphore`` caps how many completions run at once across the whole
         hierarchical pipeline (map, leaf judge, reduce), so concurrency stays
@@ -945,6 +966,12 @@ class Orchestrator:
         completion that queued behind others still honours the remaining budget
         (and raises ``AnalysisTimeoutError`` if the deadline passed while it
         waited).
+
+        ``llm`` is explicit rather than always ``self._llm`` because this helper
+        serves both map/reduce and the leaf judges, which may run on different
+        connections (see ``judge_llm``). It stays a required argument so each
+        call site states which client it uses. Note the semaphore is shared
+        regardless: the bound is on total in-flight calls, not per connection.
 
         When ``timing`` is supplied it is populated with the queue-wait and the
         post-acquire call duration as two separate fields, so callers can log
@@ -960,7 +987,7 @@ class Orchestrator:
             # per-call window reflects the budget that actually remains.
             timeout = self._check_deadline_and_get_timeout(deadline)
             try:
-                return await self._llm.complete(
+                return await llm.complete(
                     system_message=system_message,
                     user_message=user_message,
                     tenant_id=tenant_id,
@@ -990,6 +1017,7 @@ class Orchestrator:
         """
         response = await self._bounded_complete(
             semaphore,
+            llm=self._llm,
             system_message=build_map_system_message(output_language),
             user_message=build_analyze_user_message(analyst_prompt, records),
             tenant_id=tenant_id,
@@ -1033,6 +1061,7 @@ class Orchestrator:
             )
             judge_response = await self._bounded_complete(
                 semaphore,
+                llm=self._judge_llm,
                 system_message=judge_system,
                 user_message=_JUDGE_USER_MESSAGE,
                 tenant_id=tenant_id,
@@ -1098,6 +1127,7 @@ class Orchestrator:
             """Synthesise ``items`` (with the trend table) in one reduce call."""
             response = await self._bounded_complete(
                 semaphore,
+                llm=self._llm,
                 system_message=system_message,
                 user_message=build_reduce_user_message(
                     analyst_prompt=analyst_prompt,
@@ -1254,7 +1284,7 @@ class Orchestrator:
         )
 
         judge_timeout = self._check_deadline_and_get_timeout(deadline)
-        judge_response = await self._llm.complete(
+        judge_response = await self._judge_llm.complete(
             system_message=judge_system,
             user_message=_JUDGE_USER_MESSAGE,
             tenant_id=request.tenant_id,
@@ -1334,7 +1364,7 @@ class Orchestrator:
             llm_completion.structured.feedback_record_summaries[0].summary,
         )
         judge_timeout = self._check_deadline_and_get_timeout(deadline)
-        judge_response = await self._llm.complete(
+        judge_response = await self._judge_llm.complete(
             system_message=judge_system,
             user_message=_JUDGE_USER_MESSAGE,
             tenant_id=request.tenant_id,

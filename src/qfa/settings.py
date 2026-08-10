@@ -84,6 +84,48 @@ class LLMSettings(BaseSettings):
     chars_per_token: int = 4
 
 
+class JudgeLLMSettings(BaseSettings):
+    """Optional per-field overrides for the LLM connection used by judge calls.
+
+    Judge calls (the LLM-as-judge quality scores attached to analyse and
+    summarise results) can run on a different model than generation, so the
+    generator does not grade its own homework. This block configures that
+    second connection.
+
+    **Every field is optional and defaults to ``None``, which means "inherit
+    the corresponding value from the primary** :class:`LLMSettings` **".**
+    Deliberately *not* a subclass of :class:`LLMSettings`: that would inherit
+    ``api_key``'s required-ness and force a second credential — and therefore a
+    new Key Vault secret in every environment — before a judge model could be
+    tried at all. Here the credential is inherited by default, so enabling a
+    judge on the same Azure resource needs one non-secret variable::
+
+        JUDGE_LLM_MODEL=azure_ai/mistral-medium-2505
+        JUDGE_LLM_API_BASE=https://<resource>.services.ai.azure.com/models
+
+    ``model`` is the switch: while it is unset (or empty) no judge client is
+    built at all and judge calls keep using the primary client, so the default
+    configuration behaves exactly as it did before this block existed. The
+    remaining overrides only take effect once ``model`` is set.
+
+    Note that ``None`` (unset) and ``""`` (explicitly set to empty) differ for
+    the string fields: the former inherits the primary's value, the latter
+    overrides it to empty. ``timeout_seconds``, ``max_total_tokens`` and
+    ``chars_per_token`` are always taken from the primary settings and have no
+    judge-side override.
+
+    Resolution against the primary settings happens once at composition, in
+    :func:`qfa.api.composition.resolve_judge_llm_settings`.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="JUDGE_LLM_")
+
+    model: str | None = None
+    api_key: SecretStr | None = None
+    api_base: str | None = None
+    api_version: str | None = None
+
+
 class EmbeddingSettings(BaseSettings):
     """Configuration for the self-hosted embedding model.
 
@@ -323,6 +365,7 @@ class AppSettings(BaseSettings):
     """Root configuration composing all sub-settings groups."""
 
     llm: LLMSettings = Field(default_factory=LLMSettings)
+    judge_llm: JudgeLLMSettings = Field(default_factory=JudgeLLMSettings)
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
     orchestrator: OrchestratorSettings = Field(default_factory=OrchestratorSettings)
     analyze: AnalyzeSettings = Field(default_factory=AnalyzeSettings)

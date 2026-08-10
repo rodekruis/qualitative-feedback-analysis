@@ -22,7 +22,11 @@ from qfa.adapters.env_auth import EnvironmentAuthLookupAdapter
 from qfa.adapters.llm_client import LiteLLMClient
 from qfa.adapters.tracking_llm import TrackingLLMAdapter
 from qfa.adapters.usage_repository import SqlAlchemyUsageRepository
-from qfa.api.composition import build_embedder, build_orchestrator
+from qfa.api.composition import (
+    build_embedder,
+    build_orchestrator,
+    resolve_judge_llm_settings,
+)
 from qfa.api.routes import router
 from qfa.api.routes_admin import router as auth_router
 from qfa.api.routes_usage import router as usage_router
@@ -599,9 +603,11 @@ def _make_lifespan(llm_factory: LLMFactory):
 
         1. Load ``AppSettings`` and configure logging — must happen
            before anything that might log.
-        2. Build the base ``LLMPort`` via the closed-over factory.
-        3. Create the async DB engine and wrap the base LLM in
-           ``TrackingLLMAdapter`` so every call attempt is recorded.
+        2. Build the base ``LLMPort`` via the closed-over factory, plus a
+           second one for judge calls when ``JUDGE_LLM_MODEL`` is set.
+        3. Create the async DB engine and wrap *both* base LLMs in
+           ``TrackingLLMAdapter`` so every call attempt is recorded —
+           an unwrapped judge client would omit judge calls from usage.
         4. Build the embedder here (rather than inside
            ``build_orchestrator``) so its construction is visible in
            startup logs before any traffic arrives.
@@ -627,6 +633,13 @@ def _make_lifespan(llm_factory: LLMFactory):
 
         base_llm = llm_factory(settings.llm)
 
+        # A judge connection is optional: unset JUDGE_LLM_MODEL resolves to
+        # None and judge calls stay on the primary client.
+        judge_settings = resolve_judge_llm_settings(settings.llm, settings.judge_llm)
+        base_judge_llm = (
+            llm_factory(judge_settings) if judge_settings is not None else None
+        )
+
         engine = create_async_engine_from_settings(settings.db)
         session_factory = create_session_factory(engine)
         usage_repo = SqlAlchemyUsageRepository(session_factory)
@@ -634,7 +647,19 @@ def _make_lifespan(llm_factory: LLMFactory):
         llm_for_orch: LLMPort = TrackingLLMAdapter(
             inner=base_llm, usage_repo=usage_repo
         )
+        # The judge client is wrapped identically — an unwrapped one would
+        # silently drop every judge call from usage and cost accounting.
+        judge_for_orch: LLMPort | None = (
+            TrackingLLMAdapter(inner=base_judge_llm, usage_repo=usage_repo)
+            if base_judge_llm is not None
+            else None
+        )
         logger.info("Usage tracking enabled (per-attempt, per-operation)")
+        if judge_settings is not None:
+            logger.info(
+                "Judge calls use a separate LLM connection (model=%s)",
+                judge_settings.model,
+            )
 
         # Build the embedder here (not inside the factory) so we can log
         # its construction at startup — operators rely on these lines to
@@ -647,7 +672,12 @@ def _make_lifespan(llm_factory: LLMFactory):
         if embedder is not None:
             logger.info("Embedding model ready (hierarchical analysis available)")
 
-        orchestrator = build_orchestrator(settings, llm=llm_for_orch, embedder=embedder)
+        orchestrator = build_orchestrator(
+            settings,
+            llm=llm_for_orch,
+            judge_llm=judge_for_orch,
+            embedder=embedder,
+        )
 
         app.state.auth_orchestrator = AuthOrchestrator(
             auth_lookup_ports=[

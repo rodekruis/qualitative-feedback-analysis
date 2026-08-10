@@ -24,6 +24,11 @@ and does not read API keys. Callers that need those concerns
 via the ``llm`` keyword argument. Callers that don't (scripts,
 notebooks, ad-hoc evaluation harnesses) call ``build_orchestrator``
 with no overrides and get an Orchestrator over a plain LiteLLM client.
+
+The orchestrator may hold *two* LLM connections: the primary one used for
+generation, and an optional second one used only for judge calls, configured
+via ``JUDGE_LLM_*``. :func:`resolve_judge_llm_settings` applies the
+judge/primary inheritance rule here, once, before either client is built.
 """
 
 from __future__ import annotations
@@ -38,9 +43,57 @@ from qfa.adapters.embedding import build_onnx_embedder
 from qfa.adapters.presidio_anonymizer import PresidioAnonymizer
 from qfa.domain.ports import EmbeddingPort, LLMPort
 from qfa.services.orchestrator import Orchestrator
-from qfa.settings import AppSettings, EmbeddingSettings
+from qfa.settings import AppSettings, EmbeddingSettings, JudgeLLMSettings, LLMSettings
 
 logger = logging.getLogger(__name__)
+
+
+def resolve_judge_llm_settings(
+    primary: LLMSettings, judge: JudgeLLMSettings
+) -> LLMSettings | None:
+    """Resolve the judge connection settings against the primary ones.
+
+    This is the *single* place the judge/primary inheritance rule is applied,
+    so no ``judge.x or primary.x`` fallback has to be repeated at any call
+    site. It runs before either client is built.
+
+    The rule is per field: an explicitly set ``JUDGE_LLM_*`` field overrides
+    only itself, every unset field (``None``) keeps the primary's value —
+    including ``api_key``, which is why enabling a judge model needs no new
+    secret. ``timeout_seconds``, ``max_total_tokens`` and ``chars_per_token``
+    have no judge-side override and always come from ``primary``.
+
+    Parameters
+    ----------
+    primary : LLMSettings
+        The primary (generation) LLM connection settings, i.e. ``LLM_*``.
+    judge : JudgeLLMSettings
+        The judge overrides, i.e. ``JUDGE_LLM_*``.
+
+    Returns
+    -------
+    LLMSettings | None
+        ``None`` when ``judge.model`` is unset or empty — meaning no separate
+        judge connection is configured and judge calls should keep using the
+        primary client. Otherwise a complete :class:`LLMSettings` describing
+        the judge connection, ready to hand to ``build_llm_client``.
+    """
+    if not judge.model:
+        return None
+
+    # Only fields the operator actually set appear in the update, so an unset
+    # field falls through to the primary's value untouched.
+    overrides = {
+        field: value
+        for field, value in (
+            ("model", judge.model),
+            ("api_key", judge.api_key),
+            ("api_base", judge.api_base),
+            ("api_version", judge.api_version),
+        )
+        if value is not None
+    }
+    return primary.model_copy(update=overrides)
 
 
 def build_embedder(settings: EmbeddingSettings) -> EmbeddingPort | None:
@@ -108,6 +161,7 @@ def build_orchestrator(
     settings: AppSettings,
     *,
     llm: LLMPort | None = None,
+    judge_llm: LLMPort | None = None,
     embedder: EmbeddingPort | None = None,
 ) -> Orchestrator:
     """Construct an :class:`Orchestrator` from application settings.
@@ -132,6 +186,17 @@ def build_orchestrator(
         for offline runs. ``None`` (the default) builds a plain
         ``LiteLLMClient`` — suitable for one-shot scripts that don't
         need DB-backed tracking.
+    judge_llm : LLMPort | None, optional
+        Pre-built LLM port for judge calls, mirroring ``llm``. The FastAPI
+        lifespan passes a second ``TrackingLLMAdapter`` here so judge usage
+        and cost are recorded too. ``None`` (the default) builds one from
+        ``settings.judge_llm`` resolved against ``settings.llm`` — and stays
+        ``None`` when ``JUDGE_LLM_MODEL`` is unset, in which case the
+        orchestrator runs judge calls on the primary client, exactly as it
+        did before the judge connection existed. Note this is resolved
+        independently of ``llm``: a caller that injects a fake primary and
+        has ``JUDGE_LLM_MODEL`` set in the environment should inject a judge
+        fake too, or it will get a real judge client alongside the fake.
     embedder : EmbeddingPort | None, optional
         Pre-built embedder to use instead of constructing one from
         ``settings.embedding``. Pass an explicit value when the caller
@@ -158,11 +223,21 @@ def build_orchestrator(
 
         llm = build_llm_client(settings.llm)
 
+    if judge_llm is None:
+        judge_settings = resolve_judge_llm_settings(settings.llm, settings.judge_llm)
+        # None here means no judge model is configured; the orchestrator then
+        # routes judge calls to the primary client.
+        if judge_settings is not None:
+            from qfa.api.app import build_llm_client  # local import, as above
+
+            judge_llm = build_llm_client(judge_settings)
+
     if embedder is None:
         embedder = build_embedder(settings.embedding)
 
     return Orchestrator(
         llm=llm,
+        judge_llm=judge_llm,
         anonymizer=PresidioAnonymizer(),
         settings=settings.orchestrator,
         analyze_settings=settings.analyze,

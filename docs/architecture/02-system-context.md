@@ -25,6 +25,7 @@ flowchart LR
     kv -.->|secret references<br/>at startup| appsvc
     app -->|asyncpg + AAD token| pg
     app -->|tenacity retry,<br/>anonymised input| litellm
+    app -->|judge calls only<br/>(optional 2nd connection)| litellm
     litellm -.->|model-prefix routing| azureoai
     litellm -.->|model-prefix routing| azureai
     litellm -.->|model-prefix routing| other
@@ -35,7 +36,7 @@ flowchart LR
 | System | Direction | Notes |
 |---|---|---|
 | **EspoCRM** | inbound | The primary integration. Calls the analyze/summarize/assign-codes endpoints via small server-side scripts in `scripts/espo_crm/`. Auth: bearer token (see [API key management](../operations/auth-management.md)). |
-| **LiteLLM** | outbound | A library that routes to the actual LLM provider based on the model string prefix (`azure/…`, `azure_ai/…`, `openai/…`, `anthropic/…`). Configured by `LLM_MODEL`, `LLM_API_KEY`, `LLM_API_BASE`, `LLM_API_VERSION`. |
+| **LiteLLM** | outbound | A library that routes to the actual LLM provider based on the model string prefix (`azure/…`, `azure_ai/…`, `openai/…`, `anthropic/…`). Configured by `LLM_MODEL`, `LLM_API_KEY`, `LLM_API_BASE`, `LLM_API_VERSION`. A second, optional connection configured by `JUDGE_LLM_*` serves judge calls only; unset fields inherit from `LLM_*`, so it may differ from the primary in model and route alone. |
 | **PostgreSQL** | outbound | Stores one row per LLM call for cost / token / latency reporting (table `llm_calls`). Auth is either password-based (`DB_AUTH_MODE=password`) or AAD token (`DB_AUTH_MODE=entra`). |
 | **Presidio + spaCy** | in-process | PII detection runs inside the app container — no network hop. |
 | **Azure App Service** | hosting | Runs the container. The `entrypoint.sh` script runs DB migrations before `uvicorn` binds (multi-replica-safe via Postgres advisory lock). |
