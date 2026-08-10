@@ -19,12 +19,13 @@ to them, the options considered, and the reasoning behind the chosen approach.
 | [007](007-separate-api-schemas.md) | Separate API schemas from domain models | Accepted |
 | [009](009-dedicated-state-storage-rg.md) | Dedicated resource group for Terraform state storage | Accepted |
 | [010](010-shared-container-registry.md) | Shared container registry across environments | Accepted |
-| [011](011-drop-orchestrator-port.md) | Drop swappable-orchestrator requirement and remove OrchestratorPort | Accepted (supersedes [008](obsolete/008-keep-orchestrator-port.md)) |
+| [011](011-drop-orchestrator-port.md) | Drop swappable-orchestrator requirement and remove OrchestratorPort | Accepted (supersedes [008](obsolete/008-keep-orchestrator-port.md); decision 3 superseded by [017](017-orchestrator-composition-only.md)) |
 | [012](012-postgres-mi-as-admin.md) | App Service managed identity as PostgreSQL Entra admin | Accepted |
 | [013](013-keys-in-db-and-environment-vars.md) | Store API keys in both the database and environment variables | Accepted |
 | [014](014-embedding-port-and-self-hosted-model.md) | EmbeddingPort and self-hosted BGE-M3 ONNX embedding model | Accepted |
 | [015](015-hdbscan-clustering.md) | Cluster feedback records with HDBSCAN | Accepted |
 | [016](016-guard-auto-deploy-on-publish.md) | Guard auto-deploy on release publish to the latest version only | Accepted |
+| [017](017-orchestrator-composition-only.md) | Decompose the Orchestrator by composition only | Accepted (supersedes decision 3 of [011](011-drop-orchestrator-port.md)) |
 
 ## Obsolete
 
@@ -50,5 +51,6 @@ to them, the options considered, and the reasoning behind the chosen approach.
 014-embedding-port-and-self-hosted-model
 015-hdbscan-clustering
 016-guard-auto-deploy-on-publish
+017-orchestrator-composition-only
 obsolete/008-keep-orchestrator-port
 ```
