@@ -200,3 +200,10 @@ config
 # See https://github.com/mariushelf/copier-devcontainer
 /.devcontainer/
 /.envrc
+graphify-out/
+
+# Agent scratch: the agentic-engineering-loop's build stage writes its plan and
+# working notes to tasks/ and expects the repo to ignore them. Left tracked,
+# they leak into PRs and can fail the loop's own clean-tree gate.
+tasks/
+

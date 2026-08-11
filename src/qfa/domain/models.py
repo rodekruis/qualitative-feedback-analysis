@@ -71,6 +71,15 @@ class FeedbackRecordModel(BaseModel):
         default_factory=FeedbackRecordMetadataModel,
         description="Metadata key-value pairs associated with the feedback record.",
     )
+    url_id: str = Field(
+        default="",
+        description=(
+            "EspoCRM URL path segment for this record, used to build a "
+            "hyperlink back to it — see AnalysisRequestModel/"
+            "SummaryRequestModel.espo_feedback_base_url. Empty when the "
+            "caller doesn't need hyperlinking for this request."
+        ),
+    )
 
 
 class CodingNode(BaseModel):
@@ -139,6 +148,16 @@ class AnalysisRequestModel(BaseModel):
             " (currently ``week``)."
         ),
     )
+    espo_feedback_base_url: str | None = Field(
+        default=None,
+        description=(
+            "Base URL for the EspoCRM feedback record detail view. When"
+            " set, mentions of a feedback record's `id` in the analysis"
+            " output are rewritten as a markdown hyperlink"
+            " `[id](espo_feedback_base_url/url_id)`, using that record's"
+            " `url_id`. Records with no `url_id` are left as plain text."
+        ),
+    )
 
 
 class AnalysisResultModel(BaseModel):
@@ -194,6 +213,16 @@ class SummaryRequestModel(BaseModel):
         description="Optional extra instruction appended to the default summarize prompt.",
     )
     tenant_id: str = Field(description="Tenant identifier injected by the auth layer.")
+    espo_feedback_base_url: str | None = Field(
+        default=None,
+        description=(
+            "Base URL for the EspoCRM feedback record detail view. When"
+            " set, mentions of a feedback record's `id` in the aggregate"
+            " summary are rewritten as a markdown hyperlink"
+            " `[id](espo_feedback_base_url/url_id)`, using that record's"
+            " `url_id`. Records with no `url_id` are left as plain text."
+        ),
+    )
 
 
 class SingleSummaryRequestModel(BaseModel):

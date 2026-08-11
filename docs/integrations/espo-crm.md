@@ -40,6 +40,8 @@ Each of the three calls tracks its own status field on the feedback record, movi
 | `assign-codes` | `autoCodingStatus` | `autoCodingErrorCode`, `autoCodingErrorMessage` |
 | `detect-sensitive` | `autoSensitiveStatus` | `autoSensitiveErrorCode`, `autoSensitiveErrorMessage` |
 
+The `assign-codes` step copies `assigned_codes.0.explanation` into `autoCodingExplanation`. A record can legitimately come back with no code applied while `autoCodingStatus` is still `completed` — that is a successful call, not an error, so it sets none of the error fields. The API guarantees that `assigned_codes` is never empty, so in that case `autoCodingExplanation` holds a message beginning with `NO CODING APPLIED.` explaining why. See the [REST API reference](../rest-api/index.md) for the exact wording.
+
 ### Insight saving script
 
 The insight call tracks a single status field, `autoInsightStatus`, moving through the same `processing` → `completed` (or `failed`) states, alongside `autoInsightErrorCode` and `autoInsightErrorMessage` on failure.
@@ -79,6 +81,10 @@ These CSV files serve as the versioning mechanism: whenever a flowchart is updat
 The `-bulk` responses include a backend-rendered `pretty_output` field — a human-readable text block (quality dots, title, summary) ready to write straight into an EspoCRM field. The formatting lives entirely in the backend, so the scripts do not assemble it.
 
 Its `QUALITY`/`TITLE`/`SUMMARY` headers are localized to the request's `output_language` (the same field that drives the title/summary language). Supported languages are English, French, Spanish, Arabic, Russian, Dutch, and Ukrainian; any other or absent value falls back to English headers.
+
+### Hyperlinking feedback records in insight text
+
+When the `motherPayload` for `analyze-bulk` or `summarize-bulk` includes `espo_feedback_base_url` and each feedback record's `url_id`, any mention of a record's `id` in the generated insight text (analysis or summary) is rewritten as a markdown hyperlink back to that record in EspoCRM — see [REST API § Hyperlinking feedback records](../rest-api/index.md#hyperlinking-feedback-records) for the exact mechanics. This flows through `pretty_output` automatically, so a markdown-aware EspoCRM field renders it as a clickable link with no extra flowchart step. Older flowcharts that don't send these fields are unaffected — the output stays plain text.
 
 ## Authentication
 

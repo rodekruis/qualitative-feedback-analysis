@@ -5,7 +5,9 @@ manages retries with exponential backoff, and enforces deadlines.
 """
 
 import asyncio
+import json
 import logging
+import re
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -199,6 +201,47 @@ def _build_judge_system_message(source_text: str, summary: str) -> str:
     return _JUDGE_PROMPT.format(source_text=source_text, summary=summary)
 
 
+def _json_escape_mapping(mapping: dict[str, str]) -> dict[str, str]:
+    """Escape mapping values for safe substitution into a JSON string.
+
+    ``AnonymizationPort.deanonymize`` does a raw substring replace, so
+    restoring a PII value that contains a quote, backslash, or control
+    character (e.g. a newline in an address) directly into an
+    already-serialized JSON string corrupts it. Escaping each value the
+    way ``json.dumps`` would keeps the result valid JSON.
+    """
+    return {
+        placeholder: json.dumps(value)[1:-1] for placeholder, value in mapping.items()
+    }
+
+
+def _hyperlink_form_references(
+    text: str,
+    feedback_records: tuple[FeedbackRecordModel, ...],
+    espo_feedback_base_url: str | None,
+) -> str:
+    """Rewrite feedback-record-id mentions in ``text`` as EspoCRM hyperlinks.
+
+    When the analysis/summary text names a feedback record by its ``id``
+    (e.g. ``Form-07762``), rewrite that mention as
+    ``[Form-07762](espo_feedback_base_url/url_id)`` so it renders as a
+    clickable link back to the record in EspoCRM. No-op when
+    ``espo_feedback_base_url`` is not provided; per-record no-op when that
+    record has no ``url_id``. Matches on word boundaries so one record's id
+    cannot match as a substring of another's (e.g. ``Form-1`` vs
+    ``Form-10``).
+    """
+    if not espo_feedback_base_url:
+        return text
+    base = espo_feedback_base_url.rstrip("/")
+    for record in feedback_records:
+        if not record.url_id:
+            continue
+        link = f"[{record.id}]({base}/{record.url_id})"
+        text = re.sub(rf"\b{re.escape(record.id)}\b", link, text)
+    return text
+
+
 @dataclass
 class _CodeCandidate:
     path: list[tuple[str, str]]  # (id, name) per level, root → selected node
@@ -210,16 +253,70 @@ class _CodeCandidate:
         return " > ".join(name for _, name in self.path)
 
 
-def _combine_rejected_explanations(rejected: list[_CodeCandidate]) -> str:
-    """Join every threshold-rejected candidate's explanation into one string.
+NO_CODING_LEAD = "NO CODING APPLIED."
+"""Literal first line of every explanation returned when no code is applied.
 
-    Highest-scoring rejection first, each labelled with its hierarchy path
-    so a reader can tell which candidate an explanation belongs to.
+EspoCRM surfaces ``assigned_codes.0.explanation`` verbatim as
+``autoCodingExplanation``, so this line is what a user reads first when a
+record comes back uncoded (#256).
+"""
+
+NO_CODING_EMPTY_CONTENT_EXPLANATION = (
+    f"{NO_CODING_LEAD}\nThe feedback text was empty, so there was nothing to code."
+)
+"""Explanation for a record whose ``content`` is empty (issue #138)."""
+
+NO_CODING_NOTHING_RELEVANT_EXPLANATION = (
+    f"{NO_CODING_LEAD}\nNo code in the framework was judged relevant to this feedback."
+)
+"""Explanation for when the classifier selected nothing at all."""
+
+_MAX_LISTED_REJECTIONS = 3
+"""How many near-miss candidates to spell out before collapsing to a count."""
+
+
+def _as_whole_percentage(confidence: float) -> str:
+    """Render a 0-1 confidence as a whole percentage (``0.04`` -> ``"4%"``).
+
+    Non-technical EspoCRM readers see these numbers directly, and a
+    ``0.04`` next to a code label reads as noise where "4%" reads as a
+    judgement.
+    """
+    return f"{round(confidence * 100)}%"
+
+
+def _combine_rejected_explanations(
+    rejected: list[_CodeCandidate], threshold: float
+) -> str:
+    """Explain in prose why every candidate was rejected by the threshold.
+
+    Leads with :data:`NO_CODING_LEAD` and a sentence naming the threshold,
+    then lists at most :data:`_MAX_LISTED_REJECTIONS` candidates —
+    highest-scoring (closest to being applied) first — as a
+    ``path — percentage`` header over the classifier's own explanation for
+    that candidate. Any remainder collapses into a single count line rather
+    than an unbounded wall of text.
     """
     ordered = sorted(rejected, key=lambda c: c.confidence, reverse=True)
-    return "\n\n".join(
-        f"{c.label} ({c.confidence:.2f}): {c.explanation}" for c in ordered
-    )
+    listed = ordered[:_MAX_LISTED_REJECTIONS]
+
+    blocks = [
+        f"{NO_CODING_LEAD}\n"
+        f"No code reached the {_as_whole_percentage(threshold)} confidence "
+        f"threshold, so this record needs human review."
+    ]
+    blocks += [
+        f"{c.label} — {_as_whole_percentage(c.confidence)}\n  {c.explanation}"
+        for c in listed
+    ]
+
+    remainder = len(ordered) - len(listed)
+    if remainder:
+        noun = "code" if remainder == 1 else "codes"
+        cutoff = _as_whole_percentage(listed[-1].confidence)
+        blocks.append(f"{remainder} further {noun} scored below {cutoff}.")
+
+    return "\n\n".join(blocks)
 
 
 @dataclass
@@ -248,7 +345,8 @@ class Orchestrator:
     Parameters
     ----------
     llm : LLMPort
-        The LLM provider adapter.
+        The LLM provider adapter used for every generation call (analysis,
+        hierarchical map/reduce, summarisation, code assignment).
     anonymizer : AnonymizationPort
         The anonymisation adapter used to redact PII before LLM calls.
     settings : OrchestratorSettings
@@ -266,6 +364,18 @@ class Orchestrator:
     embedder : EmbeddingPort | None
         Optional embedder for ``mode=hierarchical``. ``None`` makes the
         hierarchical path raise :class:`AnalysisError` at request time.
+    judge_llm : LLMPort | None
+        Optional separate adapter for the LLM-as-judge quality-score calls,
+        so judging can run on a different model than generation. ``None``
+        (the default) routes judge calls to ``llm``, which is the behaviour
+        when no ``JUDGE_LLM_MODEL`` is configured. Configured via
+        ``JUDGE_LLM_*`` and resolved in
+        :func:`qfa.api.composition.resolve_judge_llm_settings`.
+
+        Four call sites use it: the ``analyze`` judge, the hierarchical leaf
+        judges, and the judges in ``summarize_aggregate`` and ``summarize``.
+        The per-level judge inside ``assign_codes`` deliberately stays on
+        ``llm``.
     """
 
     # Entity types whose placeholders are NOT restored in `analyze` output.
@@ -288,8 +398,15 @@ class Orchestrator:
         max_total_tokens: int,
         analyze_settings: AnalyzeSettings | None = None,
         embedder: EmbeddingPort | None = None,
+        judge_llm: LLMPort | None = None,
     ) -> None:
         self._llm = llm
+        # Judge calls run on their own connection when one is configured, so
+        # the generator does not grade its own output. Falling back to the
+        # primary client keeps the default (no JUDGE_LLM_MODEL) behaviour
+        # identical to before the judge connection existed, and means call
+        # sites never branch — they just use _judge_llm.
+        self._judge_llm = judge_llm if judge_llm is not None else llm
         self._anonymizer: AnonymizationPort = anonymizer
         self._embedder = embedder
         self._settings = settings
@@ -380,6 +497,10 @@ class Orchestrator:
                 analysis_text, restorable_mapping
             )
 
+        analysis_text = _hyperlink_form_references(
+            analysis_text, request.feedback_records, request.espo_feedback_base_url
+        )
+
         quality_score: float | None
         uncertainty_explanation: str
         try:
@@ -390,7 +511,7 @@ class Orchestrator:
                 analysis=analyse_response.structured,
                 output_language=request.output_language,
             )
-            judge_response = await self._llm.complete(
+            judge_response = await self._judge_llm.complete(
                 system_message=judge_system,
                 user_message=_JUDGE_USER_MESSAGE,
                 tenant_id=request.tenant_id,
@@ -748,6 +869,10 @@ class Orchestrator:
             }
             analysis_text = self._anonymizer.deanonymize(analysis_text, restorable)
 
+        analysis_text = _hyperlink_form_references(
+            analysis_text, request.feedback_records, request.espo_feedback_base_url
+        )
+
         # One-line breakdown so a single log line answers "where did the time
         # go?" without scrolling. The total is the sum of the timed phases
         # (de-anonymisation and trend-table building are sub-millisecond).
@@ -801,6 +926,7 @@ class Orchestrator:
         self,
         semaphore: asyncio.Semaphore,
         *,
+        llm: LLMPort,
         system_message: str,
         user_message: str,
         tenant_id: str,
@@ -808,7 +934,7 @@ class Orchestrator:
         deadline: datetime,
         timing: _SlotTiming | None = None,
     ) -> LLMResponse[T_Response]:
-        """Run one LLM completion, bounded by ``semaphore`` and the deadline.
+        """Run one LLM completion on ``llm``, bounded by ``semaphore`` and the deadline.
 
         ``semaphore`` caps how many completions run at once across the whole
         hierarchical pipeline (map, leaf judge, reduce), so concurrency stays
@@ -817,6 +943,12 @@ class Orchestrator:
         completion that queued behind others still honours the remaining budget
         (and raises ``AnalysisTimeoutError`` if the deadline passed while it
         waited).
+
+        ``llm`` is explicit rather than always ``self._llm`` because this helper
+        serves both map/reduce and the leaf judges, which may run on different
+        connections (see ``judge_llm``). It stays a required argument so each
+        call site states which client it uses. Note the semaphore is shared
+        regardless: the bound is on total in-flight calls, not per connection.
 
         When ``timing`` is supplied it is populated with the queue-wait and the
         post-acquire call duration as two separate fields, so callers can log
@@ -832,7 +964,7 @@ class Orchestrator:
             # per-call window reflects the budget that actually remains.
             timeout = self._check_deadline_and_get_timeout(deadline)
             try:
-                return await self._llm.complete(
+                return await llm.complete(
                     system_message=system_message,
                     user_message=user_message,
                     tenant_id=tenant_id,
@@ -862,6 +994,7 @@ class Orchestrator:
         """
         response = await self._bounded_complete(
             semaphore,
+            llm=self._llm,
             system_message=build_map_system_message(output_language),
             user_message=build_analyze_user_message(analyst_prompt, records),
             tenant_id=tenant_id,
@@ -905,6 +1038,7 @@ class Orchestrator:
             )
             judge_response = await self._bounded_complete(
                 semaphore,
+                llm=self._judge_llm,
                 system_message=judge_system,
                 user_message=_JUDGE_USER_MESSAGE,
                 tenant_id=tenant_id,
@@ -970,6 +1104,7 @@ class Orchestrator:
             """Synthesise ``items`` (with the trend table) in one reduce call."""
             response = await self._bounded_complete(
                 semaphore,
+                llm=self._llm,
                 system_message=system_message,
                 user_message=build_reduce_user_message(
                     analyst_prompt=analyst_prompt,
@@ -1126,7 +1261,7 @@ class Orchestrator:
         )
 
         judge_timeout = self._check_deadline_and_get_timeout(deadline)
-        judge_response = await self._llm.complete(
+        judge_response = await self._judge_llm.complete(
             system_message=judge_system,
             user_message=_JUDGE_USER_MESSAGE,
             tenant_id=request.tenant_id,
@@ -1140,10 +1275,19 @@ class Orchestrator:
 
         return_model_as_string = response.structured.model_dump_json()
         unanonymized_return_model_as_string = self._anonymizer.deanonymize(
-            return_model_as_string, anonymization_mapping
+            return_model_as_string, _json_escape_mapping(anonymization_mapping)
         )
-        return AggregateSummaryResultModel.model_validate_json(
+        result = AggregateSummaryResultModel.model_validate_json(
             unanonymized_return_model_as_string
+        )
+        return result.model_copy(
+            update={
+                "summary": _hyperlink_form_references(
+                    result.summary,
+                    request.feedback_records,
+                    request.espo_feedback_base_url,
+                )
+            }
         )
 
     async def summarize(
@@ -1197,7 +1341,7 @@ class Orchestrator:
             llm_completion.structured.feedback_record_summaries[0].summary,
         )
         judge_timeout = self._check_deadline_and_get_timeout(deadline)
-        judge_response = await self._llm.complete(
+        judge_response = await self._judge_llm.complete(
             system_message=judge_system,
             user_message=_JUDGE_USER_MESSAGE,
             tenant_id=request.tenant_id,
@@ -1208,7 +1352,7 @@ class Orchestrator:
 
         return_model_as_string = llm_completion.structured.model_dump_json()
         unanonymized_return_model_as_string = self._anonymizer.deanonymize(
-            return_model_as_string, anonymization_mapping
+            return_model_as_string, _json_escape_mapping(anonymization_mapping)
         )
         result = SummaryResultModel.model_validate_json(
             unanonymized_return_model_as_string
@@ -1240,12 +1384,14 @@ class Orchestrator:
         Returns
         -------
         CodingAssignmentResult
-            Per-record codes ordered by confidence, highest first. If
-            ``confidence_threshold`` filters out every candidate, the record's
-            ``assigned_codes`` holds a single entry with null
-            ``coding_level_*``/``confidence_*`` fields and an ``explanation``
-            combining every rejected candidate's reasoning, highest-scoring
-            first.
+            Per-record codes ordered by confidence, highest first.
+            ``assigned_codes`` is never empty: when no code is applied it
+            holds exactly one entry with null ``coding_level_*``/
+            ``confidence_*`` fields and an ``explanation`` leading with
+            ``NO CODING APPLIED.`` (#256). That explanation lists the near
+            misses when ``confidence_threshold`` filtered every candidate
+            out, and states that nothing was relevant when the classifier
+            selected nothing at all.
 
         Raises
         ------
@@ -1267,9 +1413,17 @@ class Orchestrator:
         )
 
         if not user_message:
+            # No options to select from (empty coding framework): this is
+            # equivalent to a genuine empty pick, so explain it the same way
+            # rather than returning a bare empty list (#256).
             coded = [
                 CodedFeedbackRecordModel(
-                    feedback_record_id=feedback_record.id, assigned_codes=()
+                    feedback_record_id=feedback_record.id,
+                    assigned_codes=(
+                        AssignedCodeModel(
+                            explanation=NO_CODING_NOTHING_RELEVANT_EXPLANATION
+                        ),
+                    ),
                 )
             ]
             return CodingAssignmentResultModel(coded_feedback_records=tuple(coded))
@@ -1329,15 +1483,24 @@ class Orchestrator:
                 )
                 for c in top
             ]
-        elif rejected:
-            # Every candidate was filtered out by confidence_threshold: surface
-            # every rejected candidate's explanation instead of an
-            # unexplained empty list.
+        elif rejected and request.confidence_threshold is not None:
+            # Every candidate was filtered out by confidence_threshold: list
+            # the near misses instead of an unexplained empty list. Nothing
+            # can be rejected without a threshold, so the second condition
+            # only narrows the type — it never rules a real case out.
             assigned_codes = [
-                AssignedCodeModel(explanation=_combine_rejected_explanations(rejected))
+                AssignedCodeModel(
+                    explanation=_combine_rejected_explanations(
+                        rejected, request.confidence_threshold
+                    )
+                )
             ]
         else:
-            assigned_codes = []
+            # Nothing was picked at any level. Still return an entry so the
+            # caller never has to explain an empty list to a user (#256).
+            assigned_codes = [
+                AssignedCodeModel(explanation=NO_CODING_NOTHING_RELEVANT_EXPLANATION)
+            ]
 
         coded = [
             CodedFeedbackRecordModel(
@@ -1385,7 +1548,7 @@ class Orchestrator:
 
         return_model_as_string = response.structured.model_dump_json()
         unanonymized_return_model_as_string = self._anonymizer.deanonymize(
-            return_model_as_string, anonymization_mapping
+            return_model_as_string, _json_escape_mapping(anonymization_mapping)
         )
         structured = SensitivityAnalysisResultModelList.model_validate_json(
             unanonymized_return_model_as_string

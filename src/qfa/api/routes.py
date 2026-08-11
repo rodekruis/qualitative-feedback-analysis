@@ -44,7 +44,10 @@ from qfa.domain.models import (
     TenantApiKey,
 )
 from qfa.domain.usage_models import CallContext, Operation
-from qfa.services.orchestrator import Orchestrator
+from qfa.services.orchestrator import (
+    NO_CODING_EMPTY_CONTENT_EXPLANATION,
+    Orchestrator,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -185,7 +188,7 @@ async def analyze_bulk(
         populated for both modes whenever metadata permits; ``confidence``
         is populated only for ``hierarchical`` mode.
     """
-    deadline = datetime.now(UTC) + timedelta(seconds=600)
+    deadline = datetime.now(UTC) + timedelta(seconds=1200)
 
     records = _drop_empty_records(body.feedback_records)
     if not records:
@@ -206,6 +209,7 @@ async def analyze_bulk(
             id=doc.id,
             content=doc.content,
             metadata=_to_domain_metadata(doc.metadata),
+            url_id=doc.url_id,
         )
         for doc in records
     )
@@ -217,6 +221,7 @@ async def analyze_bulk(
         tenant_id=tenant.tenant_id,
         mode=body.mode,
         period=body.period,
+        espo_feedback_base_url=body.espo_feedback_base_url,
     )
 
     if body.mode == "hierarchical":
@@ -283,7 +288,7 @@ async def summarize_bulk(
     ApiSummarizeBulkResponse
         A single summary with themes ordered by frequency across all feedback records.
     """
-    deadline = datetime.now(UTC) + timedelta(seconds=120)
+    deadline = datetime.now(UTC) + timedelta(seconds=240)
 
     records = _drop_empty_records(body.feedback_records)
     if not records:
@@ -300,6 +305,7 @@ async def summarize_bulk(
             id=record.id,
             content=record.content,
             metadata=_to_domain_metadata(record.metadata),
+            url_id=record.url_id,
         )
         for record in records
     )
@@ -307,6 +313,7 @@ async def summarize_bulk(
         feedback_records=feedback_records,
         output_language=body.output_language,
         tenant_id=tenant.tenant_id,
+        espo_feedback_base_url=body.espo_feedback_base_url,
     )
 
     result = await orchestrator.summarize_bulk(domain_request, deadline)
@@ -355,7 +362,7 @@ async def summarize(
     ApiSummarizeResponse
         The per-feedback-record titles and summaries.
     """
-    deadline = datetime.now(UTC) + timedelta(seconds=120)
+    deadline = datetime.now(UTC) + timedelta(seconds=240)
 
     if not body.feedback_record.content:
         # Nothing to summarize: return a 200 empty summary that still
@@ -401,23 +408,40 @@ async def assign_codes(
     orchestrator: Orchestrator = Depends(get_orchestrator),
     _scope: CallContext = Depends(call_scope_for(Operation.ASSIGN_CODES)),
 ) -> ApiAssignCodesResponse:
-    """Assign codes via iterative LLM picks at each level of the framework.
+    """Assign codes with a single one-shot LLM call over the flattened framework.
 
-    If the record's ``content`` is empty the response is a 200 with an empty
-    ``assigned_codes`` list, returned without an LLM call (issue #138).
+    The full coding framework is flattened into one option per node (at
+    every depth, not just leaves) and the classifier picks the best-fitting
+    path(s) directly, self-reporting a confidence score for each — no
+    separate per-level pick/judge calls.
 
-    If every candidate is filtered out by ``confidence_threshold``, the
-    response is a 200 with a single ``assigned_codes`` entry whose
+    ``assigned_codes`` is never an empty list. Whenever no code is applied
+    the response is a 200 carrying exactly one entry whose
     ``coding_level_*``/``confidence_*`` fields are null and whose
-    ``explanation`` combines every rejected candidate's explanation,
-    highest-scoring first.
+    ``explanation`` begins with the line ``NO CODING APPLIED.`` followed by
+    the reason (#256), so a client always has something to show the user:
+
+    - the record's ``content`` is empty — returned without an LLM call
+      (issue #138);
+    - every candidate was filtered out by ``confidence_threshold`` — the
+      explanation names the threshold and lists the closest near misses,
+      highest-scoring first;
+    - the classifier selected nothing at all — the explanation states that
+      nothing in the framework was judged relevant.
+
+    The explanation is English only, regardless of the feedback language.
     """
-    deadline = datetime.now(UTC) + timedelta(seconds=120)
+    deadline = datetime.now(UTC) + timedelta(seconds=240)
 
     if not body.feedback_record.content:
-        # No content to code: return a 200 empty assignment without an LLM
-        # call (issue #138).
-        return ApiAssignCodesResponse(assigned_codes=[])
+        # No content to code: return a 200 without an LLM call (issue #138),
+        # explaining the empty text rather than returning a bare empty list
+        # the client would have to interpret (#256).
+        return ApiAssignCodesResponse(
+            assigned_codes=[
+                ApiAssignedCode(explanation=NO_CODING_EMPTY_CONTENT_EXPLANATION)
+            ]
+        )
 
     domain_request = CodingAssignmentRequestModel(
         feedback_record=FeedbackRecordModel(
@@ -493,7 +517,7 @@ async def detect_sensitive(
     ApiDetectSensitiveResponse
         Sensitivity rating for each submitted feedback item.
     """
-    deadline = datetime.now(UTC) + timedelta(seconds=120)
+    deadline = datetime.now(UTC) + timedelta(seconds=240)
 
     if not body.feedback_record.content:
         # No content to evaluate: report not-sensitive without an LLM call

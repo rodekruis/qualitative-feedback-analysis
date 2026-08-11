@@ -4,6 +4,18 @@
 
 Accepted (supersedes [ADR-008](obsolete/008-keep-orchestrator-port.md))
 
+```{note}
+Decision 3 below is superseded by
+[ADR-017](017-orchestrator-composition-only.md): `StandardOrchestrator` —
+later renamed `Orchestrator` — is decomposed into per-use-case services and
+removed, so API dependencies and tests type against the single use-case
+service they need instead. Decisions 1 and 2 stand: there is still no
+swappable orchestrator and no `OrchestratorPort`. ADR-017 takes the
+"extract it into its own class when it grows enough" path anticipated by
+Option B below — not the alternative-orchestrator scenario under *When to
+revisit*, which would call for a driving port and has not materialised.
+```
+
 ## Context
 
 [ADR-008](obsolete/008-keep-orchestrator-port.md) decided to keep
@@ -47,7 +59,9 @@ depends on `OrchestratorPort`.
 1. Drop the swappable-orchestrator requirement from the README.
 2. Remove `OrchestratorPort` from `qfa.domain.ports`.
 3. Type API dependencies and tests against `StandardOrchestrator`
-   directly.
+   directly. *(Superseded by
+   [ADR-017](017-orchestrator-composition-only.md) — see the note under
+   Status.)*
 
 ## Options Considered
 

@@ -386,6 +386,16 @@ class ApiFeedbackRecordInput(BaseModel):
         default_factory=ApiFeedbackRecordMetadata,
         description="Metadata associated with the feedback record.",
     )
+    url_id: str = Field(
+        default="",
+        description=(
+            "EspoCRM URL path segment for this record. When the request"
+            " also sets `espo_feedback_base_url`, mentions of this"
+            " record's `id` in the output are hyperlinked to"
+            " `{espo_feedback_base_url}/{url_id}`. Omit if hyperlinking"
+            " isn't needed."
+        ),
+    )
 
 
 ##### Bulk requests Base Model #####
@@ -414,6 +424,18 @@ class ApiBulkInferenceRequestBase(BaseModel, ABC):
             "small set of languages (en, fr, es, ar, ru, nl, uk); for any other "
             "language the analysis text is still written in the requested "
             "language but those headers fall back to English."
+        ),
+    )
+
+    espo_feedback_base_url: str | None = Field(
+        default=None,
+        description=(
+            "Base URL for the EspoCRM feedback record detail view. When"
+            " set, mentions of a feedback record's `id` in the output are"
+            " rewritten as a markdown hyperlink"
+            " `[id](espo_feedback_base_url/url_id)`, using that record's"
+            " `url_id`. Records with no `url_id` are left as plain text."
+            " Omit to disable hyperlinking."
         ),
     )
 
@@ -824,10 +846,12 @@ class ApiAssignedCode(BaseModel):
     )
     explanation: str = Field(
         description=(
-            "The classifier's reasoning for this selection. When no code "
-            "cleared the confidence threshold, this combines every "
-            "rejected candidate's explanation instead, highest-scoring "
-            "first."
+            "The classifier's self-reported reasoning for this selection. "
+            "When no code was applied, this instead begins with the line "
+            "'NO CODING APPLIED.' followed by the reason — empty feedback "
+            "text, no candidate reaching the confidence threshold (listing "
+            "the closest near misses, highest-scoring first), or nothing "
+            "in the framework being judged relevant. English only."
         )
     )
 

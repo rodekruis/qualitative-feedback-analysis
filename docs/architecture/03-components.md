@@ -13,6 +13,9 @@ flowchart LR
         tracking["TrackingLLMAdapter<br/>(decorator)"]
         litellm["LiteLLMClient"]
         tracking --> litellm
+        judgetracking["TrackingLLMAdapter<br/>(decorator)"]
+        judgelitellm["LiteLLMClient<br/>(judge — optional)"]
+        judgetracking --> judgelitellm
     end
 
     subgraph anonport["AnonymizationPort"]
@@ -23,20 +26,62 @@ flowchart LR
         sqlrepo["SqlAlchemyUsageRepository"]
     end
 
-    orch -->|complete| tracking
+    orch -->|complete<br/>generation| tracking
+    orch -->|complete<br/>judge| judgetracking
     orch -->|anonymize / deanonymize| presidio
     tracking -.->|record_call| sqlrepo
+    judgetracking -.->|record_call| sqlrepo
     routes_usage["/v1/usage<br/>route"] -->|get_usage_stats_for_one_tenant| sqlrepo
 ```
 
+The judge branch is **optional and off by default**: unless `JUDGE_LLM_MODEL`
+is set, the orchestrator's judge reference points at the same client as its
+generation reference, and the diagram collapses to a single `LLMPort` edge.
+
 | Port | Adapter(s) | What it owns |
 |---|---|---|
-| {py:class}`~qfa.domain.ports.LLMPort` | {py:class}`~qfa.adapters.llm_client.LiteLLMClient`, always wrapped by {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter` | One method, `complete(system_message, user_message, tenant_id, response_model, timeout)`. Returns `LLMResponse[T_Response]` carrying the structured output plus token counts and cost. |
+| {py:class}`~qfa.domain.ports.LLMPort` | {py:class}`~qfa.adapters.llm_client.LiteLLMClient`, always wrapped by {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter` | One method, `complete(system_message, user_message, tenant_id, response_model, timeout)`. Returns `LLMResponse[T_Response]` carrying the structured output plus token counts and cost. The orchestrator holds **one or two** of these — see [The judge connection](#the-judge-connection). |
 | {py:class}`~qfa.domain.ports.AnonymizationPort` | {py:class}`~qfa.adapters.presidio_anonymizer.PresidioAnonymizer` | `anonymize(text) -> (text, mapping)` and `deanonymize(text, mapping) -> text`. The mapping is held in memory for the request lifetime, then discarded. |
 | {py:class}`~qfa.domain.ports.UsageRepositoryPort` | {py:class}`~qfa.adapters.usage_repository.SqlAlchemyUsageRepository` | Writes one {py:class}`~qfa.domain.usage_models.LLMCallRecord` per LLM call (from {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter`) and reads aggregate stats (from the `/v1/usage` routes). |
 | {py:class}`~qfa.domain.ports.EmbeddingPort` | {py:class}`~qfa.adapters.embedding.BgeM3OnnxEmbedder` | One method, `embed(texts) -> vectors`. Multilingual dense embeddings (BGE-M3 ONNX-int8, dense-1024-d, in-process, CPU-only). Used only by `mode=hierarchical`. See [ADR-014](../adr/014-embedding-port-and-self-hosted-model.md). |
 
 The tracking decorator is the only place hex's "stack adapters at the composition root" earns its keep — {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter` is itself an {py:class}`~qfa.domain.ports.LLMPort`, so the orchestrator never knows whether tracking is on.
+
+### The judge connection
+
+The orchestrator can hold a **second** {py:class}`~qfa.domain.ports.LLMPort`
+used only for LLM-as-judge quality scores, so the model that writes an output
+is not the model that grades it. It is configured by `JUDGE_LLM_*` (see the
+[settings reference](../operations/settings-reference.md)) and off by default:
+with `JUDGE_LLM_MODEL` unset the judge reference simply *is* the generation
+client, and behaviour is identical to a single-client deployment.
+
+Four call sites use the judge connection — the `analyze` judge, the
+hierarchical leaf judges, and the judges in `summarize` and
+`summarize_aggregate`. Everything else (analysis, hierarchical map and reduce,
+summary generation, and the whole of `assign_codes` including its per-level
+judge) stays on the generation client.
+
+Three properties are worth knowing:
+
+- **Per-field inheritance, resolved once.**
+  {py:func}`~qfa.api.composition.resolve_judge_llm_settings` merges the
+  `JUDGE_LLM_*` overrides onto the primary `LLMSettings` before either client
+  is built, so no `judge or primary` fallback is repeated at a call site. An
+  unset judge field keeps the primary's value — including the API key, which
+  is why adding a judge needs no new secret.
+- **Both clients are tracked identically.** The lifespan wraps the judge client
+  in its own {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter` over the
+  *same* usage repository. An unwrapped judge client would work fine and
+  silently record nothing.
+- **One concurrency bound, not two.** In the hierarchical pipeline the shared
+  semaphore caps total in-flight calls across map, leaf judge and reduce,
+  regardless of which client serves them.
+
+This is [ADR-004](../adr/004-single-llm-client.md) applied, not contradicted:
+one client *class* serves every provider, and provider/model selection happens
+at startup in the composition root. Two {py:class}`~qfa.adapters.llm_client.LiteLLMClient`
+instances differing by model and base URL are exactly that pattern.
 
 Two pieces of the hierarchical (`mode=hierarchical`) path are deterministic
 in-process computation with no external dependency, so they live in
@@ -70,7 +115,7 @@ Each method is pure use-case logic — no scope or correlation plumbing. `call_s
 
 `qfa.api.app.create_app()` builds the FastAPI instance; the `lifespan` context manager wires the dependency graph at startup. The wiring splits into two halves:
 
-- **Infrastructure half** (in `qfa.api.app`): load settings, build the base LLM client, create the async DB engine, wrap the LLM in {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter` for usage tracking, set up the auth adapter, build the embedder (logging its construction so operators see it on startup).
+- **Infrastructure half** (in `qfa.api.app`): load settings, build the base LLM client — plus a second one for judge calls when `JUDGE_LLM_MODEL` is set — create the async DB engine, wrap each LLM in {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter` for usage tracking, set up the auth adapter, build the embedder (logging its construction so operators see it on startup).
 - **Domain half** (in {py:func}`qfa.api.composition.build_orchestrator`): given settings plus the already-wrapped LLM and embedder, construct the {py:class}`~qfa.adapters.presidio_anonymizer.PresidioAnonymizer`, register custom model prices with LiteLLM, and assemble the {py:class}`~qfa.services.orchestrator.Orchestrator`.
 
 The lifespan then attaches the orchestrator, API keys, and the usage repository to `app.state` for the request lifecycle to read.
@@ -84,7 +129,7 @@ from qfa.settings import AppSettings
 orchestrator = build_orchestrator(AppSettings())
 ```
 
-`build_orchestrator` is intentionally pure with respect to the API server's runtime concerns: it does not touch the database, does not wrap the LLM in `TrackingLLMAdapter`, and does not read auth keys. The FastAPI lifespan keeps those concerns and passes the wrapped LLM in via the `llm=` keyword. See `notebooks/analyze_corpus.ipynb` for an example.
+`build_orchestrator` is intentionally pure with respect to the API server's runtime concerns: it does not touch the database, does not wrap the LLM in `TrackingLLMAdapter`, and does not read auth keys. The FastAPI lifespan keeps those concerns and passes the wrapped clients in via the `llm=` and `judge_llm=` keywords. See `notebooks/analyze_corpus.ipynb` for an example.
 
 This is the **only** place that knows about concrete adapter classes. Routes and dependencies read from `app.state` only.
 

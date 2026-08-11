@@ -240,7 +240,7 @@ class LiteLLMClient(LLMPort):
         user_message: str,
         tenant_id: str,
         response_model: type[T_Response],
-        timeout: float = 20.0,
+        timeout: float = 40.0,
     ) -> LLMResponse[T_Response]:
         """Send a completion request via LiteLLM, retrying transient failures.
 

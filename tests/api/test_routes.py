@@ -11,6 +11,7 @@ from qfa.domain.errors import (
     FeedbackTooLargeError,
 )
 from qfa.domain.models import FeedbackRecordSummaryModel
+from qfa.services.orchestrator import NO_CODING_EMPTY_CONTENT_EXPLANATION
 
 from .conftest import FAKE_API_KEY, FakeOrchestrator
 
@@ -599,7 +600,12 @@ class TestEmptyFeedbackContent:
 
     @pytest.mark.asyncio
     async def test_assign_codes_empty_content_returns_no_codes(self, client):
-        """Single /assign-codes with blank content returns 200 with no codes."""
+        """Blank content returns 200 with one explained, null-coded entry.
+
+        Before #256 this returned a bare empty list, so EspoCRM marked the
+        record completed with nothing to display. The entry now carries an
+        explanation naming the empty feedback text as the reason.
+        """
         body = {
             "feedback_record": {"id": "doc-1", "content": ""},
             "coding_levels": {
@@ -622,7 +628,12 @@ class TestEmptyFeedbackContent:
         }
         resp = await client.post("/v1/assign-codes", json=body, headers=_auth_header())
         assert resp.status_code == 200
-        assert resp.json()["assigned_codes"] == []
+        assigned = resp.json()["assigned_codes"]
+        assert len(assigned) == 1
+        assert assigned[0]["coding_level_1_id"] is None
+        assert assigned[0]["confidence_aggregate"] is None
+        assert assigned[0]["explanation"] == NO_CODING_EMPTY_CONTENT_EXPLANATION
+        assert assigned[0]["explanation"].startswith("NO CODING APPLIED.\n")
 
     @pytest.mark.asyncio
     async def test_detect_sensitive_empty_content_returns_not_sensitive(self, client):
@@ -639,6 +650,58 @@ class TestEmptyFeedbackContent:
         assert body["id"] == "doc-1"
         assert body["is_sensitive"] is False
         assert body["sensitivity_types"] == []
+
+
+# ------------------------------------------------------------------ #
+# EspoCRM hyperlink fields (url_id / espo_feedback_base_url)
+# ------------------------------------------------------------------ #
+
+
+class TestFeedbackUrlFieldsForwarded:
+    """``url_id`` and ``espo_feedback_base_url`` reach the domain request unchanged."""
+
+    @pytest.mark.asyncio
+    async def test_analyze_bulk_forwards_url_id_and_base_url(self, client, test_app):
+        docs = [
+            {
+                "id": "Form-07762",
+                "content": "Real feedback",
+                "url_id": "abc123",
+            }
+        ]
+        resp = await client.post(
+            "/v1/analyze-bulk",
+            json=_valid_body(feedback_records=docs)
+            | {"espo_feedback_base_url": "https://espo.example.com/feedback"},
+            headers=_auth_header(),
+        )
+        assert resp.status_code == 200
+        forwarded = test_app.state.orchestrator.last_analyze_request
+        assert forwarded.feedback_records[0].url_id == "abc123"
+        assert forwarded.espo_feedback_base_url == "https://espo.example.com/feedback"
+
+    @pytest.mark.asyncio
+    async def test_summarize_bulk_forwards_url_id_and_base_url(self, client, test_app):
+        records = [
+            {
+                "id": "Form-07762",
+                "content": "Real feedback",
+                "metadata": _summary_metadata(),
+                "url_id": "abc123",
+            }
+        ]
+        resp = await client.post(
+            "/v1/summarize-bulk",
+            json={
+                "feedback_records": records,
+                "espo_feedback_base_url": "https://espo.example.com/feedback",
+            },
+            headers=_auth_header(),
+        )
+        assert resp.status_code == 200
+        forwarded = test_app.state.orchestrator.last_summarize_bulk_request
+        assert forwarded.feedback_records[0].url_id == "abc123"
+        assert forwarded.espo_feedback_base_url == "https://espo.example.com/feedback"
 
 
 # ------------------------------------------------------------------ #
