@@ -7,6 +7,7 @@ import pytest
 from qfa.domain.errors import (
     AnalysisError,
     LLMError,
+    LLMResponseParseError,
 )
 from qfa.domain.models import (
     AggregateSummaryResultModel,
@@ -1724,6 +1725,64 @@ class TestAssignCodesOneShot:
         assigned = result.coded_feedback_records[0].assigned_codes
         assert len(assigned) == 1
         assert assigned[0].explanation == "Fits."
+
+    @pytest.mark.asyncio
+    async def test_malformed_llm_response_degrades_to_nothing_selected(self, settings):
+        """A response that fails schema validation is a genuine empty pick.
+
+        Not a request failure — matching the old per-level pick step's
+        tolerance for malformed LLM output.
+        """
+        root_codes = [CodingNode(id="code-1", name="Code A")]
+        fake_llm = FakeLLMPort(
+            errors=[LLMResponseParseError("LLM response validation failed")]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        result = await orch.assign_codes(
+            _make_coding_request(root_codes=root_codes), _future_deadline()
+        )
+
+        assigned = result.coded_feedback_records[0].assigned_codes
+        assert len(assigned) == 1
+        assert assigned[0].coding_level_1_id is None
+        assert assigned[0].explanation == NO_CODING_NOTHING_RELEVANT_EXPLANATION
+
+    @pytest.mark.asyncio
+    async def test_out_of_range_confidence_raises_analysis_error(self, settings):
+        """An out-of-range confidence is a domain error, not a generic LLM failure."""
+        root_codes = [CodingNode(id="code-1", name="Code A")]
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(
+                    structured=CodingResponse(
+                        selected=[
+                            CodeSelection(
+                                index=0, confidence=1.5, explanation="Too confident."
+                            )
+                        ]
+                    )
+                ),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        with pytest.raises(AnalysisError, match=r"outside 0\.0-1\.0"):
+            await orch.assign_codes(
+                _make_coding_request(root_codes=root_codes), _future_deadline()
+            )
 
 
 def _make_code_candidate(names, confidence, explanation):

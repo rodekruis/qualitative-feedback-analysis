@@ -86,11 +86,15 @@ def test_system_prompt_limits_explanation_to_two_sentences():
     assert "two sentences" in SYSTEM_PROMPT
 
 
-def test_code_selection_confidence_is_bounded_zero_to_one():
-    """Schema-level bounds reject an out-of-range score without a manual check."""
+def test_code_selection_confidence_has_no_schema_level_bound():
+    """No ge/le constraint.
+
+    An out-of-range score must reach the orchestrator as a parsed value (not
+    a validation failure) so it can raise the domain-specific
+    ``AnalysisError`` instead of a generic parse error.
+    """
     field = CodeSelection.model_fields["confidence"]
-    assert field.metadata[0].ge == 0.0
-    assert field.metadata[1].le == 1.0
+    assert field.metadata == []
 
 
 def test_code_selection_explanation_field_documents_the_limit():

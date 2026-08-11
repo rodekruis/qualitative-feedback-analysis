@@ -49,9 +49,7 @@ class CodeSelection(BaseModel):
         description="Index of the selected option from the numbered <options> list."
     )
     confidence: float = Field(
-        ge=0.0,
-        le=1.0,
-        description="Confidence that this path fits the feedback record (0-1).",
+        description="Confidence that this path fits the feedback record (0-1)."
     )
     explanation: str = Field(
         description="Reason for this selection, in at most two sentences."

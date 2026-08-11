@@ -23,6 +23,7 @@ from qfa.domain.errors import (
     LLMContentPolicyViolationError,
     LLMError,
     LLMRateLimitError,
+    LLMResponseParseError,
     LLMTimeoutError,
 )
 from qfa.domain.models import LLMResponse, T_Response
@@ -339,7 +340,7 @@ class LiteLLMClient(LLMPort):
                     T_Response, response_model.model_validate_json(content)
                 )
             except ValidationError as exc:
-                raise LLMError(
+                raise LLMResponseParseError(
                     f"LLM response validation failed for {response_model.__name__}: {exc}"
                 ) from exc
         elif issubclass(response_model, str):

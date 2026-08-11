@@ -23,6 +23,7 @@ from qfa.domain.errors import (
     FeedbackTooLargeError,
     LLMError,
     LLMRateLimitError,
+    LLMResponseParseError,
     LLMTimeoutError,
 )
 from qfa.domain.models import (
@@ -1397,12 +1398,16 @@ class Orchestrator:
         ------
         AnalysisTimeoutError
             When ``deadline`` is reached before every record is processed.
+        AnalysisError
+            When the classifier returns a confidence outside 0.0-1.0.
         LLMTimeoutError
             When a single LLM completion exceeds the configured timeout.
         LLMRateLimitError
             When the LLM provider returns rate limiting.
         LLMError
-            For other LLM provider failures.
+            For other LLM provider failures. A response that fails schema
+            validation (``LLMResponseParseError``) is treated as an empty
+            pick instead of being raised.
         """
         feedback_record = request.feedback_record
         self._check_coding_deadline(deadline)
@@ -1432,23 +1437,32 @@ class Orchestrator:
         anonymized_user_message, _ = self._anonymizer.anonymize(user_message)
         timeout = self._check_deadline_and_get_timeout(deadline)
 
-        response = await self._llm.complete(
-            system_message=system_message,
-            user_message=anonymized_user_message,
-            tenant_id=request.tenant_id,
-            response_model=CodingResponse,
-            timeout=timeout,
-        )
+        try:
+            response = await self._llm.complete(
+                system_message=system_message,
+                user_message=anonymized_user_message,
+                tenant_id=request.tenant_id,
+                response_model=CodingResponse,
+                timeout=timeout,
+            )
+            selections = response.structured.selected
+        except LLMResponseParseError:
+            # Malformed/unparseable model output is treated as a genuine
+            # empty pick rather than a request failure, matching the old
+            # per-level pick step's tolerance for bad LLM output.
+            selections = []
 
         candidates: list[_CodeCandidate] = []
         rejected: list[_CodeCandidate] = []
         seen_indices: set[int] = set()
-        for selection in response.structured.selected:
+        for selection in selections:
             if not 0 <= selection.index < len(options):
                 continue
             if selection.index in seen_indices:
                 continue
             seen_indices.add(selection.index)
+            if not 0.0 <= selection.confidence <= 1.0:
+                raise AnalysisError("LLM returned confidence outside 0.0-1.0")
             candidate = _CodeCandidate(
                 path=list(options[selection.index].path),
                 confidence=selection.confidence,
