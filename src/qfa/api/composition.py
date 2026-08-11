@@ -25,6 +25,12 @@ via the ``llm`` keyword argument. Callers that don't (scripts,
 notebooks, ad-hoc evaluation harnesses) call ``build_orchestrator``
 with no overrides and get an Orchestrator over a plain LiteLLM client.
 
+Besides the driven adapters, this module also builds the
+:class:`~qfa.services.llm_call_executor.LLMCallExecutor` the orchestrator
+delegates its LLM-call scaffolding to. Per ADR-017 that collaborator is
+*injected*, not self-constructed, so the composition root stays the one
+place where the object graph is assembled.
+
 The orchestrator may hold *two* LLM connections: the primary one used for
 generation, and an optional second one used only for judge calls, configured
 via ``JUDGE_LLM_*``. :func:`resolve_judge_llm_settings` applies the
@@ -42,6 +48,7 @@ import yaml
 from qfa.adapters.embedding import build_onnx_embedder
 from qfa.adapters.presidio_anonymizer import PresidioAnonymizer
 from qfa.domain.ports import EmbeddingPort, LLMPort
+from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.services.orchestrator import Orchestrator
 from qfa.settings import AppSettings, EmbeddingSettings, JudgeLLMSettings, LLMSettings
 
@@ -235,13 +242,28 @@ def build_orchestrator(
     if embedder is None:
         embedder = build_embedder(settings.embedding)
 
+    anonymizer = PresidioAnonymizer()
+    # The shared LLM-call scaffolding is an injected collaborator, not a base
+    # class (ADR-017), so the composition root builds it here and hands it to
+    # the service rather than letting the service construct its own. It is
+    # built over the *primary* LLM connection; judge calls override the client
+    # per call.
+    executor = LLMCallExecutor(
+        llm=llm,
+        anonymizer=anonymizer,
+        settings=settings.orchestrator,
+        llm_timeout_seconds=settings.llm.timeout_seconds,
+        max_total_tokens=settings.llm.max_total_tokens,
+    )
+
     return Orchestrator(
         llm=llm,
         judge_llm=judge_llm,
-        anonymizer=PresidioAnonymizer(),
+        anonymizer=anonymizer,
         settings=settings.orchestrator,
         analyze_settings=settings.analyze,
         llm_timeout_seconds=settings.llm.timeout_seconds,
         max_total_tokens=settings.llm.max_total_tokens,
         embedder=embedder,
+        executor=executor,
     )

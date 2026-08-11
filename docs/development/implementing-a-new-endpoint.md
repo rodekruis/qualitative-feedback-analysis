@@ -119,7 +119,7 @@ async def classify(
     deadline: datetime,
 ) -> ClassificationResultModel:
     """Assign one label to a feedback record via a single LLM call."""
-    timeout = self._check_deadline_and_get_timeout(deadline)
+    timeout = self._executor.check_deadline_and_get_timeout(deadline)
     user_message = build_feedback_record_envelope(
         request.feedback_record, include_metadata=False
     )
@@ -151,6 +151,18 @@ most endpoints need none. The anonymisation round-trip and the
 deadline/timeout/retry policy are documented under
 [cross-cutting concerns](../architecture/04-crosscutting.md) — match them
 rather than reinventing them.
+
+The scaffolding those concerns need is not written per use case. `self._executor`
+is a {py:class}`~qfa.services.llm_call_executor.LLMCallExecutor` — an injected
+collaborator (never a base class, see
+[ADR-017](../adr/017-orchestrator-composition-only.md)) that owns four shared
+behaviours: `check_deadline_and_get_timeout` (step 1 above),
+`anonymize_records` (step 2 for a whole batch), `check_token_limit` (the
+pre-flight budget guard, used by the multi-call coding path), and
+`bounded_complete` (a semaphore-bounded completion for concurrent pipelines).
+Call them; do not re-derive the deadline arithmetic or the token estimate in a
+new method. Anything a use case needs that is genuinely shared belongs on the
+executor too — or in a further collaborator, never in a shared base class.
 
 ## 4. Add the API schemas
 

@@ -10,10 +10,10 @@ from qfa.domain.models import TenantApiKey
 #: Worst-case retry budget of a single ``LLMPort.complete`` call, expressed as a
 #: multiple of the per-attempt ``timeout``. The LLM adapter retries transient
 #: failures (timeout, rate-limit) up to ``LLM_RETRY_BUDGET_MULTIPLIER * timeout``
-#: of wall-clock; the orchestrator divides the deadline-derived budget by the
+#: of wall-clock; ``LLMCallExecutor`` divides the deadline-derived budget by the
 #: same factor when sizing a per-attempt timeout, so even the worst-case retry
 #: sequence of the last call in a phase still finishes before the request
-#: deadline. The adapter and orchestrator MUST read this one constant so the two
+#: deadline. The adapter and the executor MUST read this one constant so the two
 #: stay in lock-step — they live in different layers and cannot share code.
 LLM_RETRY_BUDGET_MULTIPLIER: float = 3.0
 

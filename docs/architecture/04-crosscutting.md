@@ -26,6 +26,7 @@ sequenceDiagram
 Notes:
 
 - The mapping lives in memory for the request and is discarded when the orchestrator method returns.
+- Batch redaction (one call per record, mappings merged) goes through {py:meth}`~qfa.services.llm_call_executor.LLMCallExecutor.anonymize_records` rather than being open-coded per use case; single-message redaction calls the {py:class}`~qfa.domain.ports.AnonymizationPort` directly.
 - The de-anonymise step runs over the serialised response — substitutions are textual, so the round-trip is a string replacement, not a structured walk.
 
 ## Call context and usage tracking
@@ -73,7 +74,7 @@ Both adapters depend on `qfa.services.call_context`; neither depends on the othe
 | Layer | Concern | Mechanism |
 |---|---|---|
 | Route handler | Per-request deadline | `deadline = now(UTC) + 240s`, passed as an absolute `datetime` into the orchestrator |
-| Orchestrator | Deadline check | Before each LLM call: if remaining time is negative, raise {py:exc}`~qfa.domain.errors.AnalysisTimeoutError` |
+| Application service ({py:class}`~qfa.services.llm_call_executor.LLMCallExecutor`) | Deadline check | Before each LLM call: if remaining time is negative, raise {py:exc}`~qfa.domain.errors.AnalysisTimeoutError`. The check and the timeout it derives live on the shared executor the orchestrator delegates to, so no use case re-implements the arithmetic |
 | Adapter ({py:class}`~qfa.adapters.llm_client.LiteLLMClient`) | Retry on transient errors | `tenacity.retry` with exponential backoff (1s→10s, 120s budget) for {py:exc}`~qfa.domain.errors.LLMTimeoutError` and {py:exc}`~qfa.domain.errors.LLMRateLimitError` |
 | Adapter ({py:class}`~qfa.adapters.llm_client.LiteLLMClient`) | Per-call timeout | Passed through to `litellm.acompletion(timeout=…)` |
 | Adapter ({py:class}`~qfa.adapters.llm_client.LiteLLMClient`) | Token budget guard | Estimates `len(text) / chars_per_token`; raises {py:exc}`~qfa.domain.errors.FeedbackTooLargeError` if over `LLM_MAX_TOTAL_TOKENS` |
