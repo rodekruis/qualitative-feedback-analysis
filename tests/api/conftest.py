@@ -330,6 +330,10 @@ def test_app(fake_orchestrator, fake_auth_orchestrator):
     register_exception_handlers(app)
 
     app.state.orchestrator = fake_orchestrator
+    # The extracted use-case services get their own app.state slot (ADR-017).
+    # FakeOrchestrator still implements every use case, so one fake backs both
+    # slots until the remaining extractions land.
+    app.state.sensitivity_service = fake_orchestrator
     app.state.auth_orchestrator = fake_auth_orchestrator
     app.state.usage_repo = FakeUsageRepository()
 

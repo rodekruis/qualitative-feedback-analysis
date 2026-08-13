@@ -11,6 +11,7 @@ from qfa.api.dependencies import (
     authenticate_request,
     call_scope_for,
     get_orchestrator,
+    get_sensitivity_service,
 )
 from qfa.api.schemas import (
     ApiAnalyzeBulkResponse,
@@ -48,6 +49,7 @@ from qfa.services.orchestrator import (
     NO_CODING_EMPTY_CONTENT_EXPLANATION,
     Orchestrator,
 )
+from qfa.services.sensitivity import SensitivityService
 
 logger = logging.getLogger(__name__)
 
@@ -487,7 +489,7 @@ async def detect_sensitive(
     body: ApiDetectSensitiveRequest,
     request: Request,
     tenant: TenantApiKey = Depends(authenticate_request),
-    orchestrator: Orchestrator = Depends(get_orchestrator),
+    sensitivity_service: SensitivityService = Depends(get_sensitivity_service),
     _scope: CallContext = Depends(call_scope_for(Operation.DETECT_SENSITIVE)),
 ) -> ApiDetectSensitiveResponse:
     """Detect sensitive content in feedback items.
@@ -504,8 +506,8 @@ async def detect_sensitive(
         The incoming HTTP request.
     tenant : TenantApiKey
         The authenticated tenant, injected via dependency.
-    orchestrator : Orchestrator
-        The orchestrator service, injected via dependency.
+    sensitivity_service : SensitivityService
+        The sensitivity-detection service, injected via dependency.
 
     Returns
     -------
@@ -524,7 +526,7 @@ async def detect_sensitive(
             sensitivity_types=[],
         )
 
-    result = await orchestrator.detect_sensitive_content(
+    result = await sensitivity_service.detect_sensitive_content(
         SensitivityAnalysisRequestModel(
             feedback_record=FeedbackRecordModel(
                 id=body.feedback_record.id,

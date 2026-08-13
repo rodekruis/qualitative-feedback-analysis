@@ -10,8 +10,13 @@ from pydantic import SecretStr
 
 from qfa.adapters.llm_client import LiteLLMClient
 from qfa.adapters.presidio_anonymizer import PresidioAnonymizer
-from qfa.api.composition import build_orchestrator, resolve_judge_llm_settings
+from qfa.api.composition import (
+    build_orchestrator,
+    build_services,
+    resolve_judge_llm_settings,
+)
 from qfa.services.orchestrator import Orchestrator
+from qfa.services.sensitivity import SensitivityService
 from qfa.settings import AppSettings, JudgeLLMSettings, LLMSettings
 
 JUDGE_ENV_VARS = (
@@ -370,3 +375,35 @@ class TestBuildOrchestrator:
 
         assert orchestrator._llm_timeout_seconds == expected_timeout
         assert orchestrator._max_total_tokens == expected_max_tokens
+
+
+class TestBuildServices:
+    """The factory builds every service over one shared executor."""
+
+    def test_builds_each_service_in_the_graph(self, auth_env: None) -> None:
+        services = build_services(AppSettings(), llm=_StubLLM())
+
+        assert isinstance(services.orchestrator, Orchestrator)
+        assert isinstance(services.sensitivity, SensitivityService)
+
+    def test_services_share_one_llm_call_executor(self, auth_env: None) -> None:
+        """Identity, not equality: the executor is configured once per process.
+
+        A second executor would mean a second copy of the per-call timeout,
+        the token ceiling and the anonymiser, which could then drift apart
+        between endpoints without any test noticing.
+        """
+        services = build_services(AppSettings(), llm=_StubLLM())
+
+        assert services.sensitivity._executor is services.orchestrator._executor
+
+    def test_build_orchestrator_returns_the_graphs_orchestrator(
+        self, auth_env: None
+    ) -> None:
+        """The narrow wrapper is the same construction, minus the other services."""
+        stub_llm = _StubLLM()
+
+        orchestrator = build_orchestrator(AppSettings(), llm=stub_llm)
+
+        assert isinstance(orchestrator, Orchestrator)
+        assert orchestrator._llm is stub_llm

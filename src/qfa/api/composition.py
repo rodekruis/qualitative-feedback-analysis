@@ -1,11 +1,15 @@
-"""Composition helpers for constructing an :class:`Orchestrator`.
+"""Composition helpers for constructing the application services.
 
 This module is the *domain-graph* half of the composition root. The
 FastAPI lifespan in :mod:`qfa.api.app` still owns *infrastructure*
 wiring (database engine, usage repository, ``TrackingLLMAdapter``,
 ``app.state`` attachment, logging setup) but delegates the construction
-of the :class:`Orchestrator` itself — together with its driven adapters
+of the services themselves — together with their driven adapters
 that don't require the database — to this module.
+
+:func:`build_services` returns every application service as a
+:class:`ServiceGraph`; :func:`build_orchestrator` is the narrower entry
+point for callers that only want the (shrinking) :class:`Orchestrator`.
 
 Why it lives here rather than at package root:
 
@@ -25,11 +29,12 @@ via the ``llm`` keyword argument. Callers that don't (scripts,
 notebooks, ad-hoc evaluation harnesses) call ``build_orchestrator``
 with no overrides and get an Orchestrator over a plain LiteLLM client.
 
-Besides the driven adapters, this module also builds the
-:class:`~qfa.services.llm_call_executor.LLMCallExecutor` the orchestrator
+Besides the driven adapters, this module also builds the one
+:class:`~qfa.services.llm_call_executor.LLMCallExecutor` every service
 delegates its LLM-call scaffolding to. Per ADR-017 that collaborator is
 *injected*, not self-constructed, so the composition root stays the one
-place where the object graph is assembled.
+place where the object graph is assembled — and every service shares a
+single instance of it.
 
 The orchestrator may hold *two* LLM connections: the primary one used for
 generation, and an optional second one used only for judge calls, configured
@@ -41,6 +46,7 @@ from __future__ import annotations
 
 import importlib.resources
 import logging
+from dataclasses import dataclass
 
 import litellm
 import yaml
@@ -50,9 +56,34 @@ from qfa.adapters.presidio_anonymizer import PresidioAnonymizer
 from qfa.domain.ports import EmbeddingPort, LLMPort
 from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.services.orchestrator import Orchestrator
+from qfa.services.sensitivity import SensitivityService
 from qfa.settings import AppSettings, EmbeddingSettings, JudgeLLMSettings, LLMSettings
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ServiceGraph:
+    """The application services the API publishes on ``app.state``.
+
+    Epic #112 splits ``Orchestrator`` into one service per use case, so the
+    composition root now returns more than one object. Grouping them keeps
+    the shared parts of the graph — notably the single
+    :class:`~qfa.services.llm_call_executor.LLMCallExecutor` — built once,
+    and gives the lifespan one thing to construct and unpack. It grows one
+    field per extraction and loses ``orchestrator`` when the class is
+    deleted (#267).
+
+    Attributes
+    ----------
+    orchestrator : Orchestrator
+        The still-undecomposed use cases (analyze, summarize, coding).
+    sensitivity : SensitivityService
+        The detect-sensitive use case, extracted in #263.
+    """
+
+    orchestrator: Orchestrator
+    sensitivity: SensitivityService
 
 
 def resolve_judge_llm_settings(
@@ -164,20 +195,25 @@ def register_custom_model_prices() -> None:
         )
 
 
-def build_orchestrator(
+def build_services(
     settings: AppSettings,
     *,
     llm: LLMPort | None = None,
     judge_llm: LLMPort | None = None,
     embedder: EmbeddingPort | None = None,
-) -> Orchestrator:
-    """Construct an :class:`Orchestrator` from application settings.
+) -> ServiceGraph:
+    """Construct the application services from application settings.
 
     This is the shared composition point used by both the FastAPI
     lifespan and out-of-process callers (scripts, notebooks). It owns
-    the construction of the orchestrator's driven dependencies that do
+    the construction of the services' driven dependencies that do
     not require a database connection: the anonymiser, the LLM client
     (when not overridden), and the optional embedder.
+
+    Every service is built over the *same*
+    :class:`~qfa.services.llm_call_executor.LLMCallExecutor`, so the
+    per-call timeout, the token ceiling and the anonymiser are configured
+    once for the whole graph rather than per use case.
 
     Parameters
     ----------
@@ -216,9 +252,8 @@ def build_orchestrator(
 
     Returns
     -------
-    Orchestrator
-        A fully wired orchestrator ready for ``analyze`` /
-        ``analyze_hierarchical`` calls.
+    ServiceGraph
+        The fully wired services, ready to be published on ``app.state``.
     """
     register_custom_model_prices()
 
@@ -256,14 +291,53 @@ def build_orchestrator(
         max_total_tokens=settings.llm.max_total_tokens,
     )
 
-    return Orchestrator(
-        llm=llm,
-        judge_llm=judge_llm,
-        anonymizer=anonymizer,
-        settings=settings.orchestrator,
-        analyze_settings=settings.analyze,
-        llm_timeout_seconds=settings.llm.timeout_seconds,
-        max_total_tokens=settings.llm.max_total_tokens,
-        embedder=embedder,
-        executor=executor,
+    return ServiceGraph(
+        orchestrator=Orchestrator(
+            llm=llm,
+            judge_llm=judge_llm,
+            anonymizer=anonymizer,
+            settings=settings.orchestrator,
+            analyze_settings=settings.analyze,
+            llm_timeout_seconds=settings.llm.timeout_seconds,
+            max_total_tokens=settings.llm.max_total_tokens,
+            embedder=embedder,
+            executor=executor,
+        ),
+        sensitivity=SensitivityService(executor=executor),
     )
+
+
+def build_orchestrator(
+    settings: AppSettings,
+    *,
+    llm: LLMPort | None = None,
+    judge_llm: LLMPort | None = None,
+    embedder: EmbeddingPort | None = None,
+) -> Orchestrator:
+    """Construct just the :class:`Orchestrator` from application settings.
+
+    A thin wrapper over :func:`build_services` for the callers that only
+    want the orchestrator — scripts, notebooks and evaluation harnesses,
+    which run one use case in-process and have no ``app.state`` to publish
+    the rest onto. The FastAPI lifespan calls ``build_services`` instead.
+
+    Parameters
+    ----------
+    settings : AppSettings
+        Loaded application settings; see :func:`build_services`.
+    llm : LLMPort | None, optional
+        Pre-built LLM port; see :func:`build_services`.
+    judge_llm : LLMPort | None, optional
+        Pre-built judge LLM port; see :func:`build_services`.
+    embedder : EmbeddingPort | None, optional
+        Pre-built embedder; see :func:`build_services`.
+
+    Returns
+    -------
+    Orchestrator
+        A fully wired orchestrator ready for ``analyze`` /
+        ``analyze_hierarchical`` calls.
+    """
+    return build_services(
+        settings, llm=llm, judge_llm=judge_llm, embedder=embedder
+    ).orchestrator

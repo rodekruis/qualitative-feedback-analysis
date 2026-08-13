@@ -255,6 +255,18 @@ inference route:
 - `get_orchestrator` injects the orchestrator wired at startup.
 - `call_scope_for(Operation.CLASSIFY)` opens the usage-tracking scope (step 7).
 
+```{note}
+`Orchestrator` is being decomposed into one service per use case
+([ADR-017](../adr/017-orchestrator-composition-only.md)). A *new* use case is
+a new class in `qfa.services` taking an `LLMCallExecutor` (plus whatever else
+it needs), built in {py:func}`qfa.api.composition.build_services`, published on
+its own `app.state` slot, and injected by its own provider in
+`qfa.api.dependencies` — see {py:class}`~qfa.services.sensitivity.SensitivityService`
+and `get_sensitivity_service` for the worked example. Annotate the handler
+against that service instead of `Orchestrator`; the rest of this page is
+unchanged.
+```
+
 The route is also where the API ↔ domain mapping happens — never pass an API
 schema into the orchestrator, and never return a domain model from the route.
 API value objects are mapped to their domain equivalents here too: the

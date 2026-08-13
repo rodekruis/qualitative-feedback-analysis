@@ -1,7 +1,7 @@
 """Tests for the FastAPI lifespan's LLM wiring.
 
 Why: the lifespan is the *infrastructure* half of the composition root, and it
-owns the one thing ``build_orchestrator`` deliberately does not — wrapping each
+owns the one thing ``build_services`` deliberately does not — wrapping each
 LLM client in :class:`TrackingLLMAdapter` so usage and cost are recorded. A
 judge client that reached the orchestrator unwrapped would work perfectly and
 silently bill nothing, which no functional test would catch.
@@ -22,6 +22,7 @@ from qfa.adapters.tracking_llm import TrackingLLMAdapter
 from qfa.api.app import create_app
 from qfa.domain.models import LLMResponse
 from qfa.domain.ports import LLMPort
+from qfa.services.sensitivity import SensitivityService
 from qfa.settings import LLMSettings
 
 JUDGE_ENV_VARS = (
@@ -162,3 +163,21 @@ async def test_judge_model_alone_is_a_valid_startup_configuration(
         assert judge_settings.model == "azure/some-other-deployment"
         assert judge_settings.api_key.get_secret_value() == "sk-test-lifespan"
         assert judge_settings.api_base == "https://res.openai.azure.com/"
+
+
+@pytest.mark.asyncio
+async def test_every_service_is_published_on_app_state(app_env: None):
+    """Each extracted use-case service gets its own ``app.state`` slot.
+
+    The route providers read one slot each, so a service the lifespan forgets
+    to publish is a 500 on that endpoint alone — invisible to every other
+    test in this module.
+    """
+    app = create_app(llm_factory=_RecordingFakeLLM)
+
+    async with app.router.lifespan_context(app):
+        assert isinstance(app.state.sensitivity_service, SensitivityService)
+        # Built from the same graph, so the tracked LLM reaches it too.
+        assert (
+            app.state.sensitivity_service._executor is app.state.orchestrator._executor
+        )
