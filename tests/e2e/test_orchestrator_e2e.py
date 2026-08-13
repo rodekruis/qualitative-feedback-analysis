@@ -204,9 +204,10 @@ class TestAssignCodesRecordsOneRow:
     async def test_one_request_records_one_row_with_assign_codes(
         self, e2e_client, e2e_fake_llm, e2e_engine
     ):
-        # The classifier selects a code path in a single one-shot call over
-        # the flattened Types > Categories > Codes framework, so one request
-        # issues exactly one LLM call.
+        # The classifier picks a code path in one call over the flattened
+        # Types > Categories > Codes framework, then a separate judge call
+        # per level scores the selected path (root to leaf) — still one row
+        # per request even though several LLM calls happen underneath.
         coding_levels = {
             "root_codes": [
                 {
@@ -228,8 +229,11 @@ class TestAssignCodesRecordsOneRow:
                 }
             ]
         }
-        coding_response = '{"selected": [{"index": 2, "confidence": 0.9, "explanation": "fits well"}]}'
-        e2e_fake_llm.queue_response(_ok(text=coding_response))
+        e2e_fake_llm.queue_response(_ok(text='{"selected": [2]}'))
+        judge_response = '{"score": 0.9, "explanation": "fits well"}'
+        e2e_fake_llm.queue_response(_ok(text=judge_response))
+        e2e_fake_llm.queue_response(_ok(text=judge_response))
+        e2e_fake_llm.queue_response(_ok(text=judge_response))
 
         resp = await e2e_client.post(
             "/v1/assign-codes",

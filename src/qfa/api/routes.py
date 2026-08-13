@@ -408,12 +408,14 @@ async def assign_codes(
     orchestrator: Orchestrator = Depends(get_orchestrator),
     _scope: CallContext = Depends(call_scope_for(Operation.ASSIGN_CODES)),
 ) -> ApiAssignCodesResponse:
-    """Assign codes with a single one-shot LLM call over the flattened framework.
+    """Assign codes: one one-shot pick call, then a separate judge call per level.
 
     The full coding framework is flattened into one option per node (at
-    every depth, not just leaves) and the classifier picks the best-fitting
-    path(s) directly, self-reporting a confidence score for each — no
-    separate per-level pick/judge calls.
+    every depth, not just leaves) and a single LLM call picks the
+    best-fitting path(s) directly — no recursive per-level picking. Each
+    selected path is then scored by a separate judge call per level, root to
+    leaf, stopping at the first level that falls below
+    ``confidence_threshold``.
 
     ``assigned_codes`` is never an empty list. Whenever no code is applied
     the response is a 200 carrying exactly one entry whose

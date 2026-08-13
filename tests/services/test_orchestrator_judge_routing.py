@@ -42,7 +42,7 @@ from qfa.domain.ports import (
 )
 from qfa.domain.usage_models import LLMCallRecord, Operation
 from qfa.services.call_context import call_scope
-from qfa.services.coding_classifier import CodeSelection, CodingResponse
+from qfa.services.coding_classifier import CodingResponse, JudgeResponse
 from qfa.services.orchestrator import AnalyzeJudgeResult, Orchestrator
 from qfa.settings import AnalyzeSettings, OrchestratorSettings
 
@@ -67,9 +67,10 @@ class RoutingLLM(LLMPort):
     Payloads are selected by ``response_model`` because that is what actually
     distinguishes the call kinds in the orchestrator (``AnalyzeJudgeResult``
     for the analyse and leaf judges, ``CodingResponse`` for the one-shot
-    coding classifier, the concrete summary models for generation, and
-    ``str`` for everything free-text). ``text_payload`` overrides the
-    ``str`` case for callers whose free-text contract is not a judge score.
+    coding pick, ``JudgeResponse`` for the per-level coding judge, the
+    concrete summary models for generation, and ``str`` for everything
+    free-text). ``text_payload`` overrides the ``str`` case for callers
+    whose free-text contract is not a judge score.
     """
 
     def __init__(self, name: str, text_payload: str = JUDGE_PARSEABLE_TEXT) -> None:
@@ -113,9 +114,9 @@ class RoutingLLM(LLMPort):
         if response_model is AnalyzeJudgeResult:
             return AnalyzeJudgeResult(quality_score=0.8, uncertainty_explanation="ok")
         if response_model is CodingResponse:
-            return CodingResponse(
-                selected=[CodeSelection(index=0, confidence=0.9, explanation="Fits.")]
-            )
+            return CodingResponse(selected=[0])
+        if response_model is JudgeResponse:
+            return JudgeResponse(score=0.9, explanation="clearly relevant")
         if response_model is SummaryResultModel:
             return SummaryResultModel(
                 feedback_record_summaries=(
@@ -440,9 +441,9 @@ class TestGenerationCallsStayOnThePrimaryClient:
 
     @pytest.mark.asyncio
     async def test_coding_classification_stays_entirely_on_the_primary(self) -> None:
-        """``assign_codes``'s single one-shot classifier call stays on the primary.
+        """``assign_codes`` — one-shot pick *and* its per-level judge — stays on the primary.
 
-        The coding classifier is deliberately excluded from #258's four
+        The per-level coding judge is deliberately excluded from #258's four
         sites: the ticket scopes the split to the quality-score judges on
         analyse and summarise. Pinned here so the exclusion is a recorded
         decision rather than something a later reader assumes was an oversight.
@@ -464,7 +465,7 @@ class TestGenerationCallsStayOnThePrimaryClient:
             _deadline(),
         )
 
-        assert primary.response_models == [CodingResponse]
+        assert primary.response_models == [CodingResponse, JudgeResponse]
         assert judge.calls == []
 
 
