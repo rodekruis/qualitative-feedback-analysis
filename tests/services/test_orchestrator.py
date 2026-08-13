@@ -1,5 +1,6 @@
 """Tests for the orchestrator service."""
 
+import logging
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -1754,6 +1755,37 @@ class TestAssignCodesOneShot:
         assert len(assigned) == 1
         assert assigned[0].coding_level_1_id is None
         assert assigned[0].explanation == NO_CODING_NOTHING_RELEVANT_EXPLANATION
+
+    @pytest.mark.asyncio
+    async def test_malformed_pick_response_is_logged(self, settings, caplog):
+        """A parse failure is distinguishable from a genuine empty pick in the logs.
+
+        Why: without a log line, an operator sees only a spike in
+        ``NO CODING APPLIED`` responses and has no way to tell a broken
+        prompt/schema apart from records that are genuinely uncodeable.
+        """
+        root_codes = [CodingNode(id="code-1", name="Code A")]
+        fake_llm = FakeLLMPort(
+            errors=[LLMResponseParseError("LLM response validation failed")]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        with caplog.at_level(logging.WARNING):
+            await orch.assign_codes(
+                _make_coding_request(root_codes=root_codes), _future_deadline()
+            )
+
+        assert any(
+            "Coding pick call failed to parse" in record.message
+            and "LLMResponseParseError" in record.message
+            for record in caplog.records
+        )
 
     @pytest.mark.asyncio
     async def test_judge_score_out_of_range_raises_analysis_error(self, settings):

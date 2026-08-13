@@ -56,6 +56,7 @@ from qfa.services.coding_classifier import (
     build_coding_messages,
     build_judge_messages,
     flatten_coding_nodes,
+    format_code_path,
 )
 from qfa.services.coding_trends import build_coding_trend_table
 from qfa.services.hierarchical_prompts import (
@@ -327,7 +328,7 @@ def _combine_rejected_explanations(
         f"threshold, so this record needs human review."
     ]
     blocks += [
-        f"{' > '.join(name for _, name in c.path)} — "
+        f"{format_code_path(c.path)} — "
         f"{_as_whole_percentage(c.confidence_aggregate)}\n"
         f"  {c.decisive_explanation}"
         for c in listed
@@ -1409,30 +1410,36 @@ class Orchestrator:
                 timeout=timeout,
             )
             selected_indices = response.structured.selected
-        except LLMResponseParseError:
+        except LLMResponseParseError as exc:
             # Malformed/unparseable pick output is treated as a genuine
             # empty pick rather than a request failure, matching the old
             # per-level pick step's tolerance for bad LLM output.
+            logger.warning(
+                "Coding pick call failed to parse: error_class=%s",
+                type(exc).__name__,
+            )
             selected_indices = []
+
+        valid_indices = [
+            idx for idx in dict.fromkeys(selected_indices) if 0 <= idx < len(options)
+        ]
+        judged = await asyncio.gather(
+            *(
+                self._judge_selected_path(
+                    feedback_record=feedback_record,
+                    path=options[idx].path,
+                    threshold=request.confidence_threshold,
+                    tenant_id=request.tenant_id,
+                    deadline=deadline,
+                )
+                for idx in valid_indices
+            )
+        )
 
         candidates: list[_ScoredCode] = []
         rejected: list[_ScoredCode] = []
-        seen_indices: set[int] = set()
-        for idx in selected_indices:
-            if not 0 <= idx < len(options):
-                continue
-            if idx in seen_indices:
-                continue
-            seen_indices.add(idx)
-            await self._judge_selected_path(
-                feedback_record=feedback_record,
-                path=options[idx].path,
-                threshold=request.confidence_threshold,
-                tenant_id=request.tenant_id,
-                deadline=deadline,
-                candidates=candidates,
-                rejected=rejected,
-            )
+        for scored, was_rejected in judged:
+            (rejected if was_rejected else candidates).append(scored)
 
         candidates.sort(key=lambda c: c.confidence_aggregate, reverse=True)
         top = candidates[: request.max_codes]
@@ -1492,9 +1499,7 @@ class Orchestrator:
         threshold: float | None,
         tenant_id: str,
         deadline: datetime,
-        candidates: list[_ScoredCode],
-        rejected: list[_ScoredCode],
-    ) -> None:
+    ) -> tuple[_ScoredCode, bool]:
         """Judge a one-shot-selected path level by level, root to leaf.
 
         Reproduces the previous per-level pick/judge design's judge step
@@ -1502,11 +1507,15 @@ class Orchestrator:
         early-stop-on-rejection behaviour — the only difference being that
         the path being judged was already chosen in one shot rather than
         picked one level at a time.
+
+        Returns the scored path and whether it was rejected by
+        ``threshold``, so independently-selected paths can be judged
+        concurrently instead of one at a time.
         """
         scores: list[float] = []
         explanations: list[str] = []
         hierarchy_path: list[tuple[str, str]] = []
-        for level_num, (code_id, name) in enumerate(path, start=1):
+        for level_num, (_, name) in enumerate(path, start=1):
             level_label = f"Code level {level_num}"
             current_path = [*hierarchy_path, (level_label, name)]
             judge = await self._judge_code_level(
@@ -1519,17 +1528,18 @@ class Orchestrator:
             scores.append(judge.score)
             explanations.append(judge.explanation)
             if threshold is not None and judge.score < threshold:
-                rejected.append(
+                return (
                     _ScoredCode(
                         path=list(path[:level_num]),
                         scores=scores,
                         explanations=explanations,
-                    )
+                    ),
+                    True,
                 )
-                return
             hierarchy_path = current_path
-        candidates.append(
-            _ScoredCode(path=list(path), scores=scores, explanations=explanations)
+        return (
+            _ScoredCode(path=list(path), scores=scores, explanations=explanations),
+            False,
         )
 
     async def _judge_code_level(

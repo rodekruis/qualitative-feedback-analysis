@@ -83,6 +83,27 @@ class TestBuildCodingMessages:
         assert "Long waiting times at the clinic." in user
 
 
+class TestCodingResponseSelectedIsLenient:
+    """One stray unparseable token shouldn't cost every valid index.
+
+    Why: the pick list can be long (every node at every depth), so a plain
+    ``list[int]`` field would let one bad element fail the whole response,
+    dropping selections the model actually got right.
+    """
+
+    def test_non_coercible_element_is_dropped_not_fatal(self):
+        response = CodingResponse.model_validate({"selected": [0, "garbage", 4]})
+        assert response.selected == [0, 4]
+
+    def test_numeric_strings_are_coerced(self):
+        response = CodingResponse.model_validate({"selected": ["1", "2"]})
+        assert response.selected == [1, 2]
+
+    def test_booleans_are_dropped(self):
+        response = CodingResponse.model_validate({"selected": [0, True, 2]})
+        assert response.selected == [0, 2]
+
+
 def test_pick_response_has_no_confidence_or_explanation():
     """The pick step only selects indices; scoring is the judge's job.
 

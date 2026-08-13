@@ -1,11 +1,17 @@
 """Helpers for one-shot hierarchical coding prompts and per-level judge prompts."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from qfa.domain.models import CodingNode, FeedbackRecordModel
 from qfa.services.prompts import build_feedback_record_envelope
+
+
+def format_code_path(path: Sequence[tuple[str, str]]) -> str:
+    """Render a ``(id, name)`` path as ``"Service Delivery > Staff Behavior"``."""
+    return " > ".join(name for _, name in path)
 
 
 @dataclass(frozen=True)
@@ -23,7 +29,7 @@ class CodePathOption:
     @property
     def label(self) -> str:
         """Human-readable path, e.g. ``"Service Delivery > Staff Behavior"``."""
-        return " > ".join(name for _, name in self.path)
+        return format_code_path(self.path)
 
 
 def flatten_coding_nodes(
@@ -56,11 +62,32 @@ class CodingResponse(BaseModel):
         description="Indices of the selected options from the numbered <options> list.",
     )
 
+    @field_validator("selected", mode="before")
+    @classmethod
+    def _drop_unparseable_indices(cls, value: object) -> object:
+        """Coerce per-element instead of failing the whole list on one bad token.
+
+        The pick list can be long (every node at every depth), so a single
+        stray non-integer element in an otherwise-good response would
+        invalidate every valid index alongside it.
+        """
+        if not isinstance(value, list):
+            return value
+        coerced: list[int] = []
+        for item in value:
+            if isinstance(item, bool) or not isinstance(item, (int, float, str)):
+                continue
+            try:
+                coerced.append(int(item))
+            except ValueError:
+                continue
+        return coerced
+
 
 _SYSTEM = """You are a classification agent for feedback records from community members, collected by Red Cross / Red Crescent National Societies as part of humanitarian programs.
 
 Task:
-Select the best-fitting code(s) for the feedback record from the full coding framework given as a numbered list of options. Each option is a complete path through the hierarchy (e.g. "Service Delivery > Staff Behavior > Rudeness"); some paths end earlier than others because not every branch goes three levels deep. Pick whichever path best captures the feedback, regardless of its depth — a shorter, more general path is a valid choice when nothing more specific fits.
+Select the best-fitting code(s) for the feedback record from the full coding framework given as a numbered list of options. Each option is a complete path through the hierarchy (e.g. "Service Delivery > Staff Behavior > Rudeness"); some paths end earlier than others because not every branch goes three levels deep. Pick whichever path best captures the feedback, regardless of its depth — a shorter, more general path is a valid choice only when nothing more specific fits.
 
 Context:
 Feedback is qualitative and unstructured. It may be:
