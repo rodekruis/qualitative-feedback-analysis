@@ -4,12 +4,12 @@ These Pydantic models are separate from the domain models so that the
 HTTP contract can evolve independently of the core domain.
 """
 
+import importlib.resources
 import json
 import logging
 import re
 import unicodedata
 from abc import ABC, abstractmethod
-from pathlib import Path
 from typing import Any, Literal, override
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
@@ -222,7 +222,14 @@ def _create_pretty_output(
 
 
 def _assign_codes_request_examples() -> list[dict[str, Any]]:
-    """Build Swagger ``examples`` from ``fixtures/coding_framework.json`` + COVID-19 codebook quotes."""
+    """Build Swagger ``examples`` from the bundled coding framework + COVID-19 codebook quotes.
+
+    The framework is read as a package resource
+    (``qfa.resources/coding_framework.json``) rather than by walking up from
+    ``__file__`` to a repo-root ``fixtures/`` directory, so the examples are
+    identical whether ``qfa`` runs from a checkout, an editable install, or a
+    wheel unpacked into ``site-packages`` (#158).
+    """
 
     def _coding_levels_from_framework(framework: dict[str, Any]) -> dict[str, Any]:
         """Convert the legacy codebook shape into ``ApiCodingFramework`` example shape with required IDs."""
@@ -262,9 +269,14 @@ def _assign_codes_request_examples() -> list[dict[str, Any]]:
 
         return {"root_codes": root_codes}
 
-    root = Path(__file__).resolve().parents[3]
-    path = root / "fixtures" / "coding_framework.json"
-    if not path.is_file():
+    resource = importlib.resources.files("qfa.resources").joinpath(
+        "coding_framework.json"
+    )
+    if not resource.is_file():
+        logger.warning(
+            "Bundled resource qfa.resources/coding_framework.json is missing; "
+            "serving placeholder assign-codes examples."
+        )
         return [
             {
                 "coding_levels": {
@@ -285,7 +297,7 @@ def _assign_codes_request_examples() -> list[dict[str, Any]]:
                 "feedback_record": {
                     "id": "no-framework",
                     "content": (
-                        "Repository root must contain fixtures/coding_framework.json "
+                        "The qfa.resources package must ship coding_framework.json "
                         "for full Try-it-out examples."
                     ),
                 },
@@ -294,7 +306,7 @@ def _assign_codes_request_examples() -> list[dict[str, Any]]:
             }
         ]
     # Dev-only: load JSON for Swagger examples; TODO: link production framework through API
-    framework = json.loads(path.read_text(encoding="utf-8"))
+    framework = json.loads(resource.read_text(encoding="utf-8"))
     coding_levels = _coding_levels_from_framework(framework)
     # Verbatim long examples from the COVID-19 coding framework (Excel export).
     quotes = [

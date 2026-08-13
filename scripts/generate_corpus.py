@@ -11,7 +11,8 @@ two-stage pipeline that splits *trend statistics* (Python, here) from
 *creative prose* (an LLM, via ``scripts/generate_corpus.prompt.md``):
 
 ``gen-specs``
-    Allocate leaf-code volumes against ``fixtures/coding_framework.json``,
+    Allocate leaf-code volumes against the coding framework bundled at
+    ``qfa.resources/coding_framework.json``,
     sample metadata (region, country, source, sensitive, …) per record,
     pick carriers, sample ``created`` from each pattern's monthly
     density, and emit one JSON object per record to a JSONL file. The
@@ -46,6 +47,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import importlib.resources
 import json
 import logging
 import random
@@ -62,6 +64,16 @@ import numpy as np
 import yaml
 
 logger = logging.getLogger("generate_corpus")
+
+# Default for ``--framework``: the coding framework ships inside the
+# ``qfa.resources`` package (#158), so this script no longer needs to be
+# invoked from the repo root for the default to resolve. ``files()`` yields a
+# real filesystem path for a directory-based install, which is how ``qfa`` is
+# always installed here; the ``Path(str(...))`` wrap only narrows the
+# ``Traversable`` to the ``type=Path`` the CLI argument expects.
+BUNDLED_FRAMEWORK = Path(
+    str(importlib.resources.files("qfa.resources") / "coding_framework.json")
+)
 
 # --- Timeline -----------------------------------------------------------------
 
@@ -1026,7 +1038,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_gen.add_argument(
         "--framework",
         type=Path,
-        default=Path("fixtures/coding_framework.json"),
+        default=BUNDLED_FRAMEWORK,
     )
     p_gen.add_argument(
         "--output",

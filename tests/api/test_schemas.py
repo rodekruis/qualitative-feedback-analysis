@@ -1,5 +1,7 @@
 """Tests for API schemas."""
 
+import importlib.resources
+import inspect
 import logging
 import unicodedata
 
@@ -8,10 +10,12 @@ from pydantic import ValidationError
 
 from qfa.api.schemas import (
     ApiAnalyzeRequest,
+    ApiAssignCodesRequest,
     ApiAssignedCode,
     ApiCodingFramework,
     ApiCodingNode,
     ApiSummarizeBulkResponse,
+    _assign_codes_request_examples,
     _create_pretty_output,
     _resolve_language,
     sanitize_output_language,
@@ -565,3 +569,53 @@ def test_summarize_bulk_response_output_language_excluded_from_serialization():
         output_language="French",
     )
     assert "output_language" not in response.model_dump()
+
+
+class TestAssignCodesRequestExamples:
+    """The Swagger examples must come from the bundled package resource (#158).
+
+    ``_assign_codes_request_examples`` used to walk ``Path(__file__).parents[3]``
+    to a repo-root ``fixtures/`` directory, so a non-editable install landed in
+    ``site-packages``, found nothing, and silently degraded the OpenAPI schema to
+    a one-code "no-framework" placeholder. Reading the framework through
+    ``importlib.resources`` makes the examples install-shape independent.
+    """
+
+    def test_framework_is_a_package_resource(self) -> None:
+        """The framework ships inside ``qfa.resources``, next to model_prices.yaml."""
+        resource = importlib.resources.files("qfa.resources").joinpath(
+            "coding_framework.json"
+        )
+        assert resource.is_file()
+
+    def test_examples_do_not_fall_back_to_placeholder(self) -> None:
+        """With the resource bundled, no example carries the degraded marker."""
+        examples = _assign_codes_request_examples()
+        assert examples
+        ids = [example["feedback_record"]["id"] for example in examples]
+        assert "no-framework" not in ids
+        assert all(id_.startswith("covid-example-") for id_ in ids)
+
+    def test_examples_validate_as_requests(self) -> None:
+        """Every published example is a request body the endpoint would accept.
+
+        A Swagger "Try it out" that 422s is worse than no example at all.
+        """
+        for example in _assign_codes_request_examples():
+            request = ApiAssignCodesRequest.model_validate(example)
+            assert request.coding_levels.root_codes
+
+    def test_examples_expose_the_real_framework(self) -> None:
+        """The examples carry the full 3-level taxonomy, not a stub."""
+        request = ApiAssignCodesRequest.model_validate(
+            _assign_codes_request_examples()[0]
+        )
+        root_codes = request.coding_levels.root_codes
+        assert len(root_codes) > 1
+        assert max(node.max_child_depth() for node in root_codes) == 2
+
+    def test_loader_does_not_walk_out_of_the_package(self) -> None:
+        """Guard the regression: no ``parents[...]`` path arithmetic in the loader."""
+        source = inspect.getsource(_assign_codes_request_examples)
+        assert "parents[" not in source
+        assert "importlib.resources" in source

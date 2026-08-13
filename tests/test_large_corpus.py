@@ -15,6 +15,10 @@ from qfa.domain.models import FeedbackRecordMetadataModel, FeedbackRecordModel
 from qfa.services.clustering import cluster_records
 from qfa.services.coding_trends import build_coding_trend_table
 
+# Deliberately a repo-root path load, not an ``importlib.resources`` lookup:
+# this corpus is test-only data and is kept out of the shipped wheel, so it must
+# not live inside the ``qfa`` package. See docs/development/bundled-resources.md
+# for the runtime-resource vs. test-fixture split (#158).
 FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
 CORPUS_PATH = FIXTURES / "large_corpus.yaml"
 

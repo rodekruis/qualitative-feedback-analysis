@@ -28,6 +28,10 @@ sys.modules["stress_analyze"] = stress_analyze
 _spec.loader.exec_module(stress_analyze)
 
 
+# Deliberately a repo-root path load, not an ``importlib.resources`` lookup: the
+# corpus is test-only data (2.9 MB) kept out of the shipped wheel, so it stays
+# outside the ``qfa`` package. See docs/development/bundled-resources.md for the
+# runtime-resource vs. test-fixture split (#158).
 CORPUS_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "analyze_corpus.yaml"
 
 

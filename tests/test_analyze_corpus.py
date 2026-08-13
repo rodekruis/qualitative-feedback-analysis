@@ -3,11 +3,13 @@
 The corpus is a hand-/LLM-generated set of fake community feedback records
 intended as input for the ``/v1/analyze`` endpoint. Each item must parse into
 ``FeedbackRecordModel`` and the codes embedded in ``metadata.codes`` must be
-consistent with the coding framework shipped at ``fixtures/coding_framework.json``.
+consistent with the coding framework bundled at
+``qfa.resources/coding_framework.json``.
 """
 
 from __future__ import annotations
 
+import importlib.resources
 import json
 from pathlib import Path
 from typing import Any
@@ -17,9 +19,15 @@ import yaml
 
 from qfa.domain.models import FeedbackRecordMetadataModel, FeedbackRecordModel
 
+# The corpus is a test-only fixture (2.9 MB) and stays a repo-root path load —
+# tests always run from a checkout, and it is deliberately kept out of the
+# wheel. The coding framework is runtime data the API also serves as Swagger
+# examples, so it is read as a package resource (#158).
 FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
 CORPUS_PATH = FIXTURES / "analyze_corpus.yaml"
-FRAMEWORK_PATH = FIXTURES / "coding_framework.json"
+FRAMEWORK_RESOURCE = importlib.resources.files("qfa.resources").joinpath(
+    "coding_framework.json"
+)
 
 MIN_SENTENCES = 1
 MAX_SENTENCES = 15
@@ -68,8 +76,9 @@ def corpus() -> list[dict[str, Any]]:
 @pytest.fixture(scope="module")
 def framework() -> dict[str, dict[str, Any]]:
     """Flattened coding framework keyed by ``code_id``."""
-    with FRAMEWORK_PATH.open() as f:
-        return _flatten_framework(json.load(f))
+    return _flatten_framework(
+        json.loads(FRAMEWORK_RESOURCE.read_text(encoding="utf-8"))
+    )
 
 
 class TestAnalyzeCorpus:
