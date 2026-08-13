@@ -1,15 +1,21 @@
 """Tests for routing judge calls to a separate LLM connection (#258).
 
 Why its own module: the property under test is *which client served which
-call*, which cuts across four orchestrator methods that otherwise have little
-in common. Each test drives a real orchestrator method with two distinguishable
+call*, which cuts across four use-case methods that otherwise have little
+in common. Each test drives a real use-case method with two distinguishable
 fakes — one primary, one judge — and asserts the split, so a future refactor
 that quietly re-points a call site at ``self._llm`` fails here rather than
 showing up as a mysterious cost shift in production.
 
 The complementary case matters just as much: with no judge client configured
-the orchestrator must behave exactly as it did before, so every test below has
+the services must behave exactly as they did before, so every test below has
 a counterpart asserting the single-client default.
+
+Two of the four call sites moved out of ``Orchestrator`` into
+:class:`~qfa.services.summarize.SummarizeService` (#264). The routing tests
+stay together here rather than following the use case into
+``test_summarize.py``: what they pin is the cross-service split, and splitting
+them per service is exactly how one call site quietly stops being checked.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -47,6 +53,7 @@ from qfa.services.coding import CodingService
 from qfa.services.coding_classifier import CodingResponse, JudgeResponse
 from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.services.orchestrator import Orchestrator
+from qfa.services.summarize import SummarizeService
 from qfa.settings import AnalyzeSettings, OrchestratorSettings
 
 TENANT_ID = "tenant-42"
@@ -241,6 +248,30 @@ def _build_coding_service(primary: LLMPort) -> CodingService:
     )
 
 
+def _build_summarize(
+    primary: LLMPort, judge: LLMPort | None = None
+) -> SummarizeService:
+    """Build a summarisation service over the given client(s).
+
+    Mirrors :func:`_build`, and like the production wiring it hands the
+    service the real :class:`LLMCallExecutor` — built over the *primary*
+    connection, since judge calls pick their client per call.
+    """
+    anonymizer = NoopAnonymizer()
+    return SummarizeService(
+        llm=primary,
+        judge_llm=judge,
+        anonymizer=anonymizer,
+        executor=LLMCallExecutor(
+            llm=primary,
+            anonymizer=anonymizer,
+            settings=OrchestratorSettings(),
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        ),
+    )
+
+
 def _build_analyze(
     primary: LLMPort, judge: LLMPort | None = None, **kwargs
 ) -> AnalyzeService:
@@ -283,6 +314,16 @@ class TestDefaultsToThePrimaryClient:
         assert orchestrator._judge_llm is primary
         assert analyze._judge_llm is primary
 
+    def test_summarize_service_judge_client_is_the_primary_client_when_unset(
+        self,
+    ) -> None:
+        """The extracted service repeats the same fallback, not a new default."""
+        primary = RoutingLLM("primary")
+
+        service = _build_summarize(primary)
+
+        assert service._judge_llm is primary
+
     @pytest.mark.asyncio
     async def test_analyze_judge_uses_the_primary_model_when_unset(self) -> None:
         """The analyse judge still runs on the primary model — no behaviour change.
@@ -309,9 +350,9 @@ class TestDefaultsToThePrimaryClient:
     async def test_summarize_judge_uses_the_primary_client_when_unset(self) -> None:
         """Both the summary and its judge stay on the primary client."""
         primary = RoutingLLM("primary")
-        orchestrator = _build(primary)
+        service = _build_summarize(primary)
 
-        await orchestrator.summarize(
+        await service.summarize(
             SingleSummaryRequestModel(
                 feedback_record=_feedback_record(), tenant_id=TENANT_ID
             ),
@@ -357,9 +398,9 @@ class TestJudgeCallsRouteToTheJudgeClient:
         """
         primary = RoutingLLM("primary")
         judge = RoutingLLM("judge")
-        orchestrator = _build(primary, judge)
+        service = _build_summarize(primary, judge)
 
-        result = await orchestrator.summarize_bulk(
+        result = await service.summarize_bulk(
             SummaryRequestModel(
                 feedback_records=(_feedback_record(),), tenant_id=TENANT_ID
             ),
@@ -375,9 +416,9 @@ class TestJudgeCallsRouteToTheJudgeClient:
         """``summarize`` judges on the judge client, generates on the primary."""
         primary = RoutingLLM("primary")
         judge = RoutingLLM("judge")
-        orchestrator = _build(primary, judge)
+        service = _build_summarize(primary, judge)
 
-        result = await orchestrator.summarize(
+        result = await service.summarize(
             SingleSummaryRequestModel(
                 feedback_record=_feedback_record(), tenant_id=TENANT_ID
             ),
@@ -531,21 +572,21 @@ class TestCostAccountingAcrossBothClients:
         """The generation and judge costs both land in the aggregate total.
 
         ``summarize_bulk`` is the one path that adds two call costs
-        together in the orchestrator itself, so it is where a dropped judge
+        together in the service itself, so it is where a dropped judge
         cost would show up first.
         """
         primary = RoutingLLM("primary")
         judge = RoutingLLM("judge")
-        orchestrator = _build(primary, judge)
+        service = _build_summarize(primary, judge)
 
-        await orchestrator.summarize_bulk(
+        await service.summarize_bulk(
             SummaryRequestModel(
                 feedback_records=(_feedback_record(),), tenant_id=TENANT_ID
             ),
             _deadline(),
         )
 
-        # One call each, so the total the orchestrator accumulated covers both.
+        # One call each, so the total the service accumulated covers both.
         assert len(primary.calls) == 1
         assert len(judge.calls) == 1
 

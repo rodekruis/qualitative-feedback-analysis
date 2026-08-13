@@ -7,7 +7,7 @@ wiring (database engine, usage repository, ``TrackingLLMAdapter``,
 of the application services themselves — together with their driven
 adapters that don't require the database — to this module.
 
-:func:`build_services` returns every application service as a
+:func:`build_service_graph` returns every application service as a
 :class:`ServiceGraph`; :func:`build_orchestrator` is the narrower entry
 point for callers that only want the (shrinking) :class:`Orchestrator`.
 
@@ -26,7 +26,7 @@ wrap the LLM in :class:`~qfa.adapters.tracking_llm.TrackingLLMAdapter`,
 and do not read API keys. Callers that need those concerns
 (notably the FastAPI lifespan) build them and pass the wrapped LLM in
 via the ``llm`` keyword argument. Callers that don't (scripts,
-notebooks, ad-hoc evaluation harnesses) call ``build_services`` (or one
+notebooks, ad-hoc evaluation harnesses) call ``build_service_graph`` (or one
 of its single-service wrappers) with no overrides and get services over
 a plain LiteLLM client.
 
@@ -35,7 +35,14 @@ Besides the driven adapters, this module also builds the
 delegate their LLM-call scaffolding to. Per ADR-017 that collaborator is
 *injected*, not self-constructed, so the composition root stays the one
 place where the object graph is assembled — and there is exactly **one**
-executor instance, shared by every service.
+executor instance, shared by every service in the graph.
+
+Epic #112 is extracting one service per use case out of ``Orchestrator``.
+While that is in flight the graph holds both the shrinking ``Orchestrator``
+and the already-extracted services, so :func:`build_service_graph` returns a
+:class:`ServiceGraph` rather than a single object. :func:`build_orchestrator`
+remains as the narrow entry point for callers that only want the
+orchestrator (scripts, notebooks, evaluation harnesses).
 
 The services may hold *two* LLM connections: the primary one used for
 generation, and an optional second one used only for judge calls, configured
@@ -60,6 +67,7 @@ from qfa.services.coding import CodingService
 from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.services.orchestrator import Orchestrator
 from qfa.services.sensitivity import SensitivityService
+from qfa.services.summarize import SummarizeService
 from qfa.settings import AppSettings, EmbeddingSettings, JudgeLLMSettings, LLMSettings
 
 logger = logging.getLogger(__name__)
@@ -80,7 +88,8 @@ class ServiceGraph:
     Attributes
     ----------
     orchestrator : Orchestrator
-        The still-undecomposed use cases (summarize). Disappears with #267.
+        The now fully-decomposed use cases; the class itself is deleted
+        in #267.
     sensitivity : SensitivityService
         The detect-sensitive use case, extracted in #263.
     coding : CodingService
@@ -88,12 +97,15 @@ class ServiceGraph:
     analyze : AnalyzeService
         The analyze use case (analyze_bulk, analyze_hierarchical),
         extracted in #266.
+    summarize : SummarizeService
+        The summarize / summarize_bulk use cases, extracted in #264.
     """
 
     orchestrator: Orchestrator
     sensitivity: SensitivityService
     coding: CodingService
     analyze: AnalyzeService
+    summarize: SummarizeService
 
 
 def resolve_judge_llm_settings(
@@ -206,7 +218,7 @@ def register_custom_model_prices() -> None:
         )
 
 
-def build_services(
+def build_service_graph(
     settings: AppSettings,
     *,
     llm: LLMPort | None = None,
@@ -226,6 +238,9 @@ def build_services(
     :class:`~qfa.services.llm_call_executor.LLMCallExecutor`, so the
     per-call timeout, the token ceiling and the anonymiser are configured
     once for the whole graph rather than per use case.
+
+    Callers that want only the orchestrator can use the narrower
+    :func:`build_orchestrator` instead; it delegates here.
 
     Parameters
     ----------
@@ -266,8 +281,8 @@ def build_services(
     Returns
     -------
     ServiceGraph
-        The fully wired services, sharing one executor and one anonymiser,
-        ready to be published on ``app.state``.
+        Every application service, fully wired over one shared executor and
+        one shared anonymiser, ready to be published on ``app.state``.
     """
     register_custom_model_prices()
 
@@ -293,10 +308,10 @@ def build_services(
 
     anonymizer = PresidioAnonymizer()
     # The shared LLM-call scaffolding is an injected collaborator, not a base
-    # class (ADR-017), so the composition root builds it here and hands the
-    # same instance to every service rather than letting each construct its
-    # own. It is built over the *primary* LLM connection; judge calls override
-    # the client per call.
+    # class (ADR-017), so the composition root builds it here — once — and
+    # hands the same instance to every service rather than letting each
+    # service construct its own. It is built over the *primary* LLM
+    # connection; judge calls override the client per call.
     executor = LLMCallExecutor(
         llm=llm,
         anonymizer=anonymizer,
@@ -334,6 +349,15 @@ def build_services(
         # and summarise), so the service is never handed one.
         coding=CodingService(llm=llm, anonymizer=anonymizer, executor=executor),
         analyze=analyze,
+        # Neither summarisation path runs the token-budget guard or needs an
+        # embedder, so the service asks for neither — the constructor is the
+        # use cases' real dependency surface (ADR-017, option A).
+        summarize=SummarizeService(
+            llm=llm,
+            judge_llm=judge_llm,
+            anonymizer=anonymizer,
+            executor=executor,
+        ),
     )
 
 
@@ -343,30 +367,30 @@ def build_orchestrator(
     llm: LLMPort | None = None,
     judge_llm: LLMPort | None = None,
 ) -> Orchestrator:
-    """Build only the :class:`Orchestrator` half of :func:`build_services`.
+    """Build only the :class:`Orchestrator` half of :func:`build_service_graph`.
 
-    Convenience wrapper for callers that need just the not-yet-extracted
-    use cases (``summarize_bulk``, ``summarize``). There is no ``embedder``
-    parameter: the orchestrator no longer holds one, so accepting it here
-    would be a silent no-op. Callers that want an embedder want
-    :func:`build_analyze_service`.
+    Convenience wrapper for callers that need just the (now empty)
+    :class:`Orchestrator` shell — scripts, notebooks and ad-hoc evaluation
+    harnesses written against it before #267 deletes the class. There is
+    no ``embedder`` parameter: the orchestrator no longer holds one, so
+    accepting it here would be a silent no-op.
 
     Parameters
     ----------
     settings : AppSettings
-        Loaded application settings; see :func:`build_services`.
+        Loaded application settings; see :func:`build_service_graph`.
     llm : LLMPort | None, optional
-        Pre-built LLM port; see :func:`build_services`.
+        Pre-built primary LLM port, or ``None`` to build one from settings.
     judge_llm : LLMPort | None, optional
-        Pre-built judge LLM port; see :func:`build_services`.
+        Pre-built judge LLM port, or ``None`` to resolve one from settings.
 
     Returns
     -------
     Orchestrator
-        A fully wired orchestrator ready for ``summarize_bulk`` /
-        ``summarize`` calls.
+        The orchestrator shell, kept until :class:`Orchestrator` itself is
+        deleted in #267.
     """
-    return build_services(settings, llm=llm, judge_llm=judge_llm).orchestrator
+    return build_service_graph(settings, llm=llm, judge_llm=judge_llm).orchestrator
 
 
 def build_analyze_service(
@@ -376,7 +400,7 @@ def build_analyze_service(
     judge_llm: LLMPort | None = None,
     embedder: EmbeddingPort | None = None,
 ) -> AnalyzeService:
-    """Build only the :class:`AnalyzeService` half of :func:`build_services`.
+    """Build only the :class:`AnalyzeService` half of :func:`build_service_graph`.
 
     Convenience wrapper for scripts and notebooks that drive
     ``analyze_bulk`` / ``analyze_hierarchical`` in-process. Pass
@@ -384,6 +408,6 @@ def build_analyze_service(
     hierarchical mode; without one it raises ``AnalysisError`` at request
     time and ``single_pass`` still works.
     """
-    return build_services(
+    return build_service_graph(
         settings, llm=llm, judge_llm=judge_llm, embedder=embedder
     ).analyze

@@ -17,6 +17,7 @@ from qfa.services.call_context import call_scope
 from qfa.services.coding import CodingService
 from qfa.services.orchestrator import Orchestrator
 from qfa.services.sensitivity import SensitivityService
+from qfa.services.summarize import SummarizeService
 
 
 def get_orchestrator(request: Request) -> Orchestrator:
@@ -93,6 +94,25 @@ def get_analyze_service(request: Request) -> AnalyzeService:
         The analyze service instance.
     """
     return request.app.state.analyze_service
+
+
+def get_summarize_service(request: Request) -> SummarizeService:
+    """Return the summarisation service from app state.
+
+    One provider per use-case service, so each route handler annotates
+    against the single service it actually uses (ADR-017).
+
+    Parameters
+    ----------
+    request : Request
+        The incoming HTTP request.
+
+    Returns
+    -------
+    SummarizeService
+        The summarisation service instance.
+    """
+    return request.app.state.summarize_service
 
 
 def get_auth_orchestrator(request: Request) -> AuthOrchestrator:

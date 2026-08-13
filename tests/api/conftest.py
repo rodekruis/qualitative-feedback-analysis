@@ -13,6 +13,7 @@ from qfa.api.app import (
     RequestIdMiddleware,
     register_exception_handlers,
 )
+from qfa.api.dependencies import get_summarize_service
 from qfa.api.routes import router
 from qfa.api.routes_admin import router as auth_router
 from qfa.api.routes_usage import router as usage_router
@@ -338,6 +339,16 @@ def test_app(fake_orchestrator, fake_auth_orchestrator):
     app.state.analyze_service = fake_orchestrator
     app.state.auth_orchestrator = fake_auth_orchestrator
     app.state.usage_repo = FakeUsageRepository()
+
+    # The summarize routes resolve their own service since #264 extracted
+    # SummarizeService, but ``FakeOrchestrator`` still implements every use
+    # case, so one fake keeps standing in for all of them. Resolved through
+    # an override rather than ``app.state.summarize_service`` so it is read
+    # per request: a dozen route tests swap ``state.orchestrator`` for an
+    # error-raising fake *after* this fixture ran, and they must keep
+    # driving the summarize endpoints without knowing which service class
+    # is behind them.
+    app.dependency_overrides[get_summarize_service] = lambda: app.state.orchestrator
 
     return app
 

@@ -53,7 +53,7 @@ class SensitivityService:
         The shared LLM-call scaffolding this use case delegates to:
         anonymisation of the outgoing message, the deadline-bounded call
         itself, and restoration of the redacted values in the response. The
-        composition root (:func:`qfa.api.composition.build_services`) hands
+        composition root (:func:`qfa.api.composition.build_service_graph`) hands
         over the same instance the other services use.
     """
 
