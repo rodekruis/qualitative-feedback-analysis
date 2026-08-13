@@ -200,14 +200,15 @@ class TestAnalyzeFailureRecordsRow:
         assert row.output_tokens == 0
 
 
-class TestAssignCodesRecordsOneRow:
-    async def test_one_request_records_one_row_with_assign_codes(
+class TestAssignCodesRecordsMultipleRows:
+    async def test_one_request_records_multiple_rows_all_with_assign_codes(
         self, e2e_client, e2e_fake_llm, e2e_engine
     ):
         # The classifier picks a code path in one call over the flattened
         # Types > Categories > Codes framework, then a separate judge call
-        # per level scores the selected path (root to leaf) — still one row
-        # per request even though several LLM calls happen underneath.
+        # per level scores the selected path root to leaf. With one
+        # type/category/code path (depth 3) it issues 4 LLM calls: the
+        # one-shot pick, then judge-Type, judge-Category, judge-Code.
         coding_levels = {
             "root_codes": [
                 {
@@ -247,7 +248,7 @@ class TestAssignCodesRecordsOneRow:
         assert resp.status_code == 200
 
         rows = await _fetch_rows(e2e_engine)
-        assert len(rows) == 1
-        row = rows[0]
-        assert row.operation == "assign_codes"
-        assert row.status == "ok"
+        assert len(rows) == 4
+        for row in rows:
+            assert row.operation == "assign_codes"
+            assert row.status == "ok"
