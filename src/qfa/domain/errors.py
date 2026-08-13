@@ -56,6 +56,15 @@ class LLMRateLimitError(LLMError):
     """Raised when the LLM provider returns a rate-limit response."""
 
 
+class LLMResponseParseError(LLMError):
+    """Raised when a structured LLM response fails schema validation.
+
+    Distinct from other ``LLMError`` cases (timeouts, missing content,
+    provider failures) so callers may choose to treat malformed model
+    output as an empty/absent result instead of failing the request.
+    """
+
+
 # --- Auth errors ---
 
 

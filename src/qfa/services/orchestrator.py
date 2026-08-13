@@ -27,6 +27,7 @@ from qfa.domain.errors import (
     AnalysisTimeoutError,
     LLMError,
     LLMRateLimitError,
+    LLMResponseParseError,
     LLMTimeoutError,
 )
 from qfa.domain.models import (
@@ -37,7 +38,6 @@ from qfa.domain.models import (
     CodedFeedbackRecordModel,
     CodingAssignmentRequestModel,
     CodingAssignmentResultModel,
-    CodingNode,
     FeedbackRecordModel,
     FeedbackRecordSummaryModel,
     SensitivityAnalysisRequestModel,
@@ -51,10 +51,9 @@ from qfa.domain.ports import AnonymizationPort, EmbeddingPort, LLMPort
 from qfa.domain.sensitivity_types import SENSITIVITY_TYPE_DESCRIPTIONS
 from qfa.services.clustering import cluster_records
 from qfa.services.coding_classifier import (
-    JudgeResponse,
-    build_judge_messages,
-    build_pick_messages,
-    parse_selected_indices,
+    CodingResponse,
+    build_coding_messages,
+    flatten_coding_nodes,
 )
 from qfa.services.coding_trends import build_coding_trend_table
 from qfa.services.hierarchical_prompts import (
@@ -244,33 +243,14 @@ def _hyperlink_form_references(
 
 
 @dataclass
-class _ScoredCode:
-    path: list[tuple[str, str]]  # (id, name) per level, root → leaf
-    scores: list[float]  # per-level judge scores, aligned with path
-    explanations: list[str]  # per-level judge explanations, aligned with path
+class _CodeCandidate:
+    path: list[tuple[str, str]]  # (id, name) per level, root → selected node
+    confidence: float  # self-reported by the classifier in the one-shot call
+    explanation: str
 
     @property
-    def confidence_aggregate(self) -> float:
-        return min(self.scores)
-
-    @property
-    def explanation(self) -> str:
-        return "\n".join(
-            f"- Level {i + 1} ({score:.2f}): {expl}"
-            for i, (score, expl) in enumerate(zip(self.scores, self.explanations))
-        )
-
-    @property
-    def decisive_explanation(self) -> str:
-        """The judge explanation for the level that decided this candidate.
-
-        ``_traverse_coding_level`` stops descending at the first level that
-        falls below the threshold, so for a *rejected* candidate the last
-        accumulated level is both its lowest-scoring one and the reason it
-        was dropped. The levels before it passed and would only add noise
-        to a message whose whole point is "why was nothing applied".
-        """
-        return self.explanations[-1]
+    def label(self) -> str:
+        return " > ".join(name for _, name in self.path)
 
 
 NO_CODING_LEAD = "NO CODING APPLIED."
@@ -289,7 +269,7 @@ NO_CODING_EMPTY_CONTENT_EXPLANATION = (
 NO_CODING_NOTHING_RELEVANT_EXPLANATION = (
     f"{NO_CODING_LEAD}\nNo code in the framework was judged relevant to this feedback."
 )
-"""Explanation for when the LLM selected nothing at any hierarchy level."""
+"""Explanation for when the classifier selected nothing at all."""
 
 _MAX_LISTED_REJECTIONS = 3
 """How many near-miss candidates to spell out before collapsing to a count."""
@@ -299,25 +279,25 @@ def _as_whole_percentage(confidence: float) -> str:
     """Render a 0-1 confidence as a whole percentage (``0.04`` -> ``"4%"``).
 
     Non-technical EspoCRM readers see these numbers directly, and a
-    ``0.04`` next to a "Level 2" label reads as noise where "4%" reads as
-    a judgement.
+    ``0.04`` next to a code label reads as noise where "4%" reads as a
+    judgement.
     """
     return f"{round(confidence * 100)}%"
 
 
 def _combine_rejected_explanations(
-    rejected: list[_ScoredCode], threshold: float
+    rejected: list[_CodeCandidate], threshold: float
 ) -> str:
     """Explain in prose why every candidate was rejected by the threshold.
 
     Leads with :data:`NO_CODING_LEAD` and a sentence naming the threshold,
     then lists at most :data:`_MAX_LISTED_REJECTIONS` candidates —
     highest-scoring (closest to being applied) first — as a
-    ``path — percentage`` header over the decisive level's explanation.
-    Any remainder collapses into a single count line rather than an
-    unbounded wall of text.
+    ``path — percentage`` header over the classifier's own explanation for
+    that candidate. Any remainder collapses into a single count line rather
+    than an unbounded wall of text.
     """
-    ordered = sorted(rejected, key=lambda c: c.confidence_aggregate, reverse=True)
+    ordered = sorted(rejected, key=lambda c: c.confidence, reverse=True)
     listed = ordered[:_MAX_LISTED_REJECTIONS]
 
     blocks = [
@@ -326,16 +306,14 @@ def _combine_rejected_explanations(
         f"threshold, so this record needs human review."
     ]
     blocks += [
-        f"{' > '.join(name for _, name in c.path)} — "
-        f"{_as_whole_percentage(c.confidence_aggregate)}\n"
-        f"  {c.decisive_explanation}"
+        f"{c.label} — {_as_whole_percentage(c.confidence)}\n  {c.explanation}"
         for c in listed
     ]
 
     remainder = len(ordered) - len(listed)
     if remainder:
         noun = "code" if remainder == 1 else "codes"
-        cutoff = _as_whole_percentage(listed[-1].confidence_aggregate)
+        cutoff = _as_whole_percentage(listed[-1].confidence)
         blocks.append(f"{remainder} further {noun} scored below {cutoff}.")
 
     return "\n\n".join(blocks)
@@ -1327,7 +1305,12 @@ class Orchestrator:
         request: CodingAssignmentRequestModel,
         deadline: datetime,
     ) -> CodingAssignmentResultModel:
-        """Assign hierarchical codes to a feedback record.
+        """Assign hierarchical codes to a feedback record in a single LLM call.
+
+        The full coding framework is flattened into one option per node (at
+        every depth, not just leaves) and the classifier picks the
+        best-fitting path(s) directly, self-reporting a confidence score for
+        each — no separate per-level pick/judge calls.
 
         Parameters
         ----------
@@ -1339,46 +1322,98 @@ class Orchestrator:
         Returns
         -------
         CodingAssignmentResult
-            Per-record leaf codes from ``classify_feedback``. ``assigned_codes``
-            is never empty: when no code is applied it holds exactly one entry
-            with null ``coding_level_*``/``confidence_*`` fields and an
-            ``explanation`` leading with ``NO CODING APPLIED.`` (#256). That
-            explanation lists the near misses when ``confidence_threshold``
-            filtered every candidate out, and states that nothing was relevant
-            when no code was selected at any level.
+            Per-record codes ordered by confidence, highest first.
+            ``assigned_codes`` is never empty: when no code is applied it
+            holds exactly one entry with null ``coding_level_*``/
+            ``confidence_*`` fields and an ``explanation`` leading with
+            ``NO CODING APPLIED.`` (#256). That explanation lists the near
+            misses when ``confidence_threshold`` filtered every candidate
+            out, and states that nothing was relevant when the classifier
+            selected nothing at all.
 
         Raises
         ------
         AnalysisTimeoutError
             When ``deadline`` is reached before every record is processed.
+        AnalysisError
+            When the classifier returns a confidence outside 0.0-1.0.
         LLMTimeoutError
             When a single LLM completion exceeds the configured timeout.
         LLMRateLimitError
             When the LLM provider returns rate limiting.
         LLMError
-            For other LLM provider failures.
+            For other LLM provider failures. A response that fails schema
+            validation (``LLMResponseParseError``) is treated as an empty
+            pick instead of being raised.
         """
         feedback_record = request.feedback_record
         self._check_coding_deadline(deadline)
 
-        candidates: list[_ScoredCode] = []
-        rejected: list[_ScoredCode] = []
-        await self._traverse_coding_level(
-            feedback_record=feedback_record,
-            level_nodes=list(request.coding_levels.root_codes),
-            level_num=1,
-            hierarchy_path=[],
-            path_ids_names=[],
-            accumulated_scores=[],
-            accumulated_explanations=[],
-            threshold=request.confidence_threshold,
-            tenant_id=request.tenant_id,
-            deadline=deadline,
-            candidates=candidates,
-            rejected=rejected,
+        options = flatten_coding_nodes(list(request.coding_levels.root_codes))
+        system_message, user_message = build_coding_messages(
+            feedback_record=feedback_record, options=options
         )
 
-        candidates.sort(key=lambda c: c.confidence_aggregate, reverse=True)
+        if not user_message:
+            # No options to select from (empty coding framework): this is
+            # equivalent to a genuine empty pick, so explain it the same way
+            # rather than returning a bare empty list (#256).
+            coded = [
+                CodedFeedbackRecordModel(
+                    feedback_record_id=feedback_record.id,
+                    assigned_codes=(
+                        AssignedCodeModel(
+                            explanation=NO_CODING_NOTHING_RELEVANT_EXPLANATION
+                        ),
+                    ),
+                )
+            ]
+            return CodingAssignmentResultModel(coded_feedback_records=tuple(coded))
+
+        self._executor.check_token_limit(system_message, user_message)
+        anonymized_user_message, _ = self._anonymizer.anonymize(user_message)
+        timeout = self._executor.check_deadline_and_get_timeout(deadline)
+
+        try:
+            response = await self._llm.complete(
+                system_message=system_message,
+                user_message=anonymized_user_message,
+                tenant_id=request.tenant_id,
+                response_model=CodingResponse,
+                timeout=timeout,
+            )
+            selections = response.structured.selected
+        except LLMResponseParseError:
+            # Malformed/unparseable model output is treated as a genuine
+            # empty pick rather than a request failure, matching the old
+            # per-level pick step's tolerance for bad LLM output.
+            selections = []
+
+        candidates: list[_CodeCandidate] = []
+        rejected: list[_CodeCandidate] = []
+        seen_indices: set[int] = set()
+        for selection in selections:
+            if not 0 <= selection.index < len(options):
+                continue
+            if selection.index in seen_indices:
+                continue
+            seen_indices.add(selection.index)
+            if not 0.0 <= selection.confidence <= 1.0:
+                raise AnalysisError("LLM returned confidence outside 0.0-1.0")
+            candidate = _CodeCandidate(
+                path=list(options[selection.index].path),
+                confidence=selection.confidence,
+                explanation=selection.explanation,
+            )
+            if (
+                request.confidence_threshold is not None
+                and candidate.confidence < request.confidence_threshold
+            ):
+                rejected.append(candidate)
+                continue
+            candidates.append(candidate)
+
+        candidates.sort(key=lambda c: c.confidence, reverse=True)
         top = candidates[: request.max_codes]
 
         assigned_codes: list[AssignedCodeModel]
@@ -1391,10 +1426,10 @@ class Orchestrator:
                     coding_level_2_name=c.path[1][1] if len(c.path) > 1 else None,
                     coding_level_3_id=c.path[2][0] if len(c.path) > 2 else None,
                     coding_level_3_name=c.path[2][1] if len(c.path) > 2 else None,
-                    confidence_level_1=c.scores[0],
-                    confidence_level_2=c.scores[1] if len(c.scores) > 1 else None,
-                    confidence_level_3=c.scores[2] if len(c.scores) > 2 else None,
-                    confidence_aggregate=c.confidence_aggregate,
+                    confidence_level_1=c.confidence,
+                    confidence_level_2=c.confidence if len(c.path) > 1 else None,
+                    confidence_level_3=c.confidence if len(c.path) > 2 else None,
+                    confidence_aggregate=c.confidence,
                     explanation=c.explanation,
                 )
                 for c in top
@@ -1483,135 +1518,3 @@ class Orchestrator:
             raise AnalysisTimeoutError(
                 "Coding deadline exceeded before all feedback records were processed"
             )
-
-    async def _traverse_coding_level(
-        self,
-        *,
-        feedback_record: FeedbackRecordModel,
-        level_nodes: list[CodingNode],
-        level_num: int,
-        hierarchy_path: list[tuple[str, str]],
-        path_ids_names: list[tuple[str, str]],
-        accumulated_scores: list[float],
-        accumulated_explanations: list[str],
-        threshold: float | None,
-        tenant_id: str,
-        deadline: datetime,
-        candidates: list[_ScoredCode],
-        rejected: list[_ScoredCode],
-    ) -> None:
-        """Recursively pick and judge codes at one level, descending into children."""
-        level_label = f"Code level {level_num}"
-        indices = await self._pick_code_indices(
-            feedback_record=feedback_record,
-            current_level=level_label,
-            entries=level_nodes,
-            hierarchy_path=hierarchy_path,
-            tenant_id=tenant_id,
-            deadline=deadline,
-        )
-        for idx in indices:
-            node = level_nodes[idx]
-            current_path = [*hierarchy_path, (level_label, node.name)]
-            judge = await self._judge_code_level(
-                feedback_record=feedback_record,
-                level=level_label,
-                path=current_path,
-                tenant_id=tenant_id,
-                deadline=deadline,
-            )
-            new_path = [*path_ids_names, (node.id, node.name)]
-            new_scores = [*accumulated_scores, judge.score]
-            new_explanations = [*accumulated_explanations, judge.explanation]
-            if threshold is not None and judge.score < threshold:
-                rejected.append(
-                    _ScoredCode(
-                        path=new_path, scores=new_scores, explanations=new_explanations
-                    )
-                )
-                continue
-            if node.children:
-                await self._traverse_coding_level(
-                    feedback_record=feedback_record,
-                    level_nodes=node.children,
-                    level_num=level_num + 1,
-                    hierarchy_path=current_path,
-                    path_ids_names=new_path,
-                    accumulated_scores=new_scores,
-                    accumulated_explanations=new_explanations,
-                    threshold=threshold,
-                    tenant_id=tenant_id,
-                    deadline=deadline,
-                    candidates=candidates,
-                    rejected=rejected,
-                )
-            else:
-                candidates.append(
-                    _ScoredCode(
-                        path=new_path,
-                        scores=new_scores,
-                        explanations=new_explanations,
-                    )
-                )
-
-    async def _pick_code_indices(
-        self,
-        *,
-        feedback_record: FeedbackRecordModel,
-        current_level: str,
-        entries: list[CodingNode],
-        hierarchy_path: list[tuple[str, str]] | None,
-        tenant_id: str,
-        deadline: datetime,
-    ) -> list[int]:
-        """Build one coding prompt, call the LLM, and parse selected indices."""
-        labels = [entry.name for entry in entries]
-        system_message, user_message = build_pick_messages(
-            feedback_record=feedback_record,
-            current_level=current_level,
-            labels=labels,
-            hierarchy_path=hierarchy_path,
-        )
-        if not user_message:
-            return []
-
-        self._check_coding_deadline(deadline)
-        self._executor.check_token_limit(system_message, user_message)
-
-        anonymized_user_message, _ = self._anonymizer.anonymize(user_message)
-
-        response = await self._llm.complete(
-            system_message=system_message,
-            user_message=anonymized_user_message,
-            tenant_id=tenant_id,
-            response_model=str,
-        )
-        return parse_selected_indices(response.structured, len(labels))
-
-    async def _judge_code_level(
-        self,
-        *,
-        feedback_record: FeedbackRecordModel,
-        level: str,
-        path: list[tuple[str, str]],
-        tenant_id: str,
-        deadline: datetime,
-    ) -> JudgeResponse:
-        """Call the judge LLM for one hierarchy level; return structured score and explanation."""
-        system_message, user_message = build_judge_messages(
-            feedback_record=feedback_record,
-            level=level,
-            path=path,
-        )
-        self._check_coding_deadline(deadline)
-        self._executor.check_token_limit(system_message, user_message)
-        user_message, _ = self._anonymizer.anonymize(user_message)
-        response = await self._llm.complete(
-            system_message=system_message,
-            user_message=user_message,
-            tenant_id=tenant_id,
-            response_model=JudgeResponse,
-        )
-        if not 0.0 <= response.structured.score <= 1.0:
-            raise AnalysisError("LLM judge returned score outside 0.0-1.0")
-        return response.structured

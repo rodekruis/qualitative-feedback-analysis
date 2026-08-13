@@ -7,6 +7,7 @@ import pytest
 from qfa.domain.errors import (
     AnalysisError,
     LLMError,
+    LLMResponseParseError,
 )
 from qfa.domain.models import (
     AggregateSummaryResultModel,
@@ -28,12 +29,12 @@ from qfa.domain.models import (
 )
 from qfa.domain.ports import AnonymizationPort, LLMPort
 from qfa.domain.sensitivity_types import SensitivityType
-from qfa.services.coding_classifier import JudgeResponse
+from qfa.services.coding_classifier import CodeSelection, CodingResponse
 from qfa.services.orchestrator import (
     NO_CODING_NOTHING_RELEVANT_EXPLANATION,
     Orchestrator,
+    _CodeCandidate,
     _combine_rejected_explanations,
-    _ScoredCode,
 )
 from qfa.settings import OrchestratorSettings
 
@@ -1594,12 +1595,202 @@ def _make_coding_request(
     )
 
 
-def _make_scored_code(names, scores, explanations):
-    """Build a ``_ScoredCode`` from level names, scores and explanations."""
-    return _ScoredCode(
+class TestAssignCodesOneShot:
+    @pytest.mark.asyncio
+    async def test_issues_exactly_one_llm_call(self, settings):
+        """The classifier selects code(s) in a single call, no separate judge call."""
+        root_codes = [
+            CodingNode(
+                id="type-a",
+                name="Type A",
+                children=[
+                    CodingNode(
+                        id="cat-a1",
+                        name="Cat A1",
+                        children=[CodingNode(id="code-a1-1", name="Code A1.1")],
+                    )
+                ],
+            )
+        ]
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(
+                    structured=CodingResponse(
+                        selected=[
+                            CodeSelection(
+                                index=2, confidence=0.9, explanation="Clear fit."
+                            )
+                        ]
+                    )
+                ),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        result = await orch.assign_codes(
+            _make_coding_request(root_codes=root_codes), _future_deadline()
+        )
+
+        assert len(fake_llm.calls) == 1
+        code = result.coded_feedback_records[0].assigned_codes[0]
+        assert code.coding_level_1_id == "type-a"
+        assert code.coding_level_2_id == "cat-a1"
+        assert code.coding_level_3_id == "code-a1-1"
+        assert code.confidence_level_1 == 0.9
+        assert code.confidence_level_2 == 0.9
+        assert code.confidence_level_3 == 0.9
+        assert code.confidence_aggregate == 0.9
+
+    @pytest.mark.asyncio
+    async def test_selecting_a_non_leaf_option_leaves_deeper_levels_null(
+        self, settings
+    ):
+        """A level-1-only (non-leaf) selection is a valid final answer, not a partial pick."""
+        root_codes = [
+            CodingNode(
+                id="type-a",
+                name="Type A",
+                children=[CodingNode(id="cat-a1", name="Cat A1")],
+            )
+        ]
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(
+                    structured=CodingResponse(
+                        selected=[
+                            CodeSelection(
+                                index=0, confidence=0.8, explanation="General fit."
+                            )
+                        ]
+                    )
+                ),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        result = await orch.assign_codes(
+            _make_coding_request(root_codes=root_codes), _future_deadline()
+        )
+
+        code = result.coded_feedback_records[0].assigned_codes[0]
+        assert code.coding_level_1_id == "type-a"
+        assert code.coding_level_2_id is None
+        assert code.confidence_level_2 is None
+
+    @pytest.mark.asyncio
+    async def test_out_of_range_and_duplicate_indices_are_ignored(self, settings):
+        """Bad indices from the LLM (out of range or repeated) are dropped, not errors."""
+        root_codes = [CodingNode(id="code-1", name="Code A")]
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(
+                    structured=CodingResponse(
+                        selected=[
+                            CodeSelection(index=0, confidence=0.9, explanation="Fits."),
+                            CodeSelection(
+                                index=0, confidence=0.5, explanation="Duplicate."
+                            ),
+                            CodeSelection(
+                                index=99, confidence=0.9, explanation="Out of range."
+                            ),
+                        ]
+                    )
+                ),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        result = await orch.assign_codes(
+            _make_coding_request(root_codes=root_codes), _future_deadline()
+        )
+
+        assigned = result.coded_feedback_records[0].assigned_codes
+        assert len(assigned) == 1
+        assert assigned[0].explanation == "Fits."
+
+    @pytest.mark.asyncio
+    async def test_malformed_llm_response_degrades_to_nothing_selected(self, settings):
+        """A response that fails schema validation is a genuine empty pick.
+
+        Not a request failure — matching the old per-level pick step's
+        tolerance for malformed LLM output.
+        """
+        root_codes = [CodingNode(id="code-1", name="Code A")]
+        fake_llm = FakeLLMPort(
+            errors=[LLMResponseParseError("LLM response validation failed")]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        result = await orch.assign_codes(
+            _make_coding_request(root_codes=root_codes), _future_deadline()
+        )
+
+        assigned = result.coded_feedback_records[0].assigned_codes
+        assert len(assigned) == 1
+        assert assigned[0].coding_level_1_id is None
+        assert assigned[0].explanation == NO_CODING_NOTHING_RELEVANT_EXPLANATION
+
+    @pytest.mark.asyncio
+    async def test_out_of_range_confidence_raises_analysis_error(self, settings):
+        """An out-of-range confidence is a domain error, not a generic LLM failure."""
+        root_codes = [CodingNode(id="code-1", name="Code A")]
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(
+                    structured=CodingResponse(
+                        selected=[
+                            CodeSelection(
+                                index=0, confidence=1.5, explanation="Too confident."
+                            )
+                        ]
+                    )
+                ),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        with pytest.raises(AnalysisError, match=r"outside 0\.0-1\.0"):
+            await orch.assign_codes(
+                _make_coding_request(root_codes=root_codes), _future_deadline()
+            )
+
+
+def _make_code_candidate(names, confidence, explanation):
+    """Build a ``_CodeCandidate`` from a hierarchy path, confidence and explanation."""
+    return _CodeCandidate(
         path=[(f"id-{name}", name) for name in names],
-        scores=list(scores),
-        explanations=list(explanations),
+        confidence=confidence,
+        explanation=explanation,
     )
 
 
@@ -1611,25 +1802,21 @@ class TestNoCodingAppliedMessage:
 
         Asserting the exact string (rather than a handful of substrings) is
         what makes this the contract: lead line, threshold sentence, blank
-        line separators, ``name — percentage`` headers, indented decisive
-        explanations and the trailing remainder count.
+        line separators, ``name — percentage`` headers, indented explanations
+        and the trailing remainder count.
         """
         rejected = [
-            _make_scored_code(
+            _make_code_candidate(
                 ["Shelter", "Repairs", "Roofing"],
-                [0.8, 0.5, 0.04],
-                [
-                    "Housing is mentioned.",
-                    "Repairs are plausible.",
-                    "No mention of roof damage; the feedback concerns rent costs.",
-                ],
+                0.04,
+                "No mention of roof damage; the feedback concerns rent costs.",
             ),
-            _make_scored_code(["Water"], [0.03], ["No reference to water access."]),
-            _make_scored_code(
-                ["Food Security"], [0.02], ["Concerns housing, not food."]
+            _make_code_candidate(["Water"], 0.03, "No reference to water access."),
+            _make_code_candidate(
+                ["Food Security"], 0.02, "Concerns housing, not food."
             ),
             *[
-                _make_scored_code([f"Other {i}"], [0.01], [f"Unrelated {i}."])
+                _make_code_candidate([f"Other {i}"], 0.01, f"Unrelated {i}.")
                 for i in range(5)
             ],
         ]
@@ -1656,12 +1843,13 @@ class TestNoCodingAppliedMessage:
     def test_candidates_are_listed_highest_scoring_first(self):
         """Order by score descending so the closest near-miss is read first.
 
-        The traversal appends rejections in framework order, not score
-        order, so the formatter must sort rather than rely on input order.
+        Candidates are appended in whatever order the classifier returned
+        them, not score order, so the formatter must sort rather than rely
+        on input order.
         """
         rejected = [
-            _make_scored_code(["Low"], [0.01], ["Barely related."]),
-            _make_scored_code(["High"], [0.09], ["Almost made it."]),
+            _make_code_candidate(["Low"], 0.01, "Barely related."),
+            _make_code_candidate(["High"], 0.09, "Almost made it."),
         ]
 
         message = _combine_rejected_explanations(rejected, threshold=0.1)
@@ -1675,7 +1863,7 @@ class TestNoCodingAppliedMessage:
         of the line is what tells the reader nothing was truncated.
         """
         rejected = [
-            _make_scored_code([f"Code {i}"], [0.01 * i], [f"Weak {i}."])
+            _make_code_candidate([f"Code {i}"], 0.01 * i, f"Weak {i}.")
             for i in range(1, 4)
         ]
 
@@ -1686,7 +1874,7 @@ class TestNoCodingAppliedMessage:
     def test_remainder_line_is_singular_for_exactly_one_extra(self):
         """Use "1 further code", not "1 further codes", in user-facing text."""
         rejected = [
-            _make_scored_code([f"Code {i}"], [0.09 - i / 100], [f"Weak {i}."])
+            _make_code_candidate([f"Code {i}"], 0.09 - i / 100, f"Weak {i}.")
             for i in range(4)
         ]
 
@@ -1694,34 +1882,13 @@ class TestNoCodingAppliedMessage:
 
         assert message.endswith("1 further code scored below 7%.")
 
-    def test_only_the_decisive_level_explanation_is_shown(self):
-        """Show the level that caused rejection, not one line per level.
-
-        The traversal stops descending at the first sub-threshold level, so
-        the last accumulated level is both the lowest-scoring one and the
-        reason the candidate was dropped. The earlier levels passed and
-        would only add noise.
-        """
-        rejected = [
-            _make_scored_code(
-                ["Shelter", "Roofing"],
-                [0.8, 0.04],
-                ["Housing is mentioned.", "No mention of roof damage."],
-            )
-        ]
-
-        message = _combine_rejected_explanations(rejected, threshold=0.1)
-
-        assert "No mention of roof damage." in message
-        assert "Housing is mentioned." not in message
-
     def test_confidences_render_as_whole_percentages_not_decimals(self):
         """Percentages read naturally to non-technical EspoCRM users.
 
         The pre-#256 format emitted raw ``0.04``-style decimals next to a
-        "Level 2" label, which users had to mentally convert.
+        code label, which users had to mentally convert.
         """
-        rejected = [_make_scored_code(["Water"], [0.04], ["No water mentioned."])]
+        rejected = [_make_code_candidate(["Water"], 0.04, "No water mentioned.")]
 
         message = _combine_rejected_explanations(rejected, threshold=0.15)
 
@@ -1743,10 +1910,15 @@ class TestAssignCodesConfidenceThreshold:
         """
         fake_llm = FakeLLMPort(
             responses=[
-                _make_llm_response(structured='{"selected": [0]}'),
                 _make_llm_response(
-                    structured=JudgeResponse(
-                        score=0.5, explanation="Only loosely related."
+                    structured=CodingResponse(
+                        selected=[
+                            CodeSelection(
+                                index=0,
+                                confidence=0.5,
+                                explanation="Only loosely related.",
+                            )
+                        ]
                     )
                 ),
             ]
@@ -1785,7 +1957,7 @@ class TestAssignCodesConfidenceThreshold:
         relevant" from the near-miss case.
         """
         fake_llm = FakeLLMPort(
-            responses=[_make_llm_response(structured='{"selected": []}')]
+            responses=[_make_llm_response(structured=CodingResponse(selected=[]))]
         )
         orch = Orchestrator(
             llm=fake_llm,
@@ -1808,7 +1980,7 @@ class TestAssignCodesConfidenceThreshold:
 
     @pytest.mark.asyncio
     async def test_all_rejected_explanations_are_combined_highest_first(self, settings):
-        """Confirm every rejected branch's explanation is surfaced.
+        """Confirm every rejected candidate's explanation is surfaced.
 
         With two root candidates both rejected, both explanations appear in
         the combined result, higher-scoring rejection first.
@@ -1819,12 +1991,17 @@ class TestAssignCodesConfidenceThreshold:
         ]
         fake_llm = FakeLLMPort(
             responses=[
-                _make_llm_response(structured='{"selected": [0, 1]}'),
                 _make_llm_response(
-                    structured=JudgeResponse(score=0.4, explanation="Weak fit A.")
-                ),
-                _make_llm_response(
-                    structured=JudgeResponse(score=0.7, explanation="Weak fit B.")
+                    structured=CodingResponse(
+                        selected=[
+                            CodeSelection(
+                                index=0, confidence=0.4, explanation="Weak fit A."
+                            ),
+                            CodeSelection(
+                                index=1, confidence=0.7, explanation="Weak fit B."
+                            ),
+                        ]
+                    )
                 ),
             ]
         )

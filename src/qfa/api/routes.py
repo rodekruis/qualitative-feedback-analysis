@@ -408,7 +408,12 @@ async def assign_codes(
     orchestrator: Orchestrator = Depends(get_orchestrator),
     _scope: CallContext = Depends(call_scope_for(Operation.ASSIGN_CODES)),
 ) -> ApiAssignCodesResponse:
-    """Assign codes via iterative LLM picks at each level of the framework.
+    """Assign codes with a single one-shot LLM call over the flattened framework.
+
+    The full coding framework is flattened into one option per node (at
+    every depth, not just leaves) and the classifier picks the best-fitting
+    path(s) directly, self-reporting a confidence score for each — no
+    separate per-level pick/judge calls.
 
     ``assigned_codes`` is never an empty list. Whenever no code is applied
     the response is a 200 carrying exactly one entry whose
@@ -421,7 +426,7 @@ async def assign_codes(
     - every candidate was filtered out by ``confidence_threshold`` — the
       explanation names the threshold and lists the closest near misses,
       highest-scoring first;
-    - no code was selected at any level — the explanation states that
+    - the classifier selected nothing at all — the explanation states that
       nothing in the framework was judged relevant.
 
     The explanation is English only, regardless of the feedback language.
