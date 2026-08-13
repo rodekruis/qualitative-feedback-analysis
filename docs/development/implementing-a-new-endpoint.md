@@ -90,20 +90,25 @@ caller — the route injects it from the authenticated key (step 5). Treating it
 as a request field rather than ambient state keeps the use case pure and
 testable.
 
-## 3. Implement the use case on the orchestrator
+## 3. Implement the use case in the services layer
 
-The application layer is a single `Orchestrator` class in
-`qfa.services.orchestrator`. New use cases are added as **methods** on that one
-class, not as new orchestrator implementations and not behind a new driving
-port — see
+The application layer is being split into one service per use case (epic #112,
+[ADR-017](../adr/017-orchestrator-composition-only.md)). A **new** use case gets
+its own class in `qfa.services` — the way
+{py:class}`~qfa.services.coding.CodingService` owns assign-codes — taking an
+{py:class}`~qfa.services.llm_call_executor.LLMCallExecutor` plus whatever else
+it actually needs, and *never* a shared base class. Until the epic finishes, the
+use cases not yet extracted still live as methods on the shrinking
+`Orchestrator` in `qfa.services.orchestrator`; either way there is no new
+driving port and no second orchestrator implementation — see
 [ADR-011: Drop Swappable-Orchestrator Requirement](../adr/011-drop-orchestrator-port.md)
-and the [orchestrator section](../architecture/03-components.md#the-orchestrator)
+and the [application services section](../architecture/03-components.md#the-application-services)
 of the components page. Per-task behaviour is selected by the route calling the
-appropriate method.
+appropriate service.
 
 A use-case method takes the domain request and an absolute `deadline`, and
 returns a domain result. The established shape — visible on the existing
-`summarize`, `analyze_bulk`, and `assign_codes` methods — is:
+`summarize`, `analyze_bulk`, and `CodingService.assign_codes` methods — is:
 
 1. Derive a per-call timeout from the deadline, so a slow endpoint cannot run
    past the request budget.
@@ -252,7 +257,12 @@ inference route:
 
 - `authenticate_request` validates the Bearer key and yields the
   `TenantApiKey` (step 6).
-- `get_orchestrator` injects the orchestrator wired at startup.
+- `get_orchestrator` injects the orchestrator wired at startup. A use case with
+  its own service gets its own provider instead — `get_coding_service` for
+  assign-codes — so the handler annotates against the one service it calls and
+  the signature says which use case it reaches. Add the provider to
+  `qfa.api.dependencies` (it reads the instance back off `app.state`) and
+  publish the instance in the lifespan.
 - `call_scope_for(Operation.CLASSIFY)` opens the usage-tracking scope (step 7).
 
 ```{note}
@@ -268,7 +278,8 @@ unchanged.
 ```
 
 The route is also where the API ↔ domain mapping happens — never pass an API
-schema into the orchestrator, and never return a domain model from the route.
+schema into the application service, and never return a domain model from the
+route.
 API value objects are mapped to their domain equivalents here too: the
 `_to_domain_metadata` helper converts an `ApiFeedbackRecordMetadata` into the
 domain `FeedbackRecordMetadataModel` before it enters `FeedbackRecordModel`.

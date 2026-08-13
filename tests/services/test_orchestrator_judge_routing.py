@@ -42,7 +42,9 @@ from qfa.domain.ports import (
 )
 from qfa.domain.usage_models import LLMCallRecord, Operation
 from qfa.services.call_context import call_scope
+from qfa.services.coding import CodingService
 from qfa.services.coding_classifier import CodingResponse, JudgeResponse
+from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.services.orchestrator import AnalyzeJudgeResult, Orchestrator
 from qfa.settings import AnalyzeSettings, OrchestratorSettings
 
@@ -215,6 +217,26 @@ def _build(primary: LLMPort, judge: LLMPort | None = None, **kwargs) -> Orchestr
         llm_timeout_seconds=LLM_TIMEOUT,
         max_total_tokens=MAX_TOKENS,
         **kwargs,
+    )
+
+
+def _build_coding_service(primary: LLMPort) -> CodingService:
+    """Build the coding service over the given client.
+
+    There is no ``judge`` parameter on purpose: the service has no judge
+    connection to hand one to (see ``assign_codes`` below).
+    """
+    anonymizer = NoopAnonymizer()
+    return CodingService(
+        llm=primary,
+        anonymizer=anonymizer,
+        executor=LLMCallExecutor(
+            llm=primary,
+            anonymizer=anonymizer,
+            settings=OrchestratorSettings(),
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        ),
     )
 
 
@@ -447,12 +469,17 @@ class TestGenerationCallsStayOnThePrimaryClient:
         sites: the ticket scopes the split to the quality-score judges on
         analyse and summarise. Pinned here so the exclusion is a recorded
         decision rather than something a later reader assumes was an oversight.
+
+        Since #265 the exclusion is structural as well as behavioural:
+        :class:`~qfa.services.coding.CodingService` takes no judge client, so
+        a judge client that exists in the same process is unreachable from
+        this path. Both halves are asserted below.
         """
         primary = RoutingLLM("primary")
         judge = RoutingLLM("judge")
-        orchestrator = _build(primary, judge)
+        coding = _build_coding_service(primary)
 
-        await orchestrator.assign_codes(
+        await coding.assign_codes(
             CodingAssignmentRequestModel(
                 feedback_record=_feedback_record(),
                 coding_levels=CodingFramework(

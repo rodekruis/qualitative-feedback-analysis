@@ -10,6 +10,7 @@ import qfa
 from qfa.api.dependencies import (
     authenticate_request,
     call_scope_for,
+    get_coding_service,
     get_orchestrator,
     get_sensitivity_service,
 )
@@ -45,10 +46,11 @@ from qfa.domain.models import (
     TenantApiKey,
 )
 from qfa.domain.usage_models import CallContext, Operation
-from qfa.services.orchestrator import (
+from qfa.services.coding import (
     NO_CODING_EMPTY_CONTENT_EXPLANATION,
-    Orchestrator,
+    CodingService,
 )
+from qfa.services.orchestrator import Orchestrator
 from qfa.services.sensitivity import SensitivityService
 
 logger = logging.getLogger(__name__)
@@ -407,7 +409,7 @@ async def summarize(
 async def assign_codes(
     body: ApiAssignCodesRequest,
     tenant: TenantApiKey = Depends(authenticate_request),
-    orchestrator: Orchestrator = Depends(get_orchestrator),
+    coding: CodingService = Depends(get_coding_service),
     _scope: CallContext = Depends(call_scope_for(Operation.ASSIGN_CODES)),
 ) -> ApiAssignCodesResponse:
     """Assign codes: one one-shot pick call, then a separate judge call per level.
@@ -463,7 +465,7 @@ async def assign_codes(
         tenant_id=tenant.tenant_id,
     )
 
-    result = await orchestrator.assign_codes(domain_request, deadline)
+    result = await coding.assign_codes(domain_request, deadline)
     coded = result.coded_feedback_records[0]
 
     return ApiAssignCodesResponse(

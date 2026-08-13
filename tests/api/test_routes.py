@@ -11,7 +11,7 @@ from qfa.domain.errors import (
     FeedbackTooLargeError,
 )
 from qfa.domain.models import FeedbackRecordSummaryModel
-from qfa.services.orchestrator import NO_CODING_EMPTY_CONTENT_EXPLANATION
+from qfa.services.coding import NO_CODING_EMPTY_CONTENT_EXPLANATION
 
 from .conftest import FAKE_API_KEY, FakeOrchestrator
 

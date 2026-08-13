@@ -22,6 +22,7 @@ from qfa.adapters.tracking_llm import TrackingLLMAdapter
 from qfa.api.app import create_app
 from qfa.domain.models import LLMResponse
 from qfa.domain.ports import LLMPort
+from qfa.services.coding import CodingService
 from qfa.services.sensitivity import SensitivityService
 from qfa.settings import LLMSettings
 
@@ -171,7 +172,8 @@ async def test_every_service_is_published_on_app_state(app_env: None):
 
     The route providers read one slot each, so a service the lifespan forgets
     to publish is a 500 on that endpoint alone — invisible to every other
-    test in this module.
+    test in this module. The API-level tests fake ``app.state`` wholesale, so
+    this is the only place that catches such an omission.
     """
     app = create_app(llm_factory=_RecordingFakeLLM)
 
@@ -181,3 +183,10 @@ async def test_every_service_is_published_on_app_state(app_env: None):
         assert (
             app.state.sensitivity_service._executor is app.state.orchestrator._executor
         )
+
+        coding = app.state.coding_service
+
+        assert isinstance(coding, CodingService)
+        assert isinstance(coding._llm, TrackingLLMAdapter)
+        # One executor per process, shared: see ADR-017.
+        assert coding._executor is app.state.orchestrator._executor

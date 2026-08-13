@@ -54,6 +54,7 @@ import yaml
 from qfa.adapters.embedding import build_onnx_embedder
 from qfa.adapters.presidio_anonymizer import PresidioAnonymizer
 from qfa.domain.ports import EmbeddingPort, LLMPort
+from qfa.services.coding import CodingService
 from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.services.orchestrator import Orchestrator
 from qfa.services.sensitivity import SensitivityService
@@ -77,13 +78,17 @@ class ServiceGraph:
     Attributes
     ----------
     orchestrator : Orchestrator
-        The still-undecomposed use cases (analyze, summarize, coding).
+        The still-undecomposed use cases (analyze, summarize). Disappears
+        with #267.
     sensitivity : SensitivityService
         The detect-sensitive use case, extracted in #263.
+    coding : CodingService
+        The assign-codes use case, backing ``POST /v1/assign-codes``.
     """
 
     orchestrator: Orchestrator
     sensitivity: SensitivityService
+    coding: CodingService
 
 
 def resolve_judge_llm_settings(
@@ -202,7 +207,7 @@ def build_services(
     judge_llm: LLMPort | None = None,
     embedder: EmbeddingPort | None = None,
 ) -> ServiceGraph:
-    """Construct the application services from application settings.
+    """Construct every application service from application settings.
 
     This is the shared composition point used by both the FastAPI
     lifespan and out-of-process callers (scripts, notebooks). It owns
@@ -279,10 +284,10 @@ def build_services(
 
     anonymizer = PresidioAnonymizer()
     # The shared LLM-call scaffolding is an injected collaborator, not a base
-    # class (ADR-017), so the composition root builds it here and hands it to
-    # the service rather than letting the service construct its own. It is
-    # built over the *primary* LLM connection; judge calls override the client
-    # per call.
+    # class (ADR-017), so the composition root builds it here and hands the
+    # same instance to every service rather than letting each construct its
+    # own. It is built over the *primary* LLM connection; judge calls override
+    # the client per call.
     executor = LLMCallExecutor(
         llm=llm,
         anonymizer=anonymizer,
@@ -304,6 +309,10 @@ def build_services(
             executor=executor,
         ),
         sensitivity=SensitivityService(executor=executor),
+        # No judge client: both the pick and the per-level judge in the coding
+        # path run on the primary connection (#258 scoped the split to analyse
+        # and summarise), so the service is never handed one.
+        coding=CodingService(llm=llm, anonymizer=anonymizer, executor=executor),
     )
 
 
