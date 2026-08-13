@@ -87,7 +87,7 @@ class CodingResponse(BaseModel):
 _SYSTEM = """You are a classification agent for feedback records from community members, collected by Red Cross / Red Crescent National Societies as part of humanitarian programs.
 
 Task:
-Select the best-fitting code(s) for the feedback record from the full coding framework given as a numbered list of options. Each option is a complete path through the hierarchy (e.g. "Service Delivery > Staff Behavior > Rudeness"); some paths end earlier than others because not every branch goes three levels deep. Pick whichever path best captures the feedback, regardless of its depth — a shorter, more general path is a valid choice only when nothing more specific fits.
+Select the best-fitting code(s) for the feedback record from the full coding framework given as a numbered list of options. Each option is a complete path through the hierarchy (e.g. "Service Delivery > Staff Behavior > Rudeness"); some paths end earlier than others because not every branch goes three levels deep. Prefer the deepest, most specific path available — pick a shorter, more general path only when the feedback genuinely does not support going any deeper.
 
 Context:
 Feedback is qualitative and unstructured. It may be:
