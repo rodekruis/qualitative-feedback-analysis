@@ -16,9 +16,9 @@ people ask about most: regenerating the `analyze_corpus.yaml` fixture.
 | `espo_crm/`                     | Adapters / utilities for the EspoCRM integration.                |
 
 For interactive in-process exploration of the same corpus (no server,
-direct `Orchestrator.analyze_hierarchical` calls, results displayed
+direct `AnalyzeService.analyze_hierarchical` calls, results displayed
 inline) see [`notebooks/analyze_corpus.ipynb`](../notebooks/analyze_corpus.ipynb). It uses
-{py:func}`qfa.api.composition.build_orchestrator` to assemble the
+{py:func}`qfa.api.composition.build_analyze_service` to assemble the
 domain object graph against the live LLM.
 
 ---
@@ -242,8 +242,8 @@ Two artefacts because the use cases have different shapes:
 
 - **Notebook** (`notebooks/analyze_corpus.ipynb`) — one analysis,
   fully inspected, interactive iteration, no HTTP. Direct call to
-  `Orchestrator.analyze_hierarchical` via
-  {py:func}`qfa.api.composition.build_orchestrator`.
+  `AnalyzeService.analyze_hierarchical` via
+  {py:func}`qfa.api.composition.build_analyze_service`.
 - **Script** (this one) — many analyses, only aggregate metrics
   matter, parallel, exercises the real REST/auth/validation path.
 

@@ -11,6 +11,7 @@ from qfa.domain.errors import AuthenticationError, AuthorizationError
 from qfa.domain.models import TenantApiKey
 from qfa.domain.ports import UsageRepositoryPort
 from qfa.domain.usage_models import CallContext, Operation
+from qfa.services.analyze import AnalyzeService
 from qfa.services.auth_orchestrator import AuthOrchestrator
 from qfa.services.call_context import call_scope
 from qfa.services.coding import CodingService
@@ -72,6 +73,26 @@ def get_coding_service(request: Request) -> CodingService:
         The coding service instance.
     """
     return request.app.state.coding_service
+
+
+def get_analyze_service(request: Request) -> AnalyzeService:
+    """Return the analyze service from app state.
+
+    One provider per use-case service (ADR-017): the analyze route
+    depends on this rather than on the orchestrator, so its type
+    signature names exactly the service it uses.
+
+    Parameters
+    ----------
+    request : Request
+        The incoming HTTP request.
+
+    Returns
+    -------
+    AnalyzeService
+        The analyze service instance.
+    """
+    return request.app.state.analyze_service
 
 
 def get_auth_orchestrator(request: Request) -> AuthOrchestrator:

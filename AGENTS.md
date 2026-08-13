@@ -28,12 +28,18 @@ Use `uv` for all dependency management (not `pip`). Examples:
 
 Hexagonal architecture. Key concepts:
 
-- Flow: API call(documents) -> Orchestrator -> LLM API -> return result
-- The Orchestrator is a single application service composed of multiple
-  use cases (analyze, summarize, summarize_aggregate, assign_codes).
-  Per-task behaviour is selected by the route handler calling the
-  appropriate method, not by swapping orchestrator implementations
-  (see ADR-011).
+- Flow: API call(documents) -> application service -> LLM API -> return result
+- Each use case is an application service in `qfa.services`, and each
+  route handler depends on the single service it needs. Per-task
+  behaviour is selected by the route handler calling the appropriate
+  method, not by swapping service implementations (see ADR-011).
+  `AnalyzeService` (analyze_bulk, analyze_hierarchical) is extracted;
+  `Orchestrator` still holds summarize, summarize_aggregate,
+  assign_codes and detect_sensitive_content until epic #112 finishes
+  emptying it. Do not add new use cases to it.
+- Services share behaviour by **composition only** — the shared LLM-call
+  scaffolding is the injected `LLMCallExecutor` collaborator, never a
+  base class (see ADR-017).
 - Driven adapters (LLM provider, anonymisation) sit behind ports
   declared in `qfa.domain.ports` — for example `LLMPort` and
   `AnonymizationPort` — so implementations can be swapped.
