@@ -2,9 +2,9 @@
 
 Moved here from ``test_orchestrator.py`` when the analyse use case was
 extracted out of ``Orchestrator`` (#266). The service is built over the
-*real* ``LLMCallExecutor`` (ADR-017 decision 3) with ``FakeLLMPort`` /
-``FakeAnonymizer`` behind it, so nothing about the call scaffolding is
-stubbed out.
+*real* ``LLMCallExecutor`` (ADR-017 decision 3) with the orchestrator
+suite's ``FakeLLMPort`` / ``FakeAnonymizer`` behind it, so nothing about
+the call scaffolding is stubbed out.
 
 The hierarchical mode has its own file: ``test_analyze_hierarchical.py``.
 """
@@ -17,16 +17,20 @@ from pydantic import ValidationError
 from qfa.domain.errors import LLMError
 from qfa.domain.models import (
     AnalysisRequestModel,
-    AnalysisResultModel,
     FeedbackRecordMetadataModel,
     FeedbackRecordModel,
     LLMResponse,
 )
-from qfa.domain.ports import AnonymizationPort, LLMPort
+from qfa.domain.ports import AnonymizationPort
 from qfa.services.analyze import AnalyzeJudgeResult, AnalyzeService
 from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.services.prompts import JUDGE_UNAVAILABLE_EXPLANATION
 from qfa.settings import OrchestratorSettings
+
+# Reuse the doubles the orchestrator suite already ships rather than growing a
+# second, drifting pair (ADR-017) — same call the sensitivity and coding
+# suites make.
+from .test_orchestrator import FakeAnonymizer, FakeLLMPort
 
 TENANT_ID = "tenant-42"
 LLM_TIMEOUT = 30.0
@@ -73,69 +77,8 @@ def _make_llm_response(structured=None, model="gpt-4", cost=0.001):
     )
 
 
-def _make_analysis_result(
-    result="Analysis result.",
-    quality_score=None,
-    uncertainty_explanation="",
-):
-    """Build an AnalysisResultModel with the extended fields defaulted."""
-    return AnalysisResultModel(
-        result=result,
-        quality_score=quality_score,
-        uncertainty_explanation=uncertainty_explanation,
-    )
-
-
 def _future_deadline(seconds=300):
     return datetime.now(tz=UTC) + timedelta(seconds=seconds)
-
-
-class FakeLLMPort(LLMPort):
-    """A fake LLM port that returns configurable responses or raises errors."""
-
-    def __init__(self, responses=None, errors=None):
-        self._responses = list(responses or [])
-        self._errors = list(errors or [])
-        self._call_count = 0
-        self.calls = []
-
-    async def complete(
-        self,
-        system_message,
-        user_message,
-        tenant_id,
-        response_model=str,
-        timeout=40.0,
-    ):
-        self.calls.append(
-            {
-                "system_message": system_message,
-                "user_message": user_message,
-                "tenant_id": tenant_id,
-                "response_model": response_model,
-                "timeout": timeout,
-            }
-        )
-        idx = self._call_count
-        self._call_count += 1
-
-        if idx < len(self._errors) and self._errors[idx] is not None:
-            raise self._errors[idx]
-
-        if idx < len(self._responses):
-            return self._responses[idx]
-
-        return _make_llm_response(structured=_make_analysis_result())
-
-
-class FakeAnonymizer(AnonymizationPort):
-    """No-op anonymiser for tests: returns text unchanged with empty mapping."""
-
-    def anonymize(self, text):
-        return text, {}
-
-    def deanonymize(self, text, mapping):
-        return text
 
 
 @pytest.fixture
