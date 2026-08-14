@@ -101,34 +101,30 @@ the rationale, and flow/sequence diagrams.
 
 Each use case is one async method backing one HTTP endpoint:
 
-| Service | Method | Endpoint | What it does |
-|---|---|---|---|
-| {py:class}`~qfa.services.orchestrator.Orchestrator` | `analyze` | `POST /v1/analyze` (`mode=single_pass`) | One LLM call. Free-text summary of themes across submitted records. |
-| {py:class}`~qfa.services.orchestrator.Orchestrator` | `analyze_hierarchical` | `POST /v1/analyze` (`mode=hierarchical`) | Embed -> cluster -> map -> reduce pipeline. Returns additional `confidence` and `coding_trends` fields. |
-| {py:class}`~qfa.services.orchestrator.Orchestrator` | `summarize` | `POST /v1/summarize` | One LLM call. Per-record summaries with a self-evaluated quality score. |
-| {py:class}`~qfa.services.coding.CodingService` | `assign_codes` | `POST /v1/assign-codes` | Multiple LLM calls per record: pick + judge at each level of a hierarchical coding framework. |
-| {py:class}`~qfa.services.sensitivity.SensitivityService` | `detect_sensitive_content` | `POST /v1/detect-sensitive` | One LLM call per record. Detects sensitive content and categorizes sensitivity types. |
+| Service | Method | Endpoint | Provider | What it does |
+|---|---|---|---|---|
+| {py:class}`~qfa.services.orchestrator.Orchestrator` | `analyze` | `POST /v1/analyze` (`mode=single_pass`) | `get_orchestrator` | One LLM call. Free-text summary of themes across submitted records. |
+| {py:class}`~qfa.services.orchestrator.Orchestrator` | `analyze_hierarchical` | `POST /v1/analyze` (`mode=hierarchical`) | `get_orchestrator` | Embed -> cluster -> map -> reduce pipeline. Returns additional `confidence` and `coding_trends` fields. |
+| {py:class}`~qfa.services.orchestrator.Orchestrator` | `summarize` | `POST /v1/summarize` | `get_orchestrator` | One LLM call. Per-record summaries with a self-evaluated quality score. |
+| {py:class}`~qfa.services.coding.CodingService` | `assign_codes` | `POST /v1/assign-codes` | `get_coding_service` | One LLM call picks the best-fitting code path(s) directly from the whole flattened coding framework, then a separate judge call per level scores each selected path, root to leaf. |
+| {py:class}`~qfa.services.sensitivity.SensitivityService` | `detect_sensitive_content` | `POST /v1/detect-sensitive` | `get_sensitivity_service` | One LLM call per record. Detects sensitive content and categorizes sensitivity types. |
 
 `/v1/summarize`, `/v1/assign-codes`, and `/v1/detect-sensitive` are non-bulk endpoints with per-record outputs. `/v1/analyze` is the bulk endpoint and returns one aggregate result per request (for both `mode=single_pass` and `mode=hierarchical`).
 
-Epic #112 is moving each use case out of the one `Orchestrator` class and into its own service, per [ADR-017](../adr/017-orchestrator-composition-only.md). {py:class}`~qfa.services.sensitivity.SensitivityService` and {py:class}`~qfa.services.coding.CodingService` are the ones extracted so far: each holds its use case's logic, takes the LLM connection, the anonymiser and the shared executor as constructor dependencies, and has **no base class**. The rows still pointing at `Orchestrator` follow in later PRs; the class disappears with #267.
+Epic #112 is moving each use case out of the one `Orchestrator` class and into
+its own service, per [ADR-017](../adr/017-orchestrator-composition-only.md).
+{py:class}`~qfa.services.sensitivity.SensitivityService` and
+{py:class}`~qfa.services.coding.CodingService` are the ones extracted so far.
+Each extracted service is a plain class in `qfa.services` that owns exactly one
+use case, takes the LLM connection, the anonymiser and the shared
+{py:class}`~qfa.services.llm_call_executor.LLMCallExecutor` as constructor
+dependencies, and has **no base class**. The rows still pointing at
+`Orchestrator` follow in later PRs; the class disappears with #267, at which
+point every row in the table above is an extracted service.
 
-The split is visible at the route: each service has its own provider in `qfa.api.dependencies` (`get_orchestrator`, `get_sensitivity_service`, `get_coding_service`), and a handler annotates against the single service it calls — so which use cases a route can reach is readable from its signature.
+The split is visible at the route: each service has its own provider in `qfa.api.dependencies` (the Provider column above), and a handler annotates against the single service it calls — so which use cases a route can reach is readable from its signature.
 
 Each method is pure use-case logic — no scope or correlation plumbing. `call_scope` is entered by a FastAPI dependency declared on the route (`Depends(call_scope_for(Operation.X))`), so by the time a service method runs `current_call_context` is already set. See [Cross-cutting concerns](04-crosscutting.md) for the full picture.
-
-### Extracted use-case services
-
-Each service below is a plain class in `qfa.services` that owns exactly one use
-case, receives the shared {py:class}`~qfa.services.llm_call_executor.LLMCallExecutor`
-as a constructor dependency, and is injected into its route by its own provider in
-`qfa.api.dependencies`. None of them has a base class — see
-[ADR-017](../adr/017-orchestrator-composition-only.md).
-
-| Service | Endpoint | Provider | What it does |
-|---|---|---|---|
-| {py:class}`~qfa.services.sensitivity.SensitivityService` | `POST /v1/detect-sensitive` | `get_sensitivity_service` | One LLM call per record. Detects sensitive content and categorizes sensitivity types. |
-| {py:class}`~qfa.services.coding.CodingService` | `POST /v1/assign-codes` | `get_coding_service` | Multiple LLM calls per record: pick + judge at each level of a hierarchical coding framework. |
 
 ### The LLM-call executor
 
