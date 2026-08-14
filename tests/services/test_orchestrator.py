@@ -1,5 +1,6 @@
 """Tests for the orchestrator service."""
 
+import logging
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -7,6 +8,7 @@ import pytest
 from qfa.domain.errors import (
     AnalysisError,
     LLMError,
+    LLMResponseParseError,
 )
 from qfa.domain.models import (
     AggregateSummaryResultModel,
@@ -24,7 +26,7 @@ from qfa.domain.models import (
     SummaryResultModel,
 )
 from qfa.domain.ports import AnonymizationPort, LLMPort
-from qfa.services.coding_classifier import JudgeResponse
+from qfa.services.coding_classifier import CodingResponse, JudgeResponse
 from qfa.services.orchestrator import (
     NO_CODING_NOTHING_RELEVANT_EXPLANATION,
     Orchestrator,
@@ -1463,6 +1465,268 @@ def _make_coding_request(
     )
 
 
+class TestAssignCodesOneShot:
+    """The pick step is one shot; judging stays per level (unchanged from before)."""
+
+    @pytest.mark.asyncio
+    async def test_pick_is_one_call_but_judging_stays_per_level(self, settings):
+        """One pick call selects the whole path; judging still runs once per level."""
+        root_codes = [
+            CodingNode(
+                id="type-a",
+                name="Type A",
+                children=[
+                    CodingNode(
+                        id="cat-a1",
+                        name="Cat A1",
+                        children=[CodingNode(id="code-a1-1", name="Code A1.1")],
+                    )
+                ],
+            )
+        ]
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=CodingResponse(selected=[2])),
+                _make_llm_response(
+                    structured=JudgeResponse(score=0.95, explanation="Level 1 fits.")
+                ),
+                _make_llm_response(
+                    structured=JudgeResponse(score=0.9, explanation="Level 2 fits.")
+                ),
+                _make_llm_response(
+                    structured=JudgeResponse(score=0.8, explanation="Level 3 fits.")
+                ),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        result = await orch.assign_codes(
+            _make_coding_request(root_codes=root_codes), _future_deadline()
+        )
+
+        assert len(fake_llm.calls) == 4
+        assert fake_llm.calls[0]["response_model"] is CodingResponse
+        assert [c["response_model"] for c in fake_llm.calls[1:]] == [JudgeResponse] * 3
+        code = result.coded_feedback_records[0].assigned_codes[0]
+        assert code.coding_level_1_id == "type-a"
+        assert code.coding_level_2_id == "cat-a1"
+        assert code.coding_level_3_id == "code-a1-1"
+        assert code.confidence_level_1 == 0.95
+        assert code.confidence_level_2 == 0.9
+        assert code.confidence_level_3 == 0.8
+        assert code.confidence_aggregate == 0.8
+
+    @pytest.mark.asyncio
+    async def test_selecting_a_non_leaf_option_leaves_deeper_levels_null(
+        self, settings
+    ):
+        """A level-1-only (non-leaf) selection is a valid final answer, not a partial pick.
+
+        Only that one level gets judged — there is no deeper level to score.
+        """
+        root_codes = [
+            CodingNode(
+                id="type-a",
+                name="Type A",
+                children=[CodingNode(id="cat-a1", name="Cat A1")],
+            )
+        ]
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=CodingResponse(selected=[0])),
+                _make_llm_response(
+                    structured=JudgeResponse(score=0.8, explanation="General fit.")
+                ),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        result = await orch.assign_codes(
+            _make_coding_request(root_codes=root_codes), _future_deadline()
+        )
+
+        assert len(fake_llm.calls) == 2
+        code = result.coded_feedback_records[0].assigned_codes[0]
+        assert code.coding_level_1_id == "type-a"
+        assert code.coding_level_2_id is None
+        assert code.confidence_level_2 is None
+
+    @pytest.mark.asyncio
+    async def test_out_of_range_and_duplicate_indices_are_ignored(self, settings):
+        """Bad indices from the pick (out of range or repeated) are dropped, not errors.
+
+        Only the one surviving unique index gets judged.
+        """
+        root_codes = [CodingNode(id="code-1", name="Code A")]
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=CodingResponse(selected=[0, 0, 99])),
+                _make_llm_response(
+                    structured=JudgeResponse(score=0.9, explanation="Fits.")
+                ),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        result = await orch.assign_codes(
+            _make_coding_request(root_codes=root_codes), _future_deadline()
+        )
+
+        assert len(fake_llm.calls) == 2
+        assigned = result.coded_feedback_records[0].assigned_codes
+        assert len(assigned) == 1
+        assert assigned[0].explanation == "- Level 1 (0.90): Fits."
+
+    @pytest.mark.asyncio
+    async def test_malformed_pick_response_degrades_to_nothing_selected(self, settings):
+        """A pick response that fails schema validation is a genuine empty pick.
+
+        Not a request failure — matching the old per-level pick step's
+        tolerance for malformed LLM output. No judge call follows since
+        nothing was selected.
+        """
+        root_codes = [CodingNode(id="code-1", name="Code A")]
+        fake_llm = FakeLLMPort(
+            errors=[LLMResponseParseError("LLM response validation failed")]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        result = await orch.assign_codes(
+            _make_coding_request(root_codes=root_codes), _future_deadline()
+        )
+
+        assert len(fake_llm.calls) == 1
+        assigned = result.coded_feedback_records[0].assigned_codes
+        assert len(assigned) == 1
+        assert assigned[0].coding_level_1_id is None
+        assert assigned[0].explanation == NO_CODING_NOTHING_RELEVANT_EXPLANATION
+
+    @pytest.mark.asyncio
+    async def test_malformed_pick_response_is_logged(self, settings, caplog):
+        """A parse failure is distinguishable from a genuine empty pick in the logs.
+
+        Why: without a log line, an operator sees only a spike in
+        ``NO CODING APPLIED`` responses and has no way to tell a broken
+        prompt/schema apart from records that are genuinely uncodeable.
+        """
+        root_codes = [CodingNode(id="code-1", name="Code A")]
+        fake_llm = FakeLLMPort(
+            errors=[LLMResponseParseError("LLM response validation failed")]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        with caplog.at_level(logging.WARNING):
+            await orch.assign_codes(
+                _make_coding_request(root_codes=root_codes), _future_deadline()
+            )
+
+        assert any(
+            "Coding pick call failed to parse" in record.message
+            and "LLMResponseParseError" in record.message
+            for record in caplog.records
+        )
+
+    @pytest.mark.asyncio
+    async def test_judge_score_out_of_range_raises_analysis_error(self, settings):
+        """An out-of-range judge score is a domain error, not a generic LLM failure.
+
+        Unchanged from the previous per-level design: the judge call — not
+        the pick call — is where confidence is produced and validated.
+        """
+        root_codes = [CodingNode(id="code-1", name="Code A")]
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=CodingResponse(selected=[0])),
+                _make_llm_response(
+                    structured=JudgeResponse(score=1.5, explanation="Too confident.")
+                ),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        with pytest.raises(AnalysisError, match=r"outside 0\.0-1\.0"):
+            await orch.assign_codes(
+                _make_coding_request(root_codes=root_codes), _future_deadline()
+            )
+
+    @pytest.mark.asyncio
+    async def test_judging_stops_at_the_first_rejected_level(self, settings):
+        """A path rejected at level 1 is never judged at level 2.
+
+        Mirrors the previous per-level traversal's early-stop-on-rejection:
+        a sub-threshold level is the reason a candidate was dropped, so
+        descending further would waste a call and add noise to the
+        rejection explanation.
+        """
+        root_codes = [
+            CodingNode(
+                id="type-a",
+                name="Type A",
+                children=[CodingNode(id="cat-a1", name="Cat A1")],
+            )
+        ]
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=CodingResponse(selected=[1])),
+                _make_llm_response(
+                    structured=JudgeResponse(score=0.05, explanation="Weak fit.")
+                ),
+            ]
+        )
+        orch = Orchestrator(
+            llm=fake_llm,
+            anonymizer=FakeAnonymizer(),
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        )
+
+        result = await orch.assign_codes(
+            _make_coding_request(root_codes=root_codes, confidence_threshold=0.5),
+            _future_deadline(),
+        )
+
+        assert len(fake_llm.calls) == 2
+        assigned = result.coded_feedback_records[0].assigned_codes
+        assert "Weak fit." in assigned[0].explanation
+
+
 def _make_scored_code(names, scores, explanations):
     """Build a ``_ScoredCode`` from level names, scores and explanations."""
     return _ScoredCode(
@@ -1525,7 +1789,7 @@ class TestNoCodingAppliedMessage:
     def test_candidates_are_listed_highest_scoring_first(self):
         """Order by score descending so the closest near-miss is read first.
 
-        The traversal appends rejections in framework order, not score
+        Rejections are appended in framework/selection order, not score
         order, so the formatter must sort rather than rely on input order.
         """
         rejected = [
@@ -1566,8 +1830,8 @@ class TestNoCodingAppliedMessage:
     def test_only_the_decisive_level_explanation_is_shown(self):
         """Show the level that caused rejection, not one line per level.
 
-        The traversal stops descending at the first sub-threshold level, so
-        the last accumulated level is both the lowest-scoring one and the
+        Judging stops descending at the first sub-threshold level, so the
+        last accumulated level is both the lowest-scoring one and the
         reason the candidate was dropped. The earlier levels passed and
         would only add noise.
         """
@@ -1612,7 +1876,7 @@ class TestAssignCodesConfidenceThreshold:
         """
         fake_llm = FakeLLMPort(
             responses=[
-                _make_llm_response(structured='{"selected": [0]}'),
+                _make_llm_response(structured=CodingResponse(selected=[0])),
                 _make_llm_response(
                     structured=JudgeResponse(
                         score=0.5, explanation="Only loosely related."
@@ -1654,7 +1918,7 @@ class TestAssignCodesConfidenceThreshold:
         relevant" from the near-miss case.
         """
         fake_llm = FakeLLMPort(
-            responses=[_make_llm_response(structured='{"selected": []}')]
+            responses=[_make_llm_response(structured=CodingResponse(selected=[]))]
         )
         orch = Orchestrator(
             llm=fake_llm,
@@ -1677,7 +1941,7 @@ class TestAssignCodesConfidenceThreshold:
 
     @pytest.mark.asyncio
     async def test_all_rejected_explanations_are_combined_highest_first(self, settings):
-        """Confirm every rejected branch's explanation is surfaced.
+        """Confirm every rejected candidate's explanation is surfaced.
 
         With two root candidates both rejected, both explanations appear in
         the combined result, higher-scoring rejection first.
@@ -1688,7 +1952,7 @@ class TestAssignCodesConfidenceThreshold:
         ]
         fake_llm = FakeLLMPort(
             responses=[
-                _make_llm_response(structured='{"selected": [0, 1]}'),
+                _make_llm_response(structured=CodingResponse(selected=[0, 1])),
                 _make_llm_response(
                     structured=JudgeResponse(score=0.4, explanation="Weak fit A.")
                 ),

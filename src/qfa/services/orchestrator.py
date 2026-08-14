@@ -26,6 +26,7 @@ from qfa.domain.errors import (
     AnalysisTimeoutError,
     LLMError,
     LLMRateLimitError,
+    LLMResponseParseError,
     LLMTimeoutError,
 )
 from qfa.domain.models import (
@@ -36,7 +37,6 @@ from qfa.domain.models import (
     CodedFeedbackRecordModel,
     CodingAssignmentRequestModel,
     CodingAssignmentResultModel,
-    CodingNode,
     FeedbackRecordModel,
     FeedbackRecordSummaryModel,
     SingleSummaryRequestModel,
@@ -46,10 +46,12 @@ from qfa.domain.models import (
 from qfa.domain.ports import AnonymizationPort, EmbeddingPort, LLMPort
 from qfa.services.clustering import cluster_records
 from qfa.services.coding_classifier import (
+    CodingResponse,
     JudgeResponse,
+    build_coding_messages,
     build_judge_messages,
-    build_pick_messages,
-    parse_selected_indices,
+    flatten_coding_nodes,
+    format_code_path,
 )
 from qfa.services.coding_trends import build_coding_trend_table
 from qfa.services.hierarchical_prompts import (
@@ -226,11 +228,11 @@ class _ScoredCode:
     def decisive_explanation(self) -> str:
         """The judge explanation for the level that decided this candidate.
 
-        ``_traverse_coding_level`` stops descending at the first level that
-        falls below the threshold, so for a *rejected* candidate the last
-        accumulated level is both its lowest-scoring one and the reason it
-        was dropped. The levels before it passed and would only add noise
-        to a message whose whole point is "why was nothing applied".
+        Judging a selected path stops at the first level that falls below
+        the threshold, so for a *rejected* candidate the last accumulated
+        level is both its lowest-scoring one and the reason it was dropped.
+        The levels before it passed and would only add noise to a message
+        whose whole point is "why was nothing applied".
         """
         return self.explanations[-1]
 
@@ -251,7 +253,7 @@ NO_CODING_EMPTY_CONTENT_EXPLANATION = (
 NO_CODING_NOTHING_RELEVANT_EXPLANATION = (
     f"{NO_CODING_LEAD}\nNo code in the framework was judged relevant to this feedback."
 )
-"""Explanation for when the LLM selected nothing at any hierarchy level."""
+"""Explanation for when the LLM selected nothing at all, or nothing it selected survived judging."""
 
 _MAX_LISTED_REJECTIONS = 3
 """How many near-miss candidates to spell out before collapsing to a count."""
@@ -261,8 +263,8 @@ def _as_whole_percentage(confidence: float) -> str:
     """Render a 0-1 confidence as a whole percentage (``0.04`` -> ``"4%"``).
 
     Non-technical EspoCRM readers see these numbers directly, and a
-    ``0.04`` next to a "Level 2" label reads as noise where "4%" reads as
-    a judgement.
+    ``0.04`` next to a code label reads as noise where "4%" reads as a
+    judgement.
     """
     return f"{round(confidence * 100)}%"
 
@@ -288,7 +290,7 @@ def _combine_rejected_explanations(
         f"threshold, so this record needs human review."
     ]
     blocks += [
-        f"{' > '.join(name for _, name in c.path)} — "
+        f"{format_code_path(c.path)} — "
         f"{_as_whole_percentage(c.confidence_aggregate)}\n"
         f"  {c.decisive_explanation}"
         for c in listed
@@ -1291,6 +1293,14 @@ class Orchestrator:
     ) -> CodingAssignmentResultModel:
         """Assign hierarchical codes to a feedback record.
 
+        Picking is one shot: the full coding framework is flattened into one
+        option per node (at every depth, not just leaves), and a single LLM
+        call selects the best-fitting path(s) directly — no recursive
+        per-level picking. Judging is unchanged from the per-level design: each
+        selected path is then scored level by level by a separate judge call
+        per level, stopping at the first level that falls below
+        ``confidence_threshold``, exactly as when picking was also per-level.
+
         Parameters
         ----------
         request : CodingAssignmentRequest
@@ -1301,44 +1311,97 @@ class Orchestrator:
         Returns
         -------
         CodingAssignmentResult
-            Per-record leaf codes from ``classify_feedback``. ``assigned_codes``
-            is never empty: when no code is applied it holds exactly one entry
-            with null ``coding_level_*``/``confidence_*`` fields and an
-            ``explanation`` leading with ``NO CODING APPLIED.`` (#256). That
-            explanation lists the near misses when ``confidence_threshold``
-            filtered every candidate out, and states that nothing was relevant
-            when no code was selected at any level.
+            Per-record codes from the judge, ordered by confidence, highest
+            first. ``assigned_codes`` is never empty: when no code is applied
+            it holds exactly one entry with null ``coding_level_*``/
+            ``confidence_*`` fields and an ``explanation`` leading with
+            ``NO CODING APPLIED.`` (#256). That explanation lists the near
+            misses when ``confidence_threshold`` filtered every candidate
+            out, and states that nothing was relevant when nothing was
+            selected at all.
 
         Raises
         ------
         AnalysisTimeoutError
             When ``deadline`` is reached before every record is processed.
+        AnalysisError
+            When the judge returns a score outside 0.0-1.0.
         LLMTimeoutError
             When a single LLM completion exceeds the configured timeout.
         LLMRateLimitError
             When the LLM provider returns rate limiting.
         LLMError
-            For other LLM provider failures.
+            For other LLM provider failures. A pick response that fails
+            schema validation (``LLMResponseParseError``) is treated as an
+            empty pick instead of being raised.
         """
         feedback_record = request.feedback_record
         self._check_coding_deadline(deadline)
 
+        options = flatten_coding_nodes(list(request.coding_levels.root_codes))
+        system_message, user_message = build_coding_messages(
+            feedback_record=feedback_record, options=options
+        )
+
+        if not user_message:
+            # No options to select from (empty coding framework): this is
+            # equivalent to a genuine empty pick, so explain it the same way
+            # rather than returning a bare empty list (#256).
+            coded = [
+                CodedFeedbackRecordModel(
+                    feedback_record_id=feedback_record.id,
+                    assigned_codes=(
+                        AssignedCodeModel(
+                            explanation=NO_CODING_NOTHING_RELEVANT_EXPLANATION
+                        ),
+                    ),
+                )
+            ]
+            return CodingAssignmentResultModel(coded_feedback_records=tuple(coded))
+
+        self._executor.check_token_limit(system_message, user_message)
+        anonymized_user_message, _ = self._anonymizer.anonymize(user_message)
+        timeout = self._executor.check_deadline_and_get_timeout(deadline)
+
+        try:
+            response = await self._llm.complete(
+                system_message=system_message,
+                user_message=anonymized_user_message,
+                tenant_id=request.tenant_id,
+                response_model=CodingResponse,
+                timeout=timeout,
+            )
+            selected_indices = response.structured.selected
+        except LLMResponseParseError as exc:
+            # Malformed/unparseable pick output is treated as a genuine
+            # empty pick rather than a request failure, matching the old
+            # per-level pick step's tolerance for bad LLM output.
+            logger.warning(
+                "Coding pick call failed to parse: error_class=%s",
+                type(exc).__name__,
+            )
+            selected_indices = []
+
+        valid_indices = [
+            idx for idx in dict.fromkeys(selected_indices) if 0 <= idx < len(options)
+        ]
+        judged = await asyncio.gather(
+            *(
+                self._judge_selected_path(
+                    feedback_record=feedback_record,
+                    path=options[idx].path,
+                    threshold=request.confidence_threshold,
+                    tenant_id=request.tenant_id,
+                    deadline=deadline,
+                )
+                for idx in valid_indices
+            )
+        )
+
         candidates: list[_ScoredCode] = []
         rejected: list[_ScoredCode] = []
-        await self._traverse_coding_level(
-            feedback_record=feedback_record,
-            level_nodes=list(request.coding_levels.root_codes),
-            level_num=1,
-            hierarchy_path=[],
-            path_ids_names=[],
-            accumulated_scores=[],
-            accumulated_explanations=[],
-            threshold=request.confidence_threshold,
-            tenant_id=request.tenant_id,
-            deadline=deadline,
-            candidates=candidates,
-            rejected=rejected,
-        )
+        for scored, was_rejected in judged:
+            (rejected if was_rejected else candidates).append(scored)
 
         candidates.sort(key=lambda c: c.confidence_aggregate, reverse=True)
         top = candidates[: request.max_codes]
@@ -1374,8 +1437,9 @@ class Orchestrator:
                 )
             ]
         else:
-            # Nothing was picked at any level. Still return an entry so the
-            # caller never has to explain an empty list to a user (#256).
+            # Nothing was picked, or nothing picked survived judging. Still
+            # return an entry so the caller never has to explain an empty
+            # list to a user (#256).
             assigned_codes = [
                 AssignedCodeModel(explanation=NO_CODING_NOTHING_RELEVANT_EXPLANATION)
             ]
@@ -1389,42 +1453,33 @@ class Orchestrator:
 
         return CodingAssignmentResultModel(coded_feedback_records=tuple(coded))
 
-    def _check_coding_deadline(self, deadline: datetime) -> None:
-        """Raise when the coding deadline is exceeded."""
-        if datetime.now(UTC) >= deadline:
-            raise AnalysisTimeoutError(
-                "Coding deadline exceeded before all feedback records were processed"
-            )
-
-    async def _traverse_coding_level(
+    async def _judge_selected_path(
         self,
         *,
         feedback_record: FeedbackRecordModel,
-        level_nodes: list[CodingNode],
-        level_num: int,
-        hierarchy_path: list[tuple[str, str]],
-        path_ids_names: list[tuple[str, str]],
-        accumulated_scores: list[float],
-        accumulated_explanations: list[str],
+        path: tuple[tuple[str, str], ...],
         threshold: float | None,
         tenant_id: str,
         deadline: datetime,
-        candidates: list[_ScoredCode],
-        rejected: list[_ScoredCode],
-    ) -> None:
-        """Recursively pick and judge codes at one level, descending into children."""
-        level_label = f"Code level {level_num}"
-        indices = await self._pick_code_indices(
-            feedback_record=feedback_record,
-            current_level=level_label,
-            entries=level_nodes,
-            hierarchy_path=hierarchy_path,
-            tenant_id=tenant_id,
-            deadline=deadline,
-        )
-        for idx in indices:
-            node = level_nodes[idx]
-            current_path = [*hierarchy_path, (level_label, node.name)]
+    ) -> tuple[_ScoredCode, bool]:
+        """Judge a one-shot-selected path level by level, root to leaf.
+
+        Reproduces the previous per-level pick/judge design's judge step
+        exactly — same prompt, same score/explanation contract, same
+        early-stop-on-rejection behaviour — the only difference being that
+        the path being judged was already chosen in one shot rather than
+        picked one level at a time.
+
+        Returns the scored path and whether it was rejected by
+        ``threshold``, so independently-selected paths can be judged
+        concurrently instead of one at a time.
+        """
+        scores: list[float] = []
+        explanations: list[str] = []
+        hierarchy_path: list[tuple[str, str]] = []
+        for level_num, (_, name) in enumerate(path, start=1):
+            level_label = f"Code level {level_num}"
+            current_path = [*hierarchy_path, (level_label, name)]
             judge = await self._judge_code_level(
                 feedback_record=feedback_record,
                 level=level_label,
@@ -1432,73 +1487,22 @@ class Orchestrator:
                 tenant_id=tenant_id,
                 deadline=deadline,
             )
-            new_path = [*path_ids_names, (node.id, node.name)]
-            new_scores = [*accumulated_scores, judge.score]
-            new_explanations = [*accumulated_explanations, judge.explanation]
+            scores.append(judge.score)
+            explanations.append(judge.explanation)
             if threshold is not None and judge.score < threshold:
-                rejected.append(
+                return (
                     _ScoredCode(
-                        path=new_path, scores=new_scores, explanations=new_explanations
-                    )
+                        path=list(path[:level_num]),
+                        scores=scores,
+                        explanations=explanations,
+                    ),
+                    True,
                 )
-                continue
-            if node.children:
-                await self._traverse_coding_level(
-                    feedback_record=feedback_record,
-                    level_nodes=node.children,
-                    level_num=level_num + 1,
-                    hierarchy_path=current_path,
-                    path_ids_names=new_path,
-                    accumulated_scores=new_scores,
-                    accumulated_explanations=new_explanations,
-                    threshold=threshold,
-                    tenant_id=tenant_id,
-                    deadline=deadline,
-                    candidates=candidates,
-                    rejected=rejected,
-                )
-            else:
-                candidates.append(
-                    _ScoredCode(
-                        path=new_path,
-                        scores=new_scores,
-                        explanations=new_explanations,
-                    )
-                )
-
-    async def _pick_code_indices(
-        self,
-        *,
-        feedback_record: FeedbackRecordModel,
-        current_level: str,
-        entries: list[CodingNode],
-        hierarchy_path: list[tuple[str, str]] | None,
-        tenant_id: str,
-        deadline: datetime,
-    ) -> list[int]:
-        """Build one coding prompt, call the LLM, and parse selected indices."""
-        labels = [entry.name for entry in entries]
-        system_message, user_message = build_pick_messages(
-            feedback_record=feedback_record,
-            current_level=current_level,
-            labels=labels,
-            hierarchy_path=hierarchy_path,
+            hierarchy_path = current_path
+        return (
+            _ScoredCode(path=list(path), scores=scores, explanations=explanations),
+            False,
         )
-        if not user_message:
-            return []
-
-        self._check_coding_deadline(deadline)
-        self._executor.check_token_limit(system_message, user_message)
-
-        anonymized_user_message, _ = self._anonymizer.anonymize(user_message)
-
-        response = await self._llm.complete(
-            system_message=system_message,
-            user_message=anonymized_user_message,
-            tenant_id=tenant_id,
-            response_model=str,
-        )
-        return parse_selected_indices(response.structured, len(labels))
 
     async def _judge_code_level(
         self,
@@ -1527,3 +1531,10 @@ class Orchestrator:
         if not 0.0 <= response.structured.score <= 1.0:
             raise AnalysisError("LLM judge returned score outside 0.0-1.0")
         return response.structured
+
+    def _check_coding_deadline(self, deadline: datetime) -> None:
+        """Raise when the coding deadline is exceeded."""
+        if datetime.now(UTC) >= deadline:
+            raise AnalysisTimeoutError(
+                "Coding deadline exceeded before all feedback records were processed"
+            )

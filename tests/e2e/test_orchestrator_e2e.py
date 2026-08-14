@@ -204,13 +204,11 @@ class TestAssignCodesRecordsMultipleRows:
     async def test_one_request_records_multiple_rows_all_with_assign_codes(
         self, e2e_client, e2e_fake_llm, e2e_engine
     ):
-        # The orchestrator walks Types → Categories → Codes one level at a
-        # time, issuing both a "pick" (response_model=str, parsed as
-        # ``{"selected": [<indices>]}``) and a "judge"
-        # (response_model=JudgeResponse) call per level. With one
-        # type/category/code path it issues 6 LLM calls in this order:
-        # pick-Types, judge-Type, pick-Categories, judge-Category,
-        # pick-Codes, judge-Code.
+        # The classifier picks a code path in one call over the flattened
+        # Types > Categories > Codes framework, then a separate judge call
+        # per level scores the selected path root to leaf. With one
+        # type/category/code path (depth 3) it issues 4 LLM calls: the
+        # one-shot pick, then judge-Type, judge-Category, judge-Code.
         coding_levels = {
             "root_codes": [
                 {
@@ -232,11 +230,11 @@ class TestAssignCodesRecordsMultipleRows:
                 }
             ]
         }
-        pick_response = '{"selected": [0]}'
+        e2e_fake_llm.queue_response(_ok(text='{"selected": [2]}'))
         judge_response = '{"score": 0.9, "explanation": "fits well"}'
-        for _ in range(3):
-            e2e_fake_llm.queue_response(_ok(text=pick_response))
-            e2e_fake_llm.queue_response(_ok(text=judge_response))
+        e2e_fake_llm.queue_response(_ok(text=judge_response))
+        e2e_fake_llm.queue_response(_ok(text=judge_response))
+        e2e_fake_llm.queue_response(_ok(text=judge_response))
 
         resp = await e2e_client.post(
             "/v1/assign-codes",
@@ -250,7 +248,7 @@ class TestAssignCodesRecordsMultipleRows:
         assert resp.status_code == 200
 
         rows = await _fetch_rows(e2e_engine)
-        assert len(rows) == 6
+        assert len(rows) == 4
         for row in rows:
             assert row.operation == "assign_codes"
             assert row.status == "ok"

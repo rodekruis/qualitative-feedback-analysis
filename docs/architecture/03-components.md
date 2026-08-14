@@ -104,7 +104,7 @@ the rationale, and flow/sequence diagrams.
 | `analyze` | `POST /v1/analyze` (`mode=single_pass`) | One LLM call. Free-text summary of themes across submitted records. |
 | `analyze_hierarchical` | `POST /v1/analyze` (`mode=hierarchical`) | Embed -> cluster -> map -> reduce pipeline. Returns additional `confidence` and `coding_trends` fields. |
 | `summarize` | `POST /v1/summarize` | One LLM call. Per-record summaries with a self-evaluated quality score. |
-| `assign_codes` | `POST /v1/assign-codes` | Multiple LLM calls per record: pick + judge at each level of a hierarchical coding framework. |
+| `assign_codes` | `POST /v1/assign-codes` | One LLM call picks the best-fitting code path(s) directly from the whole flattened coding framework, then a separate judge call per level scores each selected path, root to leaf. |
 
 It is being decomposed into one service per use case by epic #112, so this
 table shrinks by one row per extraction and the class disappears entirely at
