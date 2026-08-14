@@ -333,6 +333,14 @@ def test_app(fake_orchestrator, fake_auth_orchestrator):
     # The extracted use-case services get their own app.state slot (ADR-017).
     # FakeOrchestrator still implements every use case, so one fake backs all
     # of them until the remaining extractions land.
+    #
+    # These are three bindings to one object, not an alias: rebinding
+    # `state.orchestrator` in a test does NOT reach `/v1/detect-sensitive` or
+    # `/v1/assign-codes`, which keep reading the slots below. A test that needs
+    # a failing service on one of those routes must assign that route's own slot
+    # (see `test_detect_sensitive_502_analysis_error`) — the `TestErrorMapping`
+    # idiom of swapping `state.orchestrator` would pass vacuously against the
+    # healthy double here.
     app.state.sensitivity_service = fake_orchestrator
     app.state.coding_service = fake_orchestrator
     app.state.auth_orchestrator = fake_auth_orchestrator
