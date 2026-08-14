@@ -1,4 +1,4 @@
-"""Tests for ``Orchestrator.analyze_hierarchical``.
+"""Tests for ``AnalyzeService.analyze_hierarchical``.
 
 Why: this method is the heart of #124. The tests pin the load-bearing
 behaviours: anonymisation happens before embedding and before every LLM
@@ -20,7 +20,9 @@ from qfa.domain.models import (
     FeedbackRecordModel,
     LLMResponse,
 )
-from qfa.services.orchestrator import AnalyzeJudgeResult, Orchestrator
+from qfa.domain.ports import AnonymizationPort, EmbeddingPort, LLMPort
+from qfa.services.analyze import AnalyzeJudgeResult, AnalyzeService
+from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.services.prompts import ANALYZE_GUARDRAILS_PROMPT
 from qfa.settings import AnalyzeSettings, OrchestratorSettings
 
@@ -28,7 +30,7 @@ TENANT_ID = "tenant-42"
 LLM_TIMEOUT = 30.0
 
 
-class FakeEmbeddingPort:
+class FakeEmbeddingPort(EmbeddingPort):
     """Deterministic, model-free embedder.
 
     Maps each text to a 2-D vector by a keyword bucket so clustering is
@@ -48,7 +50,7 @@ class FakeEmbeddingPort:
         return tuple(vectors)
 
 
-class RecordingAnonymizer:
+class RecordingAnonymizer(AnonymizationPort):
     """Anonymiser that records every text it is asked to anonymise."""
 
     def __init__(self):
@@ -66,7 +68,7 @@ class RecordingAnonymizer:
         return text
 
 
-class RecordingLLM:
+class RecordingLLM(LLMPort):
     """Fake LLM recording every (system, user) pair; returns canned outputs.
 
     Map calls (response_model=str) return a partial; judge calls
@@ -112,14 +114,30 @@ def _records(n: int, text: str, prefix: str) -> tuple[FeedbackRecordModel, ...]:
     )
 
 
-def _build_orchestrator(llm, anonymizer, embedder, max_total_tokens):
-    return Orchestrator(
+def _build_analyze_service(
+    llm, anonymizer, embedder, max_total_tokens, analyze_settings=None
+):
+    """Build an ``AnalyzeService`` over the *real* ``LLMCallExecutor``.
+
+    Per ADR-017 there is no fake executor: these tests construct the real
+    collaborator over the fake driven adapters, so the semaphore-bounded
+    completions and deadline arithmetic under test are the production ones.
+    """
+    settings = OrchestratorSettings()
+    executor = LLMCallExecutor(
+        llm=llm,
+        anonymizer=anonymizer,
+        settings=settings,
+        llm_timeout_seconds=LLM_TIMEOUT,
+        max_total_tokens=max_total_tokens,
+    )
+    return AnalyzeService(
+        executor=executor,
         llm=llm,
         anonymizer=anonymizer,
         embedder=embedder,
-        settings=OrchestratorSettings(),
-        analyze_settings=AnalyzeSettings(min_cluster_size=2),
-        llm_timeout_seconds=LLM_TIMEOUT,
+        settings=settings,
+        analyze_settings=analyze_settings or AnalyzeSettings(min_cluster_size=2),
         max_total_tokens=max_total_tokens,
     )
 
@@ -141,11 +159,11 @@ async def test_hierarchical_covers_all_records_and_returns_confidence():
         mode="hierarchical",
     )
     llm = RecordingLLM()
-    orch = _build_orchestrator(
+    service = _build_analyze_service(
         llm, RecordingAnonymizer(), FakeEmbeddingPort(), max_total_tokens=100_000
     )
     deadline = datetime.now(UTC) + timedelta(seconds=120)
-    result = await orch.analyze_hierarchical(request, deadline, anonymize=True)
+    result = await service.analyze_hierarchical(request, deadline, anonymize=True)
     assert result.confidence is not None
     assert 0.0 <= result.confidence <= 1.0
     assert result.result  # non-empty synthesis
@@ -166,11 +184,11 @@ async def test_guardrails_present_at_both_map_and_reduce():
         mode="hierarchical",
     )
     llm = RecordingLLM()
-    orch = _build_orchestrator(
+    service = _build_analyze_service(
         llm, RecordingAnonymizer(), FakeEmbeddingPort(), max_total_tokens=100_000
     )
     deadline = datetime.now(UTC) + timedelta(seconds=120)
-    await orch.analyze_hierarchical(request, deadline, anonymize=True)
+    await service.analyze_hierarchical(request, deadline, anonymize=True)
     system_msgs = [c[0] for c in llm.calls if c[2] is str]
     assert any(ANALYZE_GUARDRAILS_PROMPT in s for s in system_msgs)
     # The last str-model call is the top-level reduce.
@@ -194,11 +212,11 @@ async def test_output_language_instructs_the_reduce_system_message():
         output_language="Dutch",
     )
     llm = RecordingLLM()
-    orch = _build_orchestrator(
+    service = _build_analyze_service(
         llm, RecordingAnonymizer(), FakeEmbeddingPort(), max_total_tokens=100_000
     )
     deadline = datetime.now(UTC) + timedelta(seconds=120)
-    await orch.analyze_hierarchical(request, deadline, anonymize=True)
+    await service.analyze_hierarchical(request, deadline, anonymize=True)
     system_msgs = [c[0] for c in llm.calls if c[2] is str]
     # The last str-model call is the top-level reduce — the final, user-facing output.
     assert "Dutch" in system_msgs[-1]
@@ -230,17 +248,17 @@ async def test_anonymization_happens_before_any_llm_or_embed_call():
     )
     llm = RecordingLLM()
     anonymizer = RecordingAnonymizer()
-    orch = _build_orchestrator(
+    service = _build_analyze_service(
         llm, anonymizer, FakeEmbeddingPort(), max_total_tokens=100_000
     )
     deadline = datetime.now(UTC) + timedelta(seconds=120)
-    await orch.analyze_hierarchical(request, deadline, anonymize=True)
+    await service.analyze_hierarchical(request, deadline, anonymize=True)
     # Anonymiser was invoked, and no LLM user message contains the raw name.
     assert anonymizer.anonymized_texts
     assert all("Jane" not in c[1] for c in llm.calls)
 
 
-class LargeOutputLLM:
+class LargeOutputLLM(LLMPort):
     """LLM that returns a moderate map output to force multi-level tree-reduce.
 
     Map calls return a ~250-char partial. With a 700-token budget and a
@@ -320,11 +338,11 @@ async def test_recursion_fires_on_corpus_at_least_five_times_token_cap():
         mode="hierarchical",
     )
     llm = LargeOutputLLM()
-    orch = _build_orchestrator(
+    service = _build_analyze_service(
         llm, RecordingAnonymizer(), FakeEmbeddingPort(), max_total_tokens=700
     )
     deadline = datetime.now(UTC) + timedelta(seconds=120)
-    result = await orch.analyze_hierarchical(request, deadline, anonymize=True)
+    result = await service.analyze_hierarchical(request, deadline, anonymize=True)
     # Many map calls (one per budget sub-chunk) — trigger 1.
     map_calls = [c for c in llm.calls if c[2] is str and "<feedback_records>" in c[1]]
     # Multiple reduce calls (combined partials overflow) — trigger 2.
@@ -336,7 +354,7 @@ async def test_recursion_fires_on_corpus_at_least_five_times_token_cap():
     assert result.confidence is not None
 
 
-class ConcurrencyTrackingLLM:
+class ConcurrencyTrackingLLM(LLMPort):
     """Fake LLM that records the peak number of concurrent ``complete`` calls.
 
     Each call yields control once via ``asyncio.sleep(0)`` so the event loop
@@ -409,18 +427,16 @@ async def test_map_chunks_run_concurrently_bounded_by_setting():
     """
     request = _multi_chunk_request()
     llm = ConcurrencyTrackingLLM()
-    orch = Orchestrator(
-        llm=llm,
-        anonymizer=RecordingAnonymizer(),
-        embedder=FakeEmbeddingPort(),
-        settings=OrchestratorSettings(),
-        analyze_settings=AnalyzeSettings(min_cluster_size=2, max_concurrent_chunks=2),
-        llm_timeout_seconds=LLM_TIMEOUT,
+    service = _build_analyze_service(
+        llm,
+        RecordingAnonymizer(),
+        FakeEmbeddingPort(),
         max_total_tokens=700,
+        analyze_settings=AnalyzeSettings(min_cluster_size=2, max_concurrent_chunks=2),
     )
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
-    result = await orch.analyze_hierarchical(request, deadline, anonymize=True)
+    result = await service.analyze_hierarchical(request, deadline, anonymize=True)
 
     map_calls = [c for c in llm.calls if c[2] is str and "<feedback_records>" in c[1]]
     assert len(map_calls) >= 3, "corpus did not split into multiple map chunks"
@@ -439,18 +455,16 @@ async def test_max_concurrent_chunks_one_is_fully_sequential():
     """
     request = _multi_chunk_request()
     llm = ConcurrencyTrackingLLM()
-    orch = Orchestrator(
-        llm=llm,
-        anonymizer=RecordingAnonymizer(),
-        embedder=FakeEmbeddingPort(),
-        settings=OrchestratorSettings(),
-        analyze_settings=AnalyzeSettings(min_cluster_size=2, max_concurrent_chunks=1),
-        llm_timeout_seconds=LLM_TIMEOUT,
+    service = _build_analyze_service(
+        llm,
+        RecordingAnonymizer(),
+        FakeEmbeddingPort(),
         max_total_tokens=700,
+        analyze_settings=AnalyzeSettings(min_cluster_size=2, max_concurrent_chunks=1),
     )
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
-    result = await orch.analyze_hierarchical(request, deadline, anonymize=True)
+    result = await service.analyze_hierarchical(request, deadline, anonymize=True)
 
     map_calls = [c for c in llm.calls if c[2] is str and "<feedback_records>" in c[1]]
     assert len(map_calls) >= 3, "corpus did not split into multiple map chunks"
@@ -458,7 +472,7 @@ async def test_max_concurrent_chunks_one_is_fully_sequential():
     assert result.confidence is not None
 
 
-class OverlapTrackingLLM:
+class OverlapTrackingLLM(LLMPort):
     """Records whether a leaf-judge call and a reduce call were ever in flight together.
 
     Each call yields once via ``asyncio.sleep(0)`` so the event loop interleaves
@@ -508,7 +522,7 @@ class OverlapTrackingLLM:
         )
 
 
-class OneChunkMapFailsLLM:
+class OneChunkMapFailsLLM(LLMPort):
     """LLM whose map call fails for the 'health' cluster but succeeds elsewhere.
 
     A map call is identified by ``response_model is str`` plus the
@@ -569,12 +583,12 @@ async def test_partial_map_failure_excludes_chunk_from_confidence():
         mode="hierarchical",
     )
     llm = OneChunkMapFailsLLM()
-    orch = _build_orchestrator(
+    service = _build_analyze_service(
         llm, RecordingAnonymizer(), FakeEmbeddingPort(), max_total_tokens=100_000
     )
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
-    result = await orch.analyze_hierarchical(request, deadline, anonymize=True)
+    result = await service.analyze_hierarchical(request, deadline, anonymize=True)
 
     # The run completed despite one chunk failing — the reduce-phase regression.
     assert result.result
@@ -589,7 +603,7 @@ async def test_partial_map_failure_excludes_chunk_from_confidence():
     assert "excluded" in result.uncertainty_explanation
 
 
-class AllJudgesFailLLM:
+class AllJudgesFailLLM(LLMPort):
     """Map and reduce calls succeed, but every leaf-judge call raises.
 
     Exercises the "nothing could be judged" path: the synthesis is produced
@@ -632,7 +646,7 @@ async def test_all_judges_failing_yields_none_confidence_with_synthesis():
         tenant_id=TENANT_ID,
         mode="hierarchical",
     )
-    orch = _build_orchestrator(
+    service = _build_analyze_service(
         AllJudgesFailLLM(),
         RecordingAnonymizer(),
         FakeEmbeddingPort(),
@@ -640,7 +654,7 @@ async def test_all_judges_failing_yields_none_confidence_with_synthesis():
     )
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
-    result = await orch.analyze_hierarchical(request, deadline, anonymize=True)
+    result = await service.analyze_hierarchical(request, deadline, anonymize=True)
 
     assert result.result  # synthesis produced
     assert result.confidence is None
@@ -665,7 +679,7 @@ async def test_judge_phase_timeout_does_not_discard_synthesis():
         tenant_id=TENANT_ID,
         mode="hierarchical",
     )
-    orch = _build_orchestrator(
+    service = _build_analyze_service(
         RecordingLLM(),
         RecordingAnonymizer(),
         FakeEmbeddingPort(),
@@ -674,11 +688,11 @@ async def test_judge_phase_timeout_does_not_discard_synthesis():
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
     with patch.object(
-        Orchestrator,
+        AnalyzeService,
         "_judge_chunk",
         new=AsyncMock(side_effect=AnalysisTimeoutError("judge deadline exceeded")),
     ):
-        result = await orch.analyze_hierarchical(request, deadline, anonymize=True)
+        result = await service.analyze_hierarchical(request, deadline, anonymize=True)
 
     assert result.result  # synthesis assembled and returned
     assert result.confidence is None
@@ -725,7 +739,7 @@ async def test_all_chunks_failing_raises_analysis_error():
         tenant_id=TENANT_ID,
         mode="hierarchical",
     )
-    orch = _build_orchestrator(
+    service = _build_analyze_service(
         AllMapsFailLLM(),
         RecordingAnonymizer(),
         FakeEmbeddingPort(),
@@ -734,7 +748,7 @@ async def test_all_chunks_failing_raises_analysis_error():
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
     with pytest.raises(AnalysisError, match="mapping failed for all chunks"):
-        await orch.analyze_hierarchical(request, deadline, anonymize=True)
+        await service.analyze_hierarchical(request, deadline, anonymize=True)
 
 
 @pytest.mark.asyncio
@@ -749,18 +763,16 @@ async def test_reduce_runs_to_completion_before_any_judge():
     """
     request = _multi_chunk_request()
     llm = OverlapTrackingLLM()
-    orch = Orchestrator(
-        llm=llm,
-        anonymizer=RecordingAnonymizer(),
-        embedder=FakeEmbeddingPort(),
-        settings=OrchestratorSettings(),
-        analyze_settings=AnalyzeSettings(min_cluster_size=2, max_concurrent_chunks=50),
-        llm_timeout_seconds=LLM_TIMEOUT,
+    service = _build_analyze_service(
+        llm,
+        RecordingAnonymizer(),
+        FakeEmbeddingPort(),
         max_total_tokens=700,
+        analyze_settings=AnalyzeSettings(min_cluster_size=2, max_concurrent_chunks=50),
     )
     deadline = datetime.now(UTC) + timedelta(seconds=120)
 
-    result = await orch.analyze_hierarchical(request, deadline, anonymize=True)
+    result = await service.analyze_hierarchical(request, deadline, anonymize=True)
 
     # No judge call ever coexisted with a reduce call.
     assert not llm.judge_reduce_overlap, "judge ran concurrently with reduce"
@@ -780,3 +792,27 @@ async def test_reduce_runs_to_completion_before_any_judge():
     )
     assert result.confidence is not None
     assert result.result
+
+
+@pytest.mark.asyncio
+async def test_no_embedder_raises_analysis_error():
+    """Without an embedder the hierarchical path refuses at request time.
+
+    Why: the embedder is optional (``EMBEDDING_MODEL_PATH`` unset is the
+    normal local/CI state), and the availability guard is what turns that
+    into a clean 502 ``analysis_unavailable`` instead of an ``AttributeError``
+    deeper in the pipeline. ``single_pass`` stays usable on the same service.
+    """
+    request = AnalysisRequestModel(
+        feedback_records=_records(4, "water access " * 5, "w"),
+        prompt="trends?",
+        tenant_id=TENANT_ID,
+        mode="hierarchical",
+    )
+    service = _build_analyze_service(
+        RecordingLLM(), RecordingAnonymizer(), None, max_total_tokens=100_000
+    )
+    deadline = datetime.now(UTC) + timedelta(seconds=120)
+
+    with pytest.raises(AnalysisError, match="no embedder configured"):
+        await service.analyze_hierarchical(request, deadline, anonymize=True)

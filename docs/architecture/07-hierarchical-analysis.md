@@ -11,9 +11,13 @@ synthesises the partial analyses into one answer (**reduce**), recursing when
 the work still overflows the budget.
 
 The two modes are selected by the `mode` request field; the route handler calls
-`Orchestrator.analyze` or `Orchestrator.analyze_hierarchical` accordingly — one
-orchestrator, one method per mode (see
-[ADR-011](../adr/011-drop-orchestrator-port.md)).
+`AnalyzeService.analyze_bulk` or `AnalyzeService.analyze_hierarchical`
+accordingly — one service, one method per mode. Both modes live on the *same*
+service because they are two modes of one endpoint and share the
+retained-placeholder guardrail (see
+[ADR-017](../adr/017-orchestrator-composition-only.md)); `AnalyzeService` is
+also the only use case that takes an `EmbeddingPort`, which is exactly why the
+decomposition gives it its own constructor.
 
 ## Why an embedding model at all?
 
@@ -33,7 +37,7 @@ cross-lingual quality), which requires adding a fetch step to the image build
 
 ## The pipeline
 
-`Orchestrator.analyze_hierarchical` runs these steps in order:
+`AnalyzeService.analyze_hierarchical` runs these steps in order:
 
 1. **Availability guard.** If no embedder is configured (`EMBEDDING_*` unset),
    the call raises `AnalysisError` → **502 `analysis_unavailable`**. A
@@ -173,7 +177,7 @@ flowchart TD
 ```mermaid
 sequenceDiagram
     participant route as Route handler
-    participant orch as Orchestrator
+    participant orch as AnalyzeService
     participant anon as AnonymizationPort
     participant emb as EmbeddingPort
     participant llm as LLMPort

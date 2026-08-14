@@ -616,9 +616,9 @@ def _make_lifespan(llm_factory: LLMFactory):
            executor — it also registers custom LiteLLM model prices
            needed for ``completion_cost()``.
         6. Publish ``orchestrator``, ``sensitivity_service``,
-           ``coding_service``, ``api_keys``, ``settings``, and
-           ``usage_repo`` on ``app.state`` for routes/middleware to
-           read.
+           ``coding_service``, ``analyze_service``, ``api_keys``,
+           ``settings``, and ``usage_repo`` on ``app.state`` for
+           routes/middleware to read.
 
         On shutdown the only resource that needs explicit cleanup is the
         DB engine's connection pool; everything else is plain Python
@@ -694,6 +694,7 @@ def _make_lifespan(llm_factory: LLMFactory):
         # single service it needs off app.state.
         app.state.sensitivity_service = services.sensitivity
         app.state.coding_service = services.coding
+        app.state.analyze_service = services.analyze
         app.state.settings = settings
         app.state.usage_repo = usage_repo
 

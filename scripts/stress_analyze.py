@@ -8,12 +8,12 @@ Helper script (run manually, not in CI). Two use cases:
 2. **Stress test** — fire ``--concurrency N`` parallel requests against
    ``/v1/analyze`` to measure latency distribution and failure modes
    under load. This is the production usage vector — anything else
-   (in-process orchestrator calls, fake LLMs) bypasses the auth,
+   (in-process service calls, fake LLMs) bypasses the auth,
    request validation, and serialization that real callers hit.
 
 The interactive **quality-analysis notebook** in
 ``notebooks/analyze_corpus.ipynb`` covers a different need: it imports
-:func:`qfa.api.composition.build_orchestrator` and calls
+:func:`qfa.api.composition.build_analyze_service` and calls
 ``analyze_hierarchical`` in-process so you can step through chunking,
 swap settings per-cell, and plot ``coding_trends`` without a server.
 Use the notebook to study behaviour; use this script to measure

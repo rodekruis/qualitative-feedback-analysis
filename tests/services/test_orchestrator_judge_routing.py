@@ -41,11 +41,12 @@ from qfa.domain.ports import (
     UsageRepositoryPort,
 )
 from qfa.domain.usage_models import LLMCallRecord, Operation
+from qfa.services.analyze import AnalyzeJudgeResult, AnalyzeService
 from qfa.services.call_context import call_scope
 from qfa.services.coding import CodingService
 from qfa.services.coding_classifier import CodingResponse, JudgeResponse
 from qfa.services.llm_call_executor import LLMCallExecutor
-from qfa.services.orchestrator import AnalyzeJudgeResult, Orchestrator
+from qfa.services.orchestrator import Orchestrator
 from qfa.settings import AnalyzeSettings, OrchestratorSettings
 
 TENANT_ID = "tenant-42"
@@ -240,6 +241,35 @@ def _build_coding_service(primary: LLMPort) -> CodingService:
     )
 
 
+def _build_analyze(
+    primary: LLMPort, judge: LLMPort | None = None, **kwargs
+) -> AnalyzeService:
+    """Build an analyze service over the given client(s).
+
+    Mirrors :func:`_build` for the extracted analyse use case, over the
+    *real* ``LLMCallExecutor`` (ADR-017 decision 3) so the judge client
+    that reaches ``bounded_complete`` is the production one.
+    """
+    anonymizer = NoopAnonymizer()
+    settings = OrchestratorSettings()
+    executor = LLMCallExecutor(
+        llm=primary,
+        anonymizer=anonymizer,
+        settings=settings,
+        llm_timeout_seconds=LLM_TIMEOUT,
+        max_total_tokens=MAX_TOKENS,
+    )
+    return AnalyzeService(
+        executor=executor,
+        llm=primary,
+        judge_llm=judge,
+        anonymizer=anonymizer,
+        settings=settings,
+        max_total_tokens=MAX_TOKENS,
+        **kwargs,
+    )
+
+
 class TestDefaultsToThePrimaryClient:
     """With no judge client, every call — judge included — goes to the primary."""
 
@@ -248,8 +278,10 @@ class TestDefaultsToThePrimaryClient:
         primary = RoutingLLM("primary")
 
         orchestrator = _build(primary)
+        analyze = _build_analyze(primary)
 
         assert orchestrator._judge_llm is primary
+        assert analyze._judge_llm is primary
 
     @pytest.mark.asyncio
     async def test_analyze_judge_uses_the_primary_model_when_unset(self) -> None:
@@ -260,9 +292,9 @@ class TestDefaultsToThePrimaryClient:
         to, the one model that served them before #258.
         """
         primary = RoutingLLM("primary")
-        orchestrator = _build(primary)
+        analyze = _build_analyze(primary)
 
-        await orchestrator.analyze_bulk(
+        await analyze.analyze_bulk(
             AnalysisRequestModel(
                 feedback_records=(_feedback_record(),),
                 prompt="Summarize feedback.",
@@ -301,9 +333,9 @@ class TestJudgeCallsRouteToTheJudgeClient:
         """
         primary = RoutingLLM("primary")
         judge = RoutingLLM("judge")
-        orchestrator = _build(primary, judge)
+        analyze = _build_analyze(primary, judge)
 
-        result = await orchestrator.analyze_bulk(
+        result = await analyze.analyze_bulk(
             AnalysisRequestModel(
                 feedback_records=(_feedback_record(),),
                 prompt="Summarize feedback.",
@@ -367,7 +399,7 @@ class TestJudgeCallsRouteToTheJudgeClient:
         """
         primary = RoutingLLM("primary")
         judge = RoutingLLM("judge")
-        orchestrator = _build(
+        analyze = _build_analyze(
             primary,
             judge,
             embedder=TwoClusterEmbedder(),
@@ -377,7 +409,7 @@ class TestJudgeCallsRouteToTheJudgeClient:
             4, "health clinic medicine " * 5, "h"
         )
 
-        result = await orchestrator.analyze_hierarchical(
+        result = await analyze.analyze_hierarchical(
             AnalysisRequestModel(
                 feedback_records=records,
                 prompt="trends?",
@@ -408,14 +440,9 @@ class TestJudgeCallsRouteToTheJudgeClient:
         """
         primary = RoutingLLM("primary")
         judge = RoutingLLM("judge")
-        settings = OrchestratorSettings()
-        orchestrator = Orchestrator(
-            llm=primary,
-            judge_llm=judge,
-            anonymizer=NoopAnonymizer(),
-            settings=settings,
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
+        analyze = _build_analyze(
+            primary,
+            judge,
             embedder=TwoClusterEmbedder(),
             analyze_settings=AnalyzeSettings(min_cluster_size=2),
         )
@@ -423,7 +450,7 @@ class TestJudgeCallsRouteToTheJudgeClient:
             4, "health clinic medicine " * 5, "h"
         )
 
-        await orchestrator.analyze_hierarchical(
+        await analyze.analyze_hierarchical(
             AnalysisRequestModel(
                 feedback_records=records,
                 prompt="trends?",
@@ -447,9 +474,9 @@ class TestGenerationCallsStayOnThePrimaryClient:
         """The analysis itself is served by the primary client, not the judge one."""
         primary = RoutingLLM("primary")
         judge = RoutingLLM("judge")
-        orchestrator = _build(primary, judge)
+        analyze = _build_analyze(primary, judge)
 
-        await orchestrator.analyze_bulk(
+        await analyze.analyze_bulk(
             AnalysisRequestModel(
                 feedback_records=(_feedback_record(),),
                 prompt="Summarize feedback.",
@@ -536,7 +563,7 @@ class TestCostAccountingAcrossBothClients:
         repo = FakeUsageRepository()
         primary = RoutingLLM("primary-model")
         judge = RoutingLLM("judge-model")
-        orchestrator = _build(
+        analyze = _build_analyze(
             TrackingLLMAdapter(inner=primary, usage_repo=repo),
             TrackingLLMAdapter(inner=judge, usage_repo=repo),
         )
@@ -544,7 +571,7 @@ class TestCostAccountingAcrossBothClients:
         async with call_scope(
             tenant_id=TENANT_ID, operation=Operation.ANALYZE, request_id=uuid4()
         ):
-            await orchestrator.analyze_bulk(
+            await analyze.analyze_bulk(
                 AnalysisRequestModel(
                     feedback_records=(_feedback_record(),),
                     prompt="Summarize feedback.",

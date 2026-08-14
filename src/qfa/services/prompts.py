@@ -63,6 +63,16 @@ JUDGE_UNAVAILABLE_EXPLANATION: str = (
     "Judge unavailable; the quality score could not be computed for this analysis."
 )
 
+JUDGE_USER_MESSAGE: str = "."
+"""Placeholder user message for every judge call.
+
+Judge prompts carry the source text, the analyst prompt and the output to
+score in the *system* message, so there is nothing left for the user turn
+to say. Providers still expect one, hence a single character rather than
+an empty string. Shared by the analyse and summarise judges so the two
+cannot drift apart.
+"""
+
 ANALYZE_JUDGE_PROMPT: str = """
 You are evaluating the quality of an analysis produced from feedback records.
 

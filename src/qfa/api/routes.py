@@ -10,6 +10,7 @@ import qfa
 from qfa.api.dependencies import (
     authenticate_request,
     call_scope_for,
+    get_analyze_service,
     get_coding_service,
     get_orchestrator,
     get_sensitivity_service,
@@ -46,6 +47,7 @@ from qfa.domain.models import (
     TenantApiKey,
 )
 from qfa.domain.usage_models import CallContext, Operation
+from qfa.services.analyze import AnalyzeService
 from qfa.services.coding import (
     NO_CODING_EMPTY_CONTENT_EXPLANATION,
     CodingService,
@@ -131,7 +133,7 @@ async def analyze_bulk(
     body: ApiAnalyzeRequest,
     request: Request,
     tenant: TenantApiKey = Depends(authenticate_request),
-    orchestrator: Orchestrator = Depends(get_orchestrator),
+    analyze_service: AnalyzeService = Depends(get_analyze_service),
     _scope: CallContext = Depends(call_scope_for(Operation.ANALYZE)),
 ) -> ApiAnalyzeBulkResponse:
     """Analyze a batch of feedback records for trends and themes.
@@ -181,8 +183,8 @@ async def analyze_bulk(
         The incoming HTTP request.
     tenant : TenantApiKey
         The authenticated tenant, injected via dependency.
-    orchestrator : Orchestrator
-        The orchestrator service, injected via dependency.
+    analyze_service : AnalyzeService
+        The analyze service, injected via dependency.
 
     Returns
     -------
@@ -229,9 +231,9 @@ async def analyze_bulk(
     )
 
     if body.mode == "hierarchical":
-        result = await orchestrator.analyze_hierarchical(domain_request, deadline)
+        result = await analyze_service.analyze_hierarchical(domain_request, deadline)
     else:
-        result = await orchestrator.analyze_bulk(domain_request, deadline)
+        result = await analyze_service.analyze_bulk(domain_request, deadline)
 
     # Map coding_trends domain model → API schema when present.
     api_coding_trends: ApiCodingTrends | None = None

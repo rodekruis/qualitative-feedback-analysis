@@ -335,6 +335,7 @@ def test_app(fake_orchestrator, fake_auth_orchestrator):
     # of them until the remaining extractions land.
     app.state.sensitivity_service = fake_orchestrator
     app.state.coding_service = fake_orchestrator
+    app.state.analyze_service = fake_orchestrator
     app.state.auth_orchestrator = fake_auth_orchestrator
     app.state.usage_repo = FakeUsageRepository()
 
