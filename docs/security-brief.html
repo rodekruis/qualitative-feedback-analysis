@@ -1,0 +1,333 @@
+<title>Feedback Analysis Security Brief</title>
+<style>
+  :root{
+    --bg:#f1eeec;
+    --sheet:#ffffff;
+    --ink:#211a1a;
+    --ink-soft:#5c4f4e;
+    --ink-faint:#8a7c7a;
+    --accent:#b3181f;
+    --accent-ink:#7d1015;
+    --accent-soft:#f7dfe0;
+    --line:#ddd4d2;
+    --warn:#8a5a20;
+    --warn-soft:#f3e6d3;
+    --lead-bg:#fbf1f0;
+    --lead-border:#eac6c4;
+    --shadow:0 1px 2px rgba(33,26,26,.04), 0 8px 24px rgba(33,26,26,.06);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#181112;
+      --sheet:#221819;
+      --ink:#f1e8e7;
+      --ink-soft:#c2ada9;
+      --ink-faint:#8a7c7a;
+      --accent:#e35b5f;
+      --accent-ink:#f5b9ba;
+      --accent-soft:#3a1c1d;
+      --line:#3a2b2b;
+      --warn:#e0aa5e;
+      --warn-soft:#2e2419;
+      --lead-bg:#271819;
+      --lead-border:#4a2628;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#181112;
+    --sheet:#221819;
+    --ink:#f1e8e7;
+    --ink-soft:#c2ada9;
+    --ink-faint:#8a7c7a;
+    --accent:#e35b5f;
+    --accent-ink:#f5b9ba;
+    --accent-soft:#3a1c1d;
+    --line:#3a2b2b;
+    --warn:#e0aa5e;
+    --warn-soft:#2e2419;
+    --lead-bg:#271819;
+    --lead-border:#4a2628;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    margin:0;
+    padding:2.2rem 1rem 3rem;
+    font-family:"Segoe UI","Neue Haas Grotesk Text",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+    font-size:14px;
+    line-height:1.42;
+    display:flex;
+    justify-content:center;
+  }
+
+  .sheet{
+    width:100%;
+    max-width:920px;
+    background:var(--sheet);
+    border:1px solid var(--line);
+    border-top:5px solid var(--accent);
+    border-radius:4px;
+    box-shadow:var(--shadow);
+    padding:2.3rem 2.6rem 1.8rem;
+  }
+
+  h1,h2,h3{
+    font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Times New Roman",serif;
+    font-weight:600;
+    text-wrap:balance;
+    margin:0;
+  }
+
+  header.masthead{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    gap:1.5rem;
+    border-bottom:2px solid var(--ink);
+    padding-bottom:.85rem;
+    margin-bottom:1.15rem;
+  }
+  header.masthead .title-block h1{
+    font-size:1.7rem;
+    letter-spacing:.2px;
+    color:var(--ink);
+  }
+  header.masthead .title-block p{
+    margin:.3rem 0 0;
+    color:var(--ink-soft);
+    font-size:.86rem;
+    max-width:46ch;
+  }
+  header.masthead .meta{
+    text-align:right;
+    font-size:.72rem;
+    color:var(--ink-faint);
+    line-height:1.6;
+    max-width:32ch;
+  }
+  header.masthead .meta strong{
+    color:var(--ink-soft);
+    font-weight:600;
+  }
+  header.masthead .meta a{
+    color:var(--accent-ink);
+    text-decoration:none;
+    border-bottom:1px solid var(--lead-border);
+  }
+  header.masthead .meta a:hover,
+  header.masthead .meta a:focus-visible{
+    border-bottom-color:var(--accent);
+  }
+
+  .lead{
+    display:flex;
+    gap:.9rem;
+    align-items:flex-start;
+    background:var(--lead-bg);
+    border:1px solid var(--lead-border);
+    border-radius:5px;
+    padding:.75rem .95rem;
+    margin-bottom:1.3rem;
+  }
+  .lead .mark{
+    font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    font-size:1.5rem;
+    color:var(--accent);
+    line-height:1;
+    margin-top:.05rem;
+  }
+  .lead p{
+    margin:0;
+    font-size:.86rem;
+    color:var(--ink);
+  }
+  .lead p strong{ color:var(--accent-ink); }
+
+  .grid{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:1rem 1.2rem;
+  }
+
+  .card{
+    border-top:2px solid var(--accent);
+    padding-top:.55rem;
+  }
+  .card h2{
+    font-size:.86rem;
+    color:var(--ink);
+    margin-bottom:.4rem;
+  }
+  .card ul{
+    margin:0;
+    padding:0;
+    list-style:none;
+  }
+  .card li{
+    position:relative;
+    padding-left:.85rem;
+    margin-bottom:.4rem;
+    font-size:.735rem;
+    color:var(--ink-soft);
+    line-height:1.4;
+  }
+  .card li::before{
+    content:"";
+    position:absolute;
+    left:0;
+    top:.42em;
+    width:4px;
+    height:4px;
+    border-radius:50%;
+    background:var(--accent);
+  }
+  .card li strong{
+    color:var(--ink);
+    font-weight:600;
+  }
+  .cite{
+    font-family:ui-monospace,"SF Mono","Cascadia Code","Roboto Mono",monospace;
+    font-size:.62rem;
+    color:var(--ink-faint);
+    white-space:nowrap;
+  }
+
+  .card li a{
+    color:var(--accent-ink);
+    font-size:.68rem;
+    white-space:nowrap;
+  }
+
+  footer{
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:flex-end;
+    align-items:center;
+    gap:.3rem 1.2rem;
+    margin-top:1.3rem;
+    padding-top:.6rem;
+    border-top:1px solid var(--line);
+    font-size:.66rem;
+    color:var(--ink-faint);
+  }
+
+  @media (max-width:720px){
+    .grid{grid-template-columns:1fr 1fr;}
+    header.masthead{flex-direction:column;align-items:flex-start;}
+    header.masthead .meta{text-align:left;}
+  }
+  @media (max-width:460px){
+    .grid{grid-template-columns:1fr;}
+    body{padding:1rem .6rem 2rem;font-size:13px;}
+    .sheet{padding:1.4rem 1.3rem;}
+  }
+
+  @page{ size:A4; margin:9mm 11mm; }
+  @media print{
+    html,body{background:#fff;}
+    body{padding:0;font-size:9.6px;line-height:1.32;}
+    .sheet{box-shadow:none;border:none;border-top:3px solid var(--accent);max-width:100%;padding:0;}
+    header.masthead{padding-bottom:.5rem;margin-bottom:.7rem;}
+    header.masthead .title-block h1{font-size:1.34rem;}
+    header.masthead .title-block p{font-size:.78rem;}
+    .lead{padding:.55rem .75rem;margin-bottom:.8rem;}
+    .lead p{font-size:.78rem;}
+    .residency{padding:.55rem .75rem;margin-top:.8rem;}
+    .residency h2{font-size:.78rem;}
+    .residency p{font-size:.78rem;}
+    .residency .src{font-size:.62rem;}
+    .grid{gap:.55rem .85rem;}
+    .card{padding-top:.4rem;break-inside:avoid;page-break-inside:avoid;}
+    .card h2{font-size:.78rem;margin-bottom:.3rem;}
+    .card li{font-size:.665rem;margin-bottom:.28rem;line-height:1.32;}
+    footer{margin-top:.8rem;padding-top:.4rem;font-size:.62rem;}
+  }
+</style>
+
+<div class="sheet">
+  <header class="masthead">
+    <div class="title-block">
+      <h1>Security &amp; Privacy Brief</h1>
+      <p>Qualitative Feedback Analysis service — how humanitarian feedback data is protected, end to end.</p>
+    </div>
+    <div class="meta">
+      13 August 2026 · <a href="https://github.com/rodekruis/qualitative-feedback-analysis">rodekruis/qualitative-feedback-analysis</a>
+    </div>
+  </header>
+
+  <div class="lead">
+    <div class="mark">&#10070;</div>
+    <p><strong>No feedback text, prompts, or beneficiary personal data are ever stored permanently.</strong> Identifying details are held only in memory for the duration of processing, then discarded — the database retains only operational metadata (which National Society made the call, operation type, counts, cost, timing), never the feedback content itself.</p>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Authentication &amp; Access</h2>
+      <ul>
+        <li><strong>Bearer-token authentication</strong> required on every endpoint except the health check.</li>
+        <li>Two key types: <strong>tenant keys</strong> scoped to a single organisation, and a small number of <strong>superuser keys</strong> with cross-tenant authority — create/delete tenants, issue or revoke API keys, view usage across all tenants.</li>
+        <li>Tenant keys are <strong>hashed at rest</strong> (scrypt) in the database and compared in constant time — never stored or logged in plain text.</li>
+        <li>Superuser keys are stored as plaintext secrets in <strong>Azure Key Vault</strong> — protected by Key Vault RBAC and access logging — rather than hashed in the database, since they must exist before the app can reach its own data store.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>Privacy &amp; PII Handling</h2>
+      <ul>
+        <li>Every AI call is wrapped <strong>anonymise → send → de-anonymise</strong>; the model never sees raw personal data. <span class="cite">Presidio + spaCy</span></li>
+        <li>Analysis output <strong>never re-identifies named individuals</strong>.</li>
+        <li><strong>Data minimisation by design:</strong> feedback content and model responses are never written to the database.</li>
+        <li>Currently powered by <strong>OpenAI's GPT-5.4</strong> model — accessed through <strong>Azure AI Foundry</strong> (Microsoft-hosted, Sweden Central), not OpenAI's servers. Prompts and completions are never available to OpenAI, never used to improve their models, or to train foundation models without explicit permission. <a href="https://learn.microsoft.com/en-us/azure/foundry/responsible-ai/openai/data-privacy?tabs=azure-portal">Source</a></li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>Secrets &amp; Key Management</h2>
+      <ul>
+        <li><strong>Infrastructure secrets</strong> — LLM API credentials, database access, superuser bootstrap keys — live in <strong>Azure Key Vault</strong>; injected into the app as configuration, never touched by application code directly.</li>
+        <li><strong>Tenant API keys</strong> are not in Key Vault at all — they're stored hashed in the application database.</li>
+        <li>Deployments authenticate to Azure via <strong>short-lived, keyless credentials</strong> (OIDC) — no long-lived deployment secrets.</li>
+        <li>Secret values are excluded from source control and infrastructure state files.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>Audit &amp; Monitoring</h2>
+      <ul>
+        <li>Every request carries a <strong>traceable correlation ID</strong> from entry to completion.</li>
+        <li>Feedback content, prompts, model output and key values are <strong>never written to logs</strong> — enforced in code.</li>
+        <li>Centralised monitoring with <strong>automated alerts</strong> on errors, downtime and resource strain.</li>
+        <li>The database stores <strong>only call metadata</strong> — tenant ID, operation type, token counts, cost, latency, error class — never feedback text, prompts or model output. Queryable via a tenant-scoped usage/audit API.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>Network &amp; Infrastructure</h2>
+      <ul>
+        <li>The database has <strong>no public network access</strong> and no password login — private network only, identity-based access.</li>
+        <li><strong>TLS 1.2+ enforced</strong> everywhere; legacy insecure file-transfer protocols are disabled.</li>
+        <li>Services authenticate to each other via <strong>managed identity</strong> — no shared-key secrets between components.</li>
+        <li><strong>Isolated environments:</strong> development, staging and production each have their own resources.</li>
+        <li>Hosted in <strong>Europe (Sweden)</strong> — data stays within the EU.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>Secure Development</h2>
+      <ul>
+        <li><strong>Static security scanning</strong> (CodeQL) and security-focused lint checks run on every change.</li>
+        <li><strong>Automated dependency scanning</strong> keeps third-party libraries patched.</li>
+        <li>Architectural boundaries are <strong>enforced by the build</strong>, not convention — the privacy-sensitive core stays isolated from vendor code.</li>
+        <li>Releases require a <strong>named human's sign-off</strong> before reaching staging or production.</li>
+      </ul>
+    </div>
+  </div>
+
+  <footer>
+    <span>Contact: Daan Gorsse</span>
+  </footer>
+</div>
