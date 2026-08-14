@@ -14,6 +14,7 @@ from qfa.domain.usage_models import CallContext, Operation
 from qfa.services.auth_orchestrator import AuthOrchestrator
 from qfa.services.call_context import call_scope
 from qfa.services.orchestrator import Orchestrator
+from qfa.services.sensitivity import SensitivityService
 
 
 def get_orchestrator(request: Request) -> Orchestrator:
@@ -30,6 +31,26 @@ def get_orchestrator(request: Request) -> Orchestrator:
         The orchestrator service instance.
     """
     return request.app.state.orchestrator
+
+
+def get_sensitivity_service(request: Request) -> SensitivityService:
+    """Return the sensitivity-detection service from app state.
+
+    One provider per use-case service (ADR-017): the detect-sensitive
+    handler depends on this service alone, not on the type that reaches
+    every use case.
+
+    Parameters
+    ----------
+    request : Request
+        The incoming HTTP request.
+
+    Returns
+    -------
+    SensitivityService
+        The sensitivity-detection service instance.
+    """
+    return request.app.state.sensitivity_service
 
 
 def get_auth_orchestrator(request: Request) -> AuthOrchestrator:

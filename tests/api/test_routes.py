@@ -866,7 +866,7 @@ class TestErrorMapping:
 
     @pytest.mark.asyncio
     async def test_detect_sensitive_502_analysis_error(self, test_app):
-        test_app.state.orchestrator = FakeOrchestrator(
+        test_app.state.sensitivity_service = FakeOrchestrator(
             error=AnalysisError("LLM failure")
         )
         async with _make_client(test_app) as c:
