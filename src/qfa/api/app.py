@@ -24,7 +24,7 @@ from qfa.adapters.tracking_llm import TrackingLLMAdapter
 from qfa.adapters.usage_repository import SqlAlchemyUsageRepository
 from qfa.api.composition import (
     build_embedder,
-    build_orchestrator,
+    build_services,
     resolve_judge_llm_settings,
 )
 from qfa.api.routes import router
@@ -609,13 +609,14 @@ def _make_lifespan(llm_factory: LLMFactory):
            ``TrackingLLMAdapter`` so every call attempt is recorded —
            an unwrapped judge client would omit judge calls from usage.
         4. Build the embedder here (rather than inside
-           ``build_orchestrator``) so its construction is visible in
+           ``build_services``) so its construction is visible in
            startup logs before any traffic arrives.
-        5. Delegate to :func:`qfa.api.composition.build_orchestrator`
-           to assemble the orchestrator — it also registers custom
-           LiteLLM model prices needed for ``completion_cost()``.
-        6. Publish ``orchestrator``, ``api_keys``, ``settings``, and
-           ``usage_repo`` on ``app.state`` for routes/middleware to read.
+        5. Delegate to :func:`qfa.api.composition.build_services`
+           to assemble the application services — it also registers
+           custom LiteLLM model prices needed for ``completion_cost()``.
+        6. Publish ``orchestrator``, ``sensitivity_service``,
+           ``api_keys``, ``settings``, and ``usage_repo`` on
+           ``app.state`` for routes/middleware to read.
 
         On shutdown the only resource that needs explicit cleanup is the
         DB engine's connection pool; everything else is plain Python
@@ -672,7 +673,7 @@ def _make_lifespan(llm_factory: LLMFactory):
         if embedder is not None:
             logger.info("Embedding model ready (hierarchical analysis available)")
 
-        orchestrator = build_orchestrator(
+        services = build_services(
             settings,
             llm=llm_for_orch,
             judge_llm=judge_for_orch,
@@ -686,7 +687,10 @@ def _make_lifespan(llm_factory: LLMFactory):
             ],
             auth_management_port=auth_adapter,
         )
-        app.state.orchestrator = orchestrator
+        app.state.orchestrator = services.orchestrator
+        # One provider per use-case service (ADR-017): each route reads the
+        # single service it needs off app.state.
+        app.state.sensitivity_service = services.sensitivity
         app.state.settings = settings
         app.state.usage_repo = usage_repo
 

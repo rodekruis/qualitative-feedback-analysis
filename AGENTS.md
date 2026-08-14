@@ -86,6 +86,8 @@ developer workflow — update the relevant page in the same PR. This also applie
 the [documentation index](docs/README.md) to see what's covered. Doc rot is harder to
 catch in review than code drift; the cheapest moment to fix it is while the change is
 fresh.
+If anything related to security is changed, then the docs/security-brief.html should be updated to reflect the change.
+
 
 - Section indexes live at `docs/<section>/index.md` (with thin `README.md` stubs as
   github.com folder landing pages).

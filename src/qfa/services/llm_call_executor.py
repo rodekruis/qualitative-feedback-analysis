@@ -1,10 +1,11 @@
 """Shared LLM-call scaffolding for the application services.
 
 Every use case in :mod:`qfa.services` wraps its LLM calls in the same
-four concerns: redact PII before the call, derive a per-call timeout from
-the request deadline, guard the token budget, and bound concurrent calls
-with a semaphore. :class:`LLMCallExecutor` owns those four and nothing
-else, so a use-case service can be read without them.
+four concerns: redact PII before the call (and restore it afterwards),
+derive a per-call timeout from the request deadline, guard the token
+budget, and bound concurrent calls with a semaphore.
+:class:`LLMCallExecutor` owns those four and nothing else, so a use-case
+service can be read without them.
 
 Per ADR-017 this is a plain concrete class, deliberately **not** a
 Protocol and **not** a base class:
@@ -23,6 +24,7 @@ Tests construct the *real* executor over the existing ``FakeLLMPort`` /
 """
 
 import asyncio
+import json
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -34,6 +36,20 @@ from qfa.settings import LLM_RETRY_BUDGET_MULTIPLIER, OrchestratorSettings
 
 #: Minimum time (seconds) required for an LLM attempt to be viable.
 _MINIMUM_ATTEMPT_WINDOW = 10.0
+
+
+def _json_escape_mapping(mapping: dict[str, str]) -> dict[str, str]:
+    """Escape mapping values for safe substitution into a JSON string.
+
+    ``AnonymizationPort.deanonymize`` does a raw substring replace, so
+    restoring a PII value that contains a quote, backslash, or control
+    character (e.g. a newline in an address) directly into an
+    already-serialized JSON string corrupts it. Escaping each value the
+    way ``json.dumps`` would keeps the result valid JSON.
+    """
+    return {
+        placeholder: json.dumps(value)[1:-1] for placeholder, value in mapping.items()
+    }
 
 
 @dataclass
@@ -109,6 +125,18 @@ class LLMCallExecutor:
             new_records.append(record.model_copy(update={"content": redacted}))
         return tuple(new_records), merged
 
+    def anonymize_text(self, text: str) -> tuple[str, dict[str, str]]:
+        """Redact PII from one assembled message, returning text + mapping.
+
+        The single-record use cases anonymise the *assembled* user message
+        rather than each record's content, because the envelope they send is
+        built before the call; :meth:`anonymize_records` is the batch
+        equivalent for the paths that chunk records first. Pair this with
+        :meth:`deanonymize_json` to restore the redacted values in the
+        model's response.
+        """
+        return self._anonymizer.anonymize(text)
+
     async def bounded_complete(
         self,
         semaphore: asyncio.Semaphore,
@@ -122,6 +150,9 @@ class LLMCallExecutor:
         timing: SlotTiming | None = None,
     ) -> LLMResponse[T_Response]:
         """Run one LLM completion, bounded by ``semaphore`` and the deadline.
+
+        This is :meth:`complete` run under ``semaphore``, with the queue-wait
+        measured around the acquire.
 
         ``semaphore`` caps how many completions run at once across the whole
         hierarchical pipeline (map, leaf judge, reduce), so concurrency stays
@@ -144,22 +175,22 @@ class LLMCallExecutor:
         them apart rather than reporting one combined number that hides how long
         the call sat waiting for a slot.
         """
-        client = llm if llm is not None else self._llm
         queue_start = time.perf_counter()
         async with semaphore:
             acquired_at = time.perf_counter()
             if timing is not None:
                 timing.queued_seconds = acquired_at - queue_start
-            # Compute the timeout only now: queue-wait already elapsed, so the
-            # per-call window reflects the budget that actually remains.
-            timeout = self.check_deadline_and_get_timeout(deadline)
             try:
-                return await client.complete(
+                # Delegating here means the timeout is derived only now:
+                # queue-wait already elapsed, so the per-call window reflects
+                # the budget that actually remains.
+                return await self.complete(
+                    llm=llm,
                     system_message=system_message,
                     user_message=user_message,
                     tenant_id=tenant_id,
                     response_model=response_model,
-                    timeout=timeout,
+                    deadline=deadline,
                 )
             finally:
                 if timing is not None:
@@ -214,3 +245,48 @@ class LLMCallExecutor:
                 estimated_tokens=estimated_tokens,
                 limit=self._max_total_tokens,
             )
+
+    async def complete(
+        self,
+        *,
+        llm: LLMPort | None = None,
+        system_message: str,
+        user_message: str,
+        tenant_id: str,
+        response_model: type[T_Response],
+        deadline: datetime,
+    ) -> LLMResponse[T_Response]:
+        """Run one LLM completion bounded by the deadline.
+
+        The per-call timeout is derived from ``deadline`` immediately before
+        the call, so a completion issued late in a request still honours the
+        remaining budget (and raises ``AnalysisTimeoutError`` rather than
+        issuing a call that cannot finish in time).
+
+        Use this for the single-call use cases. The hierarchical pipeline
+        uses :meth:`bounded_complete`, which adds the concurrency semaphore
+        and the queue-wait timing on top of this method.
+
+        ``llm`` overrides the connection for this one call — see
+        :meth:`bounded_complete` for why that override exists; ``None`` uses
+        the executor's own client.
+        """
+        timeout = self.check_deadline_and_get_timeout(deadline)
+        client = llm if llm is not None else self._llm
+        return await client.complete(
+            system_message=system_message,
+            user_message=user_message,
+            tenant_id=tenant_id,
+            response_model=response_model,
+            timeout=timeout,
+        )
+
+    def deanonymize_json(self, payload: str, mapping: dict[str, str]) -> str:
+        """Restore redacted values inside a serialized JSON ``payload``.
+
+        The counterpart to :meth:`anonymize_text` for structured responses:
+        the mapping's values are escaped the way ``json.dumps`` would before
+        substitution, so PII containing a quote or a newline cannot corrupt
+        the JSON the caller is about to re-validate.
+        """
+        return self._anonymizer.deanonymize(payload, _json_escape_mapping(mapping))

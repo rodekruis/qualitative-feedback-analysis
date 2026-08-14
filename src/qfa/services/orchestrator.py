@@ -11,7 +11,6 @@ class (ADR-017).
 """
 
 import asyncio
-import json
 import logging
 import re
 from dataclasses import dataclass
@@ -40,15 +39,11 @@ from qfa.domain.models import (
     CodingAssignmentResultModel,
     FeedbackRecordModel,
     FeedbackRecordSummaryModel,
-    SensitivityAnalysisRequestModel,
-    SensitivityAnalysisResultModel,
-    SensitivityAnalysisResultModelList,
     SingleSummaryRequestModel,
     SummaryRequestModel,
     SummaryResultModel,
 )
 from qfa.domain.ports import AnonymizationPort, EmbeddingPort, LLMPort
-from qfa.domain.sensitivity_types import SENSITIVITY_TYPE_DESCRIPTIONS
 from qfa.services.clustering import cluster_records
 from qfa.services.coding_classifier import (
     CodingResponse,
@@ -84,11 +79,6 @@ from qfa.utils import timed
 
 logger = logging.getLogger(__name__)
 
-_SENSITIVITY_TYPE_GUIDANCE = "\n".join(
-    f"- {sensitivity_type.value}: {description}"
-    for sensitivity_type, description in SENSITIVITY_TYPE_DESCRIPTIONS.items()
-)
-
 _DEFAULT_SUMMARIZATION_PROMPT = (
     "Summarize the feedback item as concise bullet points.\n"
     "Strict Constraint: The summary must be extremely concise, using no more than 3-5 brief bullet points.\n"
@@ -110,20 +100,6 @@ _DEFAULT_AGGREGATE_SUMMARIZATION_PROMPT = (
     "Do not include markdown code fences.\n"
     "Do not end with a question, an offer of further help, or an invitation for follow-up input.\n"
     "Use the same language as the input feedback records unless a target language is specified."
-)
-
-_DEFAULT_SENSITIVITY_DETECTION_PROMPT = (
-    "Analyze each feedback record and detect whether it contains sensitive content.\n"
-    "Classify sensitivity using only the SensitivityType enum values from the response schema.\n"
-    "For each record, include a concise natural-language explanation for the classification.\n"
-    f"SensitivityType guidance:\n{_SENSITIVITY_TYPE_GUIDANCE}\n"
-    "Return one result per input record with the matching feedback_record_id.\n"
-    "If no sensitive content is present, return an empty sensitivity_types tuple for that record.\n"
-    "Do not include markdown code fences.\n"
-    "Note that anonymization might have taken place (e.g. ``<PERSON_0>``, ``<LOCATION_1>``). \n"
-    "Please act as if these were not anonymized. For example, if you see ``<PERSON_0>``"
-    " treat it as if it said 'John Doe' and classify sensitivity accordingly. \n"
-    "Please note that we prefer false positives over false negatives in this classification."
 )
 
 _JUDGE_PROMPT = """
@@ -202,20 +178,6 @@ def _parse_judge_quality_score(raw: str) -> float:
 def _build_judge_system_message(source_text: str, summary: str) -> str:
     """Fill the judge prompt with the provided source text and summary."""
     return _JUDGE_PROMPT.format(source_text=source_text, summary=summary)
-
-
-def _json_escape_mapping(mapping: dict[str, str]) -> dict[str, str]:
-    """Escape mapping values for safe substitution into a JSON string.
-
-    ``AnonymizationPort.deanonymize`` does a raw substring replace, so
-    restoring a PII value that contains a quote, backslash, or control
-    character (e.g. a newline in an address) directly into an
-    already-serialized JSON string corrupts it. Escaping each value the
-    way ``json.dumps`` would keeps the result valid JSON.
-    """
-    return {
-        placeholder: json.dumps(value)[1:-1] for placeholder, value in mapping.items()
-    }
 
 
 def _hyperlink_form_references(
@@ -1236,8 +1198,8 @@ class Orchestrator:
         response.structured.quality_score = quality_score
 
         return_model_as_string = response.structured.model_dump_json()
-        unanonymized_return_model_as_string = self._anonymizer.deanonymize(
-            return_model_as_string, _json_escape_mapping(anonymization_mapping)
+        unanonymized_return_model_as_string = self._executor.deanonymize_json(
+            return_model_as_string, anonymization_mapping
         )
         result = AggregateSummaryResultModel.model_validate_json(
             unanonymized_return_model_as_string
@@ -1313,8 +1275,8 @@ class Orchestrator:
         quality_score = _parse_judge_quality_score(judge_response.structured)
 
         return_model_as_string = llm_completion.structured.model_dump_json()
-        unanonymized_return_model_as_string = self._anonymizer.deanonymize(
-            return_model_as_string, _json_escape_mapping(anonymization_mapping)
+        unanonymized_return_model_as_string = self._executor.deanonymize_json(
+            return_model_as_string, anonymization_mapping
         )
         result = SummaryResultModel.model_validate_json(
             unanonymized_return_model_as_string
@@ -1569,56 +1531,6 @@ class Orchestrator:
         if not 0.0 <= response.structured.score <= 1.0:
             raise AnalysisError("LLM judge returned score outside 0.0-1.0")
         return response.structured
-
-    async def detect_sensitive_content(
-        self,
-        request: SensitivityAnalysisRequestModel,
-        deadline: datetime,
-    ) -> SensitivityAnalysisResultModel:
-        """Detect sensitive content in a single feedback record.
-
-        Parameters
-        ----------
-        request : SensitivityAnalysisRequestModel
-            The sensitivity analysis request containing a single feedback record.
-
-        Returns
-        -------
-        SensitivityAnalysisResultModel
-            The sensitivity analysis result for the feedback record.
-        """
-        timeout = self._executor.check_deadline_and_get_timeout(deadline)
-        system_message = _DEFAULT_SENSITIVITY_DETECTION_PROMPT
-        user_message = build_feedback_record_envelope(
-            request.feedback_record, include_metadata=True, include_id=True
-        )
-
-        anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
-            user_message
-        )
-
-        response = await self._llm.complete(
-            system_message=system_message,
-            user_message=anonymized_user_message,
-            tenant_id=request.tenant_id,
-            response_model=SensitivityAnalysisResultModelList,
-            timeout=timeout,
-        )
-
-        return_model_as_string = response.structured.model_dump_json()
-        unanonymized_return_model_as_string = self._anonymizer.deanonymize(
-            return_model_as_string, _json_escape_mapping(anonymization_mapping)
-        )
-        structured = SensitivityAnalysisResultModelList.model_validate_json(
-            unanonymized_return_model_as_string
-        )
-
-        raw = structured.results[0] if structured.results else None
-        return SensitivityAnalysisResultModel(
-            feedback_record_id=request.feedback_record.id,
-            sensitivity_types=raw.sensitivity_types if raw else (),
-            explanation=raw.explanation if raw else "No sensitive content detected.",
-        )
 
     def _check_coding_deadline(self, deadline: datetime) -> None:
         """Raise when the coding deadline is exceeded."""

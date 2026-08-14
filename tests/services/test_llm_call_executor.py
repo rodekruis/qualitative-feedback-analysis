@@ -13,6 +13,7 @@ the existing ``FakeLLMPort`` / ``FakeAnonymizer`` doubles from
 """
 
 import asyncio
+import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -225,6 +226,67 @@ class TestAnonymizeRecords:
 
         assert anonymized is records
         assert mapping == {}
+
+
+class TestAnonymizeTextAndDeanonymizeJson:
+    def test_round_trips_an_assembled_message_through_a_json_response(self):
+        executor = _make_executor(anonymizer=RedactingAnonymizer())
+
+        redacted, mapping = executor.anonymize_text("Jane reported a leak.")
+        restored = executor.deanonymize_json(
+            f'{{"explanation": "{redacted}"}}', mapping
+        )
+
+        assert redacted == "<PERSON_0> reported a leak."
+        assert json.loads(restored) == {"explanation": "Jane reported a leak."}
+
+    def test_restored_values_are_escaped_so_the_payload_stays_valid_json(self):
+        """PII containing a quote must not break the JSON it is restored into.
+
+        ``deanonymize`` is a raw substring replace, so an unescaped value
+        would terminate the string it lands in and the caller's
+        ``model_validate_json`` would fail on valid model output.
+        """
+        executor = _make_executor(anonymizer=RedactingAnonymizer())
+        mapping = {"<PERSON_0>": 'Jane "JJ" Doe\n'}
+
+        restored = executor.deanonymize_json('{"explanation": "<PERSON_0>"}', mapping)
+
+        assert json.loads(restored) == {"explanation": 'Jane "JJ" Doe\n'}
+
+
+class TestComplete:
+    @pytest.mark.asyncio
+    async def test_passes_the_deadline_derived_timeout_to_the_port(self):
+        fake_llm = FakeLLMPort(responses=[_make_response("done")])
+        executor = _make_executor(llm=fake_llm)
+
+        response = await executor.complete(
+            system_message="sys",
+            user_message="user",
+            tenant_id=TENANT_ID,
+            response_model=str,
+            deadline=_future_deadline(),
+        )
+
+        assert response.structured == "done"
+        assert fake_llm.calls[0]["timeout"] == pytest.approx(LLM_TIMEOUT)
+
+    @pytest.mark.asyncio
+    async def test_expired_deadline_raises_before_calling_the_llm(self):
+        fake_llm = FakeLLMPort(responses=[_make_response()])
+        executor = _make_executor(llm=fake_llm)
+
+        with pytest.raises(AnalysisTimeoutError):
+            await executor.complete(
+                system_message="sys",
+                user_message="user",
+                tenant_id=TENANT_ID,
+                response_model=str,
+                deadline=_past_deadline(),
+            )
+
+        assert fake_llm.calls == []
 
 
 class TestBoundedComplete:
