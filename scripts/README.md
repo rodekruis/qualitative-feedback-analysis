@@ -39,14 +39,14 @@ The fixture is built in two halves so that *statistics stay in Python* and
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
 │  1. gen-specs (Python)                                              │
-│     fixtures/coding_framework.json  ──►  analyze_corpus.specs.jsonl │
+│     coding_framework.json  ──►  analyze_corpus.specs.jsonl          │
 │     Allocates leaf-code volumes, samples metadata, plants trend     │
 │     created dates. One JSON object per record, no `text` yet.       │
 ├──────────────────────────────────────────────────────────────────────┤
 │  2. LLM batches (Claude Code)                                       │
 │     analyze_corpus.specs.jsonl  ──►  texts.jsonl                    │
 │     Slice into batches; each batch is fed to `generate_corpus.      │
-│     prompt.md` plus `fixtures/coding_framework.json`. LLM returns   │
+│     prompt.md` plus bundled `coding_framework.json`. LLM returns    │
 │     `{id, text, sentence_count}` per record.                        │
 ├──────────────────────────────────────────────────────────────────────┤
 │  3. merge (Python)                                                  │

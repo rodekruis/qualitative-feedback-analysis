@@ -44,7 +44,7 @@ operator's responsibility, not yours — but the file you produce
 - `fixtures/analyze_corpus.specs.jsonl` — the specs to fill in. One JSON
   object per line. Default path; if the operator names a different
   file, use that.
-- `fixtures/coding_framework.json` — reference for the leaf-code
+- `src/qfa/resources/coding_framework.json` — reference for the leaf-code
   taxonomy. The specs already inline the relevant fields under
   `_context`, so you only need this if a spec's `_context` is missing
   or you want to double-check a code's meaning.

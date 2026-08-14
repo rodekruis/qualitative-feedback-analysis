@@ -74,6 +74,13 @@ Repository = "https://github.com/rodekruis/qualitative-feedback-analysis"
 
 
 [tool.hatch.build]
+# hatchling ships every tracked file under `packages`, `.py` or not, so the
+# non-Python resources in `src/qfa/resources/` (loaded at runtime through
+# `importlib.resources` — see docs/development/bundled-resources.md) land in
+# both the wheel and the sdist without extra package-data config. Verify with
+# `uv build --wheel && unzip -l dist/*.whl | grep qfa/resources` after adding a
+# resource. Test-only fixtures deliberately live in the repo-root `fixtures/`
+# directory instead, so multi-MB corpora stay out of the distribution (#158).
 packages = ["src/qfa"]
 
 [tool.pytest.ini_options]

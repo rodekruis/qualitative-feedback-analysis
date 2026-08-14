@@ -103,6 +103,7 @@ Task-oriented guides for common development work, walking through a change end
 to end across the hexagonal layers.
 
 - [Implementing a new endpoint](implementing-a-new-endpoint.md) — adding an HTTP endpoint: domain and API models, the orchestrator use case, authentication, and usage tracking.
+- [Bundled resources and test fixtures](bundled-resources.md) — where data files live and how to load them: `importlib.resources` for anything production reads, repo-root `fixtures/` for test-only corpora.
 
 ## Where to go next
 
@@ -117,4 +118,5 @@ to end across the hexagonal layers.
 :maxdepth: 1
 
 implementing-a-new-endpoint
+bundled-resources
 ```
