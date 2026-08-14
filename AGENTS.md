@@ -33,10 +33,11 @@ Hexagonal architecture. Key concepts:
   route handler depends on the single service it needs. Per-task
   behaviour is selected by the route handler calling the appropriate
   method, not by swapping service implementations (see ADR-011).
-  `AnalyzeService` (analyze_bulk, analyze_hierarchical) is extracted;
-  `Orchestrator` still holds summarize, summarize_aggregate,
-  assign_codes and detect_sensitive_content until epic #112 finishes
-  emptying it. Do not add new use cases to it.
+  Epic #112 has extracted `SensitivityService`
+  (detect_sensitive_content, #263), `CodingService` (assign_codes,
+  #265) and `AnalyzeService` (analyze_bulk, analyze_hierarchical,
+  #266); `Orchestrator` holds only `summarize_bulk` and `summarize`
+  until #267 empties it. Do not add new use cases to it.
 - Services share behaviour by **composition only** — the shared LLM-call
   scaffolding is the injected `LLMCallExecutor` collaborator, never a
   base class (see ADR-017).
