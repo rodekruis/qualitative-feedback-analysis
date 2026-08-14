@@ -342,15 +342,14 @@ def build_orchestrator(
     *,
     llm: LLMPort | None = None,
     judge_llm: LLMPort | None = None,
-    embedder: EmbeddingPort | None = None,
 ) -> Orchestrator:
     """Build only the :class:`Orchestrator` half of :func:`build_services`.
 
     Convenience wrapper for callers that need just the not-yet-extracted
-    use case (``summarize``). ``embedder`` is accepted and forwarded so the
-    signature stays uniform with the other builders, even though the
-    orchestrator itself no longer holds one — only :class:`AnalyzeService`
-    does.
+    use cases (``summarize_bulk``, ``summarize``). There is no ``embedder``
+    parameter: the orchestrator no longer holds one, so accepting it here
+    would be a silent no-op. Callers that want an embedder want
+    :func:`build_analyze_service`.
 
     Parameters
     ----------
@@ -360,17 +359,14 @@ def build_orchestrator(
         Pre-built LLM port; see :func:`build_services`.
     judge_llm : LLMPort | None, optional
         Pre-built judge LLM port; see :func:`build_services`.
-    embedder : EmbeddingPort | None, optional
-        Pre-built embedder; see :func:`build_services`.
 
     Returns
     -------
     Orchestrator
-        A fully wired orchestrator ready for ``summarize`` calls.
+        A fully wired orchestrator ready for ``summarize_bulk`` /
+        ``summarize`` calls.
     """
-    return build_services(
-        settings, llm=llm, judge_llm=judge_llm, embedder=embedder
-    ).orchestrator
+    return build_services(settings, llm=llm, judge_llm=judge_llm).orchestrator
 
 
 def build_analyze_service(
