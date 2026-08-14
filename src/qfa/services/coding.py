@@ -14,8 +14,8 @@ framework rather than a fixed sequence of calls, which is why it lives in
 its own module (ADR-017): its private helpers are used by nothing else.
 
 Per ADR-017 :class:`CodingService` has **no base class**. The scaffolding
-it shares with the other use cases — the token-budget guard — comes from
-the injected
+it shares with the other use cases — the token-budget guard and the
+deadline→timeout derivation — comes from the injected
 :class:`~qfa.services.llm_call_executor.LLMCallExecutor`, and everything
 else it needs (the LLM connection, the anonymiser) is named explicitly in
 its constructor.
