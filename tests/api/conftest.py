@@ -13,7 +13,6 @@ from qfa.api.app import (
     RequestIdMiddleware,
     register_exception_handlers,
 )
-from qfa.api.dependencies import get_analyze_service
 from qfa.api.routes import router
 from qfa.api.routes_admin import router as auth_router
 from qfa.api.routes_usage import router as usage_router
@@ -336,14 +335,7 @@ def test_app(fake_orchestrator, fake_auth_orchestrator):
     # of them until the remaining extractions land.
     app.state.sensitivity_service = fake_orchestrator
     app.state.coding_service = fake_orchestrator
-    # The analyze route depends on its own service (ADR-017), and
-    # ``FakeOrchestrator`` stands in for that one too — it implements both
-    # analyse modes. Resolving it through ``app.state.orchestrator`` on every
-    # request (rather than pinning the fixture instance) keeps working for the
-    # tests that swap a differently-configured fake onto ``app.state`` mid-test
-    # to drive an error path. Drops away with #267, when one fake per service
-    # replaces the single ``FakeOrchestrator``.
-    app.dependency_overrides[get_analyze_service] = lambda: app.state.orchestrator
+    app.state.analyze_service = fake_orchestrator
     app.state.auth_orchestrator = fake_auth_orchestrator
     app.state.usage_repo = FakeUsageRepository()
 

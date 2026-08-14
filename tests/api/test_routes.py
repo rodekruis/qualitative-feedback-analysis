@@ -222,7 +222,7 @@ class TestAnalyzeSuccess:
                 captured["operation"] = ctx.operation
                 return AnalysisResultModel(result="ok")
 
-        test_app.state.orchestrator = CapturingOrchestrator()
+        test_app.state.analyze_service = CapturingOrchestrator()
         async with _make_client(test_app) as c:
             resp = await c.post(
                 "/v1/analyze-bulk", json=_valid_body(), headers=_auth_header()
@@ -712,7 +712,7 @@ class TestFeedbackUrlFieldsForwarded:
 class TestErrorMapping:
     @pytest.mark.asyncio
     async def test_413_feedback_too_large(self, test_app):
-        test_app.state.orchestrator = FakeOrchestrator(
+        test_app.state.analyze_service = FakeOrchestrator(
             error=FeedbackTooLargeError(
                 "Too large", estimated_tokens=200_000, limit=100_000
             )
@@ -727,7 +727,7 @@ class TestErrorMapping:
 
     @pytest.mark.asyncio
     async def test_504_analysis_timeout(self, test_app):
-        test_app.state.orchestrator = FakeOrchestrator(
+        test_app.state.analyze_service = FakeOrchestrator(
             error=AnalysisTimeoutError("Deadline exceeded")
         )
         async with _make_client(test_app) as c:
@@ -740,7 +740,7 @@ class TestErrorMapping:
 
     @pytest.mark.asyncio
     async def test_502_analysis_error(self, test_app):
-        test_app.state.orchestrator = FakeOrchestrator(
+        test_app.state.analyze_service = FakeOrchestrator(
             error=AnalysisError("LLM failure")
         )
         async with _make_client(test_app) as c:
@@ -753,7 +753,7 @@ class TestErrorMapping:
 
     @pytest.mark.asyncio
     async def test_500_unexpected_exception(self, test_app):
-        test_app.state.orchestrator = FakeOrchestrator(
+        test_app.state.analyze_service = FakeOrchestrator(
             error=RuntimeError("something broke")
         )
         async with _make_client(test_app) as c:
@@ -774,7 +774,7 @@ class TestErrorMapping:
         """
         from uuid import UUID
 
-        test_app.state.orchestrator = FakeOrchestrator(
+        test_app.state.analyze_service = FakeOrchestrator(
             error=AnalysisError("some error")
         )
         async with _make_client(test_app) as c:
