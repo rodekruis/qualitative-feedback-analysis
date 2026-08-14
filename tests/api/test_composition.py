@@ -1,4 +1,4 @@
-"""Tests for the orchestrator composition factory."""
+"""Tests for the application-service composition factory."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from qfa.api.composition import (
     build_services,
     resolve_judge_llm_settings,
 )
+from qfa.services.coding import CodingService
 from qfa.services.orchestrator import Orchestrator
 from qfa.services.sensitivity import SensitivityService
 from qfa.settings import AppSettings, JudgeLLMSettings, LLMSettings
@@ -378,29 +379,55 @@ class TestBuildOrchestrator:
 
 
 class TestBuildServices:
-    """The factory builds every service over one shared executor."""
+    """The factory returns every service, wired over one shared executor."""
 
-    def test_builds_each_service_in_the_graph(self, auth_env: None) -> None:
+    def test_returns_every_service(self, auth_env: None) -> None:
+        """One graph, one field per service the request lifecycle can reach."""
         services = build_services(AppSettings(), llm=_StubLLM())
 
         assert isinstance(services.orchestrator, Orchestrator)
         assert isinstance(services.sensitivity, SensitivityService)
+        assert isinstance(services.coding, CodingService)
 
-    def test_services_share_one_llm_call_executor(self, auth_env: None) -> None:
-        """Identity, not equality: the executor is configured once per process.
+    def test_services_share_one_executor_and_anonymizer(self, auth_env: None) -> None:
+        """Identity, not equality: a second executor is the failure to catch.
 
-        A second executor would mean a second copy of the per-call timeout,
-        the token ceiling and the anonymiser, which could then drift apart
-        between endpoints without any test noticing.
+        Per ADR-017 the executor is where the token ceiling and per-call
+        timeout are bound. Two instances would let a service drift onto a
+        stale budget while still looking correctly wired.
         """
         services = build_services(AppSettings(), llm=_StubLLM())
 
         assert services.sensitivity._executor is services.orchestrator._executor
+        assert services.coding._executor is services.orchestrator._executor
+        assert services.coding._anonymizer is services.orchestrator._anonymizer
 
-    def test_build_orchestrator_returns_the_graphs_orchestrator(
+    def test_coding_service_runs_on_the_primary_connection(
+        self, auth_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A configured judge model does not reach the coding path.
+
+        #258 scoped the judge split to the analyse/summarise quality judges,
+        and the coding service takes no judge client at all — so even with
+        ``JUDGE_LLM_MODEL`` set it must still hold the primary.
+        """
+        monkeypatch.setenv("JUDGE_LLM_MODEL", "azure_ai/mistral-medium-2505")
+        stub_llm = _StubLLM()
+
+        services = build_services(AppSettings(), llm=stub_llm)
+
+        assert services.coding._llm is stub_llm
+        assert services.orchestrator._judge_llm is not stub_llm
+
+    def test_build_orchestrator_returns_the_graph_s_orchestrator(
         self, auth_env: None
     ) -> None:
-        """The narrow wrapper is the same construction, minus the other services."""
+        """The narrow entry point is the same construction, minus the graph.
+
+        Scripts and notebooks keep calling ``build_orchestrator``; it must
+        stay a view onto ``build_services`` rather than a second wiring path
+        that can drift.
+        """
         stub_llm = _StubLLM()
 
         orchestrator = build_orchestrator(AppSettings(), llm=stub_llm)

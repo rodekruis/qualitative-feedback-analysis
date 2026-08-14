@@ -35,7 +35,7 @@ Allowed import directions (enforced by `import-linter`):
 
 ## What's *not* hexagonal here
 
-Hexagonal tells us "services depend only on ports" — it doesn't say "one orchestrator class with N methods" versus "N orchestrator classes." The current {py:class}`~qfa.services.orchestrator.Orchestrator` is one class with four operations (`analyze`, `summarize`, `summarize_aggregate`, `assign_codes`), per [ADR-011](../adr/011-drop-orchestrator-port.md). Extracting individual use cases into their own services is anticipated when any one grows enough to warrant it.
+Hexagonal tells us "services depend only on ports" — it doesn't say "one orchestrator class with N methods" versus "N orchestrator classes." [ADR-011](../adr/011-drop-orchestrator-port.md) started from one {py:class}`~qfa.services.orchestrator.Orchestrator` holding every operation and anticipated extracting individual use cases once one grew enough to warrant it; [ADR-017](../adr/017-orchestrator-composition-only.md) takes that escape valve and splits the class into one service per use case, sharing behaviour by composition rather than a base class. {py:class}`~qfa.services.coding.CodingService` (assign-codes) is extracted; `analyze`, `summarize` and `detect_sensitive_content` still sit on `Orchestrator` while the epic runs.
 
 ## Further reading
 

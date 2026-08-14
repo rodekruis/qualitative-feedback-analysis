@@ -13,6 +13,7 @@ from qfa.domain.ports import UsageRepositoryPort
 from qfa.domain.usage_models import CallContext, Operation
 from qfa.services.auth_orchestrator import AuthOrchestrator
 from qfa.services.call_context import call_scope
+from qfa.services.coding import CodingService
 from qfa.services.orchestrator import Orchestrator
 from qfa.services.sensitivity import SensitivityService
 
@@ -51,6 +52,26 @@ def get_sensitivity_service(request: Request) -> SensitivityService:
         The sensitivity-detection service instance.
     """
     return request.app.state.sensitivity_service
+
+
+def get_coding_service(request: Request) -> CodingService:
+    """Return the coding service from app state.
+
+    One provider per use-case service, per ADR-017: the assign-codes route
+    annotates against :class:`~qfa.services.coding.CodingService` alone, so
+    its dependency surface is readable from the handler signature.
+
+    Parameters
+    ----------
+    request : Request
+        The incoming HTTP request.
+
+    Returns
+    -------
+    CodingService
+        The coding service instance.
+    """
+    return request.app.state.coding_service
 
 
 def get_auth_orchestrator(request: Request) -> AuthOrchestrator:
