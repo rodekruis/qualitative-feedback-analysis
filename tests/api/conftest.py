@@ -348,6 +348,12 @@ def test_app(fake_orchestrator, fake_auth_orchestrator):
     # error-raising fake *after* this fixture ran, and they must keep
     # driving the summarize endpoints without knowing which service class
     # is behind them.
+    #
+    # The cost: no test in this package resolves the real provider, so the
+    # provider/``app.state`` contract is pinned only by
+    # ``test_lifespan.py::test_every_service_is_published_on_app_state``,
+    # which drives the real composition root. Check there, not here, when
+    # changing which slot ``get_summarize_service`` reads.
     app.dependency_overrides[get_summarize_service] = lambda: app.state.orchestrator
 
     return app

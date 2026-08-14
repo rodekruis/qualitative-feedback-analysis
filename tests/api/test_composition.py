@@ -1,4 +1,4 @@
-"""Tests for the service-graph composition factories."""
+"""Tests for the application-service composition factory."""
 
 from __future__ import annotations
 
@@ -13,12 +13,11 @@ from qfa.adapters.presidio_anonymizer import PresidioAnonymizer
 from qfa.api.composition import (
     build_analyze_service,
     build_orchestrator,
-    build_service_graph,
+    build_services,
     resolve_judge_llm_settings,
 )
 from qfa.services.analyze import AnalyzeService
 from qfa.services.coding import CodingService
-from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.services.orchestrator import Orchestrator
 from qfa.services.sensitivity import SensitivityService
 from qfa.services.summarize import SummarizeService
@@ -427,41 +426,40 @@ class TestBuildAnalyzeService:
         assert analyze._max_total_tokens == settings.llm.max_total_tokens
 
 
-class TestBuildServiceGraph:
-    """The graph factory wires every service over one shared collaborator set."""
+class TestBuildServices:
+    """The factory builds every service over one shared executor and anonymiser."""
 
     def test_returns_every_service(self, auth_env: None) -> None:
-        """Each extracted use case is present, so the lifespan can publish it."""
-        graph = build_service_graph(AppSettings(), llm=_StubLLM())
+        """One graph, one field per service the request lifecycle can reach."""
+        services = build_services(AppSettings(), llm=_StubLLM())
 
-        assert isinstance(graph.orchestrator, Orchestrator)
-        assert isinstance(graph.sensitivity, SensitivityService)
-        assert isinstance(graph.coding, CodingService)
-        assert isinstance(graph.analyze, AnalyzeService)
-        assert isinstance(graph.summarize, SummarizeService)
+        assert isinstance(services.orchestrator, Orchestrator)
+        assert isinstance(services.sensitivity, SensitivityService)
+        assert isinstance(services.coding, CodingService)
+        assert isinstance(services.analyze, AnalyzeService)
+        assert isinstance(services.summarize, SummarizeService)
 
-    def test_services_share_one_executor(self, auth_env: None) -> None:
-        """One :class:`LLMCallExecutor`, injected everywhere (ADR-017).
+    def test_every_service_shares_the_one_executor(self, auth_env: None) -> None:
+        """Identity, not equality: a second executor is the failure to catch.
 
-        Identity, not type: a second executor would silently give a service
-        its own deadline arithmetic and token ceiling, which is exactly the
-        drift the composition root exists to prevent.
+        Per ADR-017 the executor is where the token ceiling and per-call
+        timeout are bound. Two instances would let a service drift onto a
+        stale budget while still looking correctly wired.
         """
-        graph = build_service_graph(AppSettings(), llm=_StubLLM())
+        services = build_services(AppSettings(), llm=_StubLLM())
 
-        assert isinstance(graph.orchestrator._executor, LLMCallExecutor)
-        assert graph.sensitivity._executor is graph.orchestrator._executor
-        assert graph.coding._executor is graph.orchestrator._executor
-        assert graph.analyze._executor is graph.orchestrator._executor
-        assert graph.summarize._executor is graph.orchestrator._executor
+        assert services.sensitivity._executor is services.orchestrator._executor
+        assert services.coding._executor is services.orchestrator._executor
+        assert services.analyze._executor is services.orchestrator._executor
+        assert services.summarize._executor is services.orchestrator._executor
 
-    def test_services_share_one_anonymizer(self, auth_env: None) -> None:
-        """The anonymiser is built once and handed to every service."""
-        graph = build_service_graph(AppSettings(), llm=_StubLLM())
+    def test_every_service_shares_the_one_anonymiser(self, auth_env: None) -> None:
+        """Constructing ``PresidioAnonymizer`` loads spaCy models; do it once."""
+        services = build_services(AppSettings(), llm=_StubLLM())
 
-        assert graph.coding._anonymizer is graph.orchestrator._anonymizer
-        assert graph.analyze._anonymizer is graph.orchestrator._anonymizer
-        assert graph.summarize._anonymizer is graph.orchestrator._anonymizer
+        assert services.coding._anonymizer is services.orchestrator._anonymizer
+        assert services.analyze._anonymizer is services.orchestrator._anonymizer
+        assert services.summarize._anonymizer is services.orchestrator._anonymizer
 
     def test_summarize_service_gets_both_connections(self, auth_env: None) -> None:
         """Generation and judge clients reach the summarisation service.
@@ -473,10 +471,10 @@ class TestBuildServiceGraph:
         stub_llm = _StubLLM()
         stub_judge = _StubLLM()
 
-        graph = build_service_graph(AppSettings(), llm=stub_llm, judge_llm=stub_judge)
+        services = build_services(AppSettings(), llm=stub_llm, judge_llm=stub_judge)
 
-        assert graph.summarize._llm is stub_llm
-        assert graph.summarize._judge_llm is stub_judge
+        assert services.summarize._llm is stub_llm
+        assert services.summarize._judge_llm is stub_judge
 
     def test_coding_service_runs_on_the_primary_connection(
         self, auth_env: None, monkeypatch: pytest.MonkeyPatch
@@ -490,19 +488,23 @@ class TestBuildServiceGraph:
         monkeypatch.setenv("JUDGE_LLM_MODEL", "azure_ai/mistral-medium-2505")
         stub_llm = _StubLLM()
 
-        graph = build_service_graph(AppSettings(), llm=stub_llm)
+        services = build_services(AppSettings(), llm=stub_llm)
 
-        assert graph.coding._llm is stub_llm
-        assert graph.orchestrator._judge_llm is not stub_llm
+        assert services.coding._llm is stub_llm
+        assert services.orchestrator._judge_llm is not stub_llm
 
-    def test_build_orchestrator_returns_the_graphs_orchestrator(
+    def test_build_orchestrator_returns_the_graph_s_orchestrator(
         self, auth_env: None
     ) -> None:
-        """The narrow factory is a view on the graph, not a second wiring path."""
-        settings = AppSettings()
+        """The narrow entry point is the same construction, minus the graph.
+
+        Scripts and notebooks keep calling ``build_orchestrator``; it must
+        stay a view onto ``build_services`` rather than a second wiring path
+        that can drift.
+        """
         stub_llm = _StubLLM()
 
-        orchestrator = build_orchestrator(settings, llm=stub_llm)
+        orchestrator = build_orchestrator(AppSettings(), llm=stub_llm)
 
         assert isinstance(orchestrator, Orchestrator)
         assert orchestrator._llm is stub_llm

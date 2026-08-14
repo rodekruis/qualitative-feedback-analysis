@@ -569,11 +569,12 @@ class TestCostAccountingAcrossBothClients:
 
     @pytest.mark.asyncio
     async def test_aggregate_summary_cost_sums_across_both_clients(self) -> None:
-        """The generation and judge costs both land in the aggregate total.
+        """Both connections are billed for an aggregate summary.
 
-        ``summarize_bulk`` is the one path that adds two call costs
-        together in the service itself, so it is where a dropped judge
-        cost would show up first.
+        Cost is summed by ``TrackingLLMAdapter`` per client, not by the
+        service, so what makes both costs land is that ``summarize_bulk``
+        reaches each client exactly once. A judge call that silently fell
+        back to the primary would show up here as two primary calls.
         """
         primary = RoutingLLM("primary")
         judge = RoutingLLM("judge")
@@ -586,7 +587,6 @@ class TestCostAccountingAcrossBothClients:
             _deadline(),
         )
 
-        # One call each, so the total the service accumulated covers both.
         assert len(primary.calls) == 1
         assert len(judge.calls) == 1
 

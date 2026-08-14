@@ -11,7 +11,7 @@ service — :class:`~qfa.services.sensitivity.SensitivityService` (#263),
 :class:`~qfa.services.analyze.AnalyzeService` (#266) and
 :class:`~qfa.services.summarize.SummarizeService` (#264). What remains here
 is the constructor alone, kept only because the composition root
-(:func:`qfa.api.composition.build_service_graph`) still builds one; #267
+(:func:`qfa.api.composition.build_services`) still builds one; #267
 deletes the class entirely.
 """
 
@@ -49,7 +49,7 @@ class Orchestrator:
         The shared LLM-call scaffolding (anonymise-records, deadline→timeout
         derivation, token-budget guard, semaphore-bounded completion),
         per ADR-017. The composition root
-        (:func:`qfa.api.composition.build_service_graph`) constructs it
+        (:func:`qfa.api.composition.build_services`) constructs it
         explicitly, and hands the *same* instance to every other service.
         ``None`` (the default) builds one over the same ``llm``,
         ``anonymizer``, ``settings``, ``llm_timeout_seconds`` and

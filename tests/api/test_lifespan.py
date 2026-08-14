@@ -1,7 +1,7 @@
 """Tests for the FastAPI lifespan's LLM wiring.
 
 Why: the lifespan is the *infrastructure* half of the composition root, and it
-owns the one thing ``build_service_graph`` deliberately does not — wrapping each
+owns the one thing ``build_services`` deliberately does not — wrapping each
 LLM client in :class:`TrackingLLMAdapter` so usage and cost are recorded. A
 judge client that reached the services unwrapped would work perfectly and
 silently bill nothing, which no functional test would catch.

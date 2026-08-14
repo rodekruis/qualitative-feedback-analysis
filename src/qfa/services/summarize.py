@@ -144,7 +144,7 @@ class SummarizeService:
         The shared LLM-call scaffolding (ADR-017): an injected collaborator,
         never a base class. These two use cases consult it for the
         deadline→timeout derivation; the composition root
-        (:func:`qfa.api.composition.build_service_graph`) hands over the
+        (:func:`qfa.api.composition.build_services`) hands over the
         *same* instance every other service holds.
     judge_llm : LLMPort | None
         Optional separate adapter for the LLM-as-judge quality-score calls,
@@ -213,7 +213,6 @@ class SummarizeService:
             response_model=AggregateSummaryResultModel,
             timeout=timeout,
         )
-        total_cost = response.cost
 
         judge_system = _build_judge_system_message(
             anonymized_user_message, response.structured.summary
@@ -227,7 +226,6 @@ class SummarizeService:
             response_model=str,
             timeout=judge_timeout,
         )
-        total_cost += judge_response.cost
         quality_score = _parse_judge_quality_score(judge_response.structured)
 
         response.structured.quality_score = quality_score

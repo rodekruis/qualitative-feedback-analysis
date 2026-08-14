@@ -27,10 +27,10 @@ from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.services.prompts import JUDGE_UNAVAILABLE_EXPLANATION
 from qfa.settings import OrchestratorSettings
 
-# Reuse the doubles the orchestrator suite already ships rather than growing a
+# Reuse the doubles the summarize suite already ships rather than growing a
 # second, drifting pair (ADR-017) — same call the sensitivity and coding
 # suites make.
-from .test_orchestrator import FakeAnonymizer, FakeLLMPort
+from .test_summarize import FakeAnonymizer, FakeLLMPort
 
 TENANT_ID = "tenant-42"
 LLM_TIMEOUT = 30.0
