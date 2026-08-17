@@ -101,13 +101,13 @@ async def test_judge_client_is_wrapped_for_usage_tracking(app_env: None, monkeyp
     app = create_app(llm_factory=_RecordingFakeLLM)
 
     async with app.router.lifespan_context(app):
-        orchestrator = app.state.orchestrator
+        analyze = app.state.analyze_service
 
-        assert isinstance(orchestrator._llm, TrackingLLMAdapter)
-        assert isinstance(orchestrator._judge_llm, TrackingLLMAdapter)
-        assert orchestrator._judge_llm is not orchestrator._llm
-        assert orchestrator._judge_llm._usage_repo is orchestrator._llm._usage_repo
-        assert orchestrator._judge_llm._usage_repo is app.state.usage_repo
+        assert isinstance(analyze._llm, TrackingLLMAdapter)
+        assert isinstance(analyze._judge_llm, TrackingLLMAdapter)
+        assert analyze._judge_llm is not analyze._llm
+        assert analyze._judge_llm._usage_repo is analyze._llm._usage_repo
+        assert analyze._judge_llm._usage_repo is app.state.usage_repo
 
 
 @pytest.mark.asyncio
@@ -122,7 +122,7 @@ async def test_judge_client_is_built_from_resolved_settings(app_env: None, monke
     app = create_app(llm_factory=_RecordingFakeLLM)
 
     async with app.router.lifespan_context(app):
-        judge_settings = app.state.orchestrator._judge_llm._inner.settings
+        judge_settings = app.state.analyze_service._judge_llm._inner.settings
 
         assert judge_settings.model == "azure_ai/mistral-medium-2505"
         assert judge_settings.api_base == "https://res.services.ai.azure.com/models"
@@ -141,10 +141,10 @@ async def test_no_judge_client_is_built_when_unconfigured(app_env: None):
     app = create_app(llm_factory=_RecordingFakeLLM)
 
     async with app.router.lifespan_context(app):
-        orchestrator = app.state.orchestrator
+        analyze = app.state.analyze_service
 
-        assert isinstance(orchestrator._llm, TrackingLLMAdapter)
-        assert orchestrator._judge_llm is orchestrator._llm
+        assert isinstance(analyze._llm, TrackingLLMAdapter)
+        assert analyze._judge_llm is analyze._llm
 
 
 @pytest.mark.asyncio
@@ -161,7 +161,7 @@ async def test_judge_model_alone_is_a_valid_startup_configuration(
     app = create_app(llm_factory=_RecordingFakeLLM)
 
     async with app.router.lifespan_context(app):
-        judge_settings = app.state.orchestrator._judge_llm._inner.settings
+        judge_settings = app.state.analyze_service._judge_llm._inner.settings
 
         assert judge_settings.model == "azure/some-other-deployment"
         assert judge_settings.api_key.get_secret_value() == "sk-test-lifespan"
@@ -182,25 +182,25 @@ async def test_every_service_is_published_on_app_state(app_env: None) -> None:
     app = create_app(llm_factory=_RecordingFakeLLM)
 
     async with app.router.lifespan_context(app):
+        analyze = app.state.analyze_service
+
+        assert isinstance(analyze, AnalyzeService)
+        assert isinstance(analyze._llm, TrackingLLMAdapter)
+
         assert isinstance(app.state.sensitivity_service, SensitivityService)
         # Built from the same graph, so the tracked LLM reaches it too.
-        assert (
-            app.state.sensitivity_service._executor is app.state.orchestrator._executor
-        )
+        assert app.state.sensitivity_service._executor is analyze._executor
 
         coding = app.state.coding_service
 
         assert isinstance(coding, CodingService)
         assert isinstance(coding._llm, TrackingLLMAdapter)
+        assert coding._llm is analyze._llm
         # One executor per process, shared: see ADR-017.
-        assert coding._executor is app.state.orchestrator._executor
-
-        assert isinstance(app.state.analyze_service, AnalyzeService)
-        assert app.state.analyze_service._llm is app.state.orchestrator._llm
-        assert app.state.analyze_service._executor is app.state.orchestrator._executor
+        assert coding._executor is analyze._executor
 
         summarize = app.state.summarize_service
 
         assert isinstance(summarize, SummarizeService)
-        assert summarize._llm is app.state.orchestrator._llm
-        assert summarize._executor is app.state.orchestrator._executor
+        assert summarize._llm is analyze._llm
+        assert summarize._executor is analyze._executor

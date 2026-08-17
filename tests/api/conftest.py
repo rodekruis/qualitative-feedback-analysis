@@ -13,7 +13,6 @@ from qfa.api.app import (
     RequestIdMiddleware,
     register_exception_handlers,
 )
-from qfa.api.dependencies import get_summarize_service
 from qfa.api.routes import router
 from qfa.api.routes_admin import router as auth_router
 from qfa.api.routes_usage import router as usage_router
@@ -98,11 +97,14 @@ def _zero_usage_metrics() -> UsageMetrics:
     )
 
 
-class FakeOrchestrator:
-    """Fake orchestrator for testing.
+class FakeService:
+    """Fake application service backing every use case, for API-level tests.
 
-    Returns configurable analyze and summarize results or raises a
-    configurable exception.
+    Implements every use-case method (analyze, summarize, assign_codes,
+    detect_sensitive_content) on one object so a single instance can stand
+    in for whichever of the four extracted services (ADR-017) a route
+    test needs. Returns configurable analyze and summarize results or
+    raises a configurable exception.
     """
 
     def __init__(
@@ -309,8 +311,8 @@ def fake_api_keys():
 
 
 @pytest.fixture
-def fake_orchestrator():
-    return FakeOrchestrator()
+def fake_service():
+    return FakeService()
 
 
 @pytest.fixture
@@ -322,7 +324,7 @@ def fake_auth_orchestrator(fake_api_keys):
 
 
 @pytest.fixture
-def test_app(fake_orchestrator, fake_auth_orchestrator):
+def test_app(fake_service, fake_auth_orchestrator):
     app = FastAPI(title="Test App")
     app.add_middleware(RequestIdMiddleware)
     app.include_router(router)
@@ -330,31 +332,16 @@ def test_app(fake_orchestrator, fake_auth_orchestrator):
     app.include_router(usage_router)
     register_exception_handlers(app)
 
-    app.state.orchestrator = fake_orchestrator
-    # The extracted use-case services get their own app.state slot (ADR-017).
-    # FakeOrchestrator still implements every use case, so one fake backs all
-    # of them until the remaining extractions land.
-    app.state.sensitivity_service = fake_orchestrator
-    app.state.coding_service = fake_orchestrator
-    app.state.analyze_service = fake_orchestrator
+    # Each extracted use-case service gets its own app.state slot (ADR-017).
+    # FakeService implements every use case, so one fake backs all four
+    # slots — a test that swaps one slot for an error-raising fake leaves
+    # the others driven by the shared default.
+    app.state.sensitivity_service = fake_service
+    app.state.coding_service = fake_service
+    app.state.analyze_service = fake_service
+    app.state.summarize_service = fake_service
     app.state.auth_orchestrator = fake_auth_orchestrator
     app.state.usage_repo = FakeUsageRepository()
-
-    # The summarize routes resolve their own service since #264 extracted
-    # SummarizeService, but ``FakeOrchestrator`` still implements every use
-    # case, so one fake keeps standing in for all of them. Resolved through
-    # an override rather than ``app.state.summarize_service`` so it is read
-    # per request: a dozen route tests swap ``state.orchestrator`` for an
-    # error-raising fake *after* this fixture ran, and they must keep
-    # driving the summarize endpoints without knowing which service class
-    # is behind them.
-    #
-    # The cost: no test in this package resolves the real provider, so the
-    # provider/``app.state`` contract is pinned only by
-    # ``test_lifespan.py::test_every_service_is_published_on_app_state``,
-    # which drives the real composition root. Check there, not here, when
-    # changing which slot ``get_summarize_service`` reads.
-    app.dependency_overrides[get_summarize_service] = lambda: app.state.orchestrator
 
     return app
 
