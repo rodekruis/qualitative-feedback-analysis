@@ -25,6 +25,7 @@ from qfa.domain.ports import LLMPort
 from qfa.services.analyze import AnalyzeService
 from qfa.services.coding import CodingService
 from qfa.services.sensitivity import SensitivityService
+from qfa.services.summarize import SummarizeService
 from qfa.settings import LLMSettings
 
 JUDGE_ENV_VARS = (
@@ -197,3 +198,9 @@ async def test_every_service_is_published_on_app_state(app_env: None) -> None:
         assert isinstance(app.state.analyze_service, AnalyzeService)
         assert app.state.analyze_service._llm is app.state.orchestrator._llm
         assert app.state.analyze_service._executor is app.state.orchestrator._executor
+
+        summarize = app.state.summarize_service
+
+        assert isinstance(summarize, SummarizeService)
+        assert summarize._llm is app.state.orchestrator._llm
+        assert summarize._executor is app.state.orchestrator._executor

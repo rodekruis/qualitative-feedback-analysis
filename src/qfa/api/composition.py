@@ -60,6 +60,7 @@ from qfa.services.coding import CodingService
 from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.services.orchestrator import Orchestrator
 from qfa.services.sensitivity import SensitivityService
+from qfa.services.summarize import SummarizeService
 from qfa.settings import AppSettings, EmbeddingSettings, JudgeLLMSettings, LLMSettings
 
 logger = logging.getLogger(__name__)
@@ -80,7 +81,7 @@ class ServiceGraph:
     Attributes
     ----------
     orchestrator : Orchestrator
-        The still-undecomposed use cases (summarize). Disappears with #267.
+        No use cases left once #264 lands. Disappears with #267.
     sensitivity : SensitivityService
         The detect-sensitive use case, extracted in #263.
     coding : CodingService
@@ -88,12 +89,15 @@ class ServiceGraph:
     analyze : AnalyzeService
         The analyze use case (analyze_bulk, analyze_hierarchical),
         extracted in #266.
+    summarize : SummarizeService
+        The summarize / summarize_bulk use cases, extracted in #264.
     """
 
     orchestrator: Orchestrator
     sensitivity: SensitivityService
     coding: CodingService
     analyze: AnalyzeService
+    summarize: SummarizeService
 
 
 def resolve_judge_llm_settings(
@@ -334,6 +338,15 @@ def build_services(
         # and summarise), so the service is never handed one.
         coding=CodingService(llm=llm, anonymizer=anonymizer, executor=executor),
         analyze=analyze,
+        # Neither summarisation path runs the token-budget guard or needs an
+        # embedder, so the service asks for neither — the constructor is the
+        # use cases' real dependency surface (ADR-017, option A).
+        summarize=SummarizeService(
+            llm=llm,
+            judge_llm=judge_llm,
+            anonymizer=anonymizer,
+            executor=executor,
+        ),
     )
 
 
@@ -345,11 +358,11 @@ def build_orchestrator(
 ) -> Orchestrator:
     """Build only the :class:`Orchestrator` half of :func:`build_services`.
 
-    Convenience wrapper for callers that need just the not-yet-extracted
-    use cases (``summarize_bulk``, ``summarize``). There is no ``embedder``
-    parameter: the orchestrator no longer holds one, so accepting it here
-    would be a silent no-op. Callers that want an embedder want
-    :func:`build_analyze_service`.
+    Convenience wrapper for callers still written against the class — it
+    holds no use case since #264, and #267 deletes it. There is no
+    ``embedder`` parameter: the orchestrator no longer holds one, so
+    accepting it here would be a silent no-op. Callers that want an
+    embedder want :func:`build_analyze_service`.
 
     Parameters
     ----------
@@ -363,8 +376,7 @@ def build_orchestrator(
     Returns
     -------
     Orchestrator
-        A fully wired orchestrator ready for ``summarize_bulk`` /
-        ``summarize`` calls.
+        The empty shell, kept until #267 deletes the class.
     """
     return build_services(settings, llm=llm, judge_llm=judge_llm).orchestrator
 

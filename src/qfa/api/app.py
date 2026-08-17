@@ -613,12 +613,12 @@ def _make_lifespan(llm_factory: LLMFactory):
            startup logs before any traffic arrives.
         5. Delegate to :func:`qfa.api.composition.build_services`
            to assemble the application services over one shared
-           executor — it also registers custom LiteLLM model prices
-           needed for ``completion_cost()``.
-        6. Publish ``orchestrator``, ``sensitivity_service``,
-           ``coding_service``, ``analyze_service``, ``api_keys``,
-           ``settings``, and ``usage_repo`` on ``app.state`` for
-           routes/middleware to read.
+           ``LLMCallExecutor`` — it also registers custom LiteLLM model
+           prices needed for ``completion_cost()``.
+        6. Publish each service (``orchestrator``, ``sensitivity_service``,
+           ``coding_service``, ``analyze_service``, ``summarize_service``)
+           plus ``api_keys``, ``settings``, and ``usage_repo`` on
+           ``app.state`` for routes/middleware to read.
 
         On shutdown the only resource that needs explicit cleanup is the
         DB engine's connection pool; everything else is plain Python
@@ -695,6 +695,7 @@ def _make_lifespan(llm_factory: LLMFactory):
         app.state.sensitivity_service = services.sensitivity
         app.state.coding_service = services.coding
         app.state.analyze_service = services.analyze
+        app.state.summarize_service = services.summarize
         app.state.settings = settings
         app.state.usage_repo = usage_repo
 

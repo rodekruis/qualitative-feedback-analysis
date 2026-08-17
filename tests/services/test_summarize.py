@@ -1,22 +1,22 @@
-"""Tests for the orchestrator service.
+"""Tests for the summarisation service (``summarize`` / ``summarize_bulk``).
 
-The analyse use case moved to ``test_analyze.py`` /
-``test_analyze_hierarchical.py`` when it was extracted into
-``AnalyzeService`` (#266); what remains here covers the use cases still
-living on ``Orchestrator``.
+Moved here from ``test_orchestrator.py`` with issue #264, which extracted
+these two use cases into :class:`~qfa.services.summarize.SummarizeService`.
+Every assertion is carried over unchanged; only the object under test moved.
+
+Per ADR-017 the service is driven over the **real**
+:class:`~qfa.services.llm_call_executor.LLMCallExecutor` built on the same
+``FakeLLMPort`` / ``FakeAnonymizer`` doubles the tests already used — there
+is no fake executor.
 """
 
 from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from qfa.domain.errors import (
-    AnalysisError,
-    LLMError,
-)
+from qfa.domain.errors import AnalysisError, LLMError
 from qfa.domain.models import (
     AggregateSummaryResultModel,
-    AnalysisResultModel,
     FeedbackRecordMetadataModel,
     FeedbackRecordModel,
     FeedbackRecordSummaryModel,
@@ -26,7 +26,8 @@ from qfa.domain.models import (
     SummaryResultModel,
 )
 from qfa.domain.ports import AnonymizationPort, LLMPort
-from qfa.services.orchestrator import Orchestrator
+from qfa.services.llm_call_executor import LLMCallExecutor
+from qfa.services.summarize import SummarizeService
 from qfa.settings import OrchestratorSettings
 
 TENANT_ID = "tenant-42"
@@ -46,7 +47,7 @@ def _make_feedback_record(
 
 
 def _make_llm_response(structured=None, model="gpt-4", cost=0.001):
-    """Build a fake LLMResponse; defaults to a plain analysis string for the new two-call analyze path."""
+    """Build a fake LLMResponse; defaults to a plain free-text payload."""
     if structured is None:
         structured = "Analysis result."
     return LLMResponse(
@@ -55,19 +56,6 @@ def _make_llm_response(structured=None, model="gpt-4", cost=0.001):
         prompt_tokens=100,
         completion_tokens=50,
         cost=cost,
-    )
-
-
-def _make_analysis_result(
-    result="Analysis result.",
-    quality_score=None,
-    uncertainty_explanation="",
-):
-    """Build an AnalysisResultModel with the new extended fields defaulted."""
-    return AnalysisResultModel(
-        result=result,
-        quality_score=quality_score,
-        uncertainty_explanation=uncertainty_explanation,
     )
 
 
@@ -127,10 +115,6 @@ def _future_deadline(seconds=300):
     return datetime.now(tz=UTC) + timedelta(seconds=seconds)
 
 
-def _past_deadline():
-    return datetime.now(tz=UTC) - timedelta(seconds=10)
-
-
 class FakeLLMPort(LLMPort):
     """A fake LLM port that returns configurable responses or raises errors."""
 
@@ -166,7 +150,7 @@ class FakeLLMPort(LLMPort):
         if idx < len(self._responses):
             return self._responses[idx]
 
-        return _make_llm_response(structured=_make_analysis_result())
+        return _make_llm_response()
 
 
 class FakeAnonymizer(AnonymizationPort):
@@ -184,17 +168,31 @@ def settings():
     return OrchestratorSettings()
 
 
-@pytest.fixture
-def orchestrator(settings):
-    fake_llm = FakeLLMPort(
-        responses=[_make_llm_response(structured=_make_analysis_result())]
-    )
-    return Orchestrator(
-        llm=fake_llm,
-        anonymizer=FakeAnonymizer(),
-        settings=settings,
-        llm_timeout_seconds=LLM_TIMEOUT,
-        max_total_tokens=MAX_TOKENS,
+def _build_service(
+    llm,
+    settings,
+    anonymizer=None,
+    judge_llm=None,
+    max_total_tokens=MAX_TOKENS,
+):
+    """Build a ``SummarizeService`` over the real executor.
+
+    ``max_total_tokens`` is threaded through to the executor even though
+    neither summarisation path runs the token-budget guard: the tests that
+    set it low assert precisely that a large payload is *still* forwarded.
+    """
+    anonymizer = anonymizer if anonymizer is not None else FakeAnonymizer()
+    return SummarizeService(
+        llm=llm,
+        anonymizer=anonymizer,
+        judge_llm=judge_llm,
+        executor=LLMCallExecutor(
+            llm=llm,
+            anonymizer=anonymizer,
+            settings=settings,
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=max_total_tokens,
+        ),
     )
 
 
@@ -214,15 +212,9 @@ class TestTokenLimit:
                 _make_llm_response(structured="0.8"),
             ]
         )
-        orch = Orchestrator(
-            llm=fake_llm,
-            anonymizer=FakeAnonymizer(),
-            settings=settings,
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=100,
-        )
+        service = _build_service(fake_llm, settings, max_total_tokens=100)
 
-        await orch.summarize(request, _future_deadline())
+        await service.summarize(request, _future_deadline())
 
         assert len(fake_llm.calls) == 2
 
@@ -240,15 +232,9 @@ class TestNonTransientError:
                 _make_llm_response(structured="0.8"),
             ]
         )
-        orch = Orchestrator(
-            llm=fake_llm,
-            anonymizer=FakeAnonymizer(),
-            settings=settings,
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
+        service = _build_service(fake_llm, settings)
 
-        result = await orch.summarize(_make_summary_request(), _future_deadline())
+        result = await service.summarize(_make_summary_request(), _future_deadline())
 
         assert result.summary == "- Bullet one\n- Bullet two"
         assert result.quality_score == 0.8
@@ -257,16 +243,10 @@ class TestNonTransientError:
     @pytest.mark.asyncio
     async def test_summary_llm_error_bubbles_up(self, settings):
         fake_llm = FakeLLMPort(errors=[LLMError("invalid JSON from provider")])
-        orch = Orchestrator(
-            llm=fake_llm,
-            anonymizer=FakeAnonymizer(),
-            settings=settings,
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
+        service = _build_service(fake_llm, settings)
 
         with pytest.raises(LLMError, match="invalid JSON from provider"):
-            await orch.summarize(_make_summary_request(), _future_deadline())
+            await service.summarize(_make_summary_request(), _future_deadline())
 
     @pytest.mark.asyncio
     async def test_summary_judge_happy_path(self, settings):
@@ -278,15 +258,9 @@ class TestNonTransientError:
                 _make_llm_response(structured="0.82\n"),
             ]
         )
-        orch = Orchestrator(
-            llm=fake_llm,
-            anonymizer=FakeAnonymizer(),
-            settings=settings,
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
+        service = _build_service(fake_llm, settings)
 
-        result = await orch.summarize_bulk(
+        result = await service.summarize_bulk(
             _make_aggregate_request(), _future_deadline()
         )
 
@@ -324,15 +298,11 @@ class TestNonTransientError:
                 _make_llm_response(structured="0.8"),
             ]
         )
-        orch = Orchestrator(
-            llm=fake_llm,
-            anonymizer=RawSubstitutionAnonymizer(),
-            settings=settings,
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
+        service = _build_service(
+            fake_llm, settings, anonymizer=RawSubstitutionAnonymizer()
         )
 
-        result = await orch.summarize(_make_summary_request(), _future_deadline())
+        result = await service.summarize(_make_summary_request(), _future_deadline())
 
         assert result.summary == 'Feedback from Alice "Ally" Smith.'
 
@@ -344,16 +314,10 @@ class TestNonTransientError:
                 _make_llm_response(structured="not a float"),
             ]
         )
-        orch = Orchestrator(
-            llm=fake_llm,
-            anonymizer=FakeAnonymizer(),
-            settings=settings,
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
+        service = _build_service(fake_llm, settings)
 
         with pytest.raises(AnalysisError, match="invalid quality score"):
-            await orch.summarize_bulk(_make_aggregate_request(), _future_deadline())
+            await service.summarize_bulk(_make_aggregate_request(), _future_deadline())
 
         assert len(fake_llm.calls) == 2
 
@@ -365,16 +329,10 @@ class TestNonTransientError:
                 _make_llm_response(structured="1.5"),
             ]
         )
-        orch = Orchestrator(
-            llm=fake_llm,
-            anonymizer=FakeAnonymizer(),
-            settings=settings,
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
+        service = _build_service(fake_llm, settings)
 
         with pytest.raises(AnalysisError, match=r"outside 0\.0-1\.0"):
-            await orch.summarize_bulk(_make_aggregate_request(), _future_deadline())
+            await service.summarize_bulk(_make_aggregate_request(), _future_deadline())
 
         assert len(fake_llm.calls) == 2
 
@@ -394,15 +352,9 @@ class TestAggregateSummaryOutputLanguage:
                 _make_llm_response(structured="0.82\n"),
             ]
         )
-        orch = Orchestrator(
-            llm=fake_llm,
-            anonymizer=FakeAnonymizer(),
-            settings=settings,
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
+        service = _build_service(fake_llm, settings)
 
-        await orch.summarize_bulk(
+        await service.summarize_bulk(
             _make_aggregate_request(output_language="Dutch"),
             _future_deadline(),
         )
@@ -425,15 +377,9 @@ class TestAggregateSummaryOutputLanguage:
                 _make_llm_response(structured="0.82\n"),
             ]
         )
-        orch = Orchestrator(
-            llm=fake_llm,
-            anonymizer=FakeAnonymizer(),
-            settings=settings,
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
+        service = _build_service(fake_llm, settings)
 
-        await orch.summarize_bulk(_make_aggregate_request(), _future_deadline())
+        await service.summarize_bulk(_make_aggregate_request(), _future_deadline())
 
         assert (
             "Write the title and summary in" not in fake_llm.calls[0]["system_message"]
@@ -454,19 +400,13 @@ class TestSummarizeBulkHyperlinks:
                 _make_llm_response(structured="0.8"),
             ]
         )
-        orch = Orchestrator(
-            llm=fake_llm,
-            anonymizer=FakeAnonymizer(),
-            settings=settings,
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
+        service = _build_service(fake_llm, settings)
         records = (_make_feedback_record(doc_id="Form-07762", url_id="abc123"),)
         request = _make_aggregate_request(feedback_records=records).model_copy(
             update={"espo_feedback_base_url": "https://espo.example.com/feedback"}
         )
 
-        result = await orch.summarize_bulk(request, _future_deadline())
+        result = await service.summarize_bulk(request, _future_deadline())
 
         assert (
             "[Form-07762](https://espo.example.com/feedback/abc123)" in result.summary
@@ -485,16 +425,10 @@ class TestSummarizeBulkHyperlinks:
                 _make_llm_response(structured="0.8"),
             ]
         )
-        orch = Orchestrator(
-            llm=fake_llm,
-            anonymizer=FakeAnonymizer(),
-            settings=settings,
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
+        service = _build_service(fake_llm, settings)
         records = (_make_feedback_record(doc_id="Form-07762", url_id="abc123"),)
 
-        result = await orch.summarize_bulk(
+        result = await service.summarize_bulk(
             _make_aggregate_request(feedback_records=records), _future_deadline()
         )
 
@@ -519,15 +453,9 @@ class TestNoTrailingQuestion:
                 _make_llm_response(structured="0.82\n"),
             ]
         )
-        orch = Orchestrator(
-            llm=fake_llm,
-            anonymizer=FakeAnonymizer(),
-            settings=settings,
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
+        service = _build_service(fake_llm, settings)
 
-        await orch.summarize_bulk(_make_aggregate_request(), _future_deadline())
+        await service.summarize_bulk(_make_aggregate_request(), _future_deadline())
 
         assert "Do not end with a question" in fake_llm.calls[0]["system_message"]
 
@@ -539,15 +467,9 @@ class TestNoTrailingQuestion:
                 _make_llm_response(structured="0.8"),
             ]
         )
-        orch = Orchestrator(
-            llm=fake_llm,
-            anonymizer=FakeAnonymizer(),
-            settings=settings,
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
+        service = _build_service(fake_llm, settings)
 
-        await orch.summarize(_make_summary_request(), _future_deadline())
+        await service.summarize(_make_summary_request(), _future_deadline())
 
         assert "Do not end with a question" in fake_llm.calls[0]["system_message"]
 
@@ -568,14 +490,8 @@ class TestInjectionSystemPrefix:
                 _make_llm_response(structured="0.8"),
             ]
         )
-        orch = Orchestrator(
-            llm=fake_llm,
-            anonymizer=FakeAnonymizer(),
-            settings=settings,
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
-        )
+        service = _build_service(fake_llm, settings)
 
-        await orch.summarize(request, _future_deadline())
+        await service.summarize(request, _future_deadline())
 
         assert len(fake_llm.calls) == 2

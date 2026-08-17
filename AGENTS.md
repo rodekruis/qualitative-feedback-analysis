@@ -35,9 +35,10 @@ Hexagonal architecture. Key concepts:
   method, not by swapping service implementations (see ADR-011).
   Epic #112 has extracted `SensitivityService`
   (detect_sensitive_content, #263), `CodingService` (assign_codes,
-  #265) and `AnalyzeService` (analyze_bulk, analyze_hierarchical,
-  #266); `Orchestrator` holds only `summarize_bulk` and `summarize`
-  until #267 empties it. Do not add new use cases to it.
+  #265), `AnalyzeService` (analyze_bulk, analyze_hierarchical, #266)
+  and `SummarizeService` (summarize_bulk, summarize, #264);
+  `Orchestrator` now holds no use case and is deleted by #267. Do not
+  add new use cases to it.
 - Services share behaviour by **composition only** — the shared LLM-call
   scaffolding is the injected `LLMCallExecutor` collaborator, never a
   base class (see ADR-017).

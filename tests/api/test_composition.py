@@ -20,6 +20,7 @@ from qfa.services.analyze import AnalyzeService
 from qfa.services.coding import CodingService
 from qfa.services.orchestrator import Orchestrator
 from qfa.services.sensitivity import SensitivityService
+from qfa.services.summarize import SummarizeService
 from qfa.settings import AppSettings, JudgeLLMSettings, LLMSettings
 
 JUDGE_ENV_VARS = (
@@ -436,6 +437,7 @@ class TestBuildServices:
         assert isinstance(services.sensitivity, SensitivityService)
         assert isinstance(services.coding, CodingService)
         assert isinstance(services.analyze, AnalyzeService)
+        assert isinstance(services.summarize, SummarizeService)
 
     def test_every_service_shares_the_one_executor(self, auth_env: None) -> None:
         """Identity, not equality: a second executor is the failure to catch.
@@ -449,6 +451,7 @@ class TestBuildServices:
         assert services.sensitivity._executor is services.orchestrator._executor
         assert services.coding._executor is services.orchestrator._executor
         assert services.analyze._executor is services.orchestrator._executor
+        assert services.summarize._executor is services.orchestrator._executor
 
     def test_every_service_shares_the_one_anonymiser(self, auth_env: None) -> None:
         """Constructing ``PresidioAnonymizer`` loads spaCy models; do it once."""
@@ -456,6 +459,22 @@ class TestBuildServices:
 
         assert services.coding._anonymizer is services.orchestrator._anonymizer
         assert services.analyze._anonymizer is services.orchestrator._anonymizer
+        assert services.summarize._anonymizer is services.orchestrator._anonymizer
+
+    def test_summarize_service_gets_both_connections(self, auth_env: None) -> None:
+        """Generation and judge clients reach the summarisation service.
+
+        Its two judge call sites moved out of the orchestrator with #264, so
+        a graph that dropped ``judge_llm`` here would silently move them back
+        onto the generation model.
+        """
+        stub_llm = _StubLLM()
+        stub_judge = _StubLLM()
+
+        services = build_services(AppSettings(), llm=stub_llm, judge_llm=stub_judge)
+
+        assert services.summarize._llm is stub_llm
+        assert services.summarize._judge_llm is stub_judge
 
     def test_coding_service_runs_on_the_primary_connection(
         self, auth_env: None, monkeypatch: pytest.MonkeyPatch

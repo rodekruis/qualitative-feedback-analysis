@@ -108,10 +108,9 @@ plus the [application services section](../architecture/03-components.md#the-app
 of the components page. Per-task behaviour is selected by the route calling
 the appropriate service.
 
-`Orchestrator` in `qfa.services.orchestrator` still holds the one use case
-not yet extracted (`summarize`); it is being emptied out by epic #112, so do
-not add to it — there is no new driving port and no second orchestrator
-implementation either way.
+`Orchestrator` in `qfa.services.orchestrator` holds no use case any more —
+epic #112 emptied it out and #267 deletes it. Do not add to it; there is no
+new driving port and no second orchestrator implementation either way.
 
 A use-case method takes the domain request and an absolute `deadline`, and
 returns a domain result. The established shape — visible on the existing
@@ -272,10 +271,11 @@ inference route:
 - `get_classify_service` injects the one service this route uses, wired at
   startup. Each extracted use case has its own provider the same way —
   `get_coding_service` for assign-codes, `get_analyze_service` for
-  analyze-bulk — so the handler annotates against the one service it calls
-  and the signature says which use case it reaches. Add the provider to
-  `qfa.api.dependencies` (it reads the instance back off `app.state`) and
-  publish the instance in the lifespan.
+  analyze-bulk, `get_summarize_service` for summarize — so the handler
+  annotates against the one service it calls and the signature says which
+  use case it reaches. Add the provider to `qfa.api.dependencies` (it reads
+  the instance back off `app.state`) and publish the instance in the
+  lifespan.
 - `call_scope_for(Operation.CLASSIFY)` opens the usage-tracking scope (step 7).
 
 ```{note}
