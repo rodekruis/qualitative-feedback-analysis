@@ -518,13 +518,14 @@ class TestGenerationCallsStayOnThePrimaryClient:
         analyse and summarise. Pinned here so the exclusion is a recorded
         decision rather than something a later reader assumes was an oversight.
 
-        Since #265 the exclusion is structural as well as behavioural:
+        Since #265 the exclusion is also structural — the constructor of
         :class:`~qfa.services.coding.CodingService` takes no judge client, so
-        a judge client that exists in the same process is unreachable from
-        this path. Both halves are asserted below.
+        there is no seam to inject one through. That half is enforced by the
+        signature and cannot be asserted here; what this test still pins is the
+        behavioural half: both the pick and the judge call are served by the
+        primary connection.
         """
         primary = RoutingLLM("primary")
-        judge = RoutingLLM("judge")
         coding = _build_coding_service(primary)
 
         await coding.assign_codes(
@@ -541,7 +542,6 @@ class TestGenerationCallsStayOnThePrimaryClient:
         )
 
         assert primary.response_models == [CodingResponse, JudgeResponse]
-        assert judge.calls == []
 
 
 class TestCostAccountingAcrossBothClients:

@@ -106,38 +106,22 @@ the rationale, and flow/sequence diagrams.
 
 Each use case is one async method backing one HTTP endpoint:
 
-| Service | Method | Endpoint | What it does |
-|---|---|---|---|
-| {py:class}`~qfa.services.analyze.AnalyzeService` | `analyze_bulk` | `POST /v1/analyze-bulk` (`mode=single_pass`) | One LLM call. Free-text summary of themes across submitted records. |
-| {py:class}`~qfa.services.analyze.AnalyzeService` | `analyze_hierarchical` | `POST /v1/analyze-bulk` (`mode=hierarchical`) | Embed -> cluster -> map -> reduce pipeline. Returns additional `confidence` and `coding_trends` fields. |
-| {py:class}`~qfa.services.summarize.SummarizeService` | `summarize` | `POST /v1/summarize` | One LLM call plus a judge call. Per-record summary with a quality score. |
-| {py:class}`~qfa.services.summarize.SummarizeService` | `summarize_bulk` | `POST /v1/summarize-bulk` | One LLM call plus a judge call. One aggregate summary, themes ordered by frequency. |
-| {py:class}`~qfa.services.coding.CodingService` | `assign_codes` | `POST /v1/assign-codes` | Multiple LLM calls per record: pick + judge at each level of a hierarchical coding framework. |
-| {py:class}`~qfa.services.sensitivity.SensitivityService` | `detect_sensitive_content` | `POST /v1/detect-sensitive` | One LLM call per record. Detects sensitive content and categorizes sensitivity types. |
+| Service | Method | Endpoint | Provider | What it does |
+|---|---|---|---|---|
+| {py:class}`~qfa.services.analyze.AnalyzeService` | `analyze_bulk` | `POST /v1/analyze-bulk` (`mode=single_pass`) | `get_analyze_service` | One LLM call. Free-text summary of themes across submitted records. |
+| {py:class}`~qfa.services.analyze.AnalyzeService` | `analyze_hierarchical` | `POST /v1/analyze-bulk` (`mode=hierarchical`) | `get_analyze_service` | Embed -> cluster -> map -> reduce pipeline. Returns additional `confidence` and `coding_trends` fields. |
+| {py:class}`~qfa.services.summarize.SummarizeService` | `summarize` | `POST /v1/summarize` | `get_summarize_service` | One LLM call plus a judge call. Per-record summary with a quality score. |
+| {py:class}`~qfa.services.summarize.SummarizeService` | `summarize_bulk` | `POST /v1/summarize-bulk` | `get_summarize_service` | One LLM call plus a judge call. One aggregate summary, themes ordered by frequency. |
+| {py:class}`~qfa.services.coding.CodingService` | `assign_codes` | `POST /v1/assign-codes` | `get_coding_service` | One LLM call picks the best-fitting code path(s) directly from the whole flattened coding framework, then a separate judge call per level scores each selected path, root to leaf. |
+| {py:class}`~qfa.services.sensitivity.SensitivityService` | `detect_sensitive_content` | `POST /v1/detect-sensitive` | `get_sensitivity_service` | One LLM call per record. Detects sensitive content and categorizes sensitivity types. |
 
 `/v1/summarize`, `/v1/assign-codes`, and `/v1/detect-sensitive` are non-bulk endpoints with per-record outputs. `/v1/analyze-bulk` and `/v1/summarize-bulk` are bulk endpoints and return one aggregate result per request (for `/v1/analyze-bulk`, in both `mode=single_pass` and `mode=hierarchical`).
 
-Epic #112 moved each use case out of the one `Orchestrator` god class and into its own service, per [ADR-017](../adr/017-orchestrator-composition-only.md); #267 deleted the emptied-out class once nothing referenced it any more. {py:class}`~qfa.services.sensitivity.SensitivityService`, {py:class}`~qfa.services.coding.CodingService`, {py:class}`~qfa.services.analyze.AnalyzeService` and {py:class}`~qfa.services.summarize.SummarizeService` are the four extracted services: each holds its use case's logic, takes the LLM connection, the anonymiser and the shared executor as constructor dependencies, and has **no base class**.
+Epic #112 moved each use case out of the one `Orchestrator` god class and into its own service, per [ADR-017](../adr/017-orchestrator-composition-only.md); #267 deleted the emptied-out class once nothing referenced it any more. {py:class}`~qfa.services.sensitivity.SensitivityService`, {py:class}`~qfa.services.coding.CodingService`, {py:class}`~qfa.services.analyze.AnalyzeService` and {py:class}`~qfa.services.summarize.SummarizeService` are the four extracted services: each holds its use case's logic, takes the LLM connection, the anonymiser and the shared {py:class}`~qfa.services.llm_call_executor.LLMCallExecutor` as constructor dependencies, and has **no base class**.
 
-The split is visible at the route: each service has its own provider in `qfa.api.dependencies` (`get_sensitivity_service`, `get_coding_service`, `get_analyze_service`, `get_summarize_service`), and a handler annotates against the single service it calls — so which use cases a route can reach is readable from its signature.
+The split is visible at the route: each service has its own provider in `qfa.api.dependencies` (the Provider column above), and a handler annotates against the single service it calls — so which use cases a route can reach is readable from its signature.
 
 Each method is pure use-case logic — no scope or correlation plumbing. `call_scope` is entered by a FastAPI dependency declared on the route (`Depends(call_scope_for(Operation.X))`), so by the time a service method runs `current_call_context` is already set. See [Cross-cutting concerns](04-crosscutting.md) for the full picture.
-
-### Extracted use-case services
-
-Each service below is a plain class in `qfa.services` that owns exactly one use
-case, receives the shared {py:class}`~qfa.services.llm_call_executor.LLMCallExecutor`
-as a constructor dependency, and is injected into its route by its own provider in
-`qfa.api.dependencies`. None of them has a base class — see
-[ADR-017](../adr/017-orchestrator-composition-only.md). What each one does is in
-the table above; this one maps it to the provider that injects it.
-
-| Service | Provider |
-|---|---|
-| {py:class}`~qfa.services.sensitivity.SensitivityService` | `get_sensitivity_service` |
-| {py:class}`~qfa.services.coding.CodingService` | `get_coding_service` |
-| {py:class}`~qfa.services.analyze.AnalyzeService` | `get_analyze_service` |
-| {py:class}`~qfa.services.summarize.SummarizeService` | `get_summarize_service` |
 
 `AnalyzeService` holds *both* analyse modes because they are two modes of one
 endpoint, selected on the request, and they share the retained-placeholder
