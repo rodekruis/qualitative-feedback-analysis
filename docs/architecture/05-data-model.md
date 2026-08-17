@@ -4,7 +4,7 @@ Two surfaces: the in-memory domain models, and the on-disk usage table.
 
 ## Domain models
 
-Domain entities live in {py:mod}`qfa.domain.models`, with usage-tracking entities split into {py:mod}`qfa.domain.usage_models`. All are Pydantic `BaseModel(frozen=True)` per [ADR-001](../adr/001-pydantic-domain-models.md). One exception is {py:class}`~qfa.domain.models.AggregateSummaryResultModel`, which is mutable so the orchestrator can attach a quality score after the judge call.
+Domain entities live in {py:mod}`qfa.domain.models`, with usage-tracking entities split into {py:mod}`qfa.domain.usage_models`. All are Pydantic `BaseModel(frozen=True)` per [ADR-001](../adr/001-pydantic-domain-models.md). One exception is {py:class}`~qfa.domain.models.AggregateSummaryResultModel`, which is mutable so {py:class}`~qfa.services.summarize.SummarizeService` can attach a quality score after the judge call.
 
 | Model | Purpose |
 |---|---|
@@ -30,7 +30,7 @@ Roughly:
 | `id` | UUID primary key |
 | `tenant_id` | Caller, set from the authenticated `TenantApiKey` |
 | `operation` | One of `analyze`, `summarize`, `summarize_aggregate`, `assign_codes` |
-| `call_id` | UUID linking all LLM calls made within one API invocation — enables per-invocation cost aggregation across the fan-out from one orchestrator entry. Generated once per request by `RequestIdMiddleware` (also returned as the `X-Request-ID` header) and propagated into the `CallContext` via the route's `Depends(call_scope_for(...))`. Identical for every row produced by a single endpoint call. |
+| `call_id` | UUID linking all LLM calls made within one API invocation — enables per-invocation cost aggregation across the fan-out from one request. Generated once per request by `RequestIdMiddleware` (also returned as the `X-Request-ID` header) and propagated into the `CallContext` via the route's `Depends(call_scope_for(...))`. Identical for every row produced by a single endpoint call. |
 | `model` | The LiteLLM model string used |
 | `prompt_tokens`, `completion_tokens` | From the provider response |
 | `cost` | Computed from LiteLLM's cost map; zero when the model has no published pricing |

@@ -12,13 +12,11 @@ from qfa.adapters.llm_client import LiteLLMClient
 from qfa.adapters.presidio_anonymizer import PresidioAnonymizer
 from qfa.api.composition import (
     build_analyze_service,
-    build_orchestrator,
     build_services,
     resolve_judge_llm_settings,
 )
 from qfa.services.analyze import AnalyzeService
 from qfa.services.coding import CodingService
-from qfa.services.orchestrator import Orchestrator
 from qfa.services.sensitivity import SensitivityService
 from qfa.services.summarize import SummarizeService
 from qfa.settings import AppSettings, JudgeLLMSettings, LLMSettings
@@ -245,21 +243,21 @@ class TestResolveJudgeLLMSettings:
         assert primary_llm_settings.api_base == "https://res.openai.azure.com/"
 
 
-class TestBuildOrchestratorJudgeClient:
+class TestBuildAnalyzeServiceJudgeClient:
     """The factory builds and injects a judge client only when one is configured."""
 
     def test_judge_calls_use_the_primary_client_by_default(
         self, auth_env: None
     ) -> None:
-        """Without ``JUDGE_LLM_MODEL`` the orchestrator holds one client for everything.
+        """Without ``JUDGE_LLM_MODEL`` the service holds one client for everything.
 
         Identity (``is``), not equality: the point is that no second client
         exists at all, so behaviour and cost are byte-for-byte what they were
         before the judge connection was added.
         """
-        orchestrator = build_orchestrator(AppSettings(), llm=_StubLLM())
+        analyze = build_analyze_service(AppSettings(), llm=_StubLLM())
 
-        assert orchestrator._judge_llm is orchestrator._llm
+        assert analyze._judge_llm is analyze._llm
 
     def test_builds_a_distinct_judge_client_when_a_judge_model_is_set(
         self, auth_env: None, monkeypatch: pytest.MonkeyPatch
@@ -273,14 +271,14 @@ class TestBuildOrchestratorJudgeClient:
         monkeypatch.setenv("JUDGE_LLM_MODEL", "azure_ai/mistral-medium-2505")
         stub_llm = _StubLLM()
 
-        orchestrator = build_orchestrator(AppSettings(), llm=stub_llm)
+        analyze = build_analyze_service(AppSettings(), llm=stub_llm)
 
-        assert orchestrator._llm is stub_llm
-        assert orchestrator._judge_llm is not stub_llm
-        assert isinstance(orchestrator._judge_llm, LiteLLMClient)
-        assert orchestrator._judge_llm._model == "azure_ai/mistral-medium-2505"
+        assert analyze._llm is stub_llm
+        assert analyze._judge_llm is not stub_llm
+        assert isinstance(analyze._judge_llm, LiteLLMClient)
+        assert analyze._judge_llm._model == "azure_ai/mistral-medium-2505"
         # The inherited credential is what makes this a no-new-secret change.
-        assert orchestrator._judge_llm._api_key == "sk-test-composition"
+        assert analyze._judge_llm._api_key == "sk-test-composition"
 
     def test_uses_injected_judge_llm(self, auth_env: None) -> None:
         """A ``judge_llm=`` override is plumbed straight through, like ``llm=``.
@@ -290,11 +288,11 @@ class TestBuildOrchestratorJudgeClient:
         """
         stub_judge = _StubLLM()
 
-        orchestrator = build_orchestrator(
+        analyze = build_analyze_service(
             AppSettings(), llm=_StubLLM(), judge_llm=stub_judge
         )
 
-        assert orchestrator._judge_llm is stub_judge
+        assert analyze._judge_llm is stub_judge
 
     def test_injected_judge_llm_wins_over_configuration(
         self, auth_env: None, monkeypatch: pytest.MonkeyPatch
@@ -307,63 +305,11 @@ class TestBuildOrchestratorJudgeClient:
         monkeypatch.setenv("JUDGE_LLM_MODEL", "azure_ai/mistral-medium-2505")
         stub_judge = _StubLLM()
 
-        orchestrator = build_orchestrator(
+        analyze = build_analyze_service(
             AppSettings(), llm=_StubLLM(), judge_llm=stub_judge
         )
 
-        assert orchestrator._judge_llm is stub_judge
-
-
-class TestBuildOrchestrator:
-    """Composition factory wires the orchestrator dependencies correctly."""
-
-    def test_returns_orchestrator_with_default_components(self, auth_env: None) -> None:
-        """Without overrides the factory builds a real LLM + Presidio.
-
-        The embedder lives on ``AnalyzeService`` (the only use case that
-        needs one), so the orchestrator carries no embedder at all — see
-        ``TestBuildAnalyzeService`` for its side of this.
-        """
-        settings = AppSettings()
-
-        orchestrator = build_orchestrator(settings)
-
-        assert isinstance(orchestrator, Orchestrator)
-        # The default LLM is the real LiteLLM client built from settings.llm.
-        # We do not invoke it; we just confirm the factory picked it up.
-        assert isinstance(orchestrator._llm, LiteLLMClient)
-        assert isinstance(orchestrator._anonymizer, PresidioAnonymizer)
-
-    def test_uses_injected_llm(self, auth_env: None) -> None:
-        """An ``llm=`` override is plumbed straight into the orchestrator.
-
-        This is how the FastAPI lifespan injects a ``TrackingLLMAdapter``-
-        wrapped LLM without the factory needing to know about the DB.
-        """
-        settings = AppSettings()
-        stub_llm = _StubLLM()
-
-        orchestrator = build_orchestrator(settings, llm=stub_llm)
-
-        assert orchestrator._llm is stub_llm
-
-    def test_propagates_token_budget_and_timeouts(self, auth_env: None) -> None:
-        """LLM-side limits flow from settings.llm into the orchestrator.
-
-        These two knobs (``timeout_seconds``, ``max_total_tokens``) are
-        carried on ``LLMSettings`` but consumed by the orchestrator, so the
-        factory has to bridge them explicitly. A regression here would
-        silently cap the wrong chunk size — guard it.
-        """
-        settings = AppSettings()
-        # Confirm the factory reads these from settings.llm, not elsewhere.
-        expected_timeout = settings.llm.timeout_seconds
-        expected_max_tokens = settings.llm.max_total_tokens
-
-        orchestrator = build_orchestrator(settings, llm=_StubLLM())
-
-        assert orchestrator._llm_timeout_seconds == expected_timeout
-        assert orchestrator._max_total_tokens == expected_max_tokens
+        assert analyze._judge_llm is stub_judge
 
 
 class TestBuildAnalyzeService:
@@ -433,7 +379,6 @@ class TestBuildServices:
         """One graph, one field per service the request lifecycle can reach."""
         services = build_services(AppSettings(), llm=_StubLLM())
 
-        assert isinstance(services.orchestrator, Orchestrator)
         assert isinstance(services.sensitivity, SensitivityService)
         assert isinstance(services.coding, CodingService)
         assert isinstance(services.analyze, AnalyzeService)
@@ -448,25 +393,44 @@ class TestBuildServices:
         """
         services = build_services(AppSettings(), llm=_StubLLM())
 
-        assert services.sensitivity._executor is services.orchestrator._executor
-        assert services.coding._executor is services.orchestrator._executor
-        assert services.analyze._executor is services.orchestrator._executor
-        assert services.summarize._executor is services.orchestrator._executor
+        assert services.coding._executor is services.sensitivity._executor
+        assert services.analyze._executor is services.sensitivity._executor
+        assert services.summarize._executor is services.sensitivity._executor
 
     def test_every_service_shares_the_one_anonymiser(self, auth_env: None) -> None:
         """Constructing ``PresidioAnonymizer`` loads spaCy models; do it once."""
         services = build_services(AppSettings(), llm=_StubLLM())
 
-        assert services.coding._anonymizer is services.orchestrator._anonymizer
-        assert services.analyze._anonymizer is services.orchestrator._anonymizer
-        assert services.summarize._anonymizer is services.orchestrator._anonymizer
+        assert services.coding._anonymizer is services.analyze._anonymizer
+        assert services.summarize._anonymizer is services.analyze._anonymizer
+
+    def test_shared_executor_gets_timeout_and_token_budget_from_settings(
+        self, auth_env: None
+    ) -> None:
+        """LLM-side limits flow from settings.llm into the shared executor.
+
+        These two knobs (``timeout_seconds``, ``max_total_tokens``) are
+        carried on ``LLMSettings`` but consumed by the executor every
+        service delegates to, so the factory has to bridge them explicitly.
+        A regression here would silently cap the wrong chunk size — guard it.
+        """
+        settings = AppSettings()
+
+        services = build_services(settings, llm=_StubLLM())
+
+        assert services.analyze._executor._llm_timeout_seconds == (
+            settings.llm.timeout_seconds
+        )
+        assert services.analyze._executor._max_total_tokens == (
+            settings.llm.max_total_tokens
+        )
 
     def test_summarize_service_gets_both_connections(self, auth_env: None) -> None:
         """Generation and judge clients reach the summarisation service.
 
-        Its two judge call sites moved out of the orchestrator with #264, so
-        a graph that dropped ``judge_llm`` here would silently move them back
-        onto the generation model.
+        Its two judge call sites moved out of the old ``Orchestrator`` god
+        class with #264, so a graph that dropped ``judge_llm`` here would
+        silently move them back onto the generation model.
         """
         stub_llm = _StubLLM()
         stub_judge = _StubLLM()
@@ -491,20 +455,4 @@ class TestBuildServices:
         services = build_services(AppSettings(), llm=stub_llm)
 
         assert services.coding._llm is stub_llm
-        assert services.orchestrator._judge_llm is not stub_llm
-
-    def test_build_orchestrator_returns_the_graph_s_orchestrator(
-        self, auth_env: None
-    ) -> None:
-        """The narrow entry point is the same construction, minus the graph.
-
-        Scripts and notebooks keep calling ``build_orchestrator``; it must
-        stay a view onto ``build_services`` rather than a second wiring path
-        that can drift.
-        """
-        stub_llm = _StubLLM()
-
-        orchestrator = build_orchestrator(AppSettings(), llm=stub_llm)
-
-        assert isinstance(orchestrator, Orchestrator)
-        assert orchestrator._llm is stub_llm
+        assert services.analyze._judge_llm is not stub_llm

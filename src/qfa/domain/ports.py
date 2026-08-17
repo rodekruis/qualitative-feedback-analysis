@@ -1,8 +1,9 @@
 """Port interfaces (protocols) for the feedback analysis backend.
 
 Driven ports declared here use ``typing.Protocol`` for structural
-subtyping per ADR-002. The orchestrator is exposed as the concrete
-``Orchestrator`` class per ADR-011 (no driving port).
+subtyping per ADR-002. Each application service in ``qfa.services`` is
+exposed as its own concrete class per ADR-011 and ADR-017 (no driving
+port).
 """
 
 import datetime as dt

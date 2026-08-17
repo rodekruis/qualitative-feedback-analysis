@@ -7,7 +7,7 @@ The service is built as a **hexagonal application** (ports & adapters), with fou
 Four things tipped the decision:
 
 1. **Multiple distinct external worlds.** The core talks to an LLM provider (via LiteLLM), a PII detection engine (Presidio), and a usage-tracking database (Postgres). Each is independent and changes at a different cadence — exactly the shape hexagonal was designed for.
-2. **Parallel work along port boundaries.** Once a port is named, dev A can build the use case against a typed fake while dev B implements the real adapter — the port type is the contract that lets the two streams converge cleanly at the end. The same shape unblocks investigation work: try a second LLM provider behind the existing port without touching the orchestrator.
+2. **Parallel work along port boundaries.** Once a port is named, dev A can build the use case against a typed fake while dev B implements the real adapter — the port type is the contract that lets the two streams converge cleanly at the end. The same shape unblocks investigation work: try a second LLM provider behind the existing port without touching any application service.
 3. **Type-checked fakes beat monkey-patches.** Tests inject `FakeLLMPort` (and analogous fakes for {py:class}`~qfa.domain.ports.AnonymizationPort`, {py:class}`~qfa.domain.ports.UsageRepositoryPort`) through `create_app(llm_factory=…)`. Because every fake inherits explicitly from its port, the type-checker catches drift the moment the contract shifts — there's no stale `unittest.mock.patch` chain silently passing a test against a long-changed interface.
 4. **Well-known and battle-tested.** Hexagonal is recognisable enough that experienced developers and AI coding agents both navigate the layout without the architecture being explained first — a real onboarding-cost saving when both kinds of contributor are in the loop.
 
@@ -20,7 +20,7 @@ block-beta
     columns 2
     api["api/<br/>FastAPI routes, middleware,<br/>schemas, composition root"]
     adapters["adapters/<br/>LiteLLM client, Presidio,<br/>SQLAlchemy repo,<br/>tracking decorator"]
-    services["services/<br/>Orchestrator, CallContext"]:2
+    services["services/<br/>use-case services, CallContext"]:2
     domain["domain/<br/>models, ports, errors"]:2
 ```
 
@@ -35,11 +35,11 @@ Allowed import directions (enforced by `import-linter`):
 
 ## What's *not* hexagonal here
 
-Hexagonal tells us "services depend only on ports" — it doesn't say "one orchestrator class with N methods" versus "N orchestrator classes." [ADR-011](../adr/011-drop-orchestrator-port.md) started from one {py:class}`~qfa.services.orchestrator.Orchestrator` holding every operation and anticipated extracting individual use cases once one grew enough to warrant it; [ADR-017](../adr/017-orchestrator-composition-only.md) takes that escape valve and splits the class into one service per use case, sharing behaviour by composition rather than a base class. {py:class}`~qfa.services.sensitivity.SensitivityService` (detect-sensitive), {py:class}`~qfa.services.coding.CodingService` (assign-codes), {py:class}`~qfa.services.analyze.AnalyzeService` (analyze) and {py:class}`~qfa.services.summarize.SummarizeService` (summarize) are all extracted; `Orchestrator` itself is now an empty shell, deleted once [#267](https://github.com/rodekruis/qualitative-feedback-analysis/issues/267) removes the last references to it.
+Hexagonal tells us "services depend only on ports" — it doesn't say "one orchestrator class with N methods" versus "N orchestrator classes." [ADR-011](../adr/011-drop-orchestrator-port.md) started from one `Orchestrator` god class holding every operation and anticipated extracting individual use cases once one grew enough to warrant it; [ADR-017](../adr/017-orchestrator-composition-only.md) took that escape valve and split the class into one service per use case, sharing behaviour by composition rather than a base class. {py:class}`~qfa.services.sensitivity.SensitivityService` (detect-sensitive), {py:class}`~qfa.services.coding.CodingService` (assign-codes), {py:class}`~qfa.services.analyze.AnalyzeService` (analyze) and {py:class}`~qfa.services.summarize.SummarizeService` (summarize) are the four extracted services; [#267](https://github.com/rodekruis/qualitative-feedback-analysis/issues/267) deleted the emptied-out `Orchestrator` class once nothing referenced it any more.
 
 ## Further reading
 
 - [System context](02-system-context.md) — what surrounds the app
-- [Components](03-components.md) — ports, adapters, the orchestrator
+- [Components](03-components.md) — ports, adapters, the application services
 - [Cross-cutting concerns](04-crosscutting.md) — concerns that span layers
 - [Data model](05-data-model.md) — domain models and persistence

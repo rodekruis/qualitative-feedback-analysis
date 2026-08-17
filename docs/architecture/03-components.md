@@ -6,7 +6,7 @@ The hexagonal layout has three ports, a set of application services, and a compo
 
 ```mermaid
 flowchart LR
-    orch["Orchestrator<br/>(qfa.services)"]
+    svc["Application services<br/>(qfa.services)"]
 
     subgraph llmport["LLMPort"]
         direction TB
@@ -26,32 +26,34 @@ flowchart LR
         sqlrepo["SqlAlchemyUsageRepository"]
     end
 
-    orch -->|complete<br/>generation| tracking
-    orch -->|complete<br/>judge| judgetracking
-    orch -->|anonymize / deanonymize| presidio
+    svc -->|complete<br/>generation| tracking
+    svc -->|complete<br/>judge| judgetracking
+    svc -->|anonymize / deanonymize| presidio
     tracking -.->|record_call| sqlrepo
     judgetracking -.->|record_call| sqlrepo
     routes_usage["/v1/usage<br/>route"] -->|get_usage_stats_for_one_tenant| sqlrepo
 ```
 
 The judge branch is **optional and off by default**: unless `JUDGE_LLM_MODEL`
-is set, the orchestrator's judge reference points at the same client as its
+is set, a service's judge reference points at the same client as its
 generation reference, and the diagram collapses to a single `LLMPort` edge.
 
 | Port | Adapter(s) | What it owns |
 |---|---|---|
-| {py:class}`~qfa.domain.ports.LLMPort` | {py:class}`~qfa.adapters.llm_client.LiteLLMClient`, always wrapped by {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter` | One method, `complete(system_message, user_message, tenant_id, response_model, timeout)`. Returns `LLMResponse[T_Response]` carrying the structured output plus token counts and cost. The orchestrator holds **one or two** of these — see [The judge connection](#the-judge-connection). |
+| {py:class}`~qfa.domain.ports.LLMPort` | {py:class}`~qfa.adapters.llm_client.LiteLLMClient`, always wrapped by {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter` | One method, `complete(system_message, user_message, tenant_id, response_model, timeout)`. Returns `LLMResponse[T_Response]` carrying the structured output plus token counts and cost. {py:class}`~qfa.services.analyze.AnalyzeService` and {py:class}`~qfa.services.summarize.SummarizeService` each hold **one or two** of these — see [The judge connection](#the-judge-connection). |
 | {py:class}`~qfa.domain.ports.AnonymizationPort` | {py:class}`~qfa.adapters.presidio_anonymizer.PresidioAnonymizer` | `anonymize(text) -> (text, mapping)` and `deanonymize(text, mapping) -> text`. The mapping is held in memory for the request lifetime, then discarded. |
 | {py:class}`~qfa.domain.ports.UsageRepositoryPort` | {py:class}`~qfa.adapters.usage_repository.SqlAlchemyUsageRepository` | Writes one {py:class}`~qfa.domain.usage_models.LLMCallRecord` per LLM call (from {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter`) and reads aggregate stats (from the `/v1/usage` routes). |
 | {py:class}`~qfa.domain.ports.EmbeddingPort` | {py:class}`~qfa.adapters.embedding.BgeM3OnnxEmbedder` | One method, `embed(texts) -> vectors`. Multilingual dense embeddings (BGE-M3 ONNX-int8, dense-1024-d, in-process, CPU-only). Used only by `mode=hierarchical`. See [ADR-014](../adr/014-embedding-port-and-self-hosted-model.md). |
 
-The tracking decorator is the only place hex's "stack adapters at the composition root" earns its keep — {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter` is itself an {py:class}`~qfa.domain.ports.LLMPort`, so the orchestrator never knows whether tracking is on.
+The tracking decorator is the only place hex's "stack adapters at the composition root" earns its keep — {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter` is itself an {py:class}`~qfa.domain.ports.LLMPort`, so a service never knows whether tracking is on.
 
 ### The judge connection
 
-The orchestrator can hold a **second** {py:class}`~qfa.domain.ports.LLMPort`
-used only for LLM-as-judge quality scores, so the model that writes an output
-is not the model that grades it. It is configured by `JUDGE_LLM_*` (see the
+{py:class}`~qfa.services.analyze.AnalyzeService` and
+{py:class}`~qfa.services.summarize.SummarizeService` can each hold a
+**second** {py:class}`~qfa.domain.ports.LLMPort` used only for LLM-as-judge
+quality scores, so the model that writes an output is not the model that
+grades it. It is configured by `JUDGE_LLM_*` (see the
 [settings reference](../operations/settings-reference.md)) and off by default:
 with `JUDGE_LLM_MODEL` unset the judge reference simply *is* the generation
 client, and behaviour is identical to a single-client deployment.
@@ -115,7 +117,7 @@ Each use case is one async method backing one HTTP endpoint:
 
 `/v1/summarize`, `/v1/assign-codes`, and `/v1/detect-sensitive` are non-bulk endpoints with per-record outputs. `/v1/analyze-bulk` and `/v1/summarize-bulk` are bulk endpoints and return one aggregate result per request (for `/v1/analyze-bulk`, in both `mode=single_pass` and `mode=hierarchical`).
 
-Epic #112 moved each use case out of the one `Orchestrator` class and into its own service, per [ADR-017](../adr/017-orchestrator-composition-only.md). {py:class}`~qfa.services.sensitivity.SensitivityService`, {py:class}`~qfa.services.coding.CodingService`, {py:class}`~qfa.services.analyze.AnalyzeService` and {py:class}`~qfa.services.summarize.SummarizeService` are all extracted: each is a plain class in `qfa.services` that owns exactly one use case, takes the LLM connection, the anonymiser and the shared {py:class}`~qfa.services.llm_call_executor.LLMCallExecutor` as constructor dependencies, and has **no base class**. `Orchestrator` itself is now an empty shell that no route reaches; it disappears with #267.
+Epic #112 moved each use case out of the one `Orchestrator` god class and into its own service, per [ADR-017](../adr/017-orchestrator-composition-only.md); #267 deleted the emptied-out class once nothing referenced it any more. {py:class}`~qfa.services.sensitivity.SensitivityService`, {py:class}`~qfa.services.coding.CodingService`, {py:class}`~qfa.services.analyze.AnalyzeService` and {py:class}`~qfa.services.summarize.SummarizeService` are the four extracted services: each holds its use case's logic, takes the LLM connection, the anonymiser and the shared {py:class}`~qfa.services.llm_call_executor.LLMCallExecutor` as constructor dependencies, and has **no base class**.
 
 The split is visible at the route: each service has its own provider in `qfa.api.dependencies` (the Provider column above), and a handler annotates against the single service it calls — so which use cases a route can reach is readable from its signature.
 
@@ -159,9 +161,9 @@ Tests construct the real executor over the existing `FakeLLMPort` / `FakeAnonymi
 - **Infrastructure half** (in `qfa.api.app`): load settings, build the base LLM client — plus a second one for judge calls when `JUDGE_LLM_MODEL` is set — create the async DB engine, wrap each LLM in {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter` for usage tracking, set up the auth adapter, build the embedder (logging its construction so operators see it on startup).
 - **Domain half** (in {py:func}`qfa.api.composition.build_services`): given settings plus the already-wrapped LLM and embedder, construct the {py:class}`~qfa.adapters.presidio_anonymizer.PresidioAnonymizer` and the {py:class}`~qfa.services.llm_call_executor.LLMCallExecutor`, register custom model prices with LiteLLM, and assemble every application service over that one executor. The services come back together as a {py:class}`~qfa.api.composition.ServiceGraph` — one field per service — which is what makes the sharing structural rather than a convention each call site has to remember.
 
-The lifespan then attaches each service (`app.state.orchestrator`, `app.state.sensitivity_service`, `app.state.coding_service`, `app.state.analyze_service`, `app.state.summarize_service`), the API keys, and the usage repository to `app.state` for the request lifecycle to read. One `app.state` slot per service is what lets each route's provider inject only the use case it needs.
+The lifespan then attaches each service (`app.state.sensitivity_service`, `app.state.coding_service`, `app.state.analyze_service`, `app.state.summarize_service`), the API keys, and the usage repository to `app.state` for the request lifecycle to read. One `app.state` slot per service is what lets each route's provider inject only the use case it needs.
 
-The split exists so callers outside the API server — scripts, notebooks, ad-hoc evaluation harnesses — can construct the services over a plain LLM client with a single call ({py:func}`~qfa.api.composition.build_orchestrator` and {py:func}`~qfa.api.composition.build_analyze_service` are the narrow wrappers over `build_services` for exactly that case):
+The split exists so callers outside the API server — scripts, notebooks, ad-hoc evaluation harnesses — can construct the services over a plain LLM client with a single call ({py:func}`~qfa.api.composition.build_analyze_service` is the narrow wrapper over `build_services` for exactly that case):
 
 ```python
 from qfa.api.composition import build_analyze_service
@@ -170,7 +172,7 @@ from qfa.settings import AppSettings
 analyze = build_analyze_service(AppSettings())
 ```
 
-`build_services` (and its single-service wrappers `build_orchestrator` and `build_analyze_service`) is intentionally pure with respect to the API server's runtime concerns: it does not touch the database, does not wrap the LLM in `TrackingLLMAdapter`, and does not read auth keys. The FastAPI lifespan keeps those concerns and passes the wrapped clients in via the `llm=` and `judge_llm=` keywords. See `notebooks/analyze_corpus.ipynb` for an example.
+`build_services` (and its single-service wrapper `build_analyze_service`) is intentionally pure with respect to the API server's runtime concerns: it does not touch the database, does not wrap the LLM in `TrackingLLMAdapter`, and does not read auth keys. The FastAPI lifespan keeps those concerns and passes the wrapped clients in via the `llm=` and `judge_llm=` keywords. See `notebooks/analyze_corpus.ipynb` for an example.
 
 This is the **only** place that knows about concrete adapter classes. Routes and dependencies read from `app.state` only.
 

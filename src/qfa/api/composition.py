@@ -8,8 +8,8 @@ of the application services themselves — together with their driven
 adapters that don't require the database — to this module.
 
 :func:`build_services` returns every application service as a
-:class:`ServiceGraph`; :func:`build_orchestrator` is the narrower entry
-point for callers that only want the (shrinking) :class:`Orchestrator`.
+:class:`ServiceGraph`; :func:`build_analyze_service` is the narrower entry
+point for callers (scripts, notebooks) that only want the analyze use case.
 
 Why it lives here rather than at package root:
 
@@ -58,7 +58,6 @@ from qfa.domain.ports import EmbeddingPort, LLMPort
 from qfa.services.analyze import AnalyzeService
 from qfa.services.coding import CodingService
 from qfa.services.llm_call_executor import LLMCallExecutor
-from qfa.services.orchestrator import Orchestrator
 from qfa.services.sensitivity import SensitivityService
 from qfa.services.summarize import SummarizeService
 from qfa.settings import AppSettings, EmbeddingSettings, JudgeLLMSettings, LLMSettings
@@ -70,18 +69,15 @@ logger = logging.getLogger(__name__)
 class ServiceGraph:
     """The application services the API publishes on ``app.state``.
 
-    Epic #112 splits ``Orchestrator`` into one service per use case, so the
-    composition root now returns more than one object. Grouping them keeps
+    Epic #112 split the one-time ``Orchestrator`` god class into one
+    service per use case (#267 removed the emptied-out class itself), so
+    the composition root returns more than one object. Grouping them keeps
     the shared parts of the graph — notably the single
     :class:`~qfa.services.llm_call_executor.LLMCallExecutor` — built once,
-    and gives the lifespan one thing to construct and unpack. It grows one
-    field per extraction and loses ``orchestrator`` when the class is
-    deleted (#267).
+    and gives the lifespan one thing to construct and unpack.
 
     Attributes
     ----------
-    orchestrator : Orchestrator
-        No use cases left once #264 lands. Disappears with #267.
     sensitivity : SensitivityService
         The detect-sensitive use case, extracted in #263.
     coding : CodingService
@@ -93,7 +89,6 @@ class ServiceGraph:
         The summarize / summarize_bulk use cases, extracted in #264.
     """
 
-    orchestrator: Orchestrator
     sensitivity: SensitivityService
     coding: CodingService
     analyze: AnalyzeService
@@ -193,8 +188,8 @@ def register_custom_model_prices() -> None:
     Registers models with LiteLLM so that ``completion_cost()`` works
     for models not in the built-in cost map. Idempotent: LiteLLM's
     ``register_model`` overwrites existing entries with the same key,
-    so repeated calls (e.g. once per ``build_orchestrator`` in a
-    notebook) are safe.
+    so repeated calls (e.g. once per ``build_services`` in a notebook)
+    are safe.
     """
     prices_path = importlib.resources.files("qfa.resources").joinpath(
         "model_prices.yaml"
@@ -309,16 +304,6 @@ def build_services(
         max_total_tokens=settings.llm.max_total_tokens,
     )
 
-    orchestrator = Orchestrator(
-        llm=llm,
-        judge_llm=judge_llm,
-        anonymizer=anonymizer,
-        settings=settings.orchestrator,
-        llm_timeout_seconds=settings.llm.timeout_seconds,
-        max_total_tokens=settings.llm.max_total_tokens,
-        executor=executor,
-    )
-
     analyze = AnalyzeService(
         executor=executor,
         llm=llm,
@@ -331,7 +316,6 @@ def build_services(
     )
 
     return ServiceGraph(
-        orchestrator=orchestrator,
         sensitivity=SensitivityService(executor=executor),
         # No judge client: both the pick and the per-level judge in the coding
         # path run on the primary connection (#258 scoped the split to analyse
@@ -348,37 +332,6 @@ def build_services(
             executor=executor,
         ),
     )
-
-
-def build_orchestrator(
-    settings: AppSettings,
-    *,
-    llm: LLMPort | None = None,
-    judge_llm: LLMPort | None = None,
-) -> Orchestrator:
-    """Build only the :class:`Orchestrator` half of :func:`build_services`.
-
-    Convenience wrapper for callers still written against the class — it
-    holds no use case since #264, and #267 deletes it. There is no
-    ``embedder`` parameter: the orchestrator no longer holds one, so
-    accepting it here would be a silent no-op. Callers that want an
-    embedder want :func:`build_analyze_service`.
-
-    Parameters
-    ----------
-    settings : AppSettings
-        Loaded application settings; see :func:`build_services`.
-    llm : LLMPort | None, optional
-        Pre-built LLM port; see :func:`build_services`.
-    judge_llm : LLMPort | None, optional
-        Pre-built judge LLM port; see :func:`build_services`.
-
-    Returns
-    -------
-    Orchestrator
-        The empty shell, kept until #267 deletes the class.
-    """
-    return build_services(settings, llm=llm, judge_llm=judge_llm).orchestrator
 
 
 def build_analyze_service(

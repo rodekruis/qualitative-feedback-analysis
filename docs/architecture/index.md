@@ -6,7 +6,7 @@ How the service is structured and why. Roughly ordered C4-style — start at the
 |---|---|
 | [Architecture style](01-architecture-style.md) | Hexagonal layout, layer rules, why we picked this pattern |
 | [System context](02-system-context.md) | The app and its external neighbours (LLM provider, Presidio, Postgres, callers) |
-| [Components](03-components.md) | Ports, adapters, the orchestrator, the composition root |
+| [Components](03-components.md) | Ports, adapters, the application services, the composition root |
 | [Cross-cutting concerns](04-crosscutting.md) | Anonymisation, tracking, error handling, logging — concerns that span layers |
 | [Data model](05-data-model.md) | Domain models and persistence schema |
 | [Prompt envelope and guardrails](06-prompt-envelope.md) | Three-constant system message, XML-style envelope, escape helper, judge call contract for `POST /v1/analyze-bulk` |

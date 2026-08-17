@@ -436,7 +436,7 @@ async def _handle_llm_error(request: Request, exc: LLMError) -> JSONResponse:
     """Map an LLM provider failure to 502 bad_gateway.
 
     LLMError signals that an upstream LLM provider call failed in a way
-    the orchestrator did not recover from. From the API consumer's
+    the calling service did not recover from. From the API consumer's
     perspective this is a bad gateway, distinct from a 504 timeout
     (AnalysisTimeoutError) or a 502 analysis failure (AnalysisError).
     """
@@ -566,10 +566,10 @@ def _make_lifespan(llm_factory: LLMFactory):
     This factory closes over ``llm_factory`` and returns the resulting
     lifespan, so ``create_app`` can pass a fake factory in tests and the
     lifespan picks it up at startup — wiring the same composition path
-    (``llm_factory(settings.llm)`` → optional ``TrackingLLMAdapter``
-    wrap → ``StandardOrchestrator``) regardless of whether the LLM
-    client is real or stubbed. Production simply omits the override and
-    gets the default ``build_llm_client``.
+    (``llm_factory(settings.llm)`` → optional ``TrackingLLMAdapter`` wrap
+    → :func:`qfa.api.composition.build_services`) regardless of whether
+    the LLM client is real or stubbed. Production simply omits the
+    override and gets the default ``build_llm_client``.
 
     Parameters
     ----------
@@ -615,10 +615,10 @@ def _make_lifespan(llm_factory: LLMFactory):
            to assemble the application services over one shared
            ``LLMCallExecutor`` — it also registers custom LiteLLM model
            prices needed for ``completion_cost()``.
-        6. Publish each service (``orchestrator``, ``sensitivity_service``,
-           ``coding_service``, ``analyze_service``, ``summarize_service``)
-           plus ``api_keys``, ``settings``, and ``usage_repo`` on
-           ``app.state`` for routes/middleware to read.
+        6. Publish each service (``sensitivity_service``, ``coding_service``,
+           ``analyze_service``, ``summarize_service``) plus ``api_keys``,
+           ``settings``, and ``usage_repo`` on ``app.state`` for
+           routes/middleware to read.
 
         On shutdown the only resource that needs explicit cleanup is the
         DB engine's connection pool; everything else is plain Python
@@ -647,12 +647,10 @@ def _make_lifespan(llm_factory: LLMFactory):
         session_factory = create_session_factory(engine)
         usage_repo = SqlAlchemyUsageRepository(session_factory)
         auth_adapter = SQLAlchemyAuthAdapter(session_factory)
-        llm_for_orch: LLMPort = TrackingLLMAdapter(
-            inner=base_llm, usage_repo=usage_repo
-        )
+        tracked_llm: LLMPort = TrackingLLMAdapter(inner=base_llm, usage_repo=usage_repo)
         # The judge client is wrapped identically — an unwrapped one would
         # silently drop every judge call from usage and cost accounting.
-        judge_for_orch: LLMPort | None = (
+        tracked_judge_llm: LLMPort | None = (
             TrackingLLMAdapter(inner=base_judge_llm, usage_repo=usage_repo)
             if base_judge_llm is not None
             else None
@@ -677,8 +675,8 @@ def _make_lifespan(llm_factory: LLMFactory):
 
         services = build_services(
             settings,
-            llm=llm_for_orch,
-            judge_llm=judge_for_orch,
+            llm=tracked_llm,
+            judge_llm=tracked_judge_llm,
             embedder=embedder,
         )
 
@@ -689,7 +687,6 @@ def _make_lifespan(llm_factory: LLMFactory):
             ],
             auth_management_port=auth_adapter,
         )
-        app.state.orchestrator = services.orchestrator
         # One provider per use-case service (ADR-017): each route reads the
         # single service it needs off app.state.
         app.state.sensitivity_service = services.sensitivity

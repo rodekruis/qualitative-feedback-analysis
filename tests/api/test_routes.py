@@ -13,7 +13,7 @@ from qfa.domain.errors import (
 from qfa.domain.models import FeedbackRecordSummaryModel
 from qfa.services.coding import NO_CODING_EMPTY_CONTENT_EXPLANATION
 
-from .conftest import FAKE_API_KEY, FakeOrchestrator
+from .conftest import FAKE_API_KEY, FakeService
 
 
 def _auth_header(key=FAKE_API_KEY):
@@ -199,9 +199,9 @@ class TestAnalyzeSuccess:
         """The X-Request-ID UUID is the same value seen as ``ctx.call_id``.
 
         Unit-level proof of the unification across the full middleware →
-        dependency → orchestrator chain: the route's
+        dependency → service chain: the route's
         ``Depends(call_scope_for(Operation.ANALYZE))`` enters call_scope
-        before the orchestrator runs, so the orchestrator can read
+        before the service runs, so the service can read
         ``current_call_context`` directly without entering scope itself.
         Catches a broken middleware/dep/ContextVar wiring at unit-test
         speed, before the e2e tier even runs.
@@ -214,7 +214,7 @@ class TestAnalyzeSuccess:
 
         captured: dict = {}
 
-        class CapturingOrchestrator:
+        class CapturingService:
             async def analyze_bulk(self, request, deadline):
                 ctx = current_call_context.get()
                 assert ctx is not None
@@ -222,7 +222,7 @@ class TestAnalyzeSuccess:
                 captured["operation"] = ctx.operation
                 return AnalysisResultModel(result="ok")
 
-        test_app.state.analyze_service = CapturingOrchestrator()
+        test_app.state.analyze_service = CapturingService()
         async with _make_client(test_app) as c:
             resp = await c.post(
                 "/v1/analyze-bulk", json=_valid_body(), headers=_auth_header()
@@ -345,10 +345,10 @@ class TestDetectSensitiveSuccess:
                 headers=_auth_header(),
             )
         assert resp.status_code == 200
-        assert test_app.state.orchestrator.last_detect_sensitive_request is not None
-        record = (
-            test_app.state.orchestrator.last_detect_sensitive_request.feedback_record
+        assert (
+            test_app.state.sensitivity_service.last_detect_sensitive_request is not None
         )
+        record = test_app.state.sensitivity_service.last_detect_sensitive_request.feedback_record
         assert record.metadata.coding_level_1 == "North"
 
 
@@ -544,7 +544,7 @@ class TestEmptyFeedbackContent:
     ):
         """summarize-bulk aggregates only non-empty records in a mixed batch.
 
-        The dropped record must not reach the orchestrator at all.
+        The dropped record must not reach the summarize service at all.
         """
         records = [
             {
@@ -560,7 +560,7 @@ class TestEmptyFeedbackContent:
             headers=_auth_header(),
         )
         assert resp.status_code == 200
-        forwarded = test_app.state.orchestrator.last_summarize_bulk_request
+        forwarded = test_app.state.summarize_service.last_summarize_bulk_request
         assert [r.id for r in forwarded.feedback_records] == ["keep-1"]
 
     @pytest.mark.asyncio
@@ -676,7 +676,7 @@ class TestFeedbackUrlFieldsForwarded:
             headers=_auth_header(),
         )
         assert resp.status_code == 200
-        forwarded = test_app.state.orchestrator.last_analyze_request
+        forwarded = test_app.state.analyze_service.last_analyze_request
         assert forwarded.feedback_records[0].url_id == "abc123"
         assert forwarded.espo_feedback_base_url == "https://espo.example.com/feedback"
 
@@ -699,7 +699,7 @@ class TestFeedbackUrlFieldsForwarded:
             headers=_auth_header(),
         )
         assert resp.status_code == 200
-        forwarded = test_app.state.orchestrator.last_summarize_bulk_request
+        forwarded = test_app.state.summarize_service.last_summarize_bulk_request
         assert forwarded.feedback_records[0].url_id == "abc123"
         assert forwarded.espo_feedback_base_url == "https://espo.example.com/feedback"
 
@@ -712,7 +712,7 @@ class TestFeedbackUrlFieldsForwarded:
 class TestErrorMapping:
     @pytest.mark.asyncio
     async def test_413_feedback_too_large(self, test_app):
-        test_app.state.analyze_service = FakeOrchestrator(
+        test_app.state.analyze_service = FakeService(
             error=FeedbackTooLargeError(
                 "Too large", estimated_tokens=200_000, limit=100_000
             )
@@ -727,7 +727,7 @@ class TestErrorMapping:
 
     @pytest.mark.asyncio
     async def test_504_analysis_timeout(self, test_app):
-        test_app.state.analyze_service = FakeOrchestrator(
+        test_app.state.analyze_service = FakeService(
             error=AnalysisTimeoutError("Deadline exceeded")
         )
         async with _make_client(test_app) as c:
@@ -740,9 +740,7 @@ class TestErrorMapping:
 
     @pytest.mark.asyncio
     async def test_502_analysis_error(self, test_app):
-        test_app.state.analyze_service = FakeOrchestrator(
-            error=AnalysisError("LLM failure")
-        )
+        test_app.state.analyze_service = FakeService(error=AnalysisError("LLM failure"))
         async with _make_client(test_app) as c:
             resp = await c.post(
                 "/v1/analyze-bulk", json=_valid_body(), headers=_auth_header()
@@ -753,7 +751,7 @@ class TestErrorMapping:
 
     @pytest.mark.asyncio
     async def test_500_unexpected_exception(self, test_app):
-        test_app.state.analyze_service = FakeOrchestrator(
+        test_app.state.analyze_service = FakeService(
             error=RuntimeError("something broke")
         )
         async with _make_client(test_app) as c:
@@ -774,9 +772,7 @@ class TestErrorMapping:
         """
         from uuid import UUID
 
-        test_app.state.analyze_service = FakeOrchestrator(
-            error=AnalysisError("some error")
-        )
+        test_app.state.analyze_service = FakeService(error=AnalysisError("some error"))
         async with _make_client(test_app) as c:
             resp = await c.post(
                 "/v1/analyze-bulk", json=_valid_body(), headers=_auth_header()
@@ -785,7 +781,7 @@ class TestErrorMapping:
 
     @pytest.mark.asyncio
     async def test_summary_413_feedback_too_large(self, test_app):
-        test_app.state.orchestrator = FakeOrchestrator(
+        test_app.state.summarize_service = FakeService(
             error=FeedbackTooLargeError(
                 "Too large", estimated_tokens=200_000, limit=100_000
             )
@@ -801,7 +797,7 @@ class TestErrorMapping:
 
     @pytest.mark.asyncio
     async def test_summary_504_analysis_timeout(self, test_app):
-        test_app.state.orchestrator = FakeOrchestrator(
+        test_app.state.summarize_service = FakeService(
             error=AnalysisTimeoutError("Deadline exceeded")
         )
         async with _make_client(test_app) as c:
@@ -815,7 +811,7 @@ class TestErrorMapping:
 
     @pytest.mark.asyncio
     async def test_summary_502_analysis_error(self, test_app):
-        test_app.state.orchestrator = FakeOrchestrator(
+        test_app.state.summarize_service = FakeService(
             error=AnalysisError("LLM failure")
         )
         async with _make_client(test_app) as c:
@@ -829,7 +825,7 @@ class TestErrorMapping:
 
     @pytest.mark.asyncio
     async def test_summary_500_unexpected_exception(self, test_app):
-        test_app.state.orchestrator = FakeOrchestrator(
+        test_app.state.summarize_service = FakeService(
             error=RuntimeError("something broke")
         )
         async with _make_client(test_app) as c:
@@ -843,7 +839,7 @@ class TestErrorMapping:
 
     @pytest.mark.asyncio
     async def test_summary_returns_configured_result(self, test_app):
-        test_app.state.orchestrator = FakeOrchestrator(
+        test_app.state.summarize_service = FakeService(
             summarize_result=FeedbackRecordSummaryModel(
                 id="custom-1",
                 title="Custom title",
@@ -866,7 +862,7 @@ class TestErrorMapping:
 
     @pytest.mark.asyncio
     async def test_detect_sensitive_502_analysis_error(self, test_app):
-        test_app.state.sensitivity_service = FakeOrchestrator(
+        test_app.state.sensitivity_service = FakeService(
             error=AnalysisError("LLM failure")
         )
         async with _make_client(test_app) as c:

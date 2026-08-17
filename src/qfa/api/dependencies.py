@@ -15,25 +15,8 @@ from qfa.services.analyze import AnalyzeService
 from qfa.services.auth_orchestrator import AuthOrchestrator
 from qfa.services.call_context import call_scope
 from qfa.services.coding import CodingService
-from qfa.services.orchestrator import Orchestrator
 from qfa.services.sensitivity import SensitivityService
 from qfa.services.summarize import SummarizeService
-
-
-def get_orchestrator(request: Request) -> Orchestrator:
-    """Return the orchestrator from app state.
-
-    Parameters
-    ----------
-    request : Request
-        The incoming HTTP request.
-
-    Returns
-    -------
-    Orchestrator
-        The orchestrator service instance.
-    """
-    return request.app.state.orchestrator
 
 
 def get_sensitivity_service(request: Request) -> SensitivityService:
@@ -80,7 +63,7 @@ def get_analyze_service(request: Request) -> AnalyzeService:
     """Return the analyze service from app state.
 
     One provider per use-case service (ADR-017): the analyze route
-    depends on this rather than on the orchestrator, so its type
+    depends on this rather than on a shared service, so its type
     signature names exactly the service it uses.
 
     Parameters
@@ -195,7 +178,7 @@ def call_scope_for(
     *driving adapter*'s contribution to the cross-adapter correlation
     bridge: the route declares which operation it represents, and the
     dependency arranges for ``current_call_context`` to be set before
-    the route body (and the orchestrator beneath it) runs.
+    the route body (and the application service beneath it) runs.
 
     This is then used for anything that requires the call context, such at usage
     tracking in :class:`~TrackingLLMAdapter`.
@@ -208,7 +191,7 @@ def call_scope_for(
     Parameters
     ----------
     operation : Operation
-        The public orchestrator operation this dependency represents.
+        The public use-case operation this dependency represents.
 
     Returns
     -------

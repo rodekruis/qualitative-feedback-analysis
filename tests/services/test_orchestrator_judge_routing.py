@@ -52,7 +52,6 @@ from qfa.services.call_context import call_scope
 from qfa.services.coding import CodingService
 from qfa.services.coding_classifier import CodingResponse, JudgeResponse
 from qfa.services.llm_call_executor import LLMCallExecutor
-from qfa.services.orchestrator import Orchestrator
 from qfa.services.summarize import SummarizeService
 from qfa.settings import AnalyzeSettings, OrchestratorSettings
 
@@ -211,23 +210,6 @@ def _deadline() -> datetime:
     return datetime.now(UTC) + timedelta(seconds=300)
 
 
-def _build(primary: LLMPort, judge: LLMPort | None = None, **kwargs) -> Orchestrator:
-    """Build an orchestrator over the given client(s).
-
-    ``judge=None`` reproduces the default deployment (no ``JUDGE_LLM_MODEL``),
-    which is the baseline every routing test is measured against.
-    """
-    return Orchestrator(
-        llm=primary,
-        judge_llm=judge,
-        anonymizer=NoopAnonymizer(),
-        settings=OrchestratorSettings(),
-        llm_timeout_seconds=LLM_TIMEOUT,
-        max_total_tokens=MAX_TOKENS,
-        **kwargs,
-    )
-
-
 def _build_coding_service(primary: LLMPort) -> CodingService:
     """Build the coding service over the given client.
 
@@ -308,10 +290,8 @@ class TestDefaultsToThePrimaryClient:
         """``_judge_llm`` falls back to ``_llm`` so call sites never need to branch."""
         primary = RoutingLLM("primary")
 
-        orchestrator = _build(primary)
         analyze = _build_analyze(primary)
 
-        assert orchestrator._judge_llm is primary
         assert analyze._judge_llm is primary
 
     def test_summarize_service_judge_client_is_the_primary_client_when_unset(

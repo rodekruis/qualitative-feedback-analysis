@@ -1,4 +1,4 @@
-"""Tier-3 end-to-end tests exercising orchestrator → TrackingLLMAdapter → DB.
+"""Tier-3 end-to-end tests exercising application service → TrackingLLMAdapter → DB.
 
 The LLM port is a ``FakeLLMPort`` injected via ``create_app(llm_factory=...)``;
 the lifespan still wraps it in ``TrackingLLMAdapter`` exactly as it would the
@@ -46,7 +46,7 @@ class TestAnalyzeRecordsRow:
     ):
         """A successful /v1/analyze-bulk persists two ``ok`` rows.
 
-        The refactored Orchestrator.analyze makes two LLM calls: one for the
+        AnalyzeService.analyze_bulk makes two LLM calls: one for the
         main analysis (response_model=str) and one for the judge
         (response_model=AnalyzeJudgeResult).  Both are tracked individually by
         the TrackingLLMAdapter, so we expect two rows with operation=analyze
@@ -187,7 +187,7 @@ class TestAnalyzeFailureRecordsRow:
             },
             headers={"Authorization": f"Bearer {E2E_API_KEY}"},
         )
-        # The orchestrator converts LLMError → AnalysisError → 502.
+        # qfa.api.app's exception handler maps LLMError → 502.
         assert resp.status_code == 502
 
         rows = await _fetch_rows(e2e_engine)

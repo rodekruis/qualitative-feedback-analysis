@@ -28,14 +28,14 @@ over HTTP.
 sequenceDiagram
     participant C as Caller
     participant R as Route (qfa.api.routes)
-    participant O as Orchestrator (qfa.services)
+    participant S as ClassifyService (qfa.services)
     participant L as LLMPort (qfa.domain.ports)
     C->>R: POST /v1/classify (+ Bearer key)
     R->>R: authenticate, map API → domain
-    R->>O: classify(domain_request, deadline)
-    O->>L: complete(anonymised prompt, tenant_id)
-    L-->>O: structured result
-    O-->>R: domain result
+    R->>S: classify(domain_request, deadline)
+    S->>L: complete(anonymised prompt, tenant_id)
+    L-->>S: structured result
+    S-->>R: domain result
     R-->>C: API response (+ X-Request-ID)
 ```
 
@@ -92,10 +92,10 @@ testable.
 
 ## 3. Implement the use case as an application service
 
-The application layer is being split into one service per use case (epic #112,
+Each use case is its own application service in `qfa.services` (epic #112,
 [ADR-017](../adr/017-orchestrator-composition-only.md)). A **new** use case
-gets its own class in `qfa.services` — not a method on a shared class, not a
-subclass of one, and not behind a new driving port. It takes the shared
+gets its own class — not a method on a shared class, not a subclass of one,
+and not behind a new driving port. It takes the shared
 {py:class}`~qfa.services.llm_call_executor.LLMCallExecutor` as a constructor
 dependency plus whatever else it actually needs, and nothing it doesn't.
 {py:class}`~qfa.services.coding.CodingService` (assign-codes) and
@@ -108,9 +108,10 @@ plus the [application services section](../architecture/03-components.md#the-app
 of the components page. Per-task behaviour is selected by the route calling
 the appropriate service.
 
-`Orchestrator` in `qfa.services.orchestrator` holds no use case any more —
-epic #112 emptied it out and #267 deletes it. Do not add to it; there is no
-new driving port and no second orchestrator implementation either way.
+There is no shared class that every use case hangs a method off — the old
+`Orchestrator` god class was deleted once epic #112 emptied it out (#267).
+Do not reintroduce one; there is no new driving port and no orchestrator
+implementation to extend either way.
 
 A use-case method takes the domain request and an absolute `deadline`, and
 returns a domain result. The established shape — visible on the existing
@@ -279,15 +280,13 @@ inference route:
 - `call_scope_for(Operation.CLASSIFY)` opens the usage-tracking scope (step 7).
 
 ```{note}
-`Orchestrator` is being decomposed into one service per use case
+Every use case is its own service, one per HTTP endpoint
 ([ADR-017](../adr/017-orchestrator-composition-only.md)). A *new* use case is
 a new class in `qfa.services` taking an `LLMCallExecutor` (plus whatever else
 it needs), built in {py:func}`qfa.api.composition.build_services`, published on
 its own `app.state` slot, and injected by its own provider in
 `qfa.api.dependencies` — see {py:class}`~qfa.services.sensitivity.SensitivityService`
-and `get_sensitivity_service` for the worked example. Annotate the handler
-against that service instead of `Orchestrator`; the rest of this page is
-unchanged.
+and `get_sensitivity_service` for the worked example.
 ```
 
 The route is also where the API ↔ domain mapping happens — never pass an API
@@ -382,11 +381,11 @@ excluded by default and gated on a running Postgres.
 
 | Tier | Marker | Exercises |
 |---|---|---|
-| Unit | (none) | The route against `FakeOrchestrator` — no I/O, no real LLM |
+| Unit | (none) | The route against `FakeService` — no I/O, no real LLM |
 | Integration | `integration` | Real Postgres (usage persistence and queries) |
 | End-to-end | `e2e` | The full app with LiteLLM mocked via `respx` |
 
-For a unit test, add a method for the new use case to `FakeOrchestrator` in
+For a unit test, add a method for the new use case to `FakeService` in
 `tests/api/conftest.py`, then drive the route through the `client` fixture and
 assert on status and body. Cover the success path, the missing/invalid key
 (401), schema validation failure (422), and the empty-content short-circuit.

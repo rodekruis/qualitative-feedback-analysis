@@ -10,7 +10,7 @@ import pytest
 
 from qfa.domain.models import AnalysisResultModel
 
-from .conftest import FAKE_API_KEY, FakeOrchestrator
+from .conftest import FAKE_API_KEY, FakeService
 
 
 def _auth_header(key=FAKE_API_KEY):
@@ -91,7 +91,7 @@ class TestResponseShape:
         """``quality_score`` is present in the response on the happy path.
 
         May be ``null`` when the judge fails, but on the happy path the
-        fake orchestrator returns a non-null score.
+        fake service returns a non-null score.
         """
         resp = await client.post(
             "/v1/analyze-bulk",
@@ -122,17 +122,17 @@ class TestResponseShape:
 
     @pytest.mark.asyncio
     async def test_quality_score_is_null_when_judge_fails(self, test_app):
-        """``quality_score`` is ``null`` when the orchestrator signals judge failure.
+        """``quality_score`` is ``null`` when the analyze service signals judge failure.
 
         Simulates the judge-failure path by injecting an ``AnalysisResultModel``
-        with ``quality_score=None`` directly via a custom orchestrator.
+        with ``quality_score=None`` directly via a custom fake service.
         The route must pass that ``None`` through to the client unchanged.
         """
         import httpx
 
         from qfa.services.prompts import JUDGE_UNAVAILABLE_EXPLANATION
 
-        test_app.state.analyze_service = FakeOrchestrator(
+        test_app.state.analyze_service = FakeService(
             analyze_result=AnalysisResultModel(
                 result="Some analysis.",
                 quality_score=None,
@@ -158,8 +158,8 @@ class TestResponseShape:
 
 class TestOutputLanguage:
     @pytest.mark.asyncio
-    async def test_output_language_forwarded_to_orchestrator(
-        self, client, fake_orchestrator
+    async def test_output_language_forwarded_to_analyze_service(
+        self, client, fake_service
     ):
         """``output_language`` in the body reaches the domain ``AnalysisRequestModel``.
 
@@ -172,11 +172,11 @@ class TestOutputLanguage:
             headers=_auth_header(),
         )
         assert resp.status_code == 200
-        assert fake_orchestrator.last_analyze_request.output_language == "Dutch"
+        assert fake_service.last_analyze_request.output_language == "Dutch"
 
     @pytest.mark.asyncio
     async def test_output_language_defaults_to_none_when_omitted(
-        self, client, fake_orchestrator
+        self, client, fake_service
     ):
         """Omitting ``output_language`` forwards ``None`` to the domain request.
 
@@ -189,4 +189,4 @@ class TestOutputLanguage:
             headers=_auth_header(),
         )
         assert resp.status_code == 200
-        assert fake_orchestrator.last_analyze_request.output_language is None
+        assert fake_service.last_analyze_request.output_language is None
