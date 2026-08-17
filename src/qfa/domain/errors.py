@@ -5,7 +5,7 @@ class DomainError(Exception):
     """Base error for all domain-level exceptions."""
 
 
-# --- Orchestrator errors ---
+# --- Analysis errors ---
 
 
 class AnalysisError(DomainError):
@@ -98,8 +98,8 @@ class TenantNotFoundError(DomainError):
 class MissingCallScopeError(RuntimeError):
     """Raised when an LLM call is recorded without an active CallContext.
 
-    Indicates a wiring bug: the orchestrator forgot to enter a ``call_scope``
-    block before calling the LLM. Should never reach a user.
+    Indicates a wiring bug: the driving adapter forgot to enter a
+    ``call_scope`` block before calling the LLM. Should never reach a user.
     """
 
 
