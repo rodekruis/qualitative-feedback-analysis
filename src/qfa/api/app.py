@@ -647,12 +647,10 @@ def _make_lifespan(llm_factory: LLMFactory):
         session_factory = create_session_factory(engine)
         usage_repo = SqlAlchemyUsageRepository(session_factory)
         auth_adapter = SQLAlchemyAuthAdapter(session_factory)
-        llm_for_orch: LLMPort = TrackingLLMAdapter(
-            inner=base_llm, usage_repo=usage_repo
-        )
+        tracked_llm: LLMPort = TrackingLLMAdapter(inner=base_llm, usage_repo=usage_repo)
         # The judge client is wrapped identically — an unwrapped one would
         # silently drop every judge call from usage and cost accounting.
-        judge_for_orch: LLMPort | None = (
+        tracked_judge_llm: LLMPort | None = (
             TrackingLLMAdapter(inner=base_judge_llm, usage_repo=usage_repo)
             if base_judge_llm is not None
             else None
@@ -677,8 +675,8 @@ def _make_lifespan(llm_factory: LLMFactory):
 
         services = build_services(
             settings,
-            llm=llm_for_orch,
-            judge_llm=judge_for_orch,
+            llm=tracked_llm,
+            judge_llm=tracked_judge_llm,
             embedder=embedder,
         )
 
