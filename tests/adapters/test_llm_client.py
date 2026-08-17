@@ -1,9 +1,11 @@
 """Tests for the LiteLLM client adapter."""
 
 import json
+import logging
 from math import isnan
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from litellm.exceptions import APIError, BadRequestError, RateLimitError, Timeout
 from pydantic import BaseModel, Field
@@ -22,6 +24,8 @@ from qfa.domain.errors import (
     LLMTimeoutError,
 )
 from qfa.domain.models import LLMResponse
+
+SENTINEL = "LEAK-CANARY-7f3a"
 
 MODEL = "azure/gpt-5.4"
 SYSTEM_MSG = "You are a helpful assistant."
@@ -391,6 +395,200 @@ class TestLiteLLMClientExceptionMapping:
                     _StructuredResponse,
                     timeout=TIMEOUT,
                 )
+
+
+class TestProviderTextContainment:
+    """Provider exception text never reaches the domain error (ADR-018)."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("exc_factory", "expected_class"),
+        [
+            (
+                lambda: Timeout(
+                    message=f"boom {SENTINEL}", model=MODEL, llm_provider="azure_ai"
+                ),
+                LLMTimeoutError,
+            ),
+            (
+                lambda: RateLimitError(
+                    message=f"boom {SENTINEL}", model=MODEL, llm_provider="azure_ai"
+                ),
+                LLMRateLimitError,
+            ),
+            (
+                lambda: BadRequestError(
+                    message=f"boom {SENTINEL}", model=MODEL, llm_provider="azure_ai"
+                ),
+                LLMBadRequestError,
+            ),
+            (
+                lambda: APIError(
+                    status_code=500,
+                    message=f"boom {SENTINEL}",
+                    model=MODEL,
+                    llm_provider="azure_ai",
+                ),
+                LLMError,
+            ),
+        ],
+    )
+    async def test_sentinel_absent_from_domain_error(self, exc_factory, expected_class):
+        client = _make_client()
+        with patch(
+            "qfa.adapters.llm_client.acompletion",
+            new_callable=AsyncMock,
+            side_effect=exc_factory(),
+        ):
+            with pytest.raises(expected_class) as excinfo:
+                await client._complete_once(
+                    system_message=SYSTEM_MSG,
+                    user_message=USER_MSG,
+                    tenant_id=TENANT_ID,
+                    timeout=TIMEOUT,
+                    response_format=None,
+                )
+
+        err = excinfo.value
+        assert SENTINEL not in str(err)
+        assert not any(SENTINEL in str(a) for a in err.args)
+        assert err.__cause__ is not None
+
+    @pytest.mark.asyncio
+    async def test_content_filter_sniff_reads_but_does_not_propagate_sentinel(self):
+        """The Azure content-filter sniff inspects the string but never leaks it."""
+        client = _make_client()
+        with patch(
+            "qfa.adapters.llm_client.acompletion",
+            new_callable=AsyncMock,
+            side_effect=BadRequestError(
+                message=(
+                    "The response was filtered due to the content "
+                    f"management policy {SENTINEL}"
+                ),
+                model=MODEL,
+                llm_provider="azure_ai",
+            ),
+        ):
+            with pytest.raises(LLMContentPolicyViolationError) as excinfo:
+                await client._complete_once(
+                    system_message=SYSTEM_MSG,
+                    user_message=USER_MSG,
+                    tenant_id=TENANT_ID,
+                    timeout=TIMEOUT,
+                    response_format=None,
+                )
+
+        err = excinfo.value
+        assert SENTINEL not in str(err)
+        assert not any(SENTINEL in str(a) for a in err.args)
+        assert err.__cause__ is not None
+
+    @pytest.mark.asyncio
+    async def test_rate_limit_scalars_from_response_header(self):
+        response = httpx.Response(
+            429,
+            headers={"retry-after": "17"},
+            request=httpx.Request("POST", "http://example.com"),
+        )
+        client = _make_client()
+        with patch(
+            "qfa.adapters.llm_client.acompletion",
+            new_callable=AsyncMock,
+            side_effect=RateLimitError(
+                message="rate limited",
+                model=MODEL,
+                llm_provider="azure_ai",
+                response=response,
+            ),
+        ):
+            with pytest.raises(LLMRateLimitError) as excinfo:
+                await client._complete_once(
+                    system_message=SYSTEM_MSG,
+                    user_message=USER_MSG,
+                    tenant_id=TENANT_ID,
+                    timeout=TIMEOUT,
+                    response_format=None,
+                )
+
+        assert excinfo.value.retry_after == 17
+        assert excinfo.value.provider_status == 429
+
+    @pytest.mark.asyncio
+    async def test_rate_limit_retry_after_none_without_header(self):
+        client = _make_client()
+        with patch(
+            "qfa.adapters.llm_client.acompletion",
+            new_callable=AsyncMock,
+            side_effect=RateLimitError(
+                message="rate limited", model=MODEL, llm_provider="azure_ai"
+            ),
+        ):
+            with pytest.raises(LLMRateLimitError) as excinfo:
+                await client._complete_once(
+                    system_message=SYSTEM_MSG,
+                    user_message=USER_MSG,
+                    tenant_id=TENANT_ID,
+                    timeout=TIMEOUT,
+                    response_format=None,
+                )
+
+        assert excinfo.value.retry_after is None
+
+    @pytest.mark.asyncio
+    async def test_pydantic_validation_error_excludes_sentinel_and_payload(self):
+        mock_response = _make_mock_response()
+        mock_response.choices[0].message.content = json.dumps({"invalid": SENTINEL})
+        client = _make_client()
+        with patch(
+            "qfa.adapters.llm_client.acompletion",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ):
+            with pytest.raises(LLMError) as excinfo:
+                await client.complete(
+                    SYSTEM_MSG,
+                    USER_MSG,
+                    TENANT_ID,
+                    _StructuredResponse,
+                    timeout=TIMEOUT,
+                )
+
+        err = excinfo.value
+        assert str(err) == "LLM response validation failed for _StructuredResponse"
+        assert SENTINEL not in str(err)
+        assert err.__cause__ is not None
+
+    @pytest.mark.asyncio
+    async def test_no_log_record_contains_sentinel(self, caplog):
+        """No log record's message contains the sentinel, at DEBUG level.
+
+        This exercises tenacity's ``before_sleep_log``, which interpolates
+        ``str(exc)`` of the domain error on each retry — clean only because
+        step 2 keeps that string free of provider text. Provider text
+        reachable only via the ``exc_info`` traceback is exempt per ADR-018.
+        """
+        client = _make_client()
+        with (
+            patch(
+                "qfa.adapters.llm_client.acompletion",
+                new_callable=AsyncMock,
+                side_effect=RateLimitError(
+                    message=f"boom {SENTINEL}", model=MODEL, llm_provider="azure_ai"
+                ),
+            ),
+            patch(
+                "qfa.adapters.llm_client.wait_exponential",
+                return_value=wait_fixed(0.01),
+            ),
+            caplog.at_level(logging.DEBUG),
+        ):
+            with pytest.raises(LLMRateLimitError):
+                await client.complete(
+                    SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=0.01
+                )
+
+        assert not any(SENTINEL in record.getMessage() for record in caplog.records)
 
 
 class TestLiteLLMClientRetry:

@@ -456,3 +456,27 @@ class TestUsageBackendUnavailable:
             )
         assert resp.status_code == 503
         assert resp.json()["error"]["code"] == "usage_backend_unavailable"
+
+    async def test_usage_503_body_excludes_sentinel(self, test_app):
+        """The 503 body never carries the DSN-bearing exception message (ADR-018).
+
+        Reuses ``_UnavailableUsageRepository`` with a sentinel as the raised
+        message; the handler's response is a fixed generic string regardless.
+        """
+
+        class _SentinelUsageRepository(_UnavailableUsageRepository):
+            async def get_usage_stats_for_one_tenant(
+                self, tenant_id, from_=None, to=None
+            ):
+                raise UsageRepositoryUnavailableError("LEAK-CANARY-7f3a")
+
+        test_app.state.usage_repo = _SentinelUsageRepository()
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=test_app),
+            base_url="http://test",
+        ) as client:
+            resp = await client.get(
+                "/v1/usage",
+                headers={"Authorization": f"Bearer {FAKE_API_KEY}"},
+            )
+        assert "LEAK-CANARY-7f3a" not in resp.text

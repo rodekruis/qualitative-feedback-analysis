@@ -26,6 +26,7 @@ to them, the options considered, and the reasoning behind the chosen approach.
 | [015](015-hdbscan-clustering.md) | Cluster feedback records with HDBSCAN | Accepted |
 | [016](016-guard-auto-deploy-on-publish.md) | Guard auto-deploy on release publish to the latest version only | Accepted |
 | [017](017-orchestrator-composition-only.md) | Decompose the Orchestrator by composition only | Accepted (supersedes decision 3 of [011](011-drop-orchestrator-port.md)) |
+| [018](018-no-third-party-text-in-error-envelope.md) | No third-party text in the error envelope | Accepted |
 
 ## Obsolete
 
@@ -52,5 +53,6 @@ to them, the options considered, and the reasoning behind the chosen approach.
 015-hdbscan-clustering
 016-guard-auto-deploy-on-publish
 017-orchestrator-composition-only
+018-no-third-party-text-in-error-envelope
 obsolete/008-keep-orchestrator-port
 ```

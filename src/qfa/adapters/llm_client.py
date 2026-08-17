@@ -17,7 +17,7 @@ from tenacity import (
     wait_exponential,
 )
 
-from qfa.domain import AnalysisError, FeedbackTooLargeError
+from qfa.domain import FeedbackTooLargeError, PromptInjectionDetectedError
 from qfa.domain.errors import (
     LLMBadRequestError,
     LLMContentPolicyViolationError,
@@ -90,6 +90,64 @@ def _provider_safe_response_format(model: type[BaseModel]) -> dict:
     return cast(dict, _strip_unsupported_schema_keywords(response_format))
 
 
+def _provider_status(exc: Exception) -> int | None:
+    """Return the provider's HTTP status code, or ``None`` if unavailable."""
+    status_code = getattr(exc, "status_code", None)
+    return status_code if isinstance(status_code, int) else None
+
+
+def _retry_after_seconds(exc: Exception) -> int | None:
+    """Return the provider's ``Retry-After`` header value in seconds.
+
+    Reads the header only, never the exception text. Returns ``None`` when
+    the header is missing, is an HTTP-date rather than an integer, or no
+    response/headers are attached to ``exc`` at all.
+    """
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", None) or getattr(exc, "headers", None)
+    if not headers:
+        return None
+    try:
+        return int(headers["retry-after"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _to_domain_error(
+    exc: Timeout | RateLimitError | BadRequestError | APIError,
+    provider_status: int | None,
+) -> LLMError:
+    """Translate a litellm provider exception into a domain error with a fixed message.
+
+    The message is always hand-written in this repo — never provider text
+    (see ADR-018). The one exception is the Azure content-filter sniff
+    below: it *reads* the provider string to choose between
+    ``LLMContentPolicyViolationError`` and ``LLMBadRequestError``, but the
+    string itself is never propagated into either error.
+    """
+    if isinstance(exc, Timeout):
+        return LLMTimeoutError(
+            "LLM provider timed out", provider_status=provider_status
+        )
+    if isinstance(exc, RateLimitError):
+        return LLMRateLimitError(
+            "LLM provider rate limit exceeded",
+            provider_status=provider_status,
+            retry_after=_retry_after_seconds(exc),
+        )
+    if isinstance(exc, BadRequestError):
+        msg = str(exc)
+        if "filtered" in msg and "content management policy" in msg:
+            return LLMContentPolicyViolationError(
+                "LLM provider rejected the request under its content policy",
+                provider_status=provider_status,
+            )
+        return LLMBadRequestError(
+            "LLM provider rejected the request", provider_status=provider_status
+        )
+    return LLMError("LLM provider call failed", provider_status=provider_status)
+
+
 class LiteLLMClient(LLMPort):
     """LLM adapter satisfying LLMPort via LiteLLM.
 
@@ -136,7 +194,7 @@ class LiteLLMClient(LLMPort):
 
         Raises
         ------
-        AnalysisError
+        PromptInjectionDetectedError
             When a document matches an injection pattern.
         """
         _INJECTION_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
@@ -155,7 +213,7 @@ class LiteLLMClient(LLMPort):
                     pattern_name,
                 )
                 msg = f"Prompt injection detected pattern={pattern_name}"
-                raise AnalysisError(msg)
+                raise PromptInjectionDetectedError(msg)
 
     def _check_token_limit(self, system_message: str, user_message: str) -> None:
         """Estimate total tokens and raise if over the limit.
@@ -218,22 +276,15 @@ class LiteLLMClient(LLMPort):
                 timeout=timeout,
                 response_format=response_format,
             )
-        except Timeout as exc:
-            logger.error(exc)
-            raise LLMTimeoutError(str(exc)) from exc
-        except RateLimitError as exc:
-            logger.error(exc)
-            raise LLMRateLimitError(str(exc)) from exc
-        except BadRequestError as exc:
-            logger.error(exc)
-            msg = str(exc)
-            if "filtered" in msg and "content management policy" in msg:
-                raise LLMContentPolicyViolationError(str(exc)) from exc
-            else:
-                raise LLMBadRequestError(str(exc)) from exc
-        except APIError as exc:
-            logger.error(exc)
-            raise LLMError(str(exc)) from exc
+        except (Timeout, RateLimitError, BadRequestError, APIError) as exc:
+            provider_status = _provider_status(exc)
+            logger.error(
+                "LLM provider error: type=%s status=%s model=%s",
+                type(exc).__name__,
+                provider_status,
+                self._model,
+            )
+            raise _to_domain_error(exc, provider_status) from exc
 
     async def complete(
         self,
@@ -276,6 +327,12 @@ class LiteLLMClient(LLMPort):
             When the provider does not respond in time on every attempt.
         LLMRateLimitError
             When the provider rate-limits on every attempt.
+        LLMContentPolicyViolationError
+            When the provider rejects the request under its content policy.
+        LLMBadRequestError
+            When the provider rejects the request for any other reason.
+        PromptInjectionDetectedError
+            When the input matches a known prompt-injection pattern.
         LLMError
             For any other provider error or empty response.
         """
@@ -341,7 +398,7 @@ class LiteLLMClient(LLMPort):
                 )
             except ValidationError as exc:
                 raise LLMResponseParseError(
-                    f"LLM response validation failed for {response_model.__name__}: {exc}"
+                    f"LLM response validation failed for {response_model.__name__}"
                 ) from exc
         elif issubclass(response_model, str):
             parsed_data = content

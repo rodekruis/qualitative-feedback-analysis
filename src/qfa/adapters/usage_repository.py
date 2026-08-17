@@ -63,11 +63,17 @@ async def _translate_db_errors() -> AsyncIterator[None]:
     paths (``record_call``) are intentionally not wrapped: the
     ``TrackingLLMAdapter`` already swallows recording failures so the
     LLM response still flows back to the user.
+
+    The SQLAlchemy exception string is never stored on the domain error:
+    it routinely embeds the DSN — host, port, user, database, and the
+    password when it is in the URL (see ADR-018).
     """
     try:
         yield
     except (OperationalError, InterfaceError) as exc:
-        raise UsageRepositoryUnavailableError(str(exc)) from exc
+        raise UsageRepositoryUnavailableError(
+            "Usage repository is unavailable"
+        ) from exc
 
 
 class SqlAlchemyUsageRepository(UsageRepositoryPort):

@@ -44,7 +44,11 @@ from qfa.domain.errors import (
     FeedbackTooLargeError,
     KeyAlreadyExistsError,
     KeyNotFoundError,
+    LLMContentPolicyViolationError,
     LLMError,
+    LLMRateLimitError,
+    LLMTimeoutError,
+    PromptInjectionDetectedError,
     TenantDoesNotAllowSuperUsersError,
     TenantNotFoundError,
     UsageRepositoryUnavailableError,
@@ -55,6 +59,14 @@ from qfa.settings import AppSettings, LLMSettings
 from qfa.utils import setup_logging
 
 logger = logging.getLogger(__name__)
+
+RATE_LIMIT_RETRY_AFTER_FALLBACK_SECONDS = 30
+"""Used only when the provider sent no usable ``Retry-After`` header.
+
+Not a setting (ADR-018 keeps this off an env var): ~3x the adapter's
+``wait_exponential(max=10)`` backoff cap, long enough to outlast a burst
+the internal retry budget already failed to ride out.
+"""
 
 
 class RequestIdMiddleware:
@@ -393,10 +405,7 @@ async def _handle_analysis_timeout(
 
 
 async def _handle_analysis_error(request: Request, exc: AnalysisError) -> JSONResponse:
-    """Handle AnalysisError exceptions.
-
-    If the error message contains "injection", returns 422 instead of 502
-    to signal that the input was rejected.
+    """Handle AnalysisError exceptions as 502 analysis_unavailable.
 
     Parameters
     ----------
@@ -408,20 +417,14 @@ async def _handle_analysis_error(request: Request, exc: AnalysisError) -> JSONRe
     Returns
     -------
     JSONResponse
-        A 502 or 422 JSON response depending on the error cause.
+        A 502 JSON response.
     """
     logger.debug("Analysis error: %s", exc, exc_info=True)
 
-    if "injection" in str(exc).lower():
-        body = ApiErrorResponse(
-            error=ApiErrorDetail(
-                code="validation_error",
-                message=str(exc),
-                request_id=_get_request_id(request),
-            )
-        )
-        return JSONResponse(status_code=422, content=body.model_dump())
-
+    # Echoing str(exc) is safe only because every AnalysisError /
+    # AnalysisTimeoutError message is authored in this repo as a literal
+    # (or a literal plus a formatted float) — never third-party text
+    # (ADR-018).
     body = ApiErrorResponse(
         error=ApiErrorDetail(
             code="analysis_unavailable",
@@ -432,6 +435,105 @@ async def _handle_analysis_error(request: Request, exc: AnalysisError) -> JSONRe
     return JSONResponse(status_code=502, content=body.model_dump())
 
 
+async def _handle_prompt_injection_detected(
+    request: Request, exc: PromptInjectionDetectedError
+) -> JSONResponse:
+    """Map a detected prompt-injection pattern to 422 prompt_injection_detected.
+
+    The response message is a constant — the pattern name in ``str(exc)``
+    is diagnostic detail for the logs only (ADR-018).
+    """
+    logger.debug("Prompt injection detected: %s", exc)
+    body = ApiErrorResponse(
+        error=ApiErrorDetail(
+            code="prompt_injection_detected",
+            message="Input rejected: matched a known prompt-injection pattern",
+            request_id=_get_request_id(request),
+        )
+    )
+    return JSONResponse(status_code=422, content=body.model_dump())
+
+
+async def _handle_content_policy_violation(
+    request: Request, exc: LLMContentPolicyViolationError
+) -> JSONResponse:
+    """Map an LLM content-policy rejection to 422 content_policy_violation.
+
+    Distinct from other LLM failures because the request itself, not the
+    provider, is at fault — the caller should not retry unmodified input.
+    The response message is a constant, never ``str(exc)`` (ADR-018).
+    """
+    logger.warning(
+        "LLM provider error: type=%s status=%s",
+        type(exc).__name__,
+        exc.provider_status,
+        exc_info=True,
+    )
+    body = ApiErrorResponse(
+        error=ApiErrorDetail(
+            code="content_policy_violation",
+            message="LLM provider rejected the request under its content policy",
+            request_id=_get_request_id(request),
+        )
+    )
+    return JSONResponse(status_code=422, content=body.model_dump())
+
+
+async def _handle_llm_rate_limited(
+    request: Request, exc: LLMRateLimitError
+) -> JSONResponse:
+    """Map an exhausted LLM rate-limit retry budget to 429 llm_rate_limited.
+
+    Sets ``Retry-After`` from the provider's header when available
+    (clamped to ``[1, 3600]``), else :data:`RATE_LIMIT_RETRY_AFTER_FALLBACK_SECONDS`.
+    The response message is a constant, never ``str(exc)`` (ADR-018).
+    """
+    logger.warning(
+        "LLM provider error: type=%s status=%s",
+        type(exc).__name__,
+        exc.provider_status,
+        exc_info=True,
+    )
+    retry_after = (
+        max(1, min(exc.retry_after, 3600))
+        if exc.retry_after is not None and exc.retry_after > 0
+        else RATE_LIMIT_RETRY_AFTER_FALLBACK_SECONDS
+    )
+    body = ApiErrorResponse(
+        error=ApiErrorDetail(
+            code="llm_rate_limited",
+            message="LLM provider rate limit exceeded",
+            request_id=_get_request_id(request),
+        )
+    )
+    return JSONResponse(
+        status_code=429,
+        content=body.model_dump(),
+        headers={"Retry-After": str(retry_after)},
+    )
+
+
+async def _handle_llm_timeout(request: Request, exc: LLMTimeoutError) -> JSONResponse:
+    """Map an exhausted LLM timeout retry budget to 504 llm_timeout.
+
+    The response message is a constant, never ``str(exc)`` (ADR-018).
+    """
+    logger.warning(
+        "LLM provider error: type=%s status=%s",
+        type(exc).__name__,
+        exc.provider_status,
+        exc_info=True,
+    )
+    body = ApiErrorResponse(
+        error=ApiErrorDetail(
+            code="llm_timeout",
+            message="LLM provider timed out",
+            request_id=_get_request_id(request),
+        )
+    )
+    return JSONResponse(status_code=504, content=body.model_dump())
+
+
 async def _handle_llm_error(request: Request, exc: LLMError) -> JSONResponse:
     """Map an LLM provider failure to 502 bad_gateway.
 
@@ -439,12 +541,20 @@ async def _handle_llm_error(request: Request, exc: LLMError) -> JSONResponse:
     the calling service did not recover from. From the API consumer's
     perspective this is a bad gateway, distinct from a 504 timeout
     (AnalysisTimeoutError) or a 502 analysis failure (AnalysisError).
+    Catches ``LLMBadRequestError`` too, via MRO fall-through — it has no
+    handler of its own. The response message is a constant, never
+    ``str(exc)`` (ADR-018).
     """
-    logger.warning("LLM provider error: %s", exc, exc_info=True)
+    logger.warning(
+        "LLM provider error: type=%s status=%s",
+        type(exc).__name__,
+        exc.provider_status,
+        exc_info=True,
+    )
     body = ApiErrorResponse(
         error=ApiErrorDetail(
             code="llm_error",
-            message=str(exc),
+            message="LLM provider call failed",
             request_id=_get_request_id(request),
         )
     )
@@ -459,7 +569,7 @@ async def _handle_usage_repository_unavailable(
     Signals that the backing store is transiently unreachable. Consumers
     can use the code to drive retry/backoff decisions.
     """
-    logger.warning("Usage repository unavailable: %s", exc)
+    logger.warning("Usage repository unavailable: error_class=%s", type(exc).__name__)
     body = ApiErrorResponse(
         error=ApiErrorDetail(
             code="usage_backend_unavailable",
@@ -723,7 +833,20 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(RequestValidationError, _handle_validation_error)  # ty: ignore[invalid-argument-type]
     app.add_exception_handler(FeedbackTooLargeError, _handle_feedback_too_large)  # ty: ignore[invalid-argument-type]
     app.add_exception_handler(AnalysisTimeoutError, _handle_analysis_timeout)  # ty: ignore[invalid-argument-type]
+    app.add_exception_handler(
+        PromptInjectionDetectedError,
+        _handle_prompt_injection_detected,  # ty: ignore[invalid-argument-type]
+    )
     app.add_exception_handler(AnalysisError, _handle_analysis_error)  # ty: ignore[invalid-argument-type]
+    app.add_exception_handler(
+        LLMContentPolicyViolationError,
+        _handle_content_policy_violation,  # ty: ignore[invalid-argument-type]
+    )
+    app.add_exception_handler(
+        LLMRateLimitError,
+        _handle_llm_rate_limited,  # ty: ignore[invalid-argument-type]
+    )
+    app.add_exception_handler(LLMTimeoutError, _handle_llm_timeout)  # ty: ignore[invalid-argument-type]
     app.add_exception_handler(LLMError, _handle_llm_error)  # ty: ignore[invalid-argument-type]
     app.add_exception_handler(
         UsageRepositoryUnavailableError,

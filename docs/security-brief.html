@@ -299,7 +299,7 @@
       <h2>Audit &amp; Monitoring</h2>
       <ul>
         <li>Every request carries a <strong>traceable correlation ID</strong> from entry to completion.</li>
-        <li>Feedback content, prompts, model output and key values are <strong>never written to logs</strong> — enforced in code.</li>
+        <li>Feedback content, prompts, model output and key values are <strong>never written to log messages</strong> — enforced in code. Diagnostic tracebacks may still carry provider-returned error text and are classified with the corpus for that reason.</li>
         <li>Centralised monitoring with <strong>automated alerts</strong> on errors, downtime and resource strain.</li>
         <li>The database stores <strong>only call metadata</strong> — tenant ID, operation type, token counts, cost, latency, error class — never feedback text, prompts or model output. Queryable via a tenant-scoped usage/audit API.</li>
       </ul>

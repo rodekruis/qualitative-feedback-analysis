@@ -10,6 +10,7 @@ from qfa.domain.errors import (
     LLMError,
     LLMRateLimitError,
     LLMTimeoutError,
+    PromptInjectionDetectedError,
     TenantNotFoundError,
 )
 
@@ -62,6 +63,13 @@ class TestLLMError:
     def test_carries_message(self):
         err = LLMError("llm failure")
         assert str(err) == "llm failure"
+        assert err.args == ("llm failure",)
+
+    def test_provider_status_defaults_to_none(self):
+        assert LLMError("x").provider_status is None
+
+    def test_provider_status_stored(self):
+        assert LLMError("x", provider_status=500).provider_status == 500
 
 
 class TestLLMTimeoutError:
@@ -71,6 +79,7 @@ class TestLLMTimeoutError:
     def test_carries_message(self):
         err = LLMTimeoutError("timeout")
         assert str(err) == "timeout"
+        assert err.args == ("timeout",)
 
 
 class TestLLMRateLimitError:
@@ -80,6 +89,27 @@ class TestLLMRateLimitError:
     def test_carries_message(self):
         err = LLMRateLimitError("rate limited")
         assert str(err) == "rate limited"
+        assert err.args == ("rate limited",)
+
+    def test_provider_status_and_retry_after_default_to_none(self):
+        err = LLMRateLimitError("x")
+        assert err.provider_status is None
+        assert err.retry_after is None
+
+    def test_provider_status_and_retry_after_stored(self):
+        err = LLMRateLimitError("x", provider_status=429, retry_after=17)
+        assert err.provider_status == 429
+        assert err.retry_after == 17
+
+
+class TestPromptInjectionDetectedError:
+    def test_is_subclass_of_analysis_error(self):
+        assert issubclass(PromptInjectionDetectedError, AnalysisError)
+
+    def test_carries_message(self):
+        err = PromptInjectionDetectedError("pattern=ignore_instructions")
+        assert str(err) == "pattern=ignore_instructions"
+        assert err.args == ("pattern=ignore_instructions",)
 
 
 class TestAuthenticationError:

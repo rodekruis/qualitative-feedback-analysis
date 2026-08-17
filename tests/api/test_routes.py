@@ -3,17 +3,26 @@
 import httpx
 import pytest
 
+from qfa.api.app import RATE_LIMIT_RETRY_AFTER_FALLBACK_SECONDS
 from qfa.api.routes import _to_domain_metadata
 from qfa.api.schemas import ApiFeedbackRecordMetadata
 from qfa.domain.errors import (
     AnalysisError,
     AnalysisTimeoutError,
     FeedbackTooLargeError,
+    LLMBadRequestError,
+    LLMContentPolicyViolationError,
+    LLMError,
+    LLMRateLimitError,
+    LLMTimeoutError,
+    PromptInjectionDetectedError,
 )
 from qfa.domain.models import FeedbackRecordSummaryModel
 from qfa.services.coding import NO_CODING_EMPTY_CONTENT_EXPLANATION
 
 from .conftest import FAKE_API_KEY, FakeService
+
+SENTINEL = "LEAK-CANARY-7f3a"
 
 
 def _auth_header(key=FAKE_API_KEY):
@@ -873,6 +882,92 @@ class TestErrorMapping:
             )
         assert resp.status_code == 502
         assert resp.json()["error"]["code"] == "analysis_unavailable"
+
+
+class TestErrorContractMapping:
+    """Error signal is derived from the exception type alone (ADR-018)."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("error", "expected_status", "expected_code"),
+        [
+            (
+                LLMContentPolicyViolationError("blocked"),
+                422,
+                "content_policy_violation",
+            ),
+            (LLMRateLimitError("rate limited"), 429, "llm_rate_limited"),
+            (LLMTimeoutError("timed out"), 504, "llm_timeout"),
+            (LLMBadRequestError("bad request"), 502, "llm_error"),
+            (LLMError("provider call failed"), 502, "llm_error"),
+            (
+                PromptInjectionDetectedError("pattern=role_prefix"),
+                422,
+                "prompt_injection_detected",
+            ),
+        ],
+    )
+    async def test_status_and_code_per_class(
+        self, test_app, error, expected_status, expected_code
+    ):
+        test_app.state.analyze_service = FakeService(error=error)
+        async with _make_client(test_app) as c:
+            resp = await c.post(
+                "/v1/analyze-bulk", json=_valid_body(), headers=_auth_header()
+            )
+        assert resp.status_code == expected_status
+        assert resp.json()["error"]["code"] == expected_code
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "error",
+        [
+            LLMContentPolicyViolationError(f"blocked {SENTINEL}"),
+            LLMRateLimitError(f"rate limited {SENTINEL}"),
+            LLMTimeoutError(f"timed out {SENTINEL}"),
+            LLMBadRequestError(f"bad request {SENTINEL}"),
+            LLMError(f"provider call failed {SENTINEL}"),
+            PromptInjectionDetectedError(f"pattern=role_prefix {SENTINEL}"),
+        ],
+    )
+    async def test_sentinel_absent_from_full_response_body(self, test_app, error):
+        """The whole serialized body is checked, not just error.message.
+
+        Why: a future field addition (e.g. a debug echo elsewhere in the
+        envelope) must not silently reintroduce the leak.
+        """
+        test_app.state.analyze_service = FakeService(error=error)
+        async with _make_client(test_app) as c:
+            resp = await c.post(
+                "/v1/analyze-bulk", json=_valid_body(), headers=_auth_header()
+            )
+        assert SENTINEL not in resp.text
+
+    @pytest.mark.asyncio
+    async def test_retry_after_from_provider_header(self, test_app):
+        test_app.state.analyze_service = FakeService(
+            error=LLMRateLimitError("rate limited", retry_after=17)
+        )
+        async with _make_client(test_app) as c:
+            resp = await c.post(
+                "/v1/analyze-bulk", json=_valid_body(), headers=_auth_header()
+            )
+        assert resp.headers["retry-after"] == "17"
+        assert int(resp.headers["retry-after"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_retry_after_fallback_without_provider_header(self, test_app):
+        test_app.state.analyze_service = FakeService(
+            error=LLMRateLimitError("rate limited")
+        )
+        async with _make_client(test_app) as c:
+            resp = await c.post(
+                "/v1/analyze-bulk", json=_valid_body(), headers=_auth_header()
+            )
+        assert resp.headers["retry-after"] == str(
+            RATE_LIMIT_RETRY_AFTER_FALLBACK_SECONDS
+        )
+        assert int(resp.headers["retry-after"]) > 0
 
 
 # ------------------------------------------------------------------ #
