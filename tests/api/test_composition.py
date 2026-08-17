@@ -11,13 +11,16 @@ from pydantic import SecretStr
 from qfa.adapters.llm_client import LiteLLMClient
 from qfa.adapters.presidio_anonymizer import PresidioAnonymizer
 from qfa.api.composition import (
+    build_analyze_service,
     build_orchestrator,
     build_services,
     resolve_judge_llm_settings,
 )
+from qfa.services.analyze import AnalyzeService
 from qfa.services.coding import CodingService
 from qfa.services.orchestrator import Orchestrator
 from qfa.services.sensitivity import SensitivityService
+from qfa.services.summarize import SummarizeService
 from qfa.settings import AppSettings, JudgeLLMSettings, LLMSettings
 
 JUDGE_ENV_VARS = (
@@ -315,11 +318,11 @@ class TestBuildOrchestrator:
     """Composition factory wires the orchestrator dependencies correctly."""
 
     def test_returns_orchestrator_with_default_components(self, auth_env: None) -> None:
-        """Without overrides the factory builds a real LLM + Presidio + no embedder.
+        """Without overrides the factory builds a real LLM + Presidio.
 
-        Embedder is ``None`` when ``EMBEDDING_MODEL_PATH`` is unset — the
-        normal local/CI state — and the orchestrator carries that through
-        until ``analyze_hierarchical`` is called.
+        The embedder lives on ``AnalyzeService`` (the only use case that
+        needs one), so the orchestrator carries no embedder at all — see
+        ``TestBuildAnalyzeService`` for its side of this.
         """
         settings = AppSettings()
 
@@ -330,8 +333,6 @@ class TestBuildOrchestrator:
         # We do not invoke it; we just confirm the factory picked it up.
         assert isinstance(orchestrator._llm, LiteLLMClient)
         assert isinstance(orchestrator._anonymizer, PresidioAnonymizer)
-        assert orchestrator._embedder is None
-        assert orchestrator._analyze_settings is settings.analyze
 
     def test_uses_injected_llm(self, auth_env: None) -> None:
         """An ``llm=`` override is plumbed straight into the orchestrator.
@@ -345,19 +346,6 @@ class TestBuildOrchestrator:
         orchestrator = build_orchestrator(settings, llm=stub_llm)
 
         assert orchestrator._llm is stub_llm
-
-    def test_uses_injected_embedder(self, auth_env: None) -> None:
-        """An ``embedder=`` override is plumbed straight into the orchestrator.
-
-        Mirrors the lifespan, which builds the embedder explicitly to log
-        its construction at startup and then passes it in.
-        """
-        settings = AppSettings()
-        stub_embedder = _StubEmbedder()
-
-        orchestrator = build_orchestrator(settings, embedder=stub_embedder)
-
-        assert orchestrator._embedder is stub_embedder
 
     def test_propagates_token_budget_and_timeouts(self, auth_env: None) -> None:
         """LLM-side limits flow from settings.llm into the orchestrator.
@@ -378,8 +366,68 @@ class TestBuildOrchestrator:
         assert orchestrator._max_total_tokens == expected_max_tokens
 
 
+class TestBuildAnalyzeService:
+    """Composition factory wires the analyze service dependencies correctly."""
+
+    def test_returns_analyze_service_with_default_components(
+        self, auth_env: None
+    ) -> None:
+        """Without overrides the factory builds a real LLM + Presidio + no embedder.
+
+        Embedder is ``None`` when ``EMBEDDING_MODEL_PATH`` is unset — the
+        normal local/CI state — and the service carries that through until
+        ``analyze_hierarchical`` is called, which then raises.
+        """
+        settings = AppSettings()
+
+        analyze = build_analyze_service(settings)
+
+        assert isinstance(analyze, AnalyzeService)
+        assert isinstance(analyze._llm, LiteLLMClient)
+        assert isinstance(analyze._anonymizer, PresidioAnonymizer)
+        assert analyze._embedder is None
+        assert analyze._analyze_settings is settings.analyze
+
+    def test_uses_injected_embedder(self, auth_env: None) -> None:
+        """An ``embedder=`` override is plumbed straight into the analyze service.
+
+        Mirrors the lifespan, which builds the embedder explicitly to log
+        its construction at startup and then passes it in.
+        """
+        settings = AppSettings()
+        stub_embedder = _StubEmbedder()
+
+        analyze = build_analyze_service(settings, embedder=stub_embedder)
+
+        assert analyze._embedder is stub_embedder
+
+    def test_uses_injected_llm_and_judge_llm(self, auth_env: None) -> None:
+        """``llm=`` / ``judge_llm=`` overrides reach the analyze service too."""
+        stub_llm = _StubLLM()
+        stub_judge = _StubLLM()
+
+        analyze = build_analyze_service(
+            AppSettings(), llm=stub_llm, judge_llm=stub_judge
+        )
+
+        assert analyze._llm is stub_llm
+        assert analyze._judge_llm is stub_judge
+
+    def test_propagates_token_budget(self, auth_env: None) -> None:
+        """``max_total_tokens`` flows from settings.llm into the analyze service.
+
+        It sizes the map chunks and reduce groups, so a regression here would
+        silently cap the wrong chunk size — guard it.
+        """
+        settings = AppSettings()
+
+        analyze = build_analyze_service(settings, llm=_StubLLM())
+
+        assert analyze._max_total_tokens == settings.llm.max_total_tokens
+
+
 class TestBuildServices:
-    """The factory returns every service, wired over one shared executor."""
+    """The factory builds every service over one shared executor and anonymiser."""
 
     def test_returns_every_service(self, auth_env: None) -> None:
         """One graph, one field per service the request lifecycle can reach."""
@@ -388,8 +436,10 @@ class TestBuildServices:
         assert isinstance(services.orchestrator, Orchestrator)
         assert isinstance(services.sensitivity, SensitivityService)
         assert isinstance(services.coding, CodingService)
+        assert isinstance(services.analyze, AnalyzeService)
+        assert isinstance(services.summarize, SummarizeService)
 
-    def test_services_share_one_executor_and_anonymizer(self, auth_env: None) -> None:
+    def test_every_service_shares_the_one_executor(self, auth_env: None) -> None:
         """Identity, not equality: a second executor is the failure to catch.
 
         Per ADR-017 the executor is where the token ceiling and per-call
@@ -400,7 +450,31 @@ class TestBuildServices:
 
         assert services.sensitivity._executor is services.orchestrator._executor
         assert services.coding._executor is services.orchestrator._executor
+        assert services.analyze._executor is services.orchestrator._executor
+        assert services.summarize._executor is services.orchestrator._executor
+
+    def test_every_service_shares_the_one_anonymiser(self, auth_env: None) -> None:
+        """Constructing ``PresidioAnonymizer`` loads spaCy models; do it once."""
+        services = build_services(AppSettings(), llm=_StubLLM())
+
         assert services.coding._anonymizer is services.orchestrator._anonymizer
+        assert services.analyze._anonymizer is services.orchestrator._anonymizer
+        assert services.summarize._anonymizer is services.orchestrator._anonymizer
+
+    def test_summarize_service_gets_both_connections(self, auth_env: None) -> None:
+        """Generation and judge clients reach the summarisation service.
+
+        Its two judge call sites moved out of the orchestrator with #264, so
+        a graph that dropped ``judge_llm`` here would silently move them back
+        onto the generation model.
+        """
+        stub_llm = _StubLLM()
+        stub_judge = _StubLLM()
+
+        services = build_services(AppSettings(), llm=stub_llm, judge_llm=stub_judge)
+
+        assert services.summarize._llm is stub_llm
+        assert services.summarize._judge_llm is stub_judge
 
     def test_coding_service_runs_on_the_primary_connection(
         self, auth_env: None, monkeypatch: pytest.MonkeyPatch

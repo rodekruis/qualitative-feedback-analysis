@@ -10,9 +10,10 @@ import qfa
 from qfa.api.dependencies import (
     authenticate_request,
     call_scope_for,
+    get_analyze_service,
     get_coding_service,
-    get_orchestrator,
     get_sensitivity_service,
+    get_summarize_service,
 )
 from qfa.api.schemas import (
     ApiAnalyzeBulkResponse,
@@ -46,12 +47,13 @@ from qfa.domain.models import (
     TenantApiKey,
 )
 from qfa.domain.usage_models import CallContext, Operation
+from qfa.services.analyze import AnalyzeService
 from qfa.services.coding import (
     NO_CODING_EMPTY_CONTENT_EXPLANATION,
     CodingService,
 )
-from qfa.services.orchestrator import Orchestrator
 from qfa.services.sensitivity import SensitivityService
+from qfa.services.summarize import SummarizeService
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +133,7 @@ async def analyze_bulk(
     body: ApiAnalyzeRequest,
     request: Request,
     tenant: TenantApiKey = Depends(authenticate_request),
-    orchestrator: Orchestrator = Depends(get_orchestrator),
+    analyze_service: AnalyzeService = Depends(get_analyze_service),
     _scope: CallContext = Depends(call_scope_for(Operation.ANALYZE)),
 ) -> ApiAnalyzeBulkResponse:
     """Analyze a batch of feedback records for trends and themes.
@@ -181,8 +183,8 @@ async def analyze_bulk(
         The incoming HTTP request.
     tenant : TenantApiKey
         The authenticated tenant, injected via dependency.
-    orchestrator : Orchestrator
-        The orchestrator service, injected via dependency.
+    analyze_service : AnalyzeService
+        The analyze service, injected via dependency.
 
     Returns
     -------
@@ -229,9 +231,9 @@ async def analyze_bulk(
     )
 
     if body.mode == "hierarchical":
-        result = await orchestrator.analyze_hierarchical(domain_request, deadline)
+        result = await analyze_service.analyze_hierarchical(domain_request, deadline)
     else:
-        result = await orchestrator.analyze_bulk(domain_request, deadline)
+        result = await analyze_service.analyze_bulk(domain_request, deadline)
 
     # Map coding_trends domain model → API schema when present.
     api_coding_trends: ApiCodingTrends | None = None
@@ -265,7 +267,7 @@ async def summarize_bulk(
     body: ApiSummarizeBulkRequest,
     request: Request,
     tenant: TenantApiKey = Depends(authenticate_request),
-    orchestrator: Orchestrator = Depends(get_orchestrator),
+    summarize_service: SummarizeService = Depends(get_summarize_service),
     _scope: CallContext = Depends(call_scope_for(Operation.SUMMARIZE_AGGREGATE)),
 ) -> ApiSummarizeBulkResponse:
     """Summarize all submitted feedback records as a single aggregate summary.
@@ -284,8 +286,8 @@ async def summarize_bulk(
         The incoming HTTP request.
     tenant : TenantApiKey
         The authenticated tenant, injected via dependency.
-    orchestrator : Orchestrator
-        The orchestrator service, injected via dependency.
+    summarize_service : SummarizeService
+        The summarisation service, injected via dependency.
 
     Returns
     -------
@@ -320,7 +322,7 @@ async def summarize_bulk(
         espo_feedback_base_url=body.espo_feedback_base_url,
     )
 
-    result = await orchestrator.summarize_bulk(domain_request, deadline)
+    result = await summarize_service.summarize_bulk(domain_request, deadline)
 
     return ApiSummarizeBulkResponse(
         title=result.title,
@@ -340,7 +342,7 @@ async def summarize(
     body: ApiSummarizeRequest,
     request: Request,
     tenant: TenantApiKey = Depends(authenticate_request),
-    orchestrator: Orchestrator = Depends(get_orchestrator),
+    summarize_service: SummarizeService = Depends(get_summarize_service),
     _scope: CallContext = Depends(call_scope_for(Operation.SUMMARIZE)),
 ) -> ApiSummarizeResponse:
     """Summarize submitted feedback record.
@@ -358,8 +360,8 @@ async def summarize(
         The incoming HTTP request.
     tenant : TenantApiKey
         The authenticated tenant, injected via dependency.
-    orchestrator : Orchestrator
-        The orchestrator service, injected via dependency.
+    summarize_service : SummarizeService
+        The summarisation service, injected via dependency.
 
     Returns
     -------
@@ -387,7 +389,7 @@ async def summarize(
         tenant_id=tenant.tenant_id,
     )
 
-    result = await orchestrator.summarize(
+    result = await summarize_service.summarize(
         domain_request,
         deadline,
     )

@@ -39,7 +39,7 @@ Everything that's not in the prohibition list above is fine, especially:
 Hierarchical analysis (`mode=hierarchical`) logs where wall-clock time goes, so a
 slow run can be diagnosed from logs alone — no profiler attach required.
 
-- **Per phase, at INFO** — `Orchestrator.analyze_hierarchical` logs a `starting
+- **Per phase, at INFO** — `AnalyzeService.analyze_hierarchical` logs a `starting
   <phase>` line *before* each potentially slow step (embedding, clustering, map,
   reduce, then judge) and a `<phase> … in <seconds>s` line after it, plus a closing
   one-line breakdown: `analyze_hierarchical done in 87.7s (anonymise=… embed=…

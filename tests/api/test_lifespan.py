@@ -3,7 +3,7 @@
 Why: the lifespan is the *infrastructure* half of the composition root, and it
 owns the one thing ``build_services`` deliberately does not — wrapping each
 LLM client in :class:`TrackingLLMAdapter` so usage and cost are recorded. A
-judge client that reached the orchestrator unwrapped would work perfectly and
+judge client that reached the services unwrapped would work perfectly and
 silently bill nothing, which no functional test would catch.
 
 The lifespan is exercised directly rather than through a live server: nothing
@@ -22,8 +22,10 @@ from qfa.adapters.tracking_llm import TrackingLLMAdapter
 from qfa.api.app import create_app
 from qfa.domain.models import LLMResponse
 from qfa.domain.ports import LLMPort
+from qfa.services.analyze import AnalyzeService
 from qfa.services.coding import CodingService
 from qfa.services.sensitivity import SensitivityService
+from qfa.services.summarize import SummarizeService
 from qfa.settings import LLMSettings
 
 JUDGE_ENV_VARS = (
@@ -167,13 +169,15 @@ async def test_judge_model_alone_is_a_valid_startup_configuration(
 
 
 @pytest.mark.asyncio
-async def test_every_service_is_published_on_app_state(app_env: None):
-    """Each extracted use-case service gets its own ``app.state`` slot.
+async def test_every_service_is_published_on_app_state(app_env: None) -> None:
+    """The lifespan publishes one entry per use-case service on ``app.state``.
 
     The route providers read one slot each, so a service the lifespan forgets
     to publish is a 500 on that endpoint alone — invisible to every other
     test in this module. The API-level tests fake ``app.state`` wholesale, so
-    this is the only place that catches such an omission.
+    this is the only place that catches such an omission. Every service must
+    share the one tracked LLM client and executor the lifespan built, not
+    each hold their own.
     """
     app = create_app(llm_factory=_RecordingFakeLLM)
 
@@ -190,3 +194,13 @@ async def test_every_service_is_published_on_app_state(app_env: None):
         assert isinstance(coding._llm, TrackingLLMAdapter)
         # One executor per process, shared: see ADR-017.
         assert coding._executor is app.state.orchestrator._executor
+
+        assert isinstance(app.state.analyze_service, AnalyzeService)
+        assert app.state.analyze_service._llm is app.state.orchestrator._llm
+        assert app.state.analyze_service._executor is app.state.orchestrator._executor
+
+        summarize = app.state.summarize_service
+
+        assert isinstance(summarize, SummarizeService)
+        assert summarize._llm is app.state.orchestrator._llm
+        assert summarize._executor is app.state.orchestrator._executor

@@ -6,7 +6,7 @@ application service, then the API boundary, and finally the cross-cutting
 concerns (authentication and usage tracking) that every endpoint inherits.
 
 This is the *how*. For the *why* behind the structure — the layer rules, the
-ports-and-adapters split, the single-orchestrator decision — read the
+ports-and-adapters split, the composition-only service decomposition — read the
 [architecture overview](../architecture/index.md) first. The
 [ubiquitous language](../ubiquitous_language.md) governs the names a new
 endpoint introduces; check it before inventing a term.
@@ -19,9 +19,9 @@ operation throughout.
 
 Every inference endpoint follows the same path. A driving adapter (the FastAPI
 route) maps the HTTP request into a domain request, hands it to the
-`Orchestrator`, and maps the domain result back into an HTTP response. The
-orchestrator anonymises the text, calls the LLM through the `LLMPort`, and
-de-anonymises the result. Nothing in the inner layers knows it is being driven
+application service for that use case, and maps the domain result back into an
+HTTP response. The service anonymises the text, calls the LLM through the
+`LLMPort`, and de-anonymises the result. Nothing in the inner layers knows it is being driven
 over HTTP.
 
 ```{mermaid}
@@ -90,21 +90,27 @@ caller — the route injects it from the authenticated key (step 5). Treating it
 as a request field rather than ambient state keeps the use case pure and
 testable.
 
-## 3. Implement the use case in the services layer
+## 3. Implement the use case as an application service
 
 The application layer is being split into one service per use case (epic #112,
-[ADR-017](../adr/017-orchestrator-composition-only.md)). A **new** use case gets
-its own class in `qfa.services` — the way
-{py:class}`~qfa.services.coding.CodingService` owns assign-codes — taking an
-{py:class}`~qfa.services.llm_call_executor.LLMCallExecutor` plus whatever else
-it actually needs, and *never* a shared base class. Until the epic finishes, the
-use cases not yet extracted still live as methods on the shrinking
-`Orchestrator` in `qfa.services.orchestrator`; either way there is no new
-driving port and no second orchestrator implementation — see
-[ADR-011: Drop Swappable-Orchestrator Requirement](../adr/011-drop-orchestrator-port.md)
-and the [application services section](../architecture/03-components.md#the-application-services)
-of the components page. Per-task behaviour is selected by the route calling the
-appropriate service.
+[ADR-017](../adr/017-orchestrator-composition-only.md)). A **new** use case
+gets its own class in `qfa.services` — not a method on a shared class, not a
+subclass of one, and not behind a new driving port. It takes the shared
+{py:class}`~qfa.services.llm_call_executor.LLMCallExecutor` as a constructor
+dependency plus whatever else it actually needs, and nothing it doesn't.
+{py:class}`~qfa.services.coding.CodingService` (assign-codes) and
+{py:class}`~qfa.services.analyze.AnalyzeService` (`analyze_bulk` and
+`analyze_hierarchical` — the only service that also takes an `EmbeddingPort`)
+are the reference examples of this pattern. See
+[ADR-017: Decompose the Orchestrator by composition only](../adr/017-orchestrator-composition-only.md)
+and [ADR-011: Drop Swappable-Orchestrator Requirement](../adr/011-drop-orchestrator-port.md),
+plus the [application services section](../architecture/03-components.md#the-application-services)
+of the components page. Per-task behaviour is selected by the route calling
+the appropriate service.
+
+`Orchestrator` in `qfa.services.orchestrator` holds no use case any more —
+epic #112 emptied it out and #267 deletes it. Do not add to it; there is no
+new driving port and no second orchestrator implementation either way.
 
 A use-case method takes the domain request and an absolute `deadline`, and
 returns a domain result. The established shape — visible on the existing
@@ -143,16 +149,21 @@ async def classify(
 ```
 
 The system message (`_CLASSIFY_PROMPT` above) is a module-level constant kept
-with the other prompts — either in `qfa.services.orchestrator` alongside
-`_DEFAULT_SUMMARIZATION_PROMPT`, or in `qfa.services.prompts` (which is also
-where `build_feedback_record_envelope` lives). The record text always reaches
-the model through that envelope helper, never a raw `str()` of the model.
+with the other prompts — either alongside the service that uses it, or in
+`qfa.services.prompts` when more than one does (which is also where
+`build_feedback_record_envelope` lives). The record text always reaches the
+model through that envelope helper, never a raw `str()` of the model.
 
-The orchestrator depends only on ports — `LLMPort`, `AnonymizationPort`,
+Wire the service into {py:func}`qfa.api.composition.build_services` so it
+shares the one executor and anonymiser, publish it on `app.state` in the
+lifespan, and add a `get_<name>_service` provider in `qfa.api.dependencies`
+for the route to depend on.
+
+Application services depend only on ports — `LLMPort`, `AnonymizationPort`,
 `EmbeddingPort` — declared in `qfa.domain.ports`. Reuse them. Only introduce a
 **new** port (and wire its adapter in the composition root, step 8) when the
-endpoint needs an external dependency the orchestrator does not already hold;
-most endpoints need none. The anonymisation round-trip and the
+endpoint needs an external dependency none of them covers; most endpoints need
+none. The anonymisation round-trip and the
 deadline/timeout/retry policy are documented under
 [cross-cutting concerns](../architecture/04-crosscutting.md) — match them
 rather than reinventing them.
@@ -222,7 +233,7 @@ async def classify(
     body: ApiClassifyRequest,
     request: Request,
     tenant: TenantApiKey = Depends(authenticate_request),
-    orchestrator: Orchestrator = Depends(get_orchestrator),
+    classify_service: ClassifyService = Depends(get_classify_service),
     _scope: CallContext = Depends(call_scope_for(Operation.CLASSIFY)),
 ) -> ApiClassifyResponse:
     """Assign one label to a feedback record.
@@ -244,7 +255,7 @@ async def classify(
         labels=tuple(body.labels),
         tenant_id=tenant.tenant_id,
     )
-    result = await orchestrator.classify(domain_request, deadline)
+    result = await classify_service.classify(domain_request, deadline)
     return ApiClassifyResponse(
         label=result.label,
         confidence=result.confidence,
@@ -257,12 +268,14 @@ inference route:
 
 - `authenticate_request` validates the Bearer key and yields the
   `TenantApiKey` (step 6).
-- `get_orchestrator` injects the orchestrator wired at startup. A use case with
-  its own service gets its own provider instead — `get_coding_service` for
-  assign-codes — so the handler annotates against the one service it calls and
-  the signature says which use case it reaches. Add the provider to
-  `qfa.api.dependencies` (it reads the instance back off `app.state`) and
-  publish the instance in the lifespan.
+- `get_classify_service` injects the one service this route uses, wired at
+  startup. Each extracted use case has its own provider the same way —
+  `get_coding_service` for assign-codes, `get_analyze_service` for
+  analyze-bulk, `get_summarize_service` for summarize — so the handler
+  annotates against the one service it calls and the signature says which
+  use case it reaches. Add the provider to `qfa.api.dependencies` (it reads
+  the instance back off `app.state`) and publish the instance in the
+  lifespan.
 - `call_scope_for(Operation.CLASSIFY)` opens the usage-tracking scope (step 7).
 
 ```{note}
@@ -278,8 +291,7 @@ unchanged.
 ```
 
 The route is also where the API ↔ domain mapping happens — never pass an API
-schema into the application service, and never return a domain model from the
-route.
+schema into the service, and never return a domain model from the route.
 API value objects are mapped to their domain equivalents here too: the
 `_to_domain_metadata` helper converts an `ApiFeedbackRecordMetadata` into the
 domain `FeedbackRecordMetadataModel` before it enters `FeedbackRecordModel`.
@@ -342,13 +354,15 @@ usage endpoints; no further work is needed there.
 Skip this step for an endpoint that reuses the existing LLM and anonymisation
 ports — the common case. The composition root
 ([`qfa.api.app` lifespan plus `qfa.api.composition`](../architecture/03-components.md#composition-root))
-already constructs the orchestrator with everything an inference method needs.
+already constructs the services with everything an inference method needs.
 
 Add to the composition root only when the endpoint requires an external
-dependency the orchestrator does not yet hold. In that case: declare a new
+dependency no existing port covers. In that case: declare a new
 port in `qfa.domain.ports`, implement an adapter that **explicitly inherits**
 the port (the project requires the inheritance even though `Protocol`s allow
-structural typing), and pass it into the orchestrator where it is built.
+structural typing), and pass it into the *one* service that needs it in
+`build_services` — not onto every service, which is the whole point of giving
+each use case its own constructor.
 
 ## 9. Map any new domain errors to HTTP
 

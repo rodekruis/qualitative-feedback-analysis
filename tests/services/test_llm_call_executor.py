@@ -34,10 +34,10 @@ from qfa.domain.ports import AnonymizationPort
 from qfa.services.llm_call_executor import LLMCallExecutor, SlotTiming
 from qfa.settings import LLM_RETRY_BUDGET_MULTIPLIER, OrchestratorSettings
 
-# Reuse the doubles the orchestrator suite already ships rather than growing a
+# Reuse the doubles the summarize suite already ships rather than growing a
 # second, drifting pair (ADR-017: service tests use the real executor over the
 # existing fake driven adapters).
-from .test_orchestrator import FakeAnonymizer, FakeLLMPort
+from .test_summarize import FakeAnonymizer, FakeLLMPort
 
 TENANT_ID = "tenant-42"
 LLM_TIMEOUT = 30.0

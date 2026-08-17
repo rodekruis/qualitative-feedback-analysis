@@ -107,7 +107,7 @@ add further layers.
 
 ## Judge call and quality signal
 
-After the main analysis LLM call, the orchestrator issues a second
+After the main analysis LLM call, `AnalyzeService` issues a second
 **judge call** using `build_analyze_judge_system_message` from
 `qfa.services.prompts`. The analyse judge is a dedicated prompt
 distinct from the `summarize_aggregate` judge (different output shape:
@@ -128,20 +128,21 @@ as the analysis call, same `operation=analyze`). Analysts see the result as
 
 If the judge call fails for any reason
 (`LLMError`, `LLMTimeoutError`, `LLMRateLimitError`, `ValidationError`,
-`AnalysisError`), the orchestrator logs a warning and returns the analysis
+`AnalysisError`), the service logs a warning and returns the analysis
 with `quality_score=null` and a constant unavailable explanation.
 **The analysis itself is always returned** — judge failure is not an error.
 
 ## Selective de-anonymisation (PERSON retention)
 
-The orchestrator restores most placeholders before returning the analysis,
+`AnalyzeService` restores most placeholders before returning the analysis,
 but **deliberately leaves `<PERSON_*>` placeholders un-restored**. The set
-of retained entity types is declared on the `Orchestrator` class as
+of retained entity types is declared on the `AnalyzeService` class as
 `_ANALYZE_RETAINED_PLACEHOLDER_TYPES` (currently `frozenset({"PERSON"})`)
 and applied by filtering the mapping passed to
 `AnonymizationPort.deanonymize` — the port still does exactly what its
 contract promises ("restore everything in this mapping"); the policy of
-*what's in the mapping* is the orchestrator's domain decision.
+*what's in the mapping* is the service's domain decision. Both analyse
+modes share the one definition — which is why they share one service.
 
 This is a deterministic backstop to the `ANALYZE_GUARDRAILS_PROMPT` rule
 "Do not identify individual people". Even if the analyse LLM echoes a
@@ -151,7 +152,7 @@ underlying name. Other entity types Presidio detects (e.g. `LOCATION`,
 covers aggregate-trend output and analysts may need location context for
 the trend interpretation.
 
-The retention applies **only to `analyze`** — `summarize`,
+The retention applies **only to the analyse modes** — `summarize`,
 `summarize_aggregate`, and `assign_codes` continue to restore all
 placeholders, because their per-record output is meant to be faithful to
 the source.
@@ -161,12 +162,12 @@ the source.
 ```mermaid
 sequenceDiagram
     participant route as Route handler
-    participant orch as Orchestrator
+    participant orch as AnalyzeService
     participant anon as AnonymizationPort
     participant llm as LLMPort
     participant judge as LLMPort (judge)
 
-    route->>orch: analyze(request, deadline)
+    route->>orch: analyze_bulk(request, deadline)
     orch->>orch: build_analyze_user_message(prompt, records)
     orch->>anon: anonymize(user_message)
     anon-->>orch: (anonymised_msg, mapping)

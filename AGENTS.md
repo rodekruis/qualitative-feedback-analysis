@@ -28,27 +28,28 @@ Use `uv` for all dependency management (not `pip`). Examples:
 
 Hexagonal architecture. Key concepts:
 
-- Flow: API call(documents) -> Orchestrator -> LLM API -> return result
-- The Orchestrator is a single application service composed of multiple
-  use cases (analyze, summarize, summarize_aggregate, assign_codes).
-  Per-task behaviour is selected by the route handler calling the
-  appropriate method, not by swapping orchestrator implementations
-  (see ADR-011).
+- Flow: API call(documents) -> application service -> LLM API -> return result
+- Each use case is an application service in `qfa.services`, and each
+  route handler depends on the single service it needs. Per-task
+  behaviour is selected by the route handler calling the appropriate
+  method, not by swapping service implementations (see ADR-011).
+  Epic #112 has extracted `SensitivityService`
+  (detect_sensitive_content, #263), `CodingService` (assign_codes,
+  #265), `AnalyzeService` (analyze_bulk, analyze_hierarchical, #266)
+  and `SummarizeService` (summarize_bulk, summarize, #264);
+  `Orchestrator` now holds no use case and is deleted by #267. Do not
+  add new use cases to it.
+- Services share behaviour by **composition only** — the shared LLM-call
+  scaffolding is the injected `LLMCallExecutor` collaborator, never a
+  base class (see ADR-017).
 - Driven adapters (LLM provider, anonymisation) sit behind ports
   declared in `qfa.domain.ports` — for example `LLMPort` and
   `AnonymizationPort` — so implementations can be swapped.
-- **Every class that implements a port must explicitly inherit from it
-  — by default, this applies to production adapters *and* test
-  doubles** (e.g. `class LiteLLMClient(LLMPort):`,
-  `class PresidioAnonymizer(AnonymizationPort):`,
-  `class FakeLLMPort(LLMPort):`). Although Python `Protocol`s support
-  structural typing without inheritance, the explicit base class makes
-  the port↔adapter relationship discoverable in IDEs ("go to
-  definition" jumps to the contract) and signals intent to readers.
-  Skipping the inheritance is reserved for genuinely ad-hoc cases
-  (e.g. one-line `unittest.mock.MagicMock(spec=LLMPort)` usages, which
-  enforce conformance via `spec=`) and should be the exception, not
-  the default.
+- **Port implementations must explicitly inherit the port** — production
+  adapters *and* test doubles (`class LiteLLMClient(LLMPort):`,
+  `class FakeLLMPort(LLMPort):`). `Protocol`s don't require it, but the
+  explicit base makes the contract navigable in IDEs. Exception: one-line
+  `MagicMock(spec=LLMPort)`.
 - API calls are authenticated via API keys.
 
 Layer rules are enforced by `import-linter` contracts in
@@ -78,18 +79,44 @@ layout is:
 
 ## Documentation
 
-Keep `docs/` in sync with code changes. When a change touches anything documented under
-`docs/` — architecture, ports/adapters, settings, endpoints, operational procedures, the
-developer workflow — update the relevant page in the same PR. This also applies to
-*additions*: if you introduce a new concept or behavior that's similar in kind to what
-`docs/` already covers, add or extend the relevant page in the same PR -- start from
-the [documentation index](docs/README.md) to see what's covered. Doc rot is harder to
-catch in review than code drift; the cheapest moment to fix it is while the change is
-fresh.
-If anything related to security is changed, then the docs/security-brief.html should be updated to reflect the change.
+Update `docs/` in the same PR as the code — for changes *and* additions. If you
+introduce a concept similar in kind to something already covered, extend that page;
+start from the [documentation index](docs/README.md). Doc rot is harder to catch in
+review than code drift.
 
+If anything security-related changes, update `docs/security-brief.html`.
 
 - Section indexes live at `docs/<section>/index.md` (with thin `README.md` stubs as
   github.com folder landing pages).
 - The Sphinx site is built via `make docs` at the repo root; output lands at
   `docs/_build/html/`.
+
+## Documentation and comment style
+
+Brevity is not tidiness — it is what gets the text read. A page or docstring nobody
+reads still has to be maintained, so it is worse than none.
+
+The unit of judgement is the *added fact*: after the first line, every line must tell
+the reader something they cannot get from the name, the signature, the type hints, or
+the code itself.
+
+Earns more than a summary line:
+
+- a contract the signature doesn't show — preconditions, invariants, what it raises
+- units, bounds, or formats a type can't carry (`timeout: float` — seconds? ms?)
+- caller-visible behaviour that would surprise — mutation, ordering, idempotency,
+  cost (an LLM or embedding call), retries
+- a pointer to the *why* when it isn't obvious (link the ADR, don't restate it)
+
+Does not:
+
+- restating the signature, or a numpy `Parameters`/`Returns` section where name plus
+  type already says it
+- narrating the implementation step by step — that's the code
+- history ("previously…", "refactored to…") — that's git
+- examples for a function whose use is obvious from its name
+
+`docs/` covers behaviour needed to operate or maintain the service; implementation
+detail belongs in the code. Prefer a list, table, or short code example over
+paragraphs. When editing an existing docstring or page, it must not get longer unless
+behaviour was added.

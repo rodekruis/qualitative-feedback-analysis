@@ -132,7 +132,7 @@ class TestResponseShape:
 
         from qfa.services.prompts import JUDGE_UNAVAILABLE_EXPLANATION
 
-        test_app.state.orchestrator = FakeOrchestrator(
+        test_app.state.analyze_service = FakeOrchestrator(
             analyze_result=AnalysisResultModel(
                 result="Some analysis.",
                 quality_score=None,

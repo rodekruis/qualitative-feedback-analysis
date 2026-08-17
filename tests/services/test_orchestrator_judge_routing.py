@@ -1,15 +1,21 @@
 """Tests for routing judge calls to a separate LLM connection (#258).
 
 Why its own module: the property under test is *which client served which
-call*, which cuts across four orchestrator methods that otherwise have little
-in common. Each test drives a real orchestrator method with two distinguishable
+call*, which cuts across four use-case methods that otherwise have little
+in common. Each test drives a real use-case method with two distinguishable
 fakes — one primary, one judge — and asserts the split, so a future refactor
 that quietly re-points a call site at ``self._llm`` fails here rather than
 showing up as a mysterious cost shift in production.
 
 The complementary case matters just as much: with no judge client configured
-the orchestrator must behave exactly as it did before, so every test below has
+the services must behave exactly as they did before, so every test below has
 a counterpart asserting the single-client default.
+
+Two of the four call sites moved out of ``Orchestrator`` into
+:class:`~qfa.services.summarize.SummarizeService` (#264). The routing tests
+stay together here rather than following the use case into
+``test_summarize.py``: what they pin is the cross-service split, and splitting
+them per service is exactly how one call site quietly stops being checked.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -41,11 +47,13 @@ from qfa.domain.ports import (
     UsageRepositoryPort,
 )
 from qfa.domain.usage_models import LLMCallRecord, Operation
+from qfa.services.analyze import AnalyzeJudgeResult, AnalyzeService
 from qfa.services.call_context import call_scope
 from qfa.services.coding import CodingService
 from qfa.services.coding_classifier import CodingResponse, JudgeResponse
 from qfa.services.llm_call_executor import LLMCallExecutor
-from qfa.services.orchestrator import AnalyzeJudgeResult, Orchestrator
+from qfa.services.orchestrator import Orchestrator
+from qfa.services.summarize import SummarizeService
 from qfa.settings import AnalyzeSettings, OrchestratorSettings
 
 TENANT_ID = "tenant-42"
@@ -240,6 +248,59 @@ def _build_coding_service(primary: LLMPort) -> CodingService:
     )
 
 
+def _build_summarize(
+    primary: LLMPort, judge: LLMPort | None = None
+) -> SummarizeService:
+    """Build a summarisation service over the given client(s).
+
+    Mirrors :func:`_build`, and like the production wiring it hands the
+    service the real :class:`LLMCallExecutor` — built over the *primary*
+    connection, since judge calls pick their client per call.
+    """
+    anonymizer = NoopAnonymizer()
+    return SummarizeService(
+        llm=primary,
+        judge_llm=judge,
+        anonymizer=anonymizer,
+        executor=LLMCallExecutor(
+            llm=primary,
+            anonymizer=anonymizer,
+            settings=OrchestratorSettings(),
+            llm_timeout_seconds=LLM_TIMEOUT,
+            max_total_tokens=MAX_TOKENS,
+        ),
+    )
+
+
+def _build_analyze(
+    primary: LLMPort, judge: LLMPort | None = None, **kwargs
+) -> AnalyzeService:
+    """Build an analyze service over the given client(s).
+
+    Mirrors :func:`_build` for the extracted analyse use case, over the
+    *real* ``LLMCallExecutor`` (ADR-017 decision 3) so the judge client
+    that reaches ``bounded_complete`` is the production one.
+    """
+    anonymizer = NoopAnonymizer()
+    settings = OrchestratorSettings()
+    executor = LLMCallExecutor(
+        llm=primary,
+        anonymizer=anonymizer,
+        settings=settings,
+        llm_timeout_seconds=LLM_TIMEOUT,
+        max_total_tokens=MAX_TOKENS,
+    )
+    return AnalyzeService(
+        executor=executor,
+        llm=primary,
+        judge_llm=judge,
+        anonymizer=anonymizer,
+        settings=settings,
+        max_total_tokens=MAX_TOKENS,
+        **kwargs,
+    )
+
+
 class TestDefaultsToThePrimaryClient:
     """With no judge client, every call — judge included — goes to the primary."""
 
@@ -248,8 +309,20 @@ class TestDefaultsToThePrimaryClient:
         primary = RoutingLLM("primary")
 
         orchestrator = _build(primary)
+        analyze = _build_analyze(primary)
 
         assert orchestrator._judge_llm is primary
+        assert analyze._judge_llm is primary
+
+    def test_summarize_service_judge_client_is_the_primary_client_when_unset(
+        self,
+    ) -> None:
+        """The extracted service repeats the same fallback, not a new default."""
+        primary = RoutingLLM("primary")
+
+        service = _build_summarize(primary)
+
+        assert service._judge_llm is primary
 
     @pytest.mark.asyncio
     async def test_analyze_judge_uses_the_primary_model_when_unset(self) -> None:
@@ -260,9 +333,9 @@ class TestDefaultsToThePrimaryClient:
         to, the one model that served them before #258.
         """
         primary = RoutingLLM("primary")
-        orchestrator = _build(primary)
+        analyze = _build_analyze(primary)
 
-        await orchestrator.analyze_bulk(
+        await analyze.analyze_bulk(
             AnalysisRequestModel(
                 feedback_records=(_feedback_record(),),
                 prompt="Summarize feedback.",
@@ -277,9 +350,9 @@ class TestDefaultsToThePrimaryClient:
     async def test_summarize_judge_uses_the_primary_client_when_unset(self) -> None:
         """Both the summary and its judge stay on the primary client."""
         primary = RoutingLLM("primary")
-        orchestrator = _build(primary)
+        service = _build_summarize(primary)
 
-        await orchestrator.summarize(
+        await service.summarize(
             SingleSummaryRequestModel(
                 feedback_record=_feedback_record(), tenant_id=TENANT_ID
             ),
@@ -301,9 +374,9 @@ class TestJudgeCallsRouteToTheJudgeClient:
         """
         primary = RoutingLLM("primary")
         judge = RoutingLLM("judge")
-        orchestrator = _build(primary, judge)
+        analyze = _build_analyze(primary, judge)
 
-        result = await orchestrator.analyze_bulk(
+        result = await analyze.analyze_bulk(
             AnalysisRequestModel(
                 feedback_records=(_feedback_record(),),
                 prompt="Summarize feedback.",
@@ -325,9 +398,9 @@ class TestJudgeCallsRouteToTheJudgeClient:
         """
         primary = RoutingLLM("primary")
         judge = RoutingLLM("judge")
-        orchestrator = _build(primary, judge)
+        service = _build_summarize(primary, judge)
 
-        result = await orchestrator.summarize_bulk(
+        result = await service.summarize_bulk(
             SummaryRequestModel(
                 feedback_records=(_feedback_record(),), tenant_id=TENANT_ID
             ),
@@ -343,9 +416,9 @@ class TestJudgeCallsRouteToTheJudgeClient:
         """``summarize`` judges on the judge client, generates on the primary."""
         primary = RoutingLLM("primary")
         judge = RoutingLLM("judge")
-        orchestrator = _build(primary, judge)
+        service = _build_summarize(primary, judge)
 
-        result = await orchestrator.summarize(
+        result = await service.summarize(
             SingleSummaryRequestModel(
                 feedback_record=_feedback_record(), tenant_id=TENANT_ID
             ),
@@ -367,7 +440,7 @@ class TestJudgeCallsRouteToTheJudgeClient:
         """
         primary = RoutingLLM("primary")
         judge = RoutingLLM("judge")
-        orchestrator = _build(
+        analyze = _build_analyze(
             primary,
             judge,
             embedder=TwoClusterEmbedder(),
@@ -377,7 +450,7 @@ class TestJudgeCallsRouteToTheJudgeClient:
             4, "health clinic medicine " * 5, "h"
         )
 
-        result = await orchestrator.analyze_hierarchical(
+        result = await analyze.analyze_hierarchical(
             AnalysisRequestModel(
                 feedback_records=records,
                 prompt="trends?",
@@ -408,14 +481,9 @@ class TestJudgeCallsRouteToTheJudgeClient:
         """
         primary = RoutingLLM("primary")
         judge = RoutingLLM("judge")
-        settings = OrchestratorSettings()
-        orchestrator = Orchestrator(
-            llm=primary,
-            judge_llm=judge,
-            anonymizer=NoopAnonymizer(),
-            settings=settings,
-            llm_timeout_seconds=LLM_TIMEOUT,
-            max_total_tokens=MAX_TOKENS,
+        analyze = _build_analyze(
+            primary,
+            judge,
             embedder=TwoClusterEmbedder(),
             analyze_settings=AnalyzeSettings(min_cluster_size=2),
         )
@@ -423,7 +491,7 @@ class TestJudgeCallsRouteToTheJudgeClient:
             4, "health clinic medicine " * 5, "h"
         )
 
-        await orchestrator.analyze_hierarchical(
+        await analyze.analyze_hierarchical(
             AnalysisRequestModel(
                 feedback_records=records,
                 prompt="trends?",
@@ -447,9 +515,9 @@ class TestGenerationCallsStayOnThePrimaryClient:
         """The analysis itself is served by the primary client, not the judge one."""
         primary = RoutingLLM("primary")
         judge = RoutingLLM("judge")
-        orchestrator = _build(primary, judge)
+        analyze = _build_analyze(primary, judge)
 
-        await orchestrator.analyze_bulk(
+        await analyze.analyze_bulk(
             AnalysisRequestModel(
                 feedback_records=(_feedback_record(),),
                 prompt="Summarize feedback.",
@@ -501,24 +569,24 @@ class TestCostAccountingAcrossBothClients:
 
     @pytest.mark.asyncio
     async def test_aggregate_summary_cost_sums_across_both_clients(self) -> None:
-        """The generation and judge costs both land in the aggregate total.
+        """Both connections are billed for an aggregate summary.
 
-        ``summarize_bulk`` is the one path that adds two call costs
-        together in the orchestrator itself, so it is where a dropped judge
-        cost would show up first.
+        Cost is summed by ``TrackingLLMAdapter`` per client, not by the
+        service, so what makes both costs land is that ``summarize_bulk``
+        reaches each client exactly once. A judge call that silently fell
+        back to the primary would show up here as two primary calls.
         """
         primary = RoutingLLM("primary")
         judge = RoutingLLM("judge")
-        orchestrator = _build(primary, judge)
+        service = _build_summarize(primary, judge)
 
-        await orchestrator.summarize_bulk(
+        await service.summarize_bulk(
             SummaryRequestModel(
                 feedback_records=(_feedback_record(),), tenant_id=TENANT_ID
             ),
             _deadline(),
         )
 
-        # One call each, so the total the orchestrator accumulated covers both.
         assert len(primary.calls) == 1
         assert len(judge.calls) == 1
 
@@ -536,7 +604,7 @@ class TestCostAccountingAcrossBothClients:
         repo = FakeUsageRepository()
         primary = RoutingLLM("primary-model")
         judge = RoutingLLM("judge-model")
-        orchestrator = _build(
+        analyze = _build_analyze(
             TrackingLLMAdapter(inner=primary, usage_repo=repo),
             TrackingLLMAdapter(inner=judge, usage_repo=repo),
         )
@@ -544,7 +612,7 @@ class TestCostAccountingAcrossBothClients:
         async with call_scope(
             tenant_id=TENANT_ID, operation=Operation.ANALYZE, request_id=uuid4()
         ):
-            await orchestrator.analyze_bulk(
+            await analyze.analyze_bulk(
                 AnalysisRequestModel(
                     feedback_records=(_feedback_record(),),
                     prompt="Summarize feedback.",

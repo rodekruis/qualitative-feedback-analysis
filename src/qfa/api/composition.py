@@ -4,8 +4,8 @@ This module is the *domain-graph* half of the composition root. The
 FastAPI lifespan in :mod:`qfa.api.app` still owns *infrastructure*
 wiring (database engine, usage repository, ``TrackingLLMAdapter``,
 ``app.state`` attachment, logging setup) but delegates the construction
-of the services themselves — together with their driven adapters
-that don't require the database — to this module.
+of the application services themselves — together with their driven
+adapters that don't require the database — to this module.
 
 :func:`build_services` returns every application service as a
 :class:`ServiceGraph`; :func:`build_orchestrator` is the narrower entry
@@ -20,23 +20,24 @@ Why it lives here rather than at package root:
   and this module is a sibling extraction — the architectural role
   hasn't moved, just the construction code.
 
-The factory is intentionally **pure** with respect to the API server's
-runtime concerns. It does not construct a database engine, does not
+The factories are intentionally **pure** with respect to the API server's
+runtime concerns. They do not construct a database engine, do not
 wrap the LLM in :class:`~qfa.adapters.tracking_llm.TrackingLLMAdapter`,
-and does not read API keys. Callers that need those concerns
+and do not read API keys. Callers that need those concerns
 (notably the FastAPI lifespan) build them and pass the wrapped LLM in
 via the ``llm`` keyword argument. Callers that don't (scripts,
-notebooks, ad-hoc evaluation harnesses) call ``build_orchestrator``
-with no overrides and get an Orchestrator over a plain LiteLLM client.
+notebooks, ad-hoc evaluation harnesses) call ``build_services`` (or one
+of its single-service wrappers) with no overrides and get services over
+a plain LiteLLM client.
 
-Besides the driven adapters, this module also builds the one
-:class:`~qfa.services.llm_call_executor.LLMCallExecutor` every service
-delegates its LLM-call scaffolding to. Per ADR-017 that collaborator is
+Besides the driven adapters, this module also builds the
+:class:`~qfa.services.llm_call_executor.LLMCallExecutor` the services
+delegate their LLM-call scaffolding to. Per ADR-017 that collaborator is
 *injected*, not self-constructed, so the composition root stays the one
-place where the object graph is assembled — and every service shares a
-single instance of it.
+place where the object graph is assembled — and there is exactly **one**
+executor instance, shared by every service.
 
-The orchestrator may hold *two* LLM connections: the primary one used for
+The services may hold *two* LLM connections: the primary one used for
 generation, and an optional second one used only for judge calls, configured
 via ``JUDGE_LLM_*``. :func:`resolve_judge_llm_settings` applies the
 judge/primary inheritance rule here, once, before either client is built.
@@ -54,10 +55,12 @@ import yaml
 from qfa.adapters.embedding import build_onnx_embedder
 from qfa.adapters.presidio_anonymizer import PresidioAnonymizer
 from qfa.domain.ports import EmbeddingPort, LLMPort
+from qfa.services.analyze import AnalyzeService
 from qfa.services.coding import CodingService
 from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.services.orchestrator import Orchestrator
 from qfa.services.sensitivity import SensitivityService
+from qfa.services.summarize import SummarizeService
 from qfa.settings import AppSettings, EmbeddingSettings, JudgeLLMSettings, LLMSettings
 
 logger = logging.getLogger(__name__)
@@ -78,17 +81,23 @@ class ServiceGraph:
     Attributes
     ----------
     orchestrator : Orchestrator
-        The still-undecomposed use cases (analyze, summarize). Disappears
-        with #267.
+        No use cases left once #264 lands. Disappears with #267.
     sensitivity : SensitivityService
         The detect-sensitive use case, extracted in #263.
     coding : CodingService
         The assign-codes use case, backing ``POST /v1/assign-codes``.
+    analyze : AnalyzeService
+        The analyze use case (analyze_bulk, analyze_hierarchical),
+        extracted in #266.
+    summarize : SummarizeService
+        The summarize / summarize_bulk use cases, extracted in #264.
     """
 
     orchestrator: Orchestrator
     sensitivity: SensitivityService
     coding: CodingService
+    analyze: AnalyzeService
+    summarize: SummarizeService
 
 
 def resolve_judge_llm_settings(
@@ -144,8 +153,9 @@ def build_embedder(settings: EmbeddingSettings) -> EmbeddingPort | None:
 
     The embedder is optional: when ``EMBEDDING_MODEL_PATH`` is not set this
     returns ``None``, and a ``mode=hierarchical`` request then fails with
-    502 ``analysis_unavailable`` (the orchestrator raises ``AnalysisError``
-    when its embedder is ``None``); ``single_pass`` is unaffected.
+    502 ``analysis_unavailable`` (:class:`~qfa.services.analyze.AnalyzeService`
+    raises ``AnalysisError`` when its embedder is ``None``); ``single_pass``
+    is unaffected.
     Production deployments set the path variables; local / CI runs omit them
     so the normal test suite never downloads a multi-GB model.
 
@@ -213,7 +223,8 @@ def build_services(
     lifespan and out-of-process callers (scripts, notebooks). It owns
     the construction of the services' driven dependencies that do
     not require a database connection: the anonymiser, the LLM client
-    (when not overridden), and the optional embedder.
+    (when not overridden), and the optional embedder — plus the one
+    :class:`LLMCallExecutor` every service shares.
 
     Every service is built over the *same*
     :class:`~qfa.services.llm_call_executor.LLMCallExecutor`, so the
@@ -240,7 +251,7 @@ def build_services(
         and cost are recorded too. ``None`` (the default) builds one from
         ``settings.judge_llm`` resolved against ``settings.llm`` — and stays
         ``None`` when ``JUDGE_LLM_MODEL`` is unset, in which case the
-        orchestrator runs judge calls on the primary client, exactly as it
+        services run judge calls on the primary client, exactly as they
         did before the judge connection existed. Note this is resolved
         independently of ``llm``: a caller that injects a fake primary and
         has ``JUDGE_LLM_MODEL`` set in the environment should inject a judge
@@ -253,12 +264,14 @@ def build_services(
         one via :func:`build_embedder` and may legitimately remain
         ``None`` when the embedding model path is unset — in that case
         hierarchical analysis will fail at runtime with ``AnalysisError``
-        (single-pass remains usable).
+        (single-pass remains usable). Only :class:`AnalyzeService` takes
+        it; no other use case needs an embedder.
 
     Returns
     -------
     ServiceGraph
-        The fully wired services, ready to be published on ``app.state``.
+        The fully wired services, sharing one executor and one anonymiser,
+        ready to be published on ``app.state``.
     """
     register_custom_model_prices()
 
@@ -272,8 +285,8 @@ def build_services(
 
     if judge_llm is None:
         judge_settings = resolve_judge_llm_settings(settings.llm, settings.judge_llm)
-        # None here means no judge model is configured; the orchestrator then
-        # routes judge calls to the primary client.
+        # None here means no judge model is configured; the services then
+        # route judge calls to the primary client.
         if judge_settings is not None:
             from qfa.api.app import build_llm_client  # local import, as above
 
@@ -296,23 +309,44 @@ def build_services(
         max_total_tokens=settings.llm.max_total_tokens,
     )
 
+    orchestrator = Orchestrator(
+        llm=llm,
+        judge_llm=judge_llm,
+        anonymizer=anonymizer,
+        settings=settings.orchestrator,
+        llm_timeout_seconds=settings.llm.timeout_seconds,
+        max_total_tokens=settings.llm.max_total_tokens,
+        executor=executor,
+    )
+
+    analyze = AnalyzeService(
+        executor=executor,
+        llm=llm,
+        judge_llm=judge_llm,
+        anonymizer=anonymizer,
+        settings=settings.orchestrator,
+        analyze_settings=settings.analyze,
+        max_total_tokens=settings.llm.max_total_tokens,
+        embedder=embedder,
+    )
+
     return ServiceGraph(
-        orchestrator=Orchestrator(
-            llm=llm,
-            judge_llm=judge_llm,
-            anonymizer=anonymizer,
-            settings=settings.orchestrator,
-            analyze_settings=settings.analyze,
-            llm_timeout_seconds=settings.llm.timeout_seconds,
-            max_total_tokens=settings.llm.max_total_tokens,
-            embedder=embedder,
-            executor=executor,
-        ),
+        orchestrator=orchestrator,
         sensitivity=SensitivityService(executor=executor),
         # No judge client: both the pick and the per-level judge in the coding
         # path run on the primary connection (#258 scoped the split to analyse
         # and summarise), so the service is never handed one.
         coding=CodingService(llm=llm, anonymizer=anonymizer, executor=executor),
+        analyze=analyze,
+        # Neither summarisation path runs the token-budget guard or needs an
+        # embedder, so the service asks for neither — the constructor is the
+        # use cases' real dependency surface (ADR-017, option A).
+        summarize=SummarizeService(
+            llm=llm,
+            judge_llm=judge_llm,
+            anonymizer=anonymizer,
+            executor=executor,
+        ),
     )
 
 
@@ -321,14 +355,14 @@ def build_orchestrator(
     *,
     llm: LLMPort | None = None,
     judge_llm: LLMPort | None = None,
-    embedder: EmbeddingPort | None = None,
 ) -> Orchestrator:
-    """Construct just the :class:`Orchestrator` from application settings.
+    """Build only the :class:`Orchestrator` half of :func:`build_services`.
 
-    A thin wrapper over :func:`build_services` for the callers that only
-    want the orchestrator — scripts, notebooks and evaluation harnesses,
-    which run one use case in-process and have no ``app.state`` to publish
-    the rest onto. The FastAPI lifespan calls ``build_services`` instead.
+    Convenience wrapper for callers still written against the class — it
+    holds no use case since #264, and #267 deletes it. There is no
+    ``embedder`` parameter: the orchestrator no longer holds one, so
+    accepting it here would be a silent no-op. Callers that want an
+    embedder want :func:`build_analyze_service`.
 
     Parameters
     ----------
@@ -338,15 +372,30 @@ def build_orchestrator(
         Pre-built LLM port; see :func:`build_services`.
     judge_llm : LLMPort | None, optional
         Pre-built judge LLM port; see :func:`build_services`.
-    embedder : EmbeddingPort | None, optional
-        Pre-built embedder; see :func:`build_services`.
 
     Returns
     -------
     Orchestrator
-        A fully wired orchestrator ready for ``analyze`` /
-        ``analyze_hierarchical`` calls.
+        The empty shell, kept until #267 deletes the class.
+    """
+    return build_services(settings, llm=llm, judge_llm=judge_llm).orchestrator
+
+
+def build_analyze_service(
+    settings: AppSettings,
+    *,
+    llm: LLMPort | None = None,
+    judge_llm: LLMPort | None = None,
+    embedder: EmbeddingPort | None = None,
+) -> AnalyzeService:
+    """Build only the :class:`AnalyzeService` half of :func:`build_services`.
+
+    Convenience wrapper for scripts and notebooks that drive
+    ``analyze_bulk`` / ``analyze_hierarchical`` in-process. Pass
+    ``embedder`` (or configure ``EMBEDDING_MODEL_PATH``) for the
+    hierarchical mode; without one it raises ``AnalysisError`` at request
+    time and ``single_pass`` still works.
     """
     return build_services(
         settings, llm=llm, judge_llm=judge_llm, embedder=embedder
-    ).orchestrator
+    ).analyze
