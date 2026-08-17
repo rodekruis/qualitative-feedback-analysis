@@ -102,13 +102,13 @@ uv run pytest tests/integration/test_db_postgres.py   # specific file
 Task-oriented guides for common development work, walking through a change end
 to end across the hexagonal layers.
 
-- [Implementing a new endpoint](implementing-a-new-endpoint.md) — adding an HTTP endpoint: domain and API models, the orchestrator use case, authentication, and usage tracking.
+- [Implementing a new endpoint](implementing-a-new-endpoint.md) — adding an HTTP endpoint: domain and API models, the use-case service, authentication, and usage tracking.
 - [Bundled resources and test fixtures](bundled-resources.md) — where data files live and how to load them: `importlib.resources` for anything production reads, repo-root `fixtures/` for test-only corpora.
 
 ## Where to go next
 
 - [Architecture overview](../architecture/01-architecture-style.md) — hexagonal layout, why we picked it
-- [Components](../architecture/03-components.md) — ports, adapters, orchestrator, composition root
+- [Components](../architecture/03-components.md) — ports, adapters, application services, composition root
 - [Settings reference](../operations/settings-reference.md) — every environment variable
 - [REST API overview](../rest-api/index.md) — HTTP endpoints and request shapes
 - [Python API reference](../python-api/index.md) — auto-generated reference for the `qfa` package

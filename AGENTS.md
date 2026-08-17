@@ -33,12 +33,13 @@ Hexagonal architecture. Key concepts:
   route handler depends on the single service it needs. Per-task
   behaviour is selected by the route handler calling the appropriate
   method, not by swapping service implementations (see ADR-011).
-  Epic #112 has extracted `SensitivityService`
-  (detect_sensitive_content, #263), `CodingService` (assign_codes,
-  #265), `AnalyzeService` (analyze_bulk, analyze_hierarchical, #266)
-  and `SummarizeService` (summarize_bulk, summarize, #264);
-  `Orchestrator` now holds no use case and is deleted by #267. Do not
-  add new use cases to it.
+  Epic #112 extracted `SensitivityService` (detect_sensitive_content,
+  #263), `CodingService` (assign_codes, #265), `AnalyzeService`
+  (analyze_bulk, analyze_hierarchical, #266) and `SummarizeService`
+  (summarize_bulk, summarize, #264) out of the former `Orchestrator`
+  god class, which #267 deleted once empty. Do not reintroduce a
+  shared class that every use case hangs off of — each new use case
+  gets its own service.
 - Services share behaviour by **composition only** — the shared LLM-call
   scaffolding is the injected `LLMCallExecutor` collaborator, never a
   base class (see ADR-017).
@@ -58,13 +59,13 @@ layout is:
 
 - `qfa.domain` — entities, value objects, errors, and driven ports
   (the inner core; no third-party infrastructure imports).
-- `qfa.services` — application services / use cases (orchestrator and
-  pure helpers; depends on `qfa.domain`).
+- `qfa.services` — application services / use cases and pure helpers;
+  depends on `qfa.domain`.
 - `qfa.adapters` — driven adapter implementations of ports declared
   in `qfa.domain.ports` (LiteLLM, Presidio, etc.).
 - `qfa.api` — driving adapter (FastAPI routes, dependencies, app
   composition). `qfa.api.app` is the composition root that wires
-  adapters into the orchestrator at startup.
+  adapters into each application service at startup.
 
 ## Tech Stack
 

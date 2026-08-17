@@ -12,7 +12,7 @@ Every environment variable the app reads. Settings are loaded by `pydantic-setti
 | `LLM_API_KEY` | **yes** | — | Provider API key. Stored as `SecretStr`. |
 | `LLM_API_BASE` | only some providers | `""` | E.g. `https://<resource>.openai.azure.com/` for Azure OpenAI. |
 | `LLM_API_VERSION` | only some providers | `""` | API version where the provider expects one. |
-| `LLM_TIMEOUT_SECONDS` | no | `230.0` | Per-*attempt* LLM-call timeout. A single call retries transient failures (timeout, rate-limit) up to `3×` this budget; the orchestrator sizes the per-attempt timeout against the request deadline so the worst-case retry sequence still fits. |
+| `LLM_TIMEOUT_SECONDS` | no | `230.0` | Per-*attempt* LLM-call timeout. A single call retries transient failures (timeout, rate-limit) up to `3×` this budget; the shared `LLMCallExecutor` sizes the per-attempt timeout against the request deadline so the worst-case retry sequence still fits. |
 | `LLM_MAX_TOTAL_TOKENS` | no | `100000` | Token budget guard. Estimated as `len(text) / LLM_CHARS_PER_TOKEN`. |
 | `LLM_CHARS_PER_TOKEN` | no | `4` | Conversion ratio used by the token budget guard. |
 
@@ -112,11 +112,11 @@ gitignored `.models/` and prints every `EMBEDDING_*` value to paste, including
 
 ## Orchestrator (`ORCHESTRATOR_*`)
 
-Cross-cutting orchestrator wiring shared by every endpoint (retry
-policy, token-budget estimation, metadata allow-list). Endpoint-specific
-tuning lives in its own settings group (see *Analyze* below) so the
-eventual per-endpoint orchestrator split (ADR-011) doesn't require
-renaming environment variables in production.
+Cross-cutting wiring shared by every use-case service (retry policy,
+token-budget estimation, metadata allow-list). Endpoint-specific tuning
+lives in its own settings group (see *Analyze* below) so the per-endpoint
+service split (ADR-011, ADR-017) didn't require renaming environment
+variables in production.
 
 | Variable | Required | Default | Notes |
 |---|---|---|---|
