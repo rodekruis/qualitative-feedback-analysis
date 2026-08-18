@@ -2,15 +2,15 @@
 
 EspoCRM is the primary upstream feeding feedback records into the service. The integration is one-way: EspoCRM calls the qfa backend's HTTP endpoints; the backend does not call EspoCRM.
 
-## What the scripts do
+## What the flows do
 
-The code is written in EspoCRM Formula Script, which is a specialized language, very similar to PHP. The files have a `.php` extension, but this is solely for syntax highlighting during development.
+The flows are built as EspoCRM flowcharts in the EspoCRM UI. Their steps are written in EspoCRM Formula Script, a specialized language similar to PHP, embedded directly in the flowchart's exported CSV — there is no separate `.php` copy to keep in sync (see [Flowcharts](#flowcharts) below).
 
-Server-side EspoCRM scripts in `scripts/espo_crm/` compose request bodies based on two distinct workflows.
+The flowcharts compose request bodies based on two distinct workflows.
 
-### Single-feedback record script
+### Single-feedback record flow
 
-`scripts/espo_crm/feedback_trigger` contains code that triggers on a feedback record **save**.
+`Feedback_saving_flowchart.csv` triggers on a feedback record **save**.
 
 ![Espo flowchart for saving a single feedback item](../assets/espo_feedback_save_flow.png)
 
@@ -18,9 +18,9 @@ These use all single-feedback record endpoints such as `summarize`, `detect-sens
 
 > **Note:** The entire coding framework (all codingLevel1, codingLevel2, codingLevel3 items) is sent to the `assign-codes` endpoint. This allows the inference to be stateless.
 
-### Insight saving script
+### Insight saving flow
 
-`scripts/espo_crm/insight_trigger` has code that triggers when an insight record is **created**. This flow selects the endpoint that coincides with the user request, and calls one of the bulk endpoints: `analyze-bulk` or `summarize-bulk`.
+`Insight_creation_flowchart.csv` triggers when an insight record is **created**. This flow selects the endpoint that coincides with the user request, and calls one of the bulk endpoints: `analyze-bulk` or `summarize-bulk`.
 
 ![Espo flowchart for creating an insight entity](../assets/espo_insight_creation_flow.png)
 
@@ -30,7 +30,7 @@ The two flows build their distinctive `motherPayload` — a JSON object containi
 
 Both flows wrap each outbound call in an EspoCRM error-boundary event. On success, the relevant status field is set to `completed`; on failure, the boundary runs an "error notification" step instead, which sets the status field to `failed` and stores the underlying error via `bpm\caughtErrorCode()` / `bpm\caughtErrorMessage()`. All of these are plain fields on the triggering feedback record or insight, so the outcome and any error detail are visible directly on that record in the EspoCRM UI — there is no separate error log to check.
 
-### Single-feedback record script
+### Single-feedback record flow
 
 Each of the three calls tracks its own status field on the feedback record, moving through `requested` → `processing` → `completed` (or `failed`). The trigger itself only fires while at least one of these fields is `requested`:
 
@@ -42,7 +42,7 @@ Each of the three calls tracks its own status field on the feedback record, movi
 
 The `assign-codes` step copies `assigned_codes.0.explanation` into `autoCodingExplanation`. A record can legitimately come back with no code applied while `autoCodingStatus` is still `completed` — that is a successful call, not an error, so it sets none of the error fields. The API guarantees that `assigned_codes` is never empty, so in that case `autoCodingExplanation` holds a message beginning with `NO CODING APPLIED.` explaining why. See the [REST API reference](../rest-api/index.md) for the exact wording.
 
-### Insight saving script
+### Insight saving flow
 
 The insight call tracks a single status field, `autoInsightStatus`, moving through the same `processing` → `completed` (or `failed`) states, alongside `autoInsightErrorCode` and `autoInsightErrorMessage` on failure.
 
@@ -53,7 +53,7 @@ The two workflows above are implemented as EspoCRM flowcharts, built and maintai
 - `Feedback_saving_flowchart.csv` — feedback record save trigger
 - `Insight_creation_flowchart.csv` — insight creation trigger
 
-These CSV files serve as the versioning mechanism: whenever a flowchart is updated in the EspoCRM UI, export a fresh copy and commit it. Promoting a flowchart to staging or production is then a matter of importing the CSV through the EspoCRM UI.
+These CSV files serve as the versioning mechanism: whenever a flowchart is updated in the EspoCRM UI, export a fresh copy and commit it. Promoting a flowchart to staging or production is then a matter of importing the CSV through the EspoCRM UI. The CSV is the only maintained copy of a flow's formula script — do not add a separate `.php` mirror, since the flowchart's `data` column already embeds the same script and a second copy would drift out of sync.
 
 > **Backend/flowchart deploy independence:** The request `metadata` object accepts a fixed set of keys (`created`, `coding_level_1`, `coding_level_2`, `coding_level_3`) and rejects unknown ones. It also still tolerates a deprecated `feedback_record_id` key that older flowcharts wrote into metadata (it is ignored — the record-level `id` is the identifier the backend uses). Because of this, a new backend can be deployed without importing updated flowcharts first, and vice versa. New flowcharts should not send `feedback_record_id`.
 
