@@ -22,6 +22,11 @@ Some things must **never** appear in logs at any level:
 
 The constants and helpers in `qfa.utils` make this easy to honour. When in doubt, log the character count or a hash, not the value.
 
+Two more rules, added with [ADR-018](../adr/018-no-third-party-text-in-error-envelope.md):
+
+- **Tracebacks are in scope for data classification.** Adapter code translates third-party exceptions (litellm, pydantic, SQLAlchemy) into domain errors with `raise ... from exc`, kept for debuggability. A log line emitted with `exc_info=True` or `logger.exception` therefore still carries the original provider-controlled text through `__cause__`, even though the log message itself does not. This is a deliberate trade-off, not an oversight — log output must not be exported to third-party log analytics without review.
+- **`str(exc)` may be logged or echoed in a response only when the message was authored in this repo.** A log line or exception handler may interpolate `str(exc)` only for domain errors whose messages are literal constants raised from `qfa.services` (e.g. `AnalysisError`). Provider-derived errors (`LLMError` and subclasses, `UsageRepositoryUnavailableError`) are logged as content-free scalars instead — `type=%s status=%s`, never the exception text.
+
 ## Safe to log
 
 Everything that's not in the prohibition list above is fine, especially:

@@ -16,6 +16,13 @@ class AnalysisTimeoutError(AnalysisError):
     """Raised when an analysis exceeds the allowed deadline."""
 
 
+class PromptInjectionDetectedError(AnalysisError):
+    """Raised when input matches a known prompt-injection pattern.
+
+    Sole raiser: ``LiteLLMClient._check_injection``.
+    """
+
+
 class FeedbackTooLargeError(AnalysisError):
     """Raised when estimated tokens for the submitted feedback exceed the limit.
 
@@ -37,7 +44,16 @@ class FeedbackTooLargeError(AnalysisError):
 
 
 class LLMError(DomainError):
-    """Base error for LLM adapter failures."""
+    """Base error for LLM adapter failures.
+
+    ``provider_status`` is a classified scalar (the provider's HTTP status
+    code), never free text — see ADR-018. ``None`` means the provider did
+    not expose a usable status code.
+    """
+
+    def __init__(self, message: str, *, provider_status: int | None = None) -> None:
+        super().__init__(message)
+        self.provider_status = provider_status
 
 
 class LLMTimeoutError(LLMError):
@@ -53,7 +69,21 @@ class LLMContentPolicyViolationError(LLMBadRequestError):
 
 
 class LLMRateLimitError(LLMError):
-    """Raised when the LLM provider returns a rate-limit response."""
+    """Raised when the LLM provider returns a rate-limit response.
+
+    ``retry_after`` is the provider's ``Retry-After`` value in **seconds**.
+    ``None`` means the provider gave no usable header.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        provider_status: int | None = None,
+        retry_after: int | None = None,
+    ) -> None:
+        super().__init__(message, provider_status=provider_status)
+        self.retry_after = retry_after
 
 
 class LLMResponseParseError(LLMError):

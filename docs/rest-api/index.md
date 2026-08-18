@@ -153,6 +153,22 @@ Every error response shares this shape:
 
 `fields` only appears on 422. `request_id` is always present and matches the `X-Request-ID` response header. It is a canonical UUID string and is also the value persisted in the `llm_calls.call_id` column for every LLM call the request makes — quote the `request_id` when reporting an issue and ops can join logs and DB rows on it directly. See [Cross-cutting concerns § Error → HTTP mapping](../architecture/04-crosscutting.md) for the full mapping.
 
+| Status | `error.code` |
+|---|---|
+| 401 | `authentication_required` |
+| 403 | `forbidden` |
+| 404 | `not_found` |
+| 409 | `conflict` |
+| 413 | `payload_too_large` |
+| 422 | `validation_error`, `prompt_injection_detected`, `content_policy_violation` |
+| 429 | `llm_rate_limited` (see below) |
+| 502 | `analysis_unavailable`, `llm_error` |
+| 503 | `usage_backend_unavailable` |
+| 504 | `analysis_timeout`, `llm_timeout` |
+| 500 | `internal_error` |
+
+A 429 carries a `Retry-After` header (integer seconds) — honour it before retrying. 5xx and 429 messages are constant strings, not exception detail; `request_id` is the handle to give support, not the message text.
+
 ## Breaking changes
 
 API field names changed in 0.14.0 (the ubiquitous-language migration). See the [migration guide for 0.14.0](../migration/0.14.0-breaking-changes.md).

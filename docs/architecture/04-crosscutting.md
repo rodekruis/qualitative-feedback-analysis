@@ -91,13 +91,19 @@ The exception handlers in `qfa.api.app` translate domain errors into HTTP respon
 | Pydantic validation failure | 422 | `validation_error` |
 | {py:exc}`~qfa.domain.errors.FeedbackTooLargeError` | 413 | `payload_too_large` |
 | {py:exc}`~qfa.domain.errors.AnalysisTimeoutError` | 504 | `analysis_timeout` |
-| {py:exc}`~qfa.domain.errors.AnalysisError` (with "injection" in message) | 422 | `prompt_injection_detected` |
+| {py:exc}`~qfa.domain.errors.PromptInjectionDetectedError` | 422 | `prompt_injection_detected` |
 | {py:exc}`~qfa.domain.errors.AnalysisError` (other) | 502 | `analysis_unavailable` |
-| {py:exc}`~qfa.domain.errors.LLMError` | 502 | `llm_unavailable` |
+| {py:exc}`~qfa.domain.errors.LLMContentPolicyViolationError` | 422 | `content_policy_violation` |
+| {py:exc}`~qfa.domain.errors.LLMRateLimitError` | 429 (`Retry-After` header) | `llm_rate_limited` |
+| {py:exc}`~qfa.domain.errors.LLMTimeoutError` | 504 | `llm_timeout` |
+| {py:exc}`~qfa.domain.errors.LLMBadRequestError`, {py:exc}`~qfa.domain.errors.LLMError` | 502 | `llm_error` |
 | `UsageRepositoryUnavailableError` | 503 | `usage_backend_unavailable` |
 | Unhandled `Exception` | 500 | `internal_error` |
 
-All responses share the same envelope shape with a server-generated `request_id`.
+All responses share the same envelope shape with a server-generated `request_id`. Response
+messages for provider-derived errors (the `LLM*` and `PromptInjectionDetectedError` rows) are
+fixed constants — third-party and diagnostic detail lives in the logs only, never in the
+response body (see [ADR-018](../adr/018-no-third-party-text-in-error-envelope.md)).
 
 ## Logging policy
 
