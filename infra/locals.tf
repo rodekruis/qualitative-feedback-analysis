@@ -8,6 +8,9 @@ locals {
   github_environment    = local.env
   db_aad_principal_name = local.app_name # system-assigned MI name matches the App Service name
 
+  # Premium (Pv3) only where user load justifies it — ADR-019.
+  app_service_plan_sku = lookup(var.app_service_plan_sku_by_env, local.env, "B2")
+
   # Resource IDs for shared infra. Constructed deterministically from variables
   # rather than looked up via `data` sources so the CI identity does not need
   # control-plane read on these resources — it only needs the roles it is

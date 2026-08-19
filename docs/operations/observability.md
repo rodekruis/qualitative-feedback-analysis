@@ -278,6 +278,8 @@ Four metric alert rules are provisioned in `infra/observability.tf`, all routed 
 | High CPU | `CpuPercentage` | >80% for 5 min | 2 |
 | High memory | `MemoryPercentage` | >80% for 5 min | 2 |
 
+Thresholds are identical across environments, but the hardware under them is not: prd runs 1 vCPU (`P0v3`) against dev/staging's 2 (`B2`), so the startup CPU spike from loading the embedding model sits closer to the 80% line on prd. Sustained firing of `high_cpu` or `high_memory` on prd is the trigger to move prd to `P1v3` ([ADR-019](../adr/019-per-environment-app-service-plan-sizing.md)), not to raise the threshold.
+
 The health-check alert (severity 1) fires when the App Service platform's built-in health probe of `/v1/health` fails — this is the most direct signal that the container is down or crashed.
 
 ## Posting to teams channel.

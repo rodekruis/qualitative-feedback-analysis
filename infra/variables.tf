@@ -60,6 +60,18 @@ variable "llm_api_version" {
   default     = "2024-05-01-preview"
 }
 
+# --- App Service plan sizing ---
+
+variable "app_service_plan_sku_by_env" {
+  description = "App Service plan SKU per Terraform workspace. A workspace missing from this map falls back to B2 (see locals.app_service_plan_sku), so a new environment is never silently provisioned as Premium. prd runs P0v3 because B2 ran close to its memory ceiling under concurrent API calls; see ADR-019."
+  type        = map(string)
+  default = {
+    dev     = "B2"
+    staging = "B2"
+    prd     = "P0v3"
+  }
+}
+
 # --- PostgreSQL configuration ---
 
 variable "postgres_db_name" {

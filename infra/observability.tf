@@ -157,7 +157,11 @@ resource "azurerm_monitor_metric_alert" "health_check" {
 }
 
 # Fires when CPU on the App Service Plan exceeds 80% for 5 minutes.
-# On a B2 (2 vCPU), the embedding model loading spikes CPU at startup.
+# The embedding model loading spikes CPU at startup, and the vCPU count is now
+# per-environment (B2 = 2 vCPU on dev/staging, P0v3 = 1 vCPU on prd), so that
+# spike sits closer to the threshold on prd. Sustained firing here on prd is the
+# documented trigger to move prd to P1v3 (2 vCPU / 8 GiB) — see ADR-019 — not to
+# raise this threshold.
 resource "azurerm_monitor_metric_alert" "high_cpu" {
   name                = "qfa-${local.env}-high-cpu"
   resource_group_name = data.azurerm_resource_group.main.name
