@@ -7,7 +7,7 @@ resource "azurerm_service_plan" "main" {
   resource_group_name = data.azurerm_resource_group.main.name
   location            = data.azurerm_resource_group.main.location
   os_type             = "Linux"
-  sku_name            = "B2"
+  sku_name            = local.app_service_plan_sku
 }
 
 resource "azurerm_subnet" "qfa_backend_snet" {

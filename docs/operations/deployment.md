@@ -6,6 +6,14 @@ A short overview of how the service runs in production. For provisioning, see [I
 
 The service runs as a single container on Azure App Service, one App Service plan per environment (`dev`, `staging`, `prd`). The container is built from the Dockerfile in the repo root and pushed to the shared Azure Container Registry by CI.
 
+| Environment | Plan SKU | vCPU | RAM |
+|---|---|---|---|
+| dev | `B2` | 2 | 3.5 GiB |
+| staging | `B2` | 2 | 3.5 GiB |
+| prd | `P0v3` | 1 | 4 GiB |
+
+These values live in `var.app_service_plan_sku_by_env` (`infra/variables.tf`) and are resolved per Terraform workspace by `local.app_service_plan_sku`; a workspace absent from the map falls back to `B2`. Why prd differs, and when to escalate it to `P1v3`, is recorded in [ADR-019](../adr/019-per-environment-app-service-plan-sizing.md). Note that the container runs a **single** gunicorn worker, so exactly one ONNX embedding session is resident per instance — raising the worker count would multiply that memory floor, so it is not a way to spend prd's extra RAM. Resizing a plan restarts the app; the procedure is in [Operational how-tos § Resize the App Service plan](how-to.md#resize-the-app-service-plan-for-an-environment).
+
 ```mermaid
 flowchart LR
     user[Caller<br/>EspoCRM, etc.]
@@ -21,9 +29,9 @@ flowchart LR
 `entrypoint.sh` runs two things, in order:
 
 1. **`python -m qfa.cli.migrate`** — applies any pending Alembic migrations. Uses a Postgres advisory lock (`pg_advisory_lock(LOCK_KEY)`) scoped to the connection, so concurrent replicas wait for one migrator to finish and a crashed migrator's lock auto-releases when its connection closes.
-2. **`uvicorn qfa.main:app …`** — binds the HTTP server.
+2. **`gunicorn qfa.main:app --worker-class asgi`** — binds the HTTP server. No `-w`, so one worker.
 
-Putting migrations before uvicorn means the App Service health probe doesn't see a half-migrated database. The trade-off: container start time grows with migration time, so keep migrations small.
+Putting migrations before the server means the App Service health probe doesn't see a half-migrated database. The trade-off: container start time grows with migration time, so keep migrations small.
 
 ## Database authentication
 

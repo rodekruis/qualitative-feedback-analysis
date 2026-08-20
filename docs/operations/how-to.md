@@ -77,3 +77,54 @@ configuration change — until the app setting itself is repointed. Use a
 rotations are picked up by the periodic (~24 h) refresh, or immediately via a
 configuration change / the refresh API above. The Terraform-managed references
 in `app_service.tf` are versionless by design.
+
+## Resize the App Service plan for an environment
+
+The plan SKU is per environment: `dev`/`staging` on `B2`, `prd` on `P0v3` (see
+[ADR-019](../adr/019-per-environment-app-service-plan-sizing.md)). Substitute
+`-n` / `-g` below from the [table above](#environment-naming).
+
+**1. Check the tier exists in that environment's region first.** This is the
+step that saves an aborted apply — `P0v4`, for example, was unavailable in the
+region when [ADR-019](../adr/019-per-environment-app-service-plan-sizing.md) was
+written.
+
+```bash
+az group show -g qualitative-feedback-analysis-production --query location -o tsv
+az appservice list-locations --sku P0V3 --linux-workers-enabled
+```
+
+> `az` wants the SKU **upper-cased** (`P0V3`) here; the azurerm provider wants
+> `P0v3`. Same tier, different casing — worth twenty minutes if you miss it.
+
+**2. Make the change.** Edit `var.app_service_plan_sku_by_env` in
+`infra/variables.tf` and open a PR. CI plans **`dev` only**, so a prd-only
+change shows no plan diff on the PR — that is expected. To see the real diff,
+dispatch the **Terraform** workflow with `command: plan` for the target
+environment, then again with `command: apply`. Applies fan out one run per
+environment and are never automatic (see
+[Release flow § Infrastructure changes](release-flow.md#infrastructure-changes)).
+
+Read the plan output before applying: it must be an **in-place update (`~`)** of
+`azurerm_service_plan.main`. If Terraform proposes a **replacement (`-/+`)**,
+stop — replacing the plan detaches and re-attaches the web app, turning a
+restart into a real outage.
+
+**3. Expect a restart.** Scaling moves the site to new workers: the container
+re-runs `python -m qfa.cli.migrate` and reloads the embedding model, so there is
+a cold-start gap. With `health_check_eviction_time_in_min = 10` and a
+severity-1 health-check alert, a prolonged failure pages Teams — apply in a
+quiet window and watch `/v1/health`.
+
+**4. Verify against Azure, not state.** Plan names are `qfa-<env>-plan`:
+
+```bash
+az appservice plan show -n qfa-prd-plan -g qualitative-feedback-analysis-production \
+  --query "{sku:sku.name, capacity:sku.capacity, tier:sku.tier}"
+```
+
+**If the apply fails** with a scale-unit / SKU-not-supported error, that is a
+real Azure constraint: an existing plan can only be scaled to a tier its scale
+unit supports. The remedy is a **new** `azurerm_service_plan` in a Pv3-capable
+scale unit plus repointing `azurerm_linux_web_app.backend.service_plan_id` — a
+longer outage and a separate PR.

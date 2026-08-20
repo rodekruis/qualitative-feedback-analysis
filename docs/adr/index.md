@@ -27,6 +27,7 @@ to them, the options considered, and the reasoning behind the chosen approach.
 | [016](016-guard-auto-deploy-on-publish.md) | Guard auto-deploy on release publish to the latest version only | Accepted |
 | [017](017-orchestrator-composition-only.md) | Decompose the Orchestrator by composition only | Accepted (supersedes decision 3 of [011](011-drop-orchestrator-port.md)) |
 | [018](018-no-third-party-text-in-error-envelope.md) | No third-party text in the error envelope | Accepted |
+| [019](019-per-environment-app-service-plan-sizing.md) | Per-environment App Service plan sizing, prd on P0v3 | Accepted |
 
 ## Obsolete
 
@@ -54,5 +55,6 @@ to them, the options considered, and the reasoning behind the chosen approach.
 016-guard-auto-deploy-on-publish
 017-orchestrator-composition-only
 018-no-third-party-text-in-error-envelope
+019-per-environment-app-service-plan-sizing
 obsolete/008-keep-orchestrator-port
 ```
