@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted (amended 2026-08-20 — see "Alert threshold adjustment" below)
 
 ## Context
 
@@ -86,7 +86,7 @@ into the image and load it on demand.
 - **prd RAM 3.5 → 4 GiB, but prd vCPU 2 → 1.** `P0v3` is the smallest Premium
   v3 tier and has *fewer* cores than `B2`. Startup — Alembic migrations plus
   loading the embedding model — is slower on prd than on dev, and more likely
-  to trip the 80% `high_cpu` alert.
+  to trip the `high_cpu` alert.
 - Higher run cost on prd only; dev and staging are unchanged, so applying this
   to those environments is a no-op.
 - **dev no longer mirrors prd sizing**, so a prd memory ceiling cannot be
@@ -97,7 +97,7 @@ into the image and load it on demand.
 - **Escalation trigger:** if `high_memory` or `high_cpu` keeps firing on prd
   once real users are on it, move `prd` to `P1v3` (2 vCPU / 8 GiB) — a one-word
   edit to `var.app_service_plan_sku_by_env` plus an apply. Do **not** raise the
-  alert thresholds instead.
+  alert thresholds further instead.
 
 ## When to revisit
 
@@ -106,6 +106,17 @@ into the image and load it on demand.
   hardware generation.
 - The worker count stops being 1, or the model stops being baked into the
   image: both change the memory floor this sizing assumes.
+
+## Alert threshold adjustment (2026-08-20)
+
+`high_cpu` and `high_memory` (`infra/observability.tf`) are raised from 80% to
+85%. 80% was set when the plan was still uniformly `B2`; it did not account for
+prd's startup CPU spike sitting closer to the ceiling on `P0v3`'s single vCPU
+(see Consequences above), which made prd noisier without prd actually
+approaching the resource exhaustion the alert exists to catch. 85% keeps the
+same escalation trigger and the same "move to `P1v3`, don't raise thresholds
+again" rule — this is a one-time recalibration to the P0v3 sizing, not a
+reopening of that rule.
 
 ## Participants
 
