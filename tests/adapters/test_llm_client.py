@@ -663,8 +663,10 @@ class TestLiteLLMClientRetry:
     async def test_bad_request_is_not_retried(self):
         """A non-transient BadRequest fails on the first attempt without retrying.
 
-        Why: bad requests are deterministic — retrying wastes the budget and a
-        held concurrency slot. Only timeout/rate-limit are transient.
+        Why: ordinary bad requests are deterministic — retrying wastes the
+        budget and a held concurrency slot. Content-policy violations are the
+        one BadRequest subtype that *is* retried; see
+        ``test_retries_content_policy_violation_then_succeeds`` below.
         """
         client = _make_client()
         with (
@@ -688,6 +690,79 @@ class TestLiteLLMClientRetry:
                 )
 
         assert mock_ac.call_count == 1  # not retried
+
+    @pytest.mark.asyncio
+    async def test_retries_content_policy_violation_then_succeeds(self):
+        """A content-policy rejection is retried and a subsequent success returned.
+
+        Why: Azure's content-filter severity classification is not guaranteed
+        deterministic for identical input (#293) — a rejection may clear on a
+        later attempt, so it is retried like timeout/rate-limit rather than
+        failing immediately like other bad requests.
+        """
+        good = _make_mock_response()
+        client = _make_client()
+        with (
+            patch(
+                "qfa.adapters.llm_client.acompletion",
+                new_callable=AsyncMock,
+                side_effect=[
+                    BadRequestError(
+                        message=(
+                            "The response was filtered due to the content "
+                            "management policy"
+                        ),
+                        model=MODEL,
+                        llm_provider="azure_ai",
+                    ),
+                    good,
+                ],
+            ) as mock_ac,
+            patch("qfa.adapters.llm_client.completion_cost", return_value=0.0),
+            patch(
+                "qfa.adapters.llm_client.wait_exponential",
+                return_value=wait_fixed(0),
+            ),
+        ):
+            result = await client.complete(
+                SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT
+            )
+
+        assert result.structured == "This is the summary."
+        assert mock_ac.call_count == 2  # one rejection, one success
+
+    @pytest.mark.asyncio
+    async def test_content_policy_violation_retries_exhausted_reraises(self):
+        """When every attempt is content-filtered, the domain error is re-raised.
+
+        Why: a persistently-blocked input (not just a flaky classification)
+        must still surface as ``content_policy_violation`` to the caller, not
+        hang or raise a generic tenacity ``RetryError``.
+        """
+        client = _make_client()
+        with (
+            patch(
+                "qfa.adapters.llm_client.acompletion",
+                new_callable=AsyncMock,
+                side_effect=BadRequestError(
+                    message=(
+                        "The response was filtered due to the content management policy"
+                    ),
+                    model=MODEL,
+                    llm_provider="azure_ai",
+                ),
+            ) as mock_ac,
+            patch(
+                "qfa.adapters.llm_client.wait_exponential",
+                return_value=wait_fixed(0.01),
+            ),
+        ):
+            with pytest.raises(LLMContentPolicyViolationError):
+                await client.complete(
+                    SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=0.01
+                )
+
+        assert mock_ac.call_count >= 2  # retried before giving up
 
 
 class TestProviderSafeResponseFormat:

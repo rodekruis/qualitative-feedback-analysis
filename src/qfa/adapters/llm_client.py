@@ -297,13 +297,16 @@ class LiteLLMClient(LLMPort):
         """Send a completion request via LiteLLM, retrying transient failures.
 
         ``timeout`` is the budget for a *single* attempt. Transient failures
-        (timeout, rate-limit) are retried with exponential backoff up to a total
-        wall-clock budget of ``LLM_RETRY_BUDGET_MULTIPLIER * timeout``; the retry
-        wraps only the provider call, so injection/token checks and response
-        parsing happen exactly once. Callers that enforce a deadline must size
-        ``timeout`` so this worst-case budget still fits (the orchestrator does
-        this in ``_check_deadline_and_get_timeout``). Bad-request and generic
-        API errors are not retried — they are not transient.
+        (timeout, rate-limit) and content-policy rejections are retried with
+        exponential backoff up to a total wall-clock budget of
+        ``LLM_RETRY_BUDGET_MULTIPLIER * timeout``; the retry wraps only the
+        provider call, so injection/token checks and response parsing happen
+        exactly once. Callers that enforce a deadline must size ``timeout`` so
+        this worst-case budget still fits (the orchestrator does this in
+        ``_check_deadline_and_get_timeout``). Content-policy rejections are
+        retried because Azure's filter severity classification is not
+        guaranteed deterministic for identical input (#293); other bad-request
+        and generic API errors are not retried — they are not transient.
 
         Parameters
         ----------
@@ -328,7 +331,8 @@ class LiteLLMClient(LLMPort):
         LLMRateLimitError
             When the provider rate-limits on every attempt.
         LLMContentPolicyViolationError
-            When the provider rejects the request under its content policy.
+            When the provider rejects the request under its content policy on
+            every attempt.
         LLMBadRequestError
             When the provider rejects the request for any other reason.
         PromptInjectionDetectedError
@@ -360,7 +364,9 @@ class LiteLLMClient(LLMPort):
             async for attempt in AsyncRetrying(
                 wait=wait_exponential(multiplier=1, max=10),
                 stop=stop_after_delay(retry_budget),
-                retry=retry_if_exception_type((LLMTimeoutError, LLMRateLimitError)),
+                retry=retry_if_exception_type(
+                    (LLMTimeoutError, LLMRateLimitError, LLMContentPolicyViolationError)
+                ),
                 before_sleep=before_sleep_log(logger, logging.DEBUG),
                 after=after_log(logger, logging.DEBUG),
                 reraise=True,
