@@ -494,6 +494,112 @@ class TestValidation:
 
 
 # ------------------------------------------------------------------ #
+# Malformed JSON request bodies (issue #245)
+# ------------------------------------------------------------------ #
+
+
+def _raw_post(client, body: bytes):
+    """POST an unserialised body; auth must be valid or the body is never parsed."""
+    return client.post(
+        "/v1/analyze-bulk",
+        content=body,
+        headers={"Content-Type": "application/json", **_auth_header()},
+    )
+
+
+class TestMalformedJsonBody:
+    """A body that fails to parse must say *why* (issue #245).
+
+    EspoCRM assembled request bodies by string concatenation, so a line
+    break or a quote in feedback text produced invalid JSON. The old 422
+    reported only ``field: "body.58"`` / ``JSON decode error`` — a byte
+    offset and no cause.
+    """
+
+    @pytest.mark.asyncio
+    async def test_raw_newline_reports_escaping(self, client):
+        resp = await _raw_post(
+            client,
+            b'{"feedback_records": [{"id": "1", "content": "a\nb"}], "prompt": "p"}',
+        )
+        assert resp.status_code == 422
+        error = resp.json()["error"]
+        assert error["code"] == "json_invalid"
+        assert error["fields"][0]["field"] == "body"
+        assert "escape" in error["fields"][0]["issue"]
+
+    @pytest.mark.asyncio
+    async def test_raw_tab_is_json_invalid(self, client):
+        resp = await _raw_post(
+            client,
+            b'{"feedback_records": [{"id": "1", "content": "a\tb"}], "prompt": "p"}',
+        )
+        assert resp.status_code == 422
+        assert resp.json()["error"]["code"] == "json_invalid"
+
+    @pytest.mark.asyncio
+    async def test_lone_backslash_names_the_backslash(self, client):
+        resp = await _raw_post(
+            client,
+            b'{"feedback_records": [{"id": "1", "content": "path C:\\dir"}], "prompt": "p"}',
+        )
+        assert resp.status_code == 422
+        error = resp.json()["error"]
+        assert error["code"] == "json_invalid"
+        assert "backslash" in error["fields"][0]["issue"]
+
+    @pytest.mark.asyncio
+    async def test_unescaped_quote_is_json_invalid(self, client):
+        resp = await _raw_post(
+            client,
+            b'{"feedback_records": [{"id": "1", "content": "he said "hi""}], "prompt": "p"}',
+        )
+        assert resp.status_code == 422
+        error = resp.json()["error"]
+        assert error["code"] == "json_invalid"
+        assert '\\"' in error["fields"][0]["issue"]
+
+    @pytest.mark.asyncio
+    async def test_unmapped_reason_degrades_to_fallback_hint(self, client):
+        """A truncated body has no mapped reason; it must degrade, not raise."""
+        resp = await _raw_post(client, b'{"feedback_records":')
+        assert resp.status_code == 422
+        error = resp.json()["error"]
+        assert error["code"] == "json_invalid"
+        assert "RFC 8259" in error["fields"][0]["issue"]
+
+    @pytest.mark.asyncio
+    async def test_no_request_bytes_are_echoed(self, client):
+        """The raw body hangs off ``exc.body``; nothing may reach the response."""
+        body = (
+            b'{"feedback_records": [{"id": "1", "content": "'
+            + SENTINEL.encode()
+            + b'\nleak"}], "prompt": "p"}'
+        )
+        resp = await _raw_post(client, body)
+        assert resp.status_code == 422
+        assert SENTINEL not in resp.text
+
+    @pytest.mark.asyncio
+    async def test_escaped_whitespace_survives_intact(self, client, fake_service):
+        """The contract this issue exists to pin: escape whitespace, never strip it.
+
+        Every character named in #245 must reach the service unchanged, so
+        that nobody "fixes" a future parse failure with a character filter.
+        """
+        content = "line1\nline2\ttab\rcr\fff\vvt"
+        resp = await client.post(
+            "/v1/analyze-bulk",
+            json=_valid_body(
+                feedback_records=[{"id": "doc-1", "content": content, "metadata": {}}]
+            ),
+            headers=_auth_header(),
+        )
+        assert resp.status_code == 200
+        assert fake_service.last_analyze_request.feedback_records[0].content == content
+
+
+# ------------------------------------------------------------------ #
 # Empty feedback content (issue #138)
 # ------------------------------------------------------------------ #
 
