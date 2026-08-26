@@ -60,10 +60,14 @@ gains none. Instead `detect_source_language`
 (`qfa.services.language`) reads the record's **raw** content — before the
 envelope tags and the anonymiser's placeholders dilute it — and the resulting
 ISO 639-1 code goes through the same builder with
-`subject="title and summary"`. Text under 20 characters, or text langdetect
-cannot classify, yields no directive at all: the prompt's own soft "use the
-same language as the input" line stands, because pinning a wrongly guessed
-language is worse than not pinning one (#294).
+`subject="title and summary"`. Detection is gated twice and yields no
+directive at all unless the text clears both — at least 20 characters, and a
+top-candidate probability of at least 0.90. Neither gate subsumes the other:
+below 20 characters langdetect is confidently wrong (`"Nobody helped me"` ->
+Welsh at p=0.99999), and above it langdetect hedges instead (`"We need more
+blankets"` -> Afrikaans at p=0.57). When either gate rejects, the prompt's own
+soft "use the same language as the input" line stands, because pinning a
+wrongly guessed language is worse than not pinning one (#294).
 
 `/v1/summarize-bulk` is unchanged — its callers always set `output_language`,
 so its directive is already explicit.
