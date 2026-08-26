@@ -113,6 +113,24 @@ def _retry_after_seconds(exc: Exception) -> int | None:
         return None
 
 
+def _content_filter_signal(choice: object) -> tuple[str | None, str | None]:
+    """Return the first flagged (category, severity) from a choice's content-filter annotation.
+
+    Reads only the structured ``content_filter_results`` dict Azure attaches
+    to a completion choice — category names and severity levels are a closed
+    set, not free text (see ADR-018). Returns ``(None, None)`` when the
+    attribute is absent, not a dict (e.g. a test double), or nothing in it
+    was flagged.
+    """
+    results = getattr(choice, "content_filter_results", None)
+    if not isinstance(results, dict):
+        return None, None
+    for category, result in results.items():
+        if isinstance(result, dict) and result.get("filtered"):
+            return category, result.get("severity")
+    return None, None
+
+
 def _to_domain_error(
     exc: Timeout | RateLimitError | BadRequestError | APIError,
     provider_status: int | None,
@@ -307,6 +325,13 @@ class LiteLLMClient(LLMPort):
         retried because Azure's filter severity classification is not
         guaranteed deterministic for identical input (#293); other bad-request
         and generic API errors are not retried — they are not transient.
+        Azure signals a rejection two ways, both mapped to
+        ``LLMContentPolicyViolationError`` and both retried: a synchronous
+        ``BadRequestError`` (sniffed by ``_to_domain_error``), or a ``200``
+        response whose ``choices[0].message.content`` is ``None`` with its
+        ``content_filter_results`` flagging a category (Azure's asynchronous
+        filter, which lets the call through and blocks the completion after
+        generation).
 
         Parameters
         ----------
@@ -357,9 +382,10 @@ class LiteLLMClient(LLMPort):
             timeout,
             retry_budget,
         )
-        # Retry only the provider round-trip, and only for transient errors.
-        # ``reraise=True`` surfaces the underlying domain error (not a
-        # tenacity ``RetryError``) once the budget is spent.
+        # Retry only the provider round-trip plus the content-filter check on
+        # its response, and only for transient errors. ``reraise=True``
+        # surfaces the underlying domain error (not a tenacity ``RetryError``)
+        # once the budget is spent.
         with timed() as call_sw:
             async for attempt in AsyncRetrying(
                 wait=wait_exponential(multiplier=1, max=10),
@@ -379,10 +405,24 @@ class LiteLLMClient(LLMPort):
                         timeout=timeout,
                         response_format=response_format,
                     )
+                    content = response.choices[0].message.content
+                    if content is None:
+                        category, severity = _content_filter_signal(response.choices[0])
+                        if category is not None:
+                            logger.warning(
+                                "LLM output blocked by content filter: "
+                                "category=%s severity=%s",
+                                category,
+                                severity,
+                            )
+                            raise LLMContentPolicyViolationError(
+                                "LLM provider rejected the response under "
+                                "its content policy",
+                                category=category,
+                                severity=severity,
+                            )
+                        raise LLMError("LLM response missing content")
 
-        content = response.choices[0].message.content
-        if content is None:
-            raise LLMError("LLM response missing content")
         if not isinstance(content, str):
             msg = f"LLM response content must be a string, got {type(content).__name__}"
             raise LLMError(msg)

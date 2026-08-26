@@ -462,11 +462,15 @@ async def _handle_content_policy_violation(
     Distinct from other LLM failures because the request itself, not the
     provider, is at fault — the caller should not retry unmodified input.
     The response message is a constant, never ``str(exc)`` (ADR-018).
+    ``category``/``severity`` are logged too when Azure's content-filter
+    annotation supplied them — classified scalars, not provider text.
     """
     logger.warning(
-        "LLM provider error: type=%s status=%s",
+        "LLM provider error: type=%s status=%s category=%s severity=%s",
         type(exc).__name__,
         exc.provider_status,
+        exc.category,
+        exc.severity,
         exc_info=True,
     )
     body = ApiErrorResponse(

@@ -65,7 +65,27 @@ class LLMBadRequestError(LLMError):
 
 
 class LLMContentPolicyViolationError(LLMBadRequestError):
-    """Raised when the LLM provider rejects the request due to content policy."""
+    """Raised when the LLM provider rejects the request due to content policy.
+
+    ``category`` and ``severity`` are Azure's content-filter annotation
+    (e.g. ``"violence"`` / ``"high"``) when the rejection was detected from
+    a completed response's ``content_filter_results`` rather than sniffed
+    from a ``BadRequestError`` message — a closed, low-cardinality set of
+    classified scalars, never free text (see ADR-018). Both are ``None``
+    when unavailable.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        provider_status: int | None = None,
+        category: str | None = None,
+        severity: str | None = None,
+    ) -> None:
+        super().__init__(message, provider_status=provider_status)
+        self.category = category
+        self.severity = severity
 
 
 class LLMRateLimitError(LLMError):
