@@ -776,8 +776,10 @@ class TestLiteLLMClientRetry:
         """
         filtered = _make_mock_response()
         filtered.choices[0].message.content = None
-        filtered.choices[0].content_filter_results = {
-            "violence": {"filtered": True, "severity": "high"},
+        filtered.choices[0].provider_specific_fields = {
+            "content_filter_results": {
+                "violence": {"filtered": True, "severity": "high"},
+            },
         }
         good = _make_mock_response()
         client = _make_client()
@@ -805,8 +807,10 @@ class TestLiteLLMClientRetry:
         """When every attempt is blocked post-hoc, the classified error is re-raised."""
         filtered = _make_mock_response()
         filtered.choices[0].message.content = None
-        filtered.choices[0].content_filter_results = {
-            "self_harm": {"filtered": True, "severity": "high"},
+        filtered.choices[0].provider_specific_fields = {
+            "content_filter_results": {
+                "self_harm": {"filtered": True, "severity": "high"},
+            },
         }
         client = _make_client()
         with (
@@ -860,23 +864,32 @@ class TestContentFilterSignal:
         choice = MagicMock(spec=[])
         assert _content_filter_signal(choice) == (None, None)
 
-    def test_non_dict_attribute_returns_none(self):
+    def test_non_dict_provider_fields_returns_none(self):
         choice = MagicMock()
-        choice.content_filter_results = "not a dict"
+        choice.provider_specific_fields = "not a dict"
+        assert _content_filter_signal(choice) == (None, None)
+
+    def test_non_dict_content_filter_results_returns_none(self):
+        choice = MagicMock()
+        choice.provider_specific_fields = {"content_filter_results": "not a dict"}
         assert _content_filter_signal(choice) == (None, None)
 
     def test_no_category_flagged_returns_none(self):
         choice = MagicMock()
-        choice.content_filter_results = {
-            "hate": {"filtered": False, "severity": "safe"},
+        choice.provider_specific_fields = {
+            "content_filter_results": {
+                "hate": {"filtered": False, "severity": "safe"},
+            },
         }
         assert _content_filter_signal(choice) == (None, None)
 
     def test_flagged_category_returns_category_and_severity(self):
         choice = MagicMock()
-        choice.content_filter_results = {
-            "hate": {"filtered": False, "severity": "safe"},
-            "violence": {"filtered": True, "severity": "high"},
+        choice.provider_specific_fields = {
+            "content_filter_results": {
+                "hate": {"filtered": False, "severity": "safe"},
+                "violence": {"filtered": True, "severity": "high"},
+            },
         }
         assert _content_filter_signal(choice) == ("violence", "high")
 

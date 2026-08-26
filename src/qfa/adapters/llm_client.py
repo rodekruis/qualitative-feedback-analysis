@@ -118,11 +118,18 @@ def _content_filter_signal(choice: object) -> tuple[str | None, str | None]:
 
     Reads only the structured ``content_filter_results`` dict Azure attaches
     to a completion choice — category names and severity levels are a closed
-    set, not free text (see ADR-018). Returns ``(None, None)`` when the
-    attribute is absent, not a dict (e.g. a test double), or nothing in it
+    set, not free text (see ADR-018). LiteLLM's response converter only
+    copies fields declared on its ``Choices`` model onto the choice itself;
+    anything else the provider sent (``content_filter_results`` included)
+    lands in ``choice.provider_specific_fields`` instead, so that is read
+    here rather than a top-level attribute. Returns ``(None, None)`` when
+    that field is absent, not a dict (e.g. a test double), or nothing in it
     was flagged.
     """
-    results = getattr(choice, "content_filter_results", None)
+    provider_fields = getattr(choice, "provider_specific_fields", None)
+    if not isinstance(provider_fields, dict):
+        return None, None
+    results = provider_fields.get("content_filter_results")
     if not isinstance(results, dict):
         return None, None
     for category, result in results.items():
