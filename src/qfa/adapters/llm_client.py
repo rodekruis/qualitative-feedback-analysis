@@ -338,7 +338,12 @@ class LiteLLMClient(LLMPort):
         response whose ``choices[0].message.content`` is ``None`` with its
         ``content_filter_results`` flagging a category (Azure's asynchronous
         filter, which lets the call through and blocks the completion after
-        generation).
+        generation). The asynchronous path bills a completion before
+        rejecting it, so usage from every discarded attempt is accumulated
+        and folded into whichever outcome this call ultimately produces: the
+        returned ``LLMResponse``'s token/cost fields on eventual success, or
+        the raised ``LLMContentPolicyViolationError``'s ``discarded_*``
+        fields if every attempt is blocked.
 
         Parameters
         ----------
@@ -389,6 +394,14 @@ class LiteLLMClient(LLMPort):
             timeout,
             retry_budget,
         )
+        # Azure's asynchronous filter bills a completion before blocking it, so a
+        # discarded attempt can still carry real provider spend. Accumulated here
+        # and folded into whatever this call ultimately returns or raises, so a
+        # caller recording usage never silently drops the cost of a retried,
+        # filtered attempt.
+        discarded_prompt_tokens = 0
+        discarded_completion_tokens = 0
+        discarded_cost = 0.0
         # Retry only the provider round-trip plus the content-filter check on
         # its response, and only for transient errors. ``reraise=True``
         # surfaces the underlying domain error (not a tenacity ``RetryError``)
@@ -416,6 +429,20 @@ class LiteLLMClient(LLMPort):
                     if content is None:
                         category, severity = _content_filter_signal(response.choices[0])
                         if category is not None:
+                            blocked_usage = response.usage
+                            if blocked_usage is not None:
+                                discarded_prompt_tokens += blocked_usage.prompt_tokens
+                                discarded_completion_tokens += (
+                                    blocked_usage.completion_tokens
+                                )
+                                try:
+                                    discarded_cost += completion_cost(
+                                        completion_response=response
+                                    )
+                                except Exception:
+                                    logger.error(
+                                        "No pricing data for model %s", self._model
+                                    )
                             logger.warning(
                                 "LLM output blocked by content filter: "
                                 "category=%s severity=%s",
@@ -427,6 +454,9 @@ class LiteLLMClient(LLMPort):
                                 "its content policy",
                                 category=category,
                                 severity=severity,
+                                discarded_prompt_tokens=discarded_prompt_tokens,
+                                discarded_completion_tokens=discarded_completion_tokens,
+                                discarded_cost=discarded_cost,
                             )
                         raise LLMError("LLM response missing content")
 
@@ -460,6 +490,10 @@ class LiteLLMClient(LLMPort):
                 "The `response_model` is not a string or BaseModel subclass."
             )
 
+        total_prompt_tokens = usage.prompt_tokens + discarded_prompt_tokens
+        total_completion_tokens = usage.completion_tokens + discarded_completion_tokens
+        total_cost = cost + discarded_cost
+
         # Per-call latency + usage. All fields here are explicitly safe to log
         # (see docs/operations/observability.md) — no message text, prompt, or
         # response content. DEBUG because hierarchical analysis fans out one of
@@ -469,15 +503,15 @@ class LiteLLMClient(LLMPort):
             "completion_tokens=%d cost=%s",
             response.model,
             call_sw.elapsed_seconds,
-            usage.prompt_tokens,
-            usage.completion_tokens,
-            cost,
+            total_prompt_tokens,
+            total_completion_tokens,
+            total_cost,
         )
 
         return LLMResponse[T_Response](
             structured=parsed_data,
             model=response.model,
-            prompt_tokens=usage.prompt_tokens,
-            completion_tokens=usage.completion_tokens,
-            cost=cost,
+            prompt_tokens=total_prompt_tokens,
+            completion_tokens=total_completion_tokens,
+            cost=total_cost,
         )

@@ -731,6 +731,10 @@ class TestLiteLLMClientRetry:
 
         assert result.structured == "This is the summary."
         assert mock_ac.call_count == 2  # one rejection, one success
+        # The synchronous BadRequestError path rejects before generation, so
+        # the discarded attempt carries no billable usage to fold in.
+        assert result.prompt_tokens == 100
+        assert result.completion_tokens == 50
 
     @pytest.mark.asyncio
     async def test_content_policy_violation_retries_exhausted_reraises(self):
@@ -758,12 +762,17 @@ class TestLiteLLMClientRetry:
                 return_value=wait_fixed(0.01),
             ),
         ):
-            with pytest.raises(LLMContentPolicyViolationError):
+            with pytest.raises(LLMContentPolicyViolationError) as excinfo:
                 await client.complete(
                     SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=0.01
                 )
 
         assert mock_ac.call_count >= 2  # retried before giving up
+        # No response object exists on the synchronous rejection path, so
+        # there is no billable usage to discard.
+        assert excinfo.value.discarded_prompt_tokens == 0
+        assert excinfo.value.discarded_completion_tokens == 0
+        assert excinfo.value.discarded_cost == 0.0
 
     @pytest.mark.asyncio
     async def test_missing_content_with_filter_annotation_retries_and_succeeds(self):
@@ -801,6 +810,10 @@ class TestLiteLLMClientRetry:
 
         assert result.structured == "This is the summary."
         assert mock_ac.call_count == 2  # one block, one success
+        # Azure's asynchronous filter bills the blocked attempt too — that
+        # discarded usage must be folded into the final, successful result.
+        assert result.prompt_tokens == 200  # 100 discarded + 100 from success
+        assert result.completion_tokens == 100  # 50 discarded + 50 from success
 
     @pytest.mark.asyncio
     async def test_missing_content_with_filter_annotation_exhausts_retries(self):
@@ -819,6 +832,7 @@ class TestLiteLLMClientRetry:
                 new_callable=AsyncMock,
                 return_value=filtered,
             ) as mock_ac,
+            patch("qfa.adapters.llm_client.completion_cost", return_value=0.002),
             patch(
                 "qfa.adapters.llm_client.wait_exponential",
                 return_value=wait_fixed(0.01),
@@ -832,6 +846,11 @@ class TestLiteLLMClientRetry:
         assert excinfo.value.category == "self_harm"
         assert excinfo.value.severity == "high"
         assert mock_ac.call_count >= 2  # retried before giving up
+        # Every attempt was billed and blocked; the exhausted error must carry
+        # the sum of all of them, not just the last one, so no spend is lost.
+        assert excinfo.value.discarded_prompt_tokens == 100 * mock_ac.call_count
+        assert excinfo.value.discarded_completion_tokens == 50 * mock_ac.call_count
+        assert excinfo.value.discarded_cost == pytest.approx(0.002 * mock_ac.call_count)
 
     @pytest.mark.asyncio
     async def test_missing_content_without_filter_annotation_not_retried(self):

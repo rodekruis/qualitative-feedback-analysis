@@ -50,6 +50,8 @@ Non-HTTP callers (CLI, future jobs, ad-hoc tests) generate a UUID themselves and
 
 If `LLMPort.complete` is invoked outside an active `call_scope` (e.g. a wiring bug), `TrackingLLMAdapter` does **not** raise — it logs at ERROR, routes through to the inner LLM, and returns the response without persisting the attempt. Observability never breaks the use case; missing scope is loud in logs and alertable, but does not fail user-facing requests.
 
+`LiteLLMClient` retries a content-policy rejection (see the retry table below), and Azure's asynchronous filter bills a completion before blocking it — so a retried, discarded attempt can carry real provider spend. `LiteLLMClient` accumulates that usage across every discarded attempt and folds it into whatever the call ultimately produces: the returned `LLMResponse`'s token/cost fields on eventual success, or `LLMContentPolicyViolationError.discarded_*` if every attempt is blocked. `TrackingLLMAdapter` reads the latter when persisting the failed record, so a billed-but-rejected generation is never invisible to per-tenant cost tracking.
+
 Conceptually: the driving adapter writes the ContextVar; the driven adapter reads it. The application service in between never touches it.
 
 ```mermaid
