@@ -53,6 +53,21 @@ system message, the judge system message (pins the language of
 the target language rather than leaving translation of a whole mixed-language
 corpus to one final reduce call.
 
+### Auto-detected language for `/v1/summarize`
+
+The single-record summarize path has no `output_language` request field and
+gains none. Instead `detect_source_language`
+(`qfa.services.language`) reads the record's **raw** content — before the
+envelope tags and the anonymiser's placeholders dilute it — and the resulting
+ISO 639-1 code goes through the same builder with
+`subject="title and summary"`. Text under 20 characters, or text langdetect
+cannot classify, yields no directive at all: the prompt's own soft "use the
+same language as the input" line stands, because pinning a wrongly guessed
+language is worse than not pinning one (#294).
+
+`/v1/summarize-bulk` is unchanged — its callers always set `output_language`,
+so its directive is already explicit.
+
 ## XML-style envelope (user message)
 
 The analyst prompt and every feedback record are placed in the **user
