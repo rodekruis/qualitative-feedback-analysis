@@ -13,6 +13,7 @@ from tenacity import (
     wait_exponential,
 )
 
+from qfa.domain.errors import LLMContentPolicyViolationError
 from qfa.domain.models import LLMResponse, T_Response
 from qfa.domain.ports import LLMPort, UsageRepositoryPort
 from qfa.domain.usage_models import CallContext, CallStatus, LLMCallRecord
@@ -136,9 +137,20 @@ def _build_record(
 
     ``outcome`` carries either the successful ``LLMResponse`` or the
     captured exception — same shape on both paths except for the
-    response/error-specific fields.
+    response/error-specific fields. A ``LLMContentPolicyViolationError``
+    may itself carry billable usage from retried-but-discarded attempts
+    (see its docstring); that usage is recorded here even though the call
+    as a whole failed, so a provider-billed generation is never invisible
+    to per-tenant cost tracking just because it was ultimately rejected.
     """
     if isinstance(outcome, Exception):
+        input_tokens = 0
+        output_tokens = 0
+        cost = Decimal("0")
+        if isinstance(outcome, LLMContentPolicyViolationError):
+            input_tokens = outcome.discarded_prompt_tokens
+            output_tokens = outcome.discarded_completion_tokens
+            cost = _to_decimal(outcome.discarded_cost)
         return LLMCallRecord(
             tenant_id=ctx.tenant_id,
             operation=ctx.operation,
@@ -146,9 +158,9 @@ def _build_record(
             timestamp=started_at,
             call_duration_ms=duration_ms,
             model="",
-            input_tokens=0,
-            output_tokens=0,
-            cost_usd=Decimal("0"),
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=cost,
             status=CallStatus.ERROR,
             error_class=type(outcome).__name__,
         )

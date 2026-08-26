@@ -113,6 +113,31 @@ def _retry_after_seconds(exc: Exception) -> int | None:
         return None
 
 
+def _content_filter_signal(choice: object) -> tuple[str | None, str | None]:
+    """Return the first flagged (category, severity) from a choice's content-filter annotation.
+
+    Reads only the structured ``content_filter_results`` dict Azure attaches
+    to a completion choice — category names and severity levels are a closed
+    set, not free text (see ADR-018). LiteLLM's response converter only
+    copies fields declared on its ``Choices`` model onto the choice itself;
+    anything else the provider sent (``content_filter_results`` included)
+    lands in ``choice.provider_specific_fields`` instead, so that is read
+    here rather than a top-level attribute. Returns ``(None, None)`` when
+    that field is absent, not a dict (e.g. a test double), or nothing in it
+    was flagged.
+    """
+    provider_fields = getattr(choice, "provider_specific_fields", None)
+    if not isinstance(provider_fields, dict):
+        return None, None
+    results = provider_fields.get("content_filter_results")
+    if not isinstance(results, dict):
+        return None, None
+    for category, result in results.items():
+        if isinstance(result, dict) and result.get("filtered"):
+            return category, result.get("severity")
+    return None, None
+
+
 def _to_domain_error(
     exc: Timeout | RateLimitError | BadRequestError | APIError,
     provider_status: int | None,
@@ -297,13 +322,28 @@ class LiteLLMClient(LLMPort):
         """Send a completion request via LiteLLM, retrying transient failures.
 
         ``timeout`` is the budget for a *single* attempt. Transient failures
-        (timeout, rate-limit) are retried with exponential backoff up to a total
-        wall-clock budget of ``LLM_RETRY_BUDGET_MULTIPLIER * timeout``; the retry
-        wraps only the provider call, so injection/token checks and response
-        parsing happen exactly once. Callers that enforce a deadline must size
-        ``timeout`` so this worst-case budget still fits (the orchestrator does
-        this in ``_check_deadline_and_get_timeout``). Bad-request and generic
-        API errors are not retried — they are not transient.
+        (timeout, rate-limit) and content-policy rejections are retried with
+        exponential backoff up to a total wall-clock budget of
+        ``LLM_RETRY_BUDGET_MULTIPLIER * timeout``; the retry wraps only the
+        provider call, so injection/token checks and response parsing happen
+        exactly once. Callers that enforce a deadline must size ``timeout`` so
+        this worst-case budget still fits (the orchestrator does this in
+        ``_check_deadline_and_get_timeout``). Content-policy rejections are
+        retried because Azure's filter severity classification is not
+        guaranteed deterministic for identical input (#293); other bad-request
+        and generic API errors are not retried — they are not transient.
+        Azure signals a rejection two ways, both mapped to
+        ``LLMContentPolicyViolationError`` and both retried: a synchronous
+        ``BadRequestError`` (sniffed by ``_to_domain_error``), or a ``200``
+        response whose ``choices[0].message.content`` is ``None`` with its
+        ``content_filter_results`` flagging a category (Azure's asynchronous
+        filter, which lets the call through and blocks the completion after
+        generation). The asynchronous path bills a completion before
+        rejecting it, so usage from every discarded attempt is accumulated
+        and folded into whichever outcome this call ultimately produces: the
+        returned ``LLMResponse``'s token/cost fields on eventual success, or
+        the raised ``LLMContentPolicyViolationError``'s ``discarded_*``
+        fields if every attempt is blocked.
 
         Parameters
         ----------
@@ -328,7 +368,8 @@ class LiteLLMClient(LLMPort):
         LLMRateLimitError
             When the provider rate-limits on every attempt.
         LLMContentPolicyViolationError
-            When the provider rejects the request under its content policy.
+            When the provider rejects the request under its content policy on
+            every attempt.
         LLMBadRequestError
             When the provider rejects the request for any other reason.
         PromptInjectionDetectedError
@@ -353,14 +394,25 @@ class LiteLLMClient(LLMPort):
             timeout,
             retry_budget,
         )
-        # Retry only the provider round-trip, and only for transient errors.
-        # ``reraise=True`` surfaces the underlying domain error (not a
-        # tenacity ``RetryError``) once the budget is spent.
+        # Azure's asynchronous filter bills a completion before blocking it, so a
+        # discarded attempt can still carry real provider spend. Accumulated here
+        # and folded into whatever this call ultimately returns or raises, so a
+        # caller recording usage never silently drops the cost of a retried,
+        # filtered attempt.
+        discarded_prompt_tokens = 0
+        discarded_completion_tokens = 0
+        discarded_cost = 0.0
+        # Retry only the provider round-trip plus the content-filter check on
+        # its response, and only for transient errors. ``reraise=True``
+        # surfaces the underlying domain error (not a tenacity ``RetryError``)
+        # once the budget is spent.
         with timed() as call_sw:
             async for attempt in AsyncRetrying(
                 wait=wait_exponential(multiplier=1, max=10),
                 stop=stop_after_delay(retry_budget),
-                retry=retry_if_exception_type((LLMTimeoutError, LLMRateLimitError)),
+                retry=retry_if_exception_type(
+                    (LLMTimeoutError, LLMRateLimitError, LLMContentPolicyViolationError)
+                ),
                 before_sleep=before_sleep_log(logger, logging.DEBUG),
                 after=after_log(logger, logging.DEBUG),
                 reraise=True,
@@ -373,10 +425,41 @@ class LiteLLMClient(LLMPort):
                         timeout=timeout,
                         response_format=response_format,
                     )
+                    content = response.choices[0].message.content
+                    if content is None:
+                        category, severity = _content_filter_signal(response.choices[0])
+                        if category is not None:
+                            blocked_usage = response.usage
+                            if blocked_usage is not None:
+                                discarded_prompt_tokens += blocked_usage.prompt_tokens
+                                discarded_completion_tokens += (
+                                    blocked_usage.completion_tokens
+                                )
+                                try:
+                                    discarded_cost += completion_cost(
+                                        completion_response=response
+                                    )
+                                except Exception:
+                                    logger.error(
+                                        "No pricing data for model %s", self._model
+                                    )
+                            logger.warning(
+                                "LLM output blocked by content filter: "
+                                "category=%s severity=%s",
+                                category,
+                                severity,
+                            )
+                            raise LLMContentPolicyViolationError(
+                                "LLM provider rejected the response under "
+                                "its content policy",
+                                category=category,
+                                severity=severity,
+                                discarded_prompt_tokens=discarded_prompt_tokens,
+                                discarded_completion_tokens=discarded_completion_tokens,
+                                discarded_cost=discarded_cost,
+                            )
+                        raise LLMError("LLM response missing content")
 
-        content = response.choices[0].message.content
-        if content is None:
-            raise LLMError("LLM response missing content")
         if not isinstance(content, str):
             msg = f"LLM response content must be a string, got {type(content).__name__}"
             raise LLMError(msg)
@@ -407,6 +490,10 @@ class LiteLLMClient(LLMPort):
                 "The `response_model` is not a string or BaseModel subclass."
             )
 
+        total_prompt_tokens = usage.prompt_tokens + discarded_prompt_tokens
+        total_completion_tokens = usage.completion_tokens + discarded_completion_tokens
+        total_cost = cost + discarded_cost
+
         # Per-call latency + usage. All fields here are explicitly safe to log
         # (see docs/operations/observability.md) — no message text, prompt, or
         # response content. DEBUG because hierarchical analysis fans out one of
@@ -416,15 +503,15 @@ class LiteLLMClient(LLMPort):
             "completion_tokens=%d cost=%s",
             response.model,
             call_sw.elapsed_seconds,
-            usage.prompt_tokens,
-            usage.completion_tokens,
-            cost,
+            total_prompt_tokens,
+            total_completion_tokens,
+            total_cost,
         )
 
         return LLMResponse[T_Response](
             structured=parsed_data,
             model=response.model,
-            prompt_tokens=usage.prompt_tokens,
-            completion_tokens=usage.completion_tokens,
-            cost=cost,
+            prompt_tokens=total_prompt_tokens,
+            completion_tokens=total_completion_tokens,
+            cost=total_cost,
         )

@@ -65,7 +65,43 @@ class LLMBadRequestError(LLMError):
 
 
 class LLMContentPolicyViolationError(LLMBadRequestError):
-    """Raised when the LLM provider rejects the request due to content policy."""
+    """Raised when the LLM provider rejects the request due to content policy.
+
+    ``category`` and ``severity`` are Azure's content-filter annotation
+    (e.g. ``"violence"`` / ``"high"``) when the rejection was detected from
+    a completed response's ``content_filter_results`` rather than sniffed
+    from a ``BadRequestError`` message — a closed, low-cardinality set of
+    classified scalars, never free text (see ADR-018). Both are ``None``
+    when unavailable.
+
+    ``discarded_prompt_tokens``, ``discarded_completion_tokens`` and
+    ``discarded_cost`` carry usage billed by the provider on retried
+    attempts that were discarded because the response was blocked — Azure's
+    asynchronous filter generates (and bills) a completion before rejecting
+    it. They are the *cumulative* total across every discarded attempt for
+    this call, so a caller recording usage from this exception still
+    accounts for the real spend even though no ``LLMResponse`` was ever
+    returned. Zero when the rejection carried no billable usage (e.g. the
+    synchronous, pre-generation rejection path).
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        provider_status: int | None = None,
+        category: str | None = None,
+        severity: str | None = None,
+        discarded_prompt_tokens: int = 0,
+        discarded_completion_tokens: int = 0,
+        discarded_cost: float = 0.0,
+    ) -> None:
+        super().__init__(message, provider_status=provider_status)
+        self.category = category
+        self.severity = severity
+        self.discarded_prompt_tokens = discarded_prompt_tokens
+        self.discarded_completion_tokens = discarded_completion_tokens
+        self.discarded_cost = discarded_cost
 
 
 class LLMRateLimitError(LLMError):

@@ -50,6 +50,8 @@ Non-HTTP callers (CLI, future jobs, ad-hoc tests) generate a UUID themselves and
 
 If `LLMPort.complete` is invoked outside an active `call_scope` (e.g. a wiring bug), `TrackingLLMAdapter` does **not** raise — it logs at ERROR, routes through to the inner LLM, and returns the response without persisting the attempt. Observability never breaks the use case; missing scope is loud in logs and alertable, but does not fail user-facing requests.
 
+`LiteLLMClient` retries a content-policy rejection (see the retry table below), and Azure's asynchronous filter bills a completion before blocking it — so a retried, discarded attempt can carry real provider spend. `LiteLLMClient` accumulates that usage across every discarded attempt and folds it into whatever the call ultimately produces: the returned `LLMResponse`'s token/cost fields on eventual success, or `LLMContentPolicyViolationError.discarded_*` if every attempt is blocked. `TrackingLLMAdapter` reads the latter when persisting the failed record, so a billed-but-rejected generation is never invisible to per-tenant cost tracking.
+
 Conceptually: the driving adapter writes the ContextVar; the driven adapter reads it. The application service in between never touches it.
 
 ```mermaid
@@ -75,7 +77,7 @@ Both adapters depend on `qfa.services.call_context`; neither depends on the othe
 |---|---|---|
 | Route handler | Per-request deadline | `deadline = now(UTC) + 240s`, passed as an absolute `datetime` into the service |
 | Application service ({py:class}`~qfa.services.llm_call_executor.LLMCallExecutor`) | Deadline check | Before each LLM call: if remaining time is negative, raise {py:exc}`~qfa.domain.errors.AnalysisTimeoutError`. The check and the timeout it derives live on the shared executor every service delegates to, so no use case re-implements the arithmetic |
-| Adapter ({py:class}`~qfa.adapters.llm_client.LiteLLMClient`) | Retry on transient errors | `tenacity.retry` with exponential backoff (1s→10s, 120s budget) for {py:exc}`~qfa.domain.errors.LLMTimeoutError` and {py:exc}`~qfa.domain.errors.LLMRateLimitError` |
+| Adapter ({py:class}`~qfa.adapters.llm_client.LiteLLMClient`) | Retry on transient errors | `tenacity.retry` with exponential backoff (1s→10s, 120s budget) for {py:exc}`~qfa.domain.errors.LLMTimeoutError`, {py:exc}`~qfa.domain.errors.LLMRateLimitError`, and {py:exc}`~qfa.domain.errors.LLMContentPolicyViolationError` (Azure's filter severity classification is not guaranteed deterministic for identical input, #293) |
 | Adapter ({py:class}`~qfa.adapters.llm_client.LiteLLMClient`) | Per-call timeout | Passed through to `litellm.acompletion(timeout=…)` |
 | Adapter ({py:class}`~qfa.adapters.llm_client.LiteLLMClient`) | Token budget guard | Estimates `len(text) / chars_per_token`; raises {py:exc}`~qfa.domain.errors.FeedbackTooLargeError` if over `LLM_MAX_TOTAL_TOKENS` |
 

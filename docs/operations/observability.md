@@ -38,6 +38,7 @@ Everything that's not in the prohibition list above is fine, especially:
 - Attempt numbers and retry reasons
 - Model name, latency, `prompt_tokens`, `completion_tokens`, `cost`
 - HTTP status codes
+- Azure content-filter `category`/`severity` on `LLMContentPolicyViolationError` (a closed annotation, e.g. `violence`/`high` — never the flagged text itself)
 
 ## Pipeline timing
 

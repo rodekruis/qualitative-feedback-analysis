@@ -14,6 +14,7 @@ from tenacity import wait_fixed
 from qfa.adapters.llm_client import (
     _UNSUPPORTED_SCHEMA_KEYWORDS,
     LiteLLMClient,
+    _content_filter_signal,
     _provider_safe_response_format,
 )
 from qfa.domain.errors import (
@@ -663,8 +664,10 @@ class TestLiteLLMClientRetry:
     async def test_bad_request_is_not_retried(self):
         """A non-transient BadRequest fails on the first attempt without retrying.
 
-        Why: bad requests are deterministic — retrying wastes the budget and a
-        held concurrency slot. Only timeout/rate-limit are transient.
+        Why: ordinary bad requests are deterministic — retrying wastes the
+        budget and a held concurrency slot. Content-policy violations are the
+        one BadRequest subtype that *is* retried; see
+        ``test_retries_content_policy_violation_then_succeeds`` below.
         """
         client = _make_client()
         with (
@@ -688,6 +691,226 @@ class TestLiteLLMClientRetry:
                 )
 
         assert mock_ac.call_count == 1  # not retried
+
+    @pytest.mark.asyncio
+    async def test_retries_content_policy_violation_then_succeeds(self):
+        """A content-policy rejection is retried and a subsequent success returned.
+
+        Why: Azure's content-filter severity classification is not guaranteed
+        deterministic for identical input (#293) — a rejection may clear on a
+        later attempt, so it is retried like timeout/rate-limit rather than
+        failing immediately like other bad requests.
+        """
+        good = _make_mock_response()
+        client = _make_client()
+        with (
+            patch(
+                "qfa.adapters.llm_client.acompletion",
+                new_callable=AsyncMock,
+                side_effect=[
+                    BadRequestError(
+                        message=(
+                            "The response was filtered due to the content "
+                            "management policy"
+                        ),
+                        model=MODEL,
+                        llm_provider="azure_ai",
+                    ),
+                    good,
+                ],
+            ) as mock_ac,
+            patch("qfa.adapters.llm_client.completion_cost", return_value=0.0),
+            patch(
+                "qfa.adapters.llm_client.wait_exponential",
+                return_value=wait_fixed(0),
+            ),
+        ):
+            result = await client.complete(
+                SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT
+            )
+
+        assert result.structured == "This is the summary."
+        assert mock_ac.call_count == 2  # one rejection, one success
+        # The synchronous BadRequestError path rejects before generation, so
+        # the discarded attempt carries no billable usage to fold in.
+        assert result.prompt_tokens == 100
+        assert result.completion_tokens == 50
+
+    @pytest.mark.asyncio
+    async def test_content_policy_violation_retries_exhausted_reraises(self):
+        """When every attempt is content-filtered, the domain error is re-raised.
+
+        Why: a persistently-blocked input (not just a flaky classification)
+        must still surface as ``content_policy_violation`` to the caller, not
+        hang or raise a generic tenacity ``RetryError``.
+        """
+        client = _make_client()
+        with (
+            patch(
+                "qfa.adapters.llm_client.acompletion",
+                new_callable=AsyncMock,
+                side_effect=BadRequestError(
+                    message=(
+                        "The response was filtered due to the content management policy"
+                    ),
+                    model=MODEL,
+                    llm_provider="azure_ai",
+                ),
+            ) as mock_ac,
+            patch(
+                "qfa.adapters.llm_client.wait_exponential",
+                return_value=wait_fixed(0.01),
+            ),
+        ):
+            with pytest.raises(LLMContentPolicyViolationError) as excinfo:
+                await client.complete(
+                    SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=0.01
+                )
+
+        assert mock_ac.call_count >= 2  # retried before giving up
+        # No response object exists on the synchronous rejection path, so
+        # there is no billable usage to discard.
+        assert excinfo.value.discarded_prompt_tokens == 0
+        assert excinfo.value.discarded_completion_tokens == 0
+        assert excinfo.value.discarded_cost == 0.0
+
+    @pytest.mark.asyncio
+    async def test_missing_content_with_filter_annotation_retries_and_succeeds(self):
+        """A 200 response with null content + a flagged category is retried.
+
+        Why: Azure's asynchronous content filter lets the call through and
+        blocks the completion after generation, instead of raising a
+        BadRequestError — that must be retried the same as the synchronous
+        rejection, given the same non-deterministic classification (#293).
+        """
+        filtered = _make_mock_response()
+        filtered.choices[0].message.content = None
+        filtered.choices[0].provider_specific_fields = {
+            "content_filter_results": {
+                "violence": {"filtered": True, "severity": "high"},
+            },
+        }
+        good = _make_mock_response()
+        client = _make_client()
+        with (
+            patch(
+                "qfa.adapters.llm_client.acompletion",
+                new_callable=AsyncMock,
+                side_effect=[filtered, good],
+            ) as mock_ac,
+            patch("qfa.adapters.llm_client.completion_cost", return_value=0.0),
+            patch(
+                "qfa.adapters.llm_client.wait_exponential",
+                return_value=wait_fixed(0),
+            ),
+        ):
+            result = await client.complete(
+                SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT
+            )
+
+        assert result.structured == "This is the summary."
+        assert mock_ac.call_count == 2  # one block, one success
+        # Azure's asynchronous filter bills the blocked attempt too — that
+        # discarded usage must be folded into the final, successful result.
+        assert result.prompt_tokens == 200  # 100 discarded + 100 from success
+        assert result.completion_tokens == 100  # 50 discarded + 50 from success
+
+    @pytest.mark.asyncio
+    async def test_missing_content_with_filter_annotation_exhausts_retries(self):
+        """When every attempt is blocked post-hoc, the classified error is re-raised."""
+        filtered = _make_mock_response()
+        filtered.choices[0].message.content = None
+        filtered.choices[0].provider_specific_fields = {
+            "content_filter_results": {
+                "self_harm": {"filtered": True, "severity": "high"},
+            },
+        }
+        client = _make_client()
+        with (
+            patch(
+                "qfa.adapters.llm_client.acompletion",
+                new_callable=AsyncMock,
+                return_value=filtered,
+            ) as mock_ac,
+            patch("qfa.adapters.llm_client.completion_cost", return_value=0.002),
+            patch(
+                "qfa.adapters.llm_client.wait_exponential",
+                return_value=wait_fixed(0.01),
+            ),
+        ):
+            with pytest.raises(LLMContentPolicyViolationError) as excinfo:
+                await client.complete(
+                    SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=0.01
+                )
+
+        assert excinfo.value.category == "self_harm"
+        assert excinfo.value.severity == "high"
+        assert mock_ac.call_count >= 2  # retried before giving up
+        # Every attempt was billed and blocked; the exhausted error must carry
+        # the sum of all of them, not just the last one, so no spend is lost.
+        assert excinfo.value.discarded_prompt_tokens == 100 * mock_ac.call_count
+        assert excinfo.value.discarded_completion_tokens == 50 * mock_ac.call_count
+        assert excinfo.value.discarded_cost == pytest.approx(0.002 * mock_ac.call_count)
+
+    @pytest.mark.asyncio
+    async def test_missing_content_without_filter_annotation_not_retried(self):
+        """A null-content response with no filter annotation stays a plain LLMError.
+
+        Why: the generic "missing content" fallback (e.g. a malformed
+        provider response unrelated to content policy) must not be
+        misclassified as retryable just because content is absent.
+        """
+        mock_response = _make_mock_response()
+        mock_response.choices[0].message.content = None
+        client = _make_client()
+        with patch(
+            "qfa.adapters.llm_client.acompletion",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ) as mock_ac:
+            with pytest.raises(LLMError, match="missing content"):
+                await client.complete(
+                    SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT
+                )
+
+        assert mock_ac.call_count == 1  # not retried
+
+
+class TestContentFilterSignal:
+    """Unit tests for the structural content-filter annotation reader."""
+
+    def test_no_attribute_returns_none(self):
+        choice = MagicMock(spec=[])
+        assert _content_filter_signal(choice) == (None, None)
+
+    def test_non_dict_provider_fields_returns_none(self):
+        choice = MagicMock()
+        choice.provider_specific_fields = "not a dict"
+        assert _content_filter_signal(choice) == (None, None)
+
+    def test_non_dict_content_filter_results_returns_none(self):
+        choice = MagicMock()
+        choice.provider_specific_fields = {"content_filter_results": "not a dict"}
+        assert _content_filter_signal(choice) == (None, None)
+
+    def test_no_category_flagged_returns_none(self):
+        choice = MagicMock()
+        choice.provider_specific_fields = {
+            "content_filter_results": {
+                "hate": {"filtered": False, "severity": "safe"},
+            },
+        }
+        assert _content_filter_signal(choice) == (None, None)
+
+    def test_flagged_category_returns_category_and_severity(self):
+        choice = MagicMock()
+        choice.provider_specific_fields = {
+            "content_filter_results": {
+                "hate": {"filtered": False, "severity": "safe"},
+                "violence": {"filtered": True, "severity": "high"},
+            },
+        }
+        assert _content_filter_signal(choice) == ("violence", "high")
 
 
 class TestProviderSafeResponseFormat:

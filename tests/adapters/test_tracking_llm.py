@@ -7,7 +7,7 @@ from uuid import uuid4
 import pytest
 
 from qfa.adapters.tracking_llm import TrackingLLMAdapter
-from qfa.domain.errors import LLMError
+from qfa.domain.errors import LLMContentPolicyViolationError, LLMError
 from qfa.domain.models import LLMResponse
 from qfa.domain.ports import LLMPort, UsageRepositoryPort
 from qfa.domain.usage_models import (
@@ -142,6 +142,49 @@ async def test_records_failed_call_with_error_class():
     assert rec.input_tokens == 0
     assert rec.output_tokens == 0
     assert rec.operation == Operation.SUMMARIZE
+
+
+async def test_records_discarded_usage_from_exhausted_content_policy_violation():
+    """A content-policy failure with billed-but-discarded usage still records spend.
+
+    Why: Azure's asynchronous filter bills a completion before blocking it,
+    so a call that exhausts its retries and fails outright may still carry
+    real provider spend on ``LLMContentPolicyViolationError.discarded_*`` —
+    that must reach the usage repository, not silently become a $0 record.
+    """
+    inner = FakeLLMPort()
+    inner.queue_failure(
+        LLMContentPolicyViolationError(
+            "LLM provider rejected the response under its content policy",
+            category="violence",
+            severity="high",
+            discarded_prompt_tokens=250,
+            discarded_completion_tokens=90,
+            discarded_cost=0.0075,
+        )
+    )
+    repo = FakeUsageRepository()
+    adapter = TrackingLLMAdapter(inner=inner, usage_repo=repo)
+
+    async with call_scope(
+        tenant_id="t1", operation=Operation.ANALYZE, request_id=uuid4()
+    ):
+        with pytest.raises(LLMContentPolicyViolationError):
+            await adapter.complete(
+                system_message="sys",
+                user_message="usr",
+                tenant_id="t1",
+                response_model=str,
+                timeout=10.0,
+            )
+
+    assert len(repo.records) == 1
+    rec = repo.records[0]
+    assert rec.status == CallStatus.ERROR
+    assert rec.error_class == "LLMContentPolicyViolationError"
+    assert rec.input_tokens == 250
+    assert rec.output_tokens == 90
+    assert rec.cost_usd == Decimal("0.0075")
 
 
 async def test_bypasses_persistence_and_logs_when_call_scope_unset(caplog):
