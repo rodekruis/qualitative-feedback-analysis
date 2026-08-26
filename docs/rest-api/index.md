@@ -160,7 +160,7 @@ Every error response shares this shape:
 | 404 | `not_found` |
 | 409 | `conflict` |
 | 413 | `payload_too_large` |
-| 422 | `validation_error`, `prompt_injection_detected`, `content_policy_violation` |
+| 422 | `validation_error`, `json_invalid`, `prompt_injection_detected`, `content_policy_violation` |
 | 429 | `llm_rate_limited` (see below) |
 | 502 | `analysis_unavailable`, `llm_error` |
 | 503 | `usage_backend_unavailable` |
@@ -168,6 +168,16 @@ Every error response shares this shape:
 | 500 | `internal_error` |
 
 A 429 carries a `Retry-After` header (integer seconds) — honour it before retrying. 5xx and 429 messages are constant strings, not exception detail; `request_id` is the handle to give support, not the message text.
+
+### Request body encoding
+
+`content` — and every other string field — may hold **any** character, including line breaks, tabs and quotes, provided the body is valid JSON per RFC 8259. **Do not strip whitespace characters client-side; escape them.**
+
+| Rule | Detail |
+|---|---|
+| Escaping | Control characters `U+0000`–`U+001F` (`\n`, `\r`, `\t`, `\f`, `\v`, …), `"` and `\` must be escaped inside a JSON string. Serialise with a JSON library; never assemble a body by concatenating raw field values. |
+| Parse failure | A body that does not parse returns 422 `json_invalid`, with the cause and the byte offset in `fields[0].issue`. This happens before any route handler runs, so no server-side sanitiser can rescue it. |
+| Rejected after parsing | Three content classes return 422 `prompt_injection_detected`: a NUL byte, 200 or more consecutive identical characters (e.g. a pasted `------` divider), and content beginning `SYSTEM:`, `ASSISTANT:` or `USER:`. |
 
 ## Breaking changes
 

@@ -26,6 +26,15 @@ These use all single-feedback record endpoints such as `summarize`, `detect-sens
 
 The two flows build their distinctive `motherPayload` — a JSON object containing all key-value pairs needed by the endpoints. This holds information about the selected feedback item(s) and their attributes. The attributes are saved as metadata in this flow.
 
+### Building a request body
+
+**Build the payload with `object\create()` / `list()` and serialise it with a single `json\encode()`. Never assemble it with `string\concatenate()`, and never rewrite field values with `string\replace()`.**
+
+- Concatenating raw field values produces invalid JSON the moment feedback text contains a line break, tab, `"` or `\`. The request then dies in the JSON parser with a 422 `json_invalid` *before* any route handler runs, so no server-side sanitiser can rescue it (issue #245). `json\encode()` escapes all of these correctly and the feedback text survives intact — see [Request body encoding](../rest-api/index.md#request-body-encoding).
+- Fields the API declares non-nullable — `id`, `content`, `url_id` and `metadata.created` — must be coerced with `ifThen($x == null, $x = '')` before serialising. `json\encode()` emits `null` where concatenation emitted `""`, and `null` is a 422.
+
+`tests/scripts/test_espo_flowcharts.py` enforces both rules against the exported CSVs.
+
 ## Error handling
 
 Both flows wrap each outbound call in an EspoCRM error-boundary event. On success, the relevant status field is set to `completed`; on failure, the boundary runs an "error notification" step instead, which sets the status field to `failed` and stores the underlying error via `bpm\caughtErrorCode()` / `bpm\caughtErrorMessage()`. All of these are plain fields on the triggering feedback record or insight, so the outcome and any error detail are visible directly on that record in the EspoCRM UI — there is no separate error log to check.

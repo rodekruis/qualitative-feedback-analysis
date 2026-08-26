@@ -90,6 +90,7 @@ The exception handlers in `qfa.api.app` translate domain errors into HTTP respon
 | Exception | HTTP | `error.code` |
 |---|---|---|
 | Missing / invalid bearer token | 401 | `authentication_required` |
+| Malformed JSON request body | 422 | `json_invalid` |
 | Pydantic validation failure | 422 | `validation_error` |
 | {py:exc}`~qfa.domain.errors.FeedbackTooLargeError` | 413 | `payload_too_large` |
 | {py:exc}`~qfa.domain.errors.AnalysisTimeoutError` | 504 | `analysis_timeout` |

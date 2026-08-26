@@ -1,7 +1,7 @@
 """Application factory and composition root."""
 
 import logging
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator, Callable, Sequence
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
@@ -67,6 +67,62 @@ Not a setting (ADR-018 keeps this off an env var): ~3x the adapter's
 ``wait_exponential(max=10)`` backoff cap, long enough to outlast a burst
 the internal retry budget already failed to ride out.
 """
+
+
+_JSON_DECODE_HINTS: tuple[tuple[str, str], ...] = (
+    (
+        "Invalid control character",
+        "a raw control character (U+0000-U+001F) appears inside a JSON string; "
+        "escape it as \\n, \\r, \\t, \\f or \\u000b. The API accepts these "
+        "characters once escaped -- escape them, do not strip them",
+    ),
+    (
+        "Invalid \\",
+        "a backslash is not the start of a valid escape sequence; a literal "
+        "backslash must be written as \\\\",
+    ),
+    (
+        "Unterminated string starting at",
+        'a JSON string is never closed; a literal " inside a string must be '
+        'written as \\"',
+    ),
+    (
+        "Expecting ',' delimiter",
+        'unexpected token, most often an unescaped " that ended a string value '
+        'early; write it as \\"',
+    ),
+    (
+        "Expecting ':' delimiter",
+        'unexpected token, most often an unescaped " that ended a string value '
+        'early; write it as \\"',
+    ),
+    (
+        "Expecting property name enclosed in double quotes",
+        "unexpected token where an object key was expected, most often an "
+        'unescaped " that ended an earlier value early',
+    ),
+)
+"""Ordered ``(stdlib JSONDecodeError prefix, repo-authored hint)`` pairs."""
+
+_JSON_DECODE_FALLBACK_HINT = (
+    "the request body is not well-formed JSON; check that it parses per "
+    "RFC 8259 before sending"
+)
+
+
+def _json_decode_hint(reason: str) -> str:
+    """Map a stdlib ``JSONDecodeError`` reason to a hint, first prefix wins.
+
+    The reason is mapped rather than echoed because it is not ours to
+    publish (ADR-018): CPython's pure-Python scanner renders it as
+    ``Invalid control character %r at`` — a ``repr`` of caller-supplied
+    bytes. The C accelerator's shorter wording is safe today, but prefix
+    matching keeps the mapping independent of which scanner is loaded.
+    """
+    for prefix, hint in _JSON_DECODE_HINTS:
+        if reason.startswith(prefix):
+            return hint
+    return _JSON_DECODE_FALLBACK_HINT
 
 
 class RequestIdMiddleware:
@@ -316,10 +372,41 @@ async def _handle_not_found_error(request: Request, exc: DomainError) -> JSONRes
     return JSONResponse(status_code=404, content=body.model_dump())
 
 
+def _json_invalid_response(request: Request, errors: Sequence[Any]) -> JSONResponse:
+    """Build the 422 response for a request body that would not parse.
+
+    ``errors`` must be ``json_invalid`` entries only. The byte offset is
+    appended to the hint rather than smuggled into the field path, which
+    is why ``field`` is always plain ``"body"``.
+    """
+    fields = []
+    for err in errors:
+        issue = _json_decode_hint(str(err.get("ctx", {}).get("error", "")))
+        loc = err.get("loc", ())
+        if len(loc) == 2 and isinstance(loc[1], int):
+            issue = f"{issue} (byte offset {loc[1]})"
+        fields.append(ApiErrorFieldDetail(field="body", issue=issue))
+
+    body = ApiErrorResponse(
+        error=ApiErrorDetail(
+            code="json_invalid",
+            message="Request body is not valid JSON",
+            request_id=_get_request_id(request),
+            fields=fields,
+        )
+    )
+    return JSONResponse(status_code=422, content=body.model_dump())
+
+
 async def _handle_validation_error(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
     """Handle Pydantic RequestValidationError exceptions.
+
+    A body that failed to parse as JSON is reported as ``json_invalid``
+    with the reason spelled out; anything else is a semantic failure and
+    stays ``validation_error``. ``exc.body`` is deliberately never read —
+    FastAPI attaches the entire raw request body to it.
 
     Parameters
     ----------
@@ -333,6 +420,10 @@ async def _handle_validation_error(
     JSONResponse
         A 422 JSON response with per-field details.
     """
+    errors = exc.errors()
+    if errors and all(err.get("type") == "json_invalid" for err in errors):
+        return _json_invalid_response(request, errors)
+
     fields = []
     for err in exc.errors():
         loc_parts = [str(part) for part in err.get("loc", [])]
