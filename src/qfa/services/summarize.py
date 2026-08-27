@@ -34,6 +34,7 @@ from qfa.domain.models import (
     SummaryResultModel,
 )
 from qfa.domain.ports import AnonymizationPort, LLMPort
+from qfa.services.language import detect_source_language
 from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.services.prompts import (
     JUDGE_USER_MESSAGE,
@@ -271,9 +272,25 @@ class SummarizeService:
         AnalysisError
             When the LLM returns invalid output or another non-recoverable
             error occurs.
+
+        Notes
+        -----
+        The output language is auto-detected from the record's own content
+        and pinned in the system message — there is no request field for it
+        (#294).
         """
         timeout = self._executor.check_deadline_and_get_timeout(deadline)
-        system_message = _DEFAULT_SUMMARIZATION_PROMPT
+        # Detected on the raw content, before the envelope tags and the
+        # anonymiser's ``<PERSON_0>`` placeholders dilute the sample. Returns
+        # an empty suffix when detection declines, leaving the prompt's own
+        # soft "same language as the input" line to stand.
+        detected_language = detect_source_language(request.feedback_record.content)
+        system_message = (
+            _DEFAULT_SUMMARIZATION_PROMPT
+            + build_output_language_instruction(
+                detected_language, subject="title and summary"
+            )
+        )
 
         user_message = build_feedback_record_envelope(
             request.feedback_record, include_metadata=False

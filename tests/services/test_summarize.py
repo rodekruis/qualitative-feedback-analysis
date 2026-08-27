@@ -386,6 +386,130 @@ class TestAggregateSummaryOutputLanguage:
         )
 
 
+class TestSingleSummaryDetectedLanguage:
+    @pytest.mark.asyncio
+    async def test_english_record_pins_english_output(self, settings):
+        """An English record pins the title and summary to English.
+
+        Why: #294 — an English record came back with a French AI title and
+        summary. The prompt's soft "same language as the input" line is a
+        suggestion the model can ignore, so the detected language is now
+        pinned explicitly. There is no request field to set for this.
+        """
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=_make_summary_result()),
+                _make_llm_response(structured="0.82\n"),
+            ]
+        )
+        service = _build_service(fake_llm, settings)
+
+        await service.summarize(
+            _make_summary_request(
+                feedback_record=_make_feedback_record(
+                    content="The water pump in the camp has been broken for three weeks."
+                )
+            ),
+            _future_deadline(),
+        )
+
+        assert (
+            "Write the title and summary in en" in fake_llm.calls[0]["system_message"]
+        )
+
+    @pytest.mark.asyncio
+    async def test_french_record_pins_french_output(self, settings):
+        """A French record pins the title and summary to French.
+
+        Why: the directive must track the record's own language rather than
+        being hardcoded to the language the bug was reported in.
+        """
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=_make_summary_result()),
+                _make_llm_response(structured="0.82\n"),
+            ]
+        )
+        service = _build_service(fake_llm, settings)
+
+        await service.summarize(
+            _make_summary_request(
+                feedback_record=_make_feedback_record(
+                    content=(
+                        "Merci beaucoup pour votre aide, la distribution"
+                        " etait bien organisee."
+                    )
+                )
+            ),
+            _future_deadline(),
+        )
+
+        assert (
+            "Write the title and summary in fr" in fake_llm.calls[0]["system_message"]
+        )
+
+    @pytest.mark.asyncio
+    async def test_short_record_falls_back_to_the_soft_instruction(self, settings):
+        """Text too short to detect leaves the prompt exactly as it was.
+
+        Why: langdetect guesses confidently and wrongly on short text, and
+        pinning the wrong language is worse than the original bug. The
+        fallback is today's behaviour — no directive, soft instruction only,
+        no error.
+        """
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=_make_summary_result()),
+                _make_llm_response(structured="0.82\n"),
+            ]
+        )
+        service = _build_service(fake_llm, settings)
+
+        result = await service.summarize(
+            _make_summary_request(
+                feedback_record=_make_feedback_record(content="Water is dirty")
+            ),
+            _future_deadline(),
+        )
+
+        system_message = fake_llm.calls[0]["system_message"]
+        assert "Write the title and summary in" not in system_message
+        assert "Use the same language as the input feedback item" in system_message
+        assert result.title == "Title"
+        assert len(fake_llm.calls) == 2
+
+    @pytest.mark.asyncio
+    async def test_directive_is_absent_from_the_judge_call(self, settings):
+        """The judge call gets no language directive.
+
+        Why: the judge returns a bare quality score, so it has no free text
+        whose language could be wrong.
+        """
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=_make_summary_result()),
+                _make_llm_response(structured="0.82\n"),
+            ]
+        )
+        service = _build_service(fake_llm, settings)
+
+        await service.summarize(
+            _make_summary_request(
+                feedback_record=_make_feedback_record(
+                    content="The water pump in the camp has been broken for three weeks."
+                )
+            ),
+            _future_deadline(),
+        )
+
+        assert (
+            "Write the title and summary in en" in fake_llm.calls[0]["system_message"]
+        )
+        assert (
+            "Write the title and summary in" not in fake_llm.calls[1]["system_message"]
+        )
+
+
 class TestSummarizeBulkHyperlinks:
     @pytest.mark.asyncio
     async def test_hyperlinks_form_reference_in_summary(self, settings):
