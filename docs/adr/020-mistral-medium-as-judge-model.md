@@ -68,11 +68,11 @@ environment.
 
 ## Rollback
 
-Set the environment's `judge_llm_model` (and `judge_llm_api_base`, if set)
-to `""` and re-apply. Because `JUDGE_LLM_MODEL` unset means "use the primary
-client" (`src/qfa/settings.py`), rollback is a config change with **no code
-change and no redeploy of the image** — the cheapest rollback the `JUDGE_LLM_*`
-mechanism allows.
+Set the environment's `AZ_JUDGE_LLM_MODEL` GitHub Actions variable (and
+`AZ_JUDGE_LLM_API_BASE`, if set) to `""` and re-apply. Because `JUDGE_LLM_MODEL`
+unset means "use the primary client" (`src/qfa/settings.py`), rollback is a
+config change with **no code change and no redeploy of the image** — the
+cheapest rollback the `JUDGE_LLM_*` mechanism allows.
 
 ## Rollback conditions
 

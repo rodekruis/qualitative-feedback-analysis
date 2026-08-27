@@ -100,7 +100,7 @@ class JudgeLLMSettings(BaseSettings):
     tried at all. Here the credential is inherited by default, so enabling a
     judge on the same Azure resource needs one non-secret variable::
 
-        JUDGE_LLM_MODEL=azure_ai/mistral-medium-2505
+        JUDGE_LLM_MODEL=azure_ai/mistral-medium-3-5
         JUDGE_LLM_API_BASE=https://<resource>.services.ai.azure.com/models
 
     ``model`` is the switch: while it is unset (or empty) no judge client is
