@@ -50,28 +50,36 @@ resource "azurerm_linux_web_app" "backend" {
     container_registry_use_managed_identity = true
   }
 
-  app_settings = {
-    LLM_MODEL       = var.llm_model
-    LLM_API_VERSION = var.llm_api_version
+  # merge()'d with local.judge_app_settings rather than a static map so an
+  # unset judge_llm_model can omit JUDGE_LLM_MODEL/JUDGE_LLM_API_BASE
+  # entirely instead of writing them as empty strings — see the comment on
+  # local.judge_app_settings (infra/locals.tf) for why that distinction
+  # matters.
+  app_settings = merge(
+    {
+      LLM_MODEL       = var.llm_model
+      LLM_API_VERSION = var.llm_api_version
 
-    # Key Vault references — the App Service resolves these at runtime
-    LLM_API_BASE  = "@Microsoft.KeyVault(SecretUri=https://${local.keyvault_name}.vault.azure.net/secrets/llm-api-base)"
-    LLM_API_KEY   = "@Microsoft.KeyVault(SecretUri=https://${local.keyvault_name}.vault.azure.net/secrets/llm-api-key)"
-    AUTH_API_KEYS = "@Microsoft.KeyVault(SecretUri=https://${local.keyvault_name}.vault.azure.net/secrets/auth-api-keys)"
+      # Key Vault references — the App Service resolves these at runtime
+      LLM_API_BASE  = "@Microsoft.KeyVault(SecretUri=https://${local.keyvault_name}.vault.azure.net/secrets/llm-api-base)"
+      LLM_API_KEY   = "@Microsoft.KeyVault(SecretUri=https://${local.keyvault_name}.vault.azure.net/secrets/llm-api-key)"
+      AUTH_API_KEYS = "@Microsoft.KeyVault(SecretUri=https://${local.keyvault_name}.vault.azure.net/secrets/auth-api-keys)"
 
-    DB_URL         = ""
-    DB_HOST        = azurerm_postgresql_flexible_server.db.fqdn
-    DB_PORT        = "5432"
-    DB_NAME        = var.postgres_db_name
-    DB_AUTH_MODE   = "entra"
-    DB_AAD_SCOPE   = var.db_aad_scope
-    DB_USER        = local.db_aad_principal_name
+      DB_URL         = ""
+      DB_HOST        = azurerm_postgresql_flexible_server.db.fqdn
+      DB_PORT        = "5432"
+      DB_NAME        = var.postgres_db_name
+      DB_AUTH_MODE   = "entra"
+      DB_AAD_SCOPE   = var.db_aad_scope
+      DB_USER        = local.db_aad_principal_name
 
-    WEBSITES_ENABLE_APP_SERVICE_STORAGE  = "false"
-    WEBSITES_PORT                        = "8000"
+      WEBSITES_ENABLE_APP_SERVICE_STORAGE  = "false"
+      WEBSITES_PORT                        = "8000"
 
-    APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.main.connection_string
-  }
+      APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.main.connection_string
+    },
+    local.judge_app_settings,
+  )
 
   logs {
     # "Application Logging (Filesystem)" in the Portal. This is what captures

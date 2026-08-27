@@ -60,6 +60,19 @@ variable "llm_api_version" {
   default     = "2024-05-01-preview"
 }
 
+variable "judge_llm_model" {
+  description = "Model for the separate LLM-as-judge connection (JUDGE_LLM_MODEL). An empty string disables the judge connection entirely — judge calls fall back to the primary llm_model, matching pre-judge-config behaviour. This is also the rollback lever: to roll back, set this to \"\" and re-apply, no code change or redeploy needed. See ADR-020."
+  type        = string
+  default     = "azure_ai/mistral-medium-3-5"
+}
+
+variable "judge_llm_api_base" {
+  description = "API base for the judge connection (JUDGE_LLM_API_BASE), when it differs from the primary llm route (e.g. azure_ai/ vs azure/). Deliberately left uncommitted (no default) and supplied per-environment via TF_VAR_judge_llm_api_base, since the primary LLM_API_BASE embeds the Azure resource name and is kept out of git via Key Vault for the same reason. Empty means inherit the primary connection's api_base — see docs/operations/settings-reference.md for the inheritance rule."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 # --- App Service plan sizing ---
 
 variable "app_service_plan_sku_by_env" {

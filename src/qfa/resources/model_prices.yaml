@@ -21,6 +21,18 @@ models:
     max_tokens: 131072
     litellm_provider: azure_ai
     mode: chat
+  # Mistral publishes a 256k context window for this model, but Azure AI
+  # Foundry's serverless deployment has been reported to enforce a much
+  # lower cap (2026-08-27). max_tokens isn't enforced anywhere in this repo
+  # (it's cost-map metadata only), so 131072 is inherited from the
+  # neighbouring mistral-medium-2505 entry as a stated assumption pending
+  # confirmation against the actual deployment.
+  azure_ai/mistral-medium-3-5:
+    input_cost_per_token: 0.0000015
+    output_cost_per_token: 0.0000075
+    max_tokens: 131072
+    litellm_provider: azure_ai
+    mode: chat
   azure/gpt-5.4:
     input_cost_per_token: 0.0000025
     output_cost_per_token: 0.000015
