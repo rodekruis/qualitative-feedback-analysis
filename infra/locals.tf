@@ -17,4 +17,18 @@ locals {
   # explicitly granted (ACR push, tfstate blob write, etc.).
   tfstate_sa_id = "/subscriptions/${var.subscription_id}/resourceGroups/${var.tf_state_resource_group_name}/providers/Microsoft.Storage/storageAccounts/${var.tf_state_storage_account}"
   acr_id        = "/subscriptions/${var.subscription_id}/resourceGroups/${var.acr_resource_group_name}/providers/Microsoft.ContainerRegistry/registries/${var.acr_name}"
+
+  # App settings for the optional judge connection. Built conditionally,
+  # not as a static map with possibly-empty values: JudgeLLMSettings treats
+  # JUDGE_LLM_API_BASE being absent as "inherit the primary connection's
+  # api_base" and being present-but-empty as "override to empty"
+  # (src/qfa/settings.py) — writing "" unconditionally when
+  # judge_llm_api_base isn't set would silently break every judge call
+  # with an empty base URL instead of inheriting the primary one. No Key
+  # Vault entry is involved: the judge API key always inherits
+  # JUDGE_LLM_API_KEY's default, the primary LLM_API_KEY.
+  judge_app_settings = var.judge_llm_model == "" ? {} : merge(
+    { JUDGE_LLM_MODEL = var.judge_llm_model },
+    var.judge_llm_api_base == "" ? {} : { JUDGE_LLM_API_BASE = var.judge_llm_api_base },
+  )
 }

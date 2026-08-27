@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+import litellm
 import pytest
 from pydantic import SecretStr
 
@@ -13,6 +14,7 @@ from qfa.adapters.presidio_anonymizer import PresidioAnonymizer
 from qfa.api.composition import (
     build_analyze_service,
     build_services,
+    register_custom_model_prices,
     resolve_judge_llm_settings,
 )
 from qfa.services.analyze import AnalyzeService
@@ -456,3 +458,22 @@ class TestBuildServices:
 
         assert services.coding._llm is stub_llm
         assert services.analyze._judge_llm is not stub_llm
+
+
+class TestRegisterCustomModelPrices:
+    """Judge calls on an unpriced model are silently recorded at zero cost.
+
+    ``completion_cost`` raises for a model missing from litellm's cost map,
+    ``LiteLLMClient`` catches that and sets ``cost = float("nan")``, and
+    ``_to_decimal`` coerces NaN to ``Decimal("0")`` — so a model absent here
+    breaks cost attribution without ever raising. These tests are the
+    guard against a candidate judge model being deployed unpriced.
+    """
+
+    def test_mistral_medium_3_5_is_priced(self) -> None:
+        register_custom_model_prices()
+
+        entry = litellm.model_cost["azure_ai/mistral-medium-3-5"]
+
+        assert entry["input_cost_per_token"] > 0
+        assert entry["output_cost_per_token"] > 0
