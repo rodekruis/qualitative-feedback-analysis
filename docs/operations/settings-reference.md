@@ -37,7 +37,7 @@ base URL.
 
 | Variable | Required | Default | Notes |
 |---|---|---|---|
-| `JUDGE_LLM_MODEL` | no | unset → judge calls use the primary connection | Enables the separate judge connection. Same LiteLLM prefix routing as `LLM_MODEL`. |
+| `JUDGE_LLM_MODEL` | no | unset locally; deployed environments set `azure_ai/mistral-medium-3-5` via Terraform (`var.judge_llm_model`) — see [ADR-020](../adr/020-mistral-medium-as-judge-model.md) | Enables the separate judge connection. Same LiteLLM prefix routing as `LLM_MODEL`. |
 | `JUDGE_LLM_API_KEY` | no | inherits `LLM_API_KEY` | Only needed for a judge on a different Azure resource or provider. Stored as `SecretStr`. |
 | `JUDGE_LLM_API_BASE` | no | inherits `LLM_API_BASE` | Needed when the judge sits on a different provider *route* — e.g. `azure_ai/…` uses `https://<resource>.services.ai.azure.com/models` while `azure/…` uses `https://<resource>.openai.azure.com/`. Non-secret. |
 | `JUDGE_LLM_API_VERSION` | no | inherits `LLM_API_VERSION` | API version where the judge provider expects a different one. |
@@ -58,7 +58,7 @@ A judge on the other provider route of the same Azure Foundry resource needs
 two, both non-secret; the API key is still inherited:
 
 ```
-JUDGE_LLM_MODEL=azure_ai/mistral-medium-2505
+JUDGE_LLM_MODEL=azure_ai/mistral-medium-3-5
 JUDGE_LLM_API_BASE=https://<resource>.services.ai.azure.com/models
 ```
 
