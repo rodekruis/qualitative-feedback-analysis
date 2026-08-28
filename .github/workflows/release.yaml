@@ -133,7 +133,10 @@ jobs:
           # Pin to the same version as the step above, and inject the same
           # GitPython pin — see #303 for why.
           pipx install python-semantic-release==10.5.3
-          pipx inject python-semantic-release "gitpython==3.1.59"
+          # --force: gitpython is already present as a transitive dependency
+          # (at the broken 3.1.60+), and `pipx inject` no-ops instead of
+          # downgrading it unless forced.
+          pipx inject --force python-semantic-release "gitpython==3.1.59"
           semantic-release changelog
           # Extract only the latest version's section from CHANGELOG.md
           awk '/^## v/{if(found) exit; found=1} found' CHANGELOG.md > release_notes.md
