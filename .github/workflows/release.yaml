@@ -103,7 +103,10 @@ jobs:
       - name: Generate release notes
         if: steps.semrel.outputs.released == 'true'
         run: |
-          pipx install python-semantic-release
+          # Pin to the same version as the action above — an unpinned install
+          # can drift to a newer release with incompatible internals (e.g.
+          # python-semantic-release/GitPython Actor API changes).
+          pipx install python-semantic-release==10.5.3
           semantic-release changelog
           # Extract only the latest version's section from CHANGELOG.md
           awk '/^## v/{if(found) exit; found=1} found' CHANGELOG.md > release_notes.md
