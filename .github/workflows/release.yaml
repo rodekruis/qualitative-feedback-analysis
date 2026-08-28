@@ -84,16 +84,43 @@ jobs:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
 
+      # TEMPORARY WORKAROUND for #303: installs python-semantic-release
+      # directly instead of using the official Docker action. GitPython
+      # 3.1.60 (2026-08-25) removed Actor.name_email_regex, which PSR's
+      # config loader reads directly; PSR only constrains `gitpython ~= 3.0`
+      # (upstream bug: python-semantic-release#1476, fix in unmerged PR
+      # #1477). The Docker action rebuilds its image from source on every
+      # run, so it re-resolves that floating dependency and always picks up
+      # the break — pinning the action's version tag does not help. Revert
+      # to `uses: python-semantic-release/python-semantic-release@...` once
+      # upstream ships a fixed release (see #303).
       - name: Semantic Release (version only)
         id: semrel
-        uses: python-semantic-release/python-semantic-release@350c48fcb3ffcdfd2e0a235206bc2ecea6b69df0 # v10.5.3
-        with:
-          github_token: ${{ steps.app-token.outputs.token }}
-          force: ${{ github.event.inputs.force }}
-          prerelease: ${{ github.event.inputs.prerelease }}
-          prerelease_token: ${{ github.event.inputs.prerelease_token }}
-          changelog: false
-          vcs_release: false
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          FORCE: ${{ github.event.inputs.force }}
+          PRERELEASE: ${{ github.event.inputs.prerelease }}
+          PRERELEASE_TOKEN: ${{ github.event.inputs.prerelease_token }}
+        run: |
+          set -euo pipefail
+
+          python3 -m venv "$RUNNER_TEMP/psr-venv"
+          "$RUNNER_TEMP/psr-venv/bin/pip" install --quiet \
+            "python-semantic-release==10.5.3" "gitpython==3.1.59"
+          export PATH="$RUNNER_TEMP/psr-venv/bin:$PATH"
+
+          ARGS=(-v version --no-changelog --no-vcs-release)
+          if [ "$PRERELEASE" = "true" ]; then
+            ARGS+=(--as-prerelease)
+          fi
+          if [ -n "$FORCE" ]; then
+            ARGS+=("--$FORCE")
+          fi
+          if [ -n "$PRERELEASE_TOKEN" ]; then
+            ARGS+=(--prerelease-token "$PRERELEASE_TOKEN")
+          fi
+
+          semantic-release "${ARGS[@]}"
 
       - name: No release needed
         if: steps.semrel.outputs.released != 'true'
@@ -103,10 +130,10 @@ jobs:
       - name: Generate release notes
         if: steps.semrel.outputs.released == 'true'
         run: |
-          # Pin to the same version as the action above — an unpinned install
-          # can drift to a newer release with incompatible internals (e.g.
-          # python-semantic-release/GitPython Actor API changes).
+          # Pin to the same version as the step above, and inject the same
+          # GitPython pin — see #303 for why.
           pipx install python-semantic-release==10.5.3
+          pipx inject python-semantic-release "gitpython==3.1.59"
           semantic-release changelog
           # Extract only the latest version's section from CHANGELOG.md
           awk '/^## v/{if(found) exit; found=1} found' CHANGELOG.md > release_notes.md
