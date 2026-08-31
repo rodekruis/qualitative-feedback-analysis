@@ -40,7 +40,7 @@ generation reference, and the diagram collapses to a single `LLMPort` edge.
 
 | Port | Adapter(s) | What it owns |
 |---|---|---|
-| {py:class}`~qfa.domain.ports.LLMPort` | {py:class}`~qfa.adapters.llm_client.LiteLLMClient`, always wrapped by {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter` | One method, `complete(system_message, user_message, tenant_id, response_model, timeout)`. Returns `LLMResponse[T_Response]` carrying the structured output plus token counts and cost. {py:class}`~qfa.services.analyze.AnalyzeService` and {py:class}`~qfa.services.summarize.SummarizeService` each hold **one or two** of these — see [The judge connection](#the-judge-connection). |
+| {py:class}`~qfa.domain.ports.LLMPort` | {py:class}`~qfa.adapters.llm_client.LiteLLMClient`, always wrapped by {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter` | One method, `complete(system_message, user_message, tenant_id, response_model, timeout)`. Returns `LLMResponse[T_Response]` carrying the structured output plus token counts and cost. {py:class}`~qfa.services.analyze.AnalyzeService`, {py:class}`~qfa.services.summarize.SummarizeService` and {py:class}`~qfa.services.coding.CodingService` each hold **one or two** of these — see [The judge connection](#the-judge-connection). |
 | {py:class}`~qfa.domain.ports.AnonymizationPort` | {py:class}`~qfa.adapters.presidio_anonymizer.PresidioAnonymizer` | `anonymize(text) -> (text, mapping)` and `deanonymize(text, mapping) -> text`. The mapping is held in memory for the request lifetime, then discarded. |
 | {py:class}`~qfa.domain.ports.UsageRepositoryPort` | {py:class}`~qfa.adapters.usage_repository.SqlAlchemyUsageRepository` | Writes one {py:class}`~qfa.domain.usage_models.LLMCallRecord` per LLM call (from {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter`) and reads aggregate stats (from the `/v1/usage` routes). |
 | {py:class}`~qfa.domain.ports.EmbeddingPort` | {py:class}`~qfa.adapters.embedding.BgeM3OnnxEmbedder` | One method, `embed(texts) -> vectors`. Multilingual dense embeddings (BGE-M3 ONNX-int8, dense-1024-d, in-process, CPU-only). Used only by `mode=hierarchical`. See [ADR-014](../adr/014-embedding-port-and-self-hosted-model.md). |
@@ -49,8 +49,9 @@ The tracking decorator is the only place hex's "stack adapters at the compositio
 
 ### The judge connection
 
-{py:class}`~qfa.services.analyze.AnalyzeService` and
-{py:class}`~qfa.services.summarize.SummarizeService` can each hold a
+{py:class}`~qfa.services.analyze.AnalyzeService`,
+{py:class}`~qfa.services.summarize.SummarizeService` and
+{py:class}`~qfa.services.coding.CodingService` can each hold a
 **second** {py:class}`~qfa.domain.ports.LLMPort` used only for LLM-as-judge
 quality scores, so the model that writes an output is not the model that
 grades it. It is configured by `JUDGE_LLM_*` (see the
@@ -60,15 +61,15 @@ client, and behaviour is identical to a single-client deployment. Deployed
 environments do configure it, to `mistral-medium-3-5` — see
 [ADR-020](../adr/020-mistral-medium-as-judge-model.md).
 
-Four call sites use the judge connection — the `analyze` judge and the
+Five call sites use the judge connection — the `analyze` judge and the
 hierarchical leaf judges (on {py:class}`~qfa.services.analyze.AnalyzeService`),
-and the judges in `summarize` and `summarize_bulk` (on
-{py:class}`~qfa.services.summarize.SummarizeService`, which receives the same
-two connections). Everything else (analysis, hierarchical map and reduce,
-summary generation, and the whole of `assign_codes` including its per-level
-judge) stays on the generation client. For the coding path that exclusion is
-structural: {py:class}`~qfa.services.coding.CodingService` is never handed a
-judge client, so there is nothing for it to route to.
+the judges in `summarize` and `summarize_bulk` (on
+{py:class}`~qfa.services.summarize.SummarizeService`), and the per-level judge
+in `assign_codes` (on {py:class}`~qfa.services.coding.CodingService`, added by
+#310). The coding one is the only site whose call count scales with the
+request: one judge call per level per selected path, so it can dominate judge
+volume. Everything else — analysis, hierarchical map and reduce, summary
+generation, and the one-shot coding *pick* — stays on the generation client.
 
 Three properties are worth knowing:
 

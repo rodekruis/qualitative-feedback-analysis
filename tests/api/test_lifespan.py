@@ -196,6 +196,9 @@ async def test_every_service_is_published_on_app_state(app_env: None) -> None:
         assert isinstance(coding, CodingService)
         assert isinstance(coding._llm, TrackingLLMAdapter)
         assert coding._llm is analyze._llm
+        # The *tracked* judge client reaches coding too (#310), so its
+        # per-level judge calls are billed rather than silently free.
+        assert coding._judge_llm is analyze._judge_llm
         # One executor per process, shared: see ADR-017.
         assert coding._executor is analyze._executor
 

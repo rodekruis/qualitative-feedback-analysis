@@ -317,10 +317,14 @@ def build_services(
 
     return ServiceGraph(
         sensitivity=SensitivityService(executor=executor),
-        # No judge client: both the pick and the per-level judge in the coding
-        # path run on the primary connection (#258 scoped the split to analyse
-        # and summarise), so the service is never handed one.
-        coding=CodingService(llm=llm, anonymizer=anonymizer, executor=executor),
+        # The one-shot pick stays on the primary connection; only the
+        # per-level judge follows judge_llm (#310).
+        coding=CodingService(
+            llm=llm,
+            judge_llm=judge_llm,
+            anonymizer=anonymizer,
+            executor=executor,
+        ),
         analyze=analyze,
         # Neither summarisation path runs the token-budget guard or needs an
         # embedder, so the service asks for neither — the constructor is the

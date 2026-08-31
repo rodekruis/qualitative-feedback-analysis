@@ -406,6 +406,16 @@ class TestBuildServices:
         assert services.coding._anonymizer is services.analyze._anonymizer
         assert services.summarize._anonymizer is services.analyze._anonymizer
 
+    def test_no_judge_model_leaves_every_judge_on_the_primary(
+        self, auth_env: None
+    ) -> None:
+        """The default path: unset ``JUDGE_LLM_MODEL`` means one client each."""
+        services = build_services(AppSettings(), llm=_StubLLM())
+
+        assert services.coding._judge_llm is services.coding._llm
+        assert services.analyze._judge_llm is services.analyze._llm
+        assert services.summarize._judge_llm is services.summarize._llm
+
     def test_shared_executor_gets_timeout_and_token_budget_from_settings(
         self, auth_env: None
     ) -> None:
@@ -442,14 +452,14 @@ class TestBuildServices:
         assert services.summarize._llm is stub_llm
         assert services.summarize._judge_llm is stub_judge
 
-    def test_coding_service_runs_on_the_primary_connection(
+    def test_coding_service_gets_the_judge_connection(
         self, auth_env: None, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A configured judge model does not reach the coding path.
+        """#310 routes coding's per-level judge onto the judge connection too.
 
-        #258 scoped the judge split to the analyse/summarise quality judges,
-        and the coding service takes no judge client at all — so even with
-        ``JUDGE_LLM_MODEL`` set it must still hold the primary.
+        Generation must stay put — the one-shot pick is not a judge call — and
+        the judge client has to be the *same* instance the analyse service
+        holds: one judge connection per process, as with the executor.
         """
         monkeypatch.setenv("JUDGE_LLM_MODEL", "azure_ai/mistral-medium-2505")
         stub_llm = _StubLLM()
@@ -457,7 +467,8 @@ class TestBuildServices:
         services = build_services(AppSettings(), llm=stub_llm)
 
         assert services.coding._llm is stub_llm
-        assert services.analyze._judge_llm is not stub_llm
+        assert services.coding._judge_llm is not stub_llm
+        assert services.coding._judge_llm is services.analyze._judge_llm
 
 
 class TestRegisterCustomModelPrices:

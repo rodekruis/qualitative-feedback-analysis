@@ -87,10 +87,10 @@ class LLMSettings(BaseSettings):
 class JudgeLLMSettings(BaseSettings):
     """Optional per-field overrides for the LLM connection used by judge calls.
 
-    Judge calls (the LLM-as-judge quality scores attached to analyse and
-    summarise results) can run on a different model than generation, so the
-    generator does not grade its own homework. This block configures that
-    second connection.
+    Judge calls (the LLM-as-judge quality scores attached to analyse,
+    summarise and coding results) can run on a different model than
+    generation, so the generator does not grade its own homework. This block
+    configures that second connection.
 
     **Every field is optional and defaults to ``None``, which means "inherit
     the corresponding value from the primary** :class:`LLMSettings` **".**

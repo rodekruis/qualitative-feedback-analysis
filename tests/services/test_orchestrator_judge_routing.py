@@ -1,7 +1,7 @@
 """Tests for routing judge calls to a separate LLM connection (#258).
 
 Why its own module: the property under test is *which client served which
-call*, which cuts across four use-case methods that otherwise have little
+call*, which cuts across five use-case methods that otherwise have little
 in common. Each test drives a real use-case method with two distinguishable
 fakes — one primary, one judge — and asserts the split, so a future refactor
 that quietly re-points a call site at ``self._llm`` fails here rather than
@@ -11,7 +11,10 @@ The complementary case matters just as much: with no judge client configured
 the services must behave exactly as they did before, so every test below has
 a counterpart asserting the single-client default.
 
-Two of the four call sites moved out of ``Orchestrator`` into
+The coding per-level judge (#310) is the only site whose call count is not
+fixed: it fans out to one judge call per level per selected path.
+
+Two of the five call sites moved out of ``Orchestrator`` into
 :class:`~qfa.services.summarize.SummarizeService` (#264). The routing tests
 stay together here rather than following the use case into
 ``test_summarize.py``: what they pin is the cross-service split, and splitting
@@ -79,12 +82,20 @@ class RoutingLLM(LLMPort):
     coding pick, ``JudgeResponse`` for the per-level coding judge, the
     concrete summary models for generation, and ``str`` for everything
     free-text). ``text_payload`` overrides the ``str`` case for callers
-    whose free-text contract is not a judge score.
+    whose free-text contract is not a judge score, and ``coding_selection``
+    the indices the pick returns, which decides how deep a path the
+    per-level coding judge then walks.
     """
 
-    def __init__(self, name: str, text_payload: str = JUDGE_PARSEABLE_TEXT) -> None:
+    def __init__(
+        self,
+        name: str,
+        text_payload: str = JUDGE_PARSEABLE_TEXT,
+        coding_selection: list[int] | None = None,
+    ) -> None:
         self.name = name
         self.text_payload = text_payload
+        self.coding_selection = [0] if coding_selection is None else coding_selection
         self.calls: list[dict] = []
 
     @property
@@ -123,7 +134,7 @@ class RoutingLLM(LLMPort):
         if response_model is AnalyzeJudgeResult:
             return AnalyzeJudgeResult(quality_score=0.8, uncertainty_explanation="ok")
         if response_model is CodingResponse:
-            return CodingResponse(selected=[0])
+            return CodingResponse(selected=self.coding_selection)
         if response_model is JudgeResponse:
             return JudgeResponse(score=0.9, explanation="clearly relevant")
         if response_model is SummaryResultModel:
@@ -210,15 +221,18 @@ def _deadline() -> datetime:
     return datetime.now(UTC) + timedelta(seconds=300)
 
 
-def _build_coding_service(primary: LLMPort) -> CodingService:
-    """Build the coding service over the given client.
+def _build_coding_service(
+    primary: LLMPort, judge: LLMPort | None = None
+) -> CodingService:
+    """Build the coding service over the given client(s).
 
-    There is no ``judge`` parameter on purpose: the service has no judge
-    connection to hand one to (see ``assign_codes`` below).
+    Like the production wiring it hands the service the real
+    :class:`LLMCallExecutor`, built over the *primary* connection.
     """
     anonymizer = NoopAnonymizer()
     return CodingService(
         llm=primary,
+        judge_llm=judge,
         anonymizer=anonymizer,
         executor=LLMCallExecutor(
             llm=primary,
@@ -227,6 +241,43 @@ def _build_coding_service(primary: LLMPort) -> CodingService:
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
         ),
+    )
+
+
+def _single_level_framework() -> CodingFramework:
+    return CodingFramework(root_codes=[CodingNode(id="code-1", name="Code A")])
+
+
+def _three_level_framework() -> CodingFramework:
+    """A single root-to-leaf chain, so pick index 2 is the depth-3 path.
+
+    ``flatten_coding_nodes`` is pre-order, so a flatter framework would put a
+    depth-1 path at every low index and only ever produce one judge call.
+    """
+    return CodingFramework(
+        root_codes=[
+            CodingNode(
+                id="l1",
+                name="Level 1",
+                children=[
+                    CodingNode(
+                        id="l2",
+                        name="Level 2",
+                        children=[CodingNode(id="l3", name="Level 3")],
+                    )
+                ],
+            )
+        ]
+    )
+
+
+def _coding_request(framework: CodingFramework) -> CodingAssignmentRequestModel:
+    return CodingAssignmentRequestModel(
+        feedback_record=_feedback_record(),
+        coding_levels=framework,
+        max_codes=1,
+        confidence_threshold=0.5,
+        tenant_id=TENANT_ID,
     )
 
 
@@ -304,6 +355,16 @@ class TestDefaultsToThePrimaryClient:
 
         assert service._judge_llm is primary
 
+    def test_coding_service_judge_client_is_the_primary_client_when_unset(
+        self,
+    ) -> None:
+        """#310 gave the coding service the same seam, and the same fallback."""
+        primary = RoutingLLM("primary")
+
+        service = _build_coding_service(primary)
+
+        assert service._judge_llm is primary
+
     @pytest.mark.asyncio
     async def test_analyze_judge_uses_the_primary_model_when_unset(self) -> None:
         """The analyse judge still runs on the primary model — no behaviour change.
@@ -341,9 +402,26 @@ class TestDefaultsToThePrimaryClient:
 
         assert primary.response_models == [SummaryResultModel, str]
 
+    @pytest.mark.asyncio
+    async def test_coding_judge_uses_the_primary_client_when_unset(self) -> None:
+        """``assign_codes`` — pick *and* per-level judge — stays on one client.
+
+        The assertion #310 inherited from the test that used to pin coding's
+        exclusion from the split: what it means now is that the default
+        configuration is byte-for-byte the pre-#310 behaviour.
+        """
+        primary = RoutingLLM("primary")
+        coding = _build_coding_service(primary)
+
+        await coding.assign_codes(
+            _coding_request(_single_level_framework()), _deadline()
+        )
+
+        assert primary.response_models == [CodingResponse, JudgeResponse]
+
 
 class TestJudgeCallsRouteToTheJudgeClient:
-    """Each of the four judge call sites issues its call on the judge client."""
+    """Each of the five judge call sites issues its call on the judge client."""
 
     @pytest.mark.asyncio
     async def test_analyze_judge_call(self) -> None:
@@ -486,6 +564,30 @@ class TestJudgeCallsRouteToTheJudgeClient:
         assert judge.calls
         assert all(call["timeout"] <= LLM_TIMEOUT for call in judge.calls)
 
+    @pytest.mark.asyncio
+    async def test_coding_per_level_judge_calls(self) -> None:
+        """Every level of a selected path is judged on the judge client (#310).
+
+        Asserted through the per-level confidences as well as the call log, so
+        the test pins that the service keeps the judge *client's* verdict — and
+        that the fan-out is one judge call per level, the property that makes
+        this the largest generator of judge calls.
+        """
+        primary = RoutingLLM("primary", coding_selection=[2])
+        judge = RoutingLLM("judge")
+        coding = _build_coding_service(primary, judge)
+
+        result = await coding.assign_codes(
+            _coding_request(_three_level_framework()), _deadline()
+        )
+
+        assert primary.response_models == [CodingResponse]
+        assert judge.response_models == [JudgeResponse] * 3
+        assigned = result.coded_feedback_records[0].assigned_codes[0]
+        assert assigned.confidence_level_1 == 0.9
+        assert assigned.confidence_level_2 == 0.9
+        assert assigned.confidence_level_3 == 0.9
+
 
 class TestGenerationCallsStayOnThePrimaryClient:
     """Configuring a judge model must not move any generation call."""
@@ -510,38 +612,25 @@ class TestGenerationCallsStayOnThePrimaryClient:
         assert primary.response_models == [str]
 
     @pytest.mark.asyncio
-    async def test_coding_classification_stays_entirely_on_the_primary(self) -> None:
-        """``assign_codes`` — one-shot pick *and* its per-level judge — stays on the primary.
+    async def test_coding_pick_keeps_the_primary_model(self) -> None:
+        """The one-shot pick stays on the primary even with a judge configured.
 
-        The per-level coding judge is deliberately excluded from #258's four
-        sites: the ticket scopes the split to the quality-score judges on
-        analyse and summarise. Pinned here so the exclusion is a recorded
-        decision rather than something a later reader assumes was an oversight.
-
-        Since #265 the exclusion is also structural — the constructor of
-        :class:`~qfa.services.coding.CodingService` takes no judge client, so
-        there is no seam to inject one through. That half is enforced by the
-        signature and cannot be asserted here; what this test still pins is the
-        behavioural half: both the pick and the judge call are served by the
-        primary connection.
+        #310 widened the split to coding's per-level judge only. The pick is a
+        generation call — it produces the candidate set rather than grading
+        anything — and its parse failures degrade silently to *no codes
+        assigned* (``coding.py``), so moving it to a cheaper model would
+        quietly cut coverage instead of failing loudly.
         """
         primary = RoutingLLM("primary")
-        coding = _build_coding_service(primary)
+        judge = RoutingLLM("judge")
+        coding = _build_coding_service(primary, judge)
 
         await coding.assign_codes(
-            CodingAssignmentRequestModel(
-                feedback_record=_feedback_record(),
-                coding_levels=CodingFramework(
-                    root_codes=[CodingNode(id="code-1", name="Code A")]
-                ),
-                max_codes=1,
-                confidence_threshold=0.5,
-                tenant_id=TENANT_ID,
-            ),
-            _deadline(),
+            _coding_request(_single_level_framework()), _deadline()
         )
 
-        assert primary.response_models == [CodingResponse, JudgeResponse]
+        assert len(primary.calls) == 1
+        assert primary.response_models == [CodingResponse]
 
 
 class TestCostAccountingAcrossBothClients:
@@ -607,3 +696,33 @@ class TestCostAccountingAcrossBothClients:
         ]
         # Totals sum across both connections rather than tracking only one.
         assert sum(record.cost_usd for record in repo.records) == Decimal("0.002")
+
+    @pytest.mark.asyncio
+    async def test_coding_judge_calls_are_billed_to_the_judge_model(self) -> None:
+        """Coding is now the largest source of judge rows, so attribute them.
+
+        One pick row on the primary model and one judge row per level: an
+        unwrapped or mis-pointed judge client here would under-bill by more
+        than at any other site.
+        """
+        repo = FakeUsageRepository()
+        primary = RoutingLLM("primary-model", coding_selection=[2])
+        judge = RoutingLLM("judge-model")
+        coding = _build_coding_service(
+            TrackingLLMAdapter(inner=primary, usage_repo=repo),
+            TrackingLLMAdapter(inner=judge, usage_repo=repo),
+        )
+
+        async with call_scope(
+            tenant_id=TENANT_ID, operation=Operation.ASSIGN_CODES, request_id=uuid4()
+        ):
+            await coding.assign_codes(
+                _coding_request(_three_level_framework()), _deadline()
+            )
+
+        assert [record.model for record in repo.records] == [
+            "primary-model",
+            "judge-model",
+            "judge-model",
+            "judge-model",
+        ]
