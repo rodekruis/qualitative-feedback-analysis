@@ -124,6 +124,22 @@ Stated as observables, not feelings:
   not yet confirmed; the lever if it needs pulling is the config rollback above
   (`AZ_JUDGE_LLM_MODEL=""` + re-apply), which restores scores without a
   redeploy.
+- **Cause confirmed 2026-08-31** (#314): this `azure_ai/mistral-medium-3-5`
+  deployment's serving backend has grammar-constrained decoding disabled
+  (`--grammar-backend none`), so it rejects *any* `response_format` a
+  structured judge call could send — `json_schema` and `json_object` alike,
+  verified directly against the endpoint. Not a schema-keyword problem, and
+  not something this repo's Terraform can reconfigure (a Foundry serverless
+  deployment's launch parameters aren't exposed to the customer). Rollback
+  condition 4 also fired the same day, for the same reason, on
+  `/v1/assign-codes` — its judge has no degradation path, so it 502s outright
+  rather than degrading to `quality_score=null`. #314 fixed that one site by
+  moving `CodingService`'s per-level judge to free-text scoring (no
+  `response_format` at all), matching `summarize`'s existing judge sites. The
+  `analyze` and hierarchical-leaf judges still request structured output and
+  still degrade to `null` on this deployment — unaffected in effect, since
+  they already tolerate the failure, but the underlying incompatibility is
+  unresolved there too and out of scope for #314.
 
 ## Follow-up
 

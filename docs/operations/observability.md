@@ -62,6 +62,14 @@ LLM provider rejected request: model=azure_ai/mistral-medium-3-5 response_format
    prints the assembled messages, so the Hard prohibitions above apply to it in full —
    never run it against real feedback or a production tenant.
 
+This diagnostic only fires for a call site that requests structured output. The
+`assign_codes` per-level judge (`CodingService._judge_code_level`) does not — its
+judge connection can point at a deployment (confirmed for
+`azure_ai/mistral-medium-3-5`) that rejects *any* `response_format`, structured or
+not, so it parses a free-text `SCORE:`/`EXPLANATION:` reply instead. A malformed
+reply there surfaces as `AnalysisError: LLM judge returned an unparsable response`,
+not this diagnostic.
+
 ## Pipeline timing
 
 Hierarchical analysis (`mode=hierarchical`) logs where wall-clock time goes, so a

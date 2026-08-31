@@ -53,7 +53,7 @@ from qfa.domain.usage_models import LLMCallRecord, Operation
 from qfa.services.analyze import AnalyzeJudgeResult, AnalyzeService
 from qfa.services.call_context import call_scope
 from qfa.services.coding import CodingService
-from qfa.services.coding_classifier import CodingResponse, JudgeResponse
+from qfa.services.coding_classifier import CodingResponse
 from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.services.summarize import SummarizeService
 from qfa.settings import AnalyzeSettings, OrchestratorSettings
@@ -67,6 +67,13 @@ MAX_TOKENS = 100_000
 # doubles as generic free text for the map/reduce/analysis calls.
 JUDGE_PARSEABLE_TEXT = "0.75\nThe summary is faithful to the source."
 
+# The coding per-level judge parses ``SCORE:``/``EXPLANATION:`` lines instead
+# (``coding._parse_judge_response``) — a different provider-compatibility
+# constraint (some judge deployments reject any response schema outright, see
+# ``JudgeResponse``'s docstring), so it needs its own parseable text rather
+# than sharing ``JUDGE_PARSEABLE_TEXT`` above.
+CODING_JUDGE_PARSEABLE_TEXT = "SCORE: 0.9\nEXPLANATION: clearly relevant"
+
 
 class RoutingLLM(LLMPort):
     """Fake ``LLMPort`` that stamps its own name onto every response it serves.
@@ -79,12 +86,14 @@ class RoutingLLM(LLMPort):
     Payloads are selected by ``response_model`` because that is what actually
     distinguishes the call kinds in the orchestrator (``AnalyzeJudgeResult``
     for the analyse and leaf judges, ``CodingResponse`` for the one-shot
-    coding pick, ``JudgeResponse`` for the per-level coding judge, the
-    concrete summary models for generation, and ``str`` for everything
-    free-text). ``text_payload`` overrides the ``str`` case for callers
-    whose free-text contract is not a judge score, and ``coding_selection``
-    the indices the pick returns, which decides how deep a path the
-    per-level coding judge then walks.
+    coding pick, the concrete summary models for generation, and ``str`` for
+    everything free-text — including the per-level coding judge, which
+    parses its own ``SCORE:``/``EXPLANATION:`` format out of the same
+    ``str`` contract). ``text_payload`` overrides the ``str`` case for
+    callers whose free-text contract differs from the default judge-score
+    float (pass :data:`CODING_JUDGE_PARSEABLE_TEXT` for a client serving the
+    coding judge), and ``coding_selection`` the indices the pick returns,
+    which decides how deep a path the per-level coding judge then walks.
     """
 
     def __init__(
@@ -135,8 +144,6 @@ class RoutingLLM(LLMPort):
             return AnalyzeJudgeResult(quality_score=0.8, uncertainty_explanation="ok")
         if response_model is CodingResponse:
             return CodingResponse(selected=self.coding_selection)
-        if response_model is JudgeResponse:
-            return JudgeResponse(score=0.9, explanation="clearly relevant")
         if response_model is SummaryResultModel:
             return SummaryResultModel(
                 feedback_record_summaries=(
@@ -410,14 +417,14 @@ class TestDefaultsToThePrimaryClient:
         exclusion from the split: what it means now is that the default
         configuration is byte-for-byte the pre-#310 behaviour.
         """
-        primary = RoutingLLM("primary")
+        primary = RoutingLLM("primary", text_payload=CODING_JUDGE_PARSEABLE_TEXT)
         coding = _build_coding_service(primary)
 
         await coding.assign_codes(
             _coding_request(_single_level_framework()), _deadline()
         )
 
-        assert primary.response_models == [CodingResponse, JudgeResponse]
+        assert primary.response_models == [CodingResponse, str]
 
 
 class TestJudgeCallsRouteToTheJudgeClient:
@@ -574,7 +581,7 @@ class TestJudgeCallsRouteToTheJudgeClient:
         this the largest generator of judge calls.
         """
         primary = RoutingLLM("primary", coding_selection=[2])
-        judge = RoutingLLM("judge")
+        judge = RoutingLLM("judge", text_payload=CODING_JUDGE_PARSEABLE_TEXT)
         coding = _build_coding_service(primary, judge)
 
         result = await coding.assign_codes(
@@ -582,7 +589,7 @@ class TestJudgeCallsRouteToTheJudgeClient:
         )
 
         assert primary.response_models == [CodingResponse]
-        assert judge.response_models == [JudgeResponse] * 3
+        assert judge.response_models == [str] * 3
         assigned = result.coded_feedback_records[0].assigned_codes[0]
         assert assigned.confidence_level_1 == 0.9
         assert assigned.confidence_level_2 == 0.9
@@ -622,7 +629,7 @@ class TestGenerationCallsStayOnThePrimaryClient:
         quietly cut coverage instead of failing loudly.
         """
         primary = RoutingLLM("primary")
-        judge = RoutingLLM("judge")
+        judge = RoutingLLM("judge", text_payload=CODING_JUDGE_PARSEABLE_TEXT)
         coding = _build_coding_service(primary, judge)
 
         await coding.assign_codes(
@@ -707,7 +714,7 @@ class TestCostAccountingAcrossBothClients:
         """
         repo = FakeUsageRepository()
         primary = RoutingLLM("primary-model", coding_selection=[2])
-        judge = RoutingLLM("judge-model")
+        judge = RoutingLLM("judge-model", text_payload=CODING_JUDGE_PARSEABLE_TEXT)
         coding = _build_coding_service(
             TrackingLLMAdapter(inner=primary, usage_repo=repo),
             TrackingLLMAdapter(inner=judge, usage_repo=repo),

@@ -131,7 +131,17 @@ def build_coding_messages(
 
 
 class JudgeResponse(BaseModel):
-    """Structured output returned by the LLM judge for one hierarchy level."""
+    """Score + explanation for one hierarchy level's judge call.
+
+    Populated by parsing the judge LLM's free-text reply (see
+    ``_JUDGE_SYSTEM``'s output-format instruction and
+    ``coding._parse_judge_response``) rather than schema-enforced structured
+    output: the judge connection can point at a model/deployment that
+    rejects a ``json_schema`` response format outright regardless of its
+    contents (confirmed against ``azure_ai/mistral-medium-3-5`` — its
+    serving backend has grammar-constrained decoding disabled), so this
+    call site cannot rely on the provider to enforce the shape.
+    """
 
     score: float = Field(description="Confidence score between 0 and 1.")
     explanation: str = Field(
@@ -169,8 +179,10 @@ Reference anchors:
 
 Scores between anchors are expected and encouraged. For example, a strong but not perfect match might be 0.85.
 
-Explanation:
-Keep the explanation to at most two sentences."""
+Output format:
+Respond with exactly two lines and nothing else, in this exact format:
+SCORE: <a number between 0.0 and 1.0>
+EXPLANATION: <at most two sentences>"""
 
 
 def build_judge_messages(
