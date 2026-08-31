@@ -20,11 +20,9 @@ deadline→timeout derivation — comes from the injected
 else it needs (the LLM connection, the anonymiser) is named explicitly in
 its constructor.
 
-Both the pick and the per-level judge run on the **primary** LLM
-connection. The judge/primary split introduced by #258 deliberately
-excludes this path, so the service takes no judge client at all — see
-``tests/services/test_orchestrator_judge_routing.py``, which pins the
-exclusion as a decision rather than an oversight.
+The one-shot pick runs on the **primary** LLM connection; the per-level
+judge runs on the judge connection, which #310 extended #258's split to
+cover. With no ``JUDGE_LLM_MODEL`` configured the two are the same client.
 """
 
 import asyncio
@@ -158,10 +156,8 @@ class CodingService:
     Parameters
     ----------
     llm : LLMPort
-        The LLM provider adapter used for every call this service makes —
-        both the one-shot pick and the per-level judge. There is no second
-        connection: #258 scoped the judge/primary split to the
-        quality-score judges on analyse and summarise.
+        The LLM provider adapter used for the one-shot pick — the only
+        generation call this service makes.
     anonymizer : AnonymizationPort
         The anonymisation adapter used to redact PII from each assembled
         prompt before it leaves the process.
@@ -170,6 +166,13 @@ class CodingService:
         pre-flight token-budget guard and deadline-derived timeout.
         Injected rather than self-constructed so the composition root stays
         the one place the object graph is assembled.
+    judge_llm : LLMPort | None
+        Optional separate adapter for the per-level judge calls, so judging
+        can run on a different model than the pick. ``None`` (the default)
+        routes judge calls to ``llm``, which is the behaviour when no
+        ``JUDGE_LLM_MODEL`` is configured. Configured via ``JUDGE_LLM_*``
+        and resolved in
+        :func:`qfa.api.composition.resolve_judge_llm_settings`.
     """
 
     def __init__(
@@ -177,8 +180,14 @@ class CodingService:
         llm: LLMPort,
         anonymizer: AnonymizationPort,
         executor: LLMCallExecutor,
+        judge_llm: LLMPort | None = None,
     ) -> None:
         self._llm = llm
+        # Same rule as AnalyzeService/SummarizeService: judging runs on its
+        # own connection when one is configured, so the generator does not
+        # grade its own output, and falling back to the primary keeps the
+        # default identical while call sites never branch.
+        self._judge_llm = judge_llm if judge_llm is not None else llm
         self._anonymizer: AnonymizationPort = anonymizer
         self._executor = executor
 
@@ -418,7 +427,7 @@ class CodingService:
         self._check_coding_deadline(deadline)
         self._executor.check_token_limit(system_message, user_message)
         user_message, _ = self._anonymizer.anonymize(user_message)
-        response = await self._llm.complete(
+        response = await self._judge_llm.complete(
             system_message=system_message,
             user_message=user_message,
             tenant_id=tenant_id,

@@ -16,17 +16,24 @@ The product owner directed `mistral-medium-3-5`, already deployed on the
 existing Azure AI Foundry resource. Per `src/qfa/resources/model_prices.yaml`,
 it is materially cheaper than the incumbent: $1.50/1M input, $7.50/1M output,
 versus $2.50/1M and $15.00/1M for `azure/gpt-5.4` — roughly 1.7× cheaper on
-input, 2× cheaper on output. Judge calls happen at four call sites, one judge per
+input, 2× cheaper on output. Judge calls happen at five call sites, one judge per
 generation call on the `analyze` and `summarize` paths, so this is a
-material share of total LLM spend, not a rounding error.
+material share of total LLM spend, not a rounding error. The cost argument only
+strengthened afterwards: #310 extended the split to the `assign_codes`
+per-level judge, which fires once per level per selected path, so a larger
+share of call volume moves onto the cheaper model than when this ADR was
+written.
 
 ## Decision
 
 `azure_ai/mistral-medium-3-5`, on the existing Azure Foundry resource, serves
-all four judge call sites in every deployed environment: the `analyze` judge,
-the hierarchical leaf judge, and the judges in `summarize` and
-`summarize_bulk`. Configured via `JUDGE_LLM_MODEL` + `JUDGE_LLM_API_BASE`
-(`var.judge_llm_model`, `var.judge_llm_api_base` in `infra/variables.tf`), no
+all five judge call sites in every deployed environment: the `analyze` judge,
+the hierarchical leaf judge, the judges in `summarize` and `summarize_bulk`,
+and the per-level judge in `assign_codes` (added by #310 after this ADR was
+accepted — #258's exclusion of the coding path was scope-only, no
+coding-specific concern was ever recorded). Configured via `JUDGE_LLM_MODEL`
++ `JUDGE_LLM_API_BASE` (`var.judge_llm_model`, `var.judge_llm_api_base` in
+`infra/variables.tf`), no
 new credential — the judge connection inherits `LLM_API_KEY` from the primary
 connection, same Azure Foundry resource, same trust boundary.
 
@@ -58,6 +65,14 @@ not on a discrimination or agreement benchmark. -->
   float and raise `AnalysisError` on anything else — a weaker or
   differently-tuned model is more likely to break that contract than the
   two structured sites. See the follow-up issue below.
+- The `assign_codes` per-level judge has **no degradation path**: an
+  out-of-range score raises `AnalysisError` and an unparseable structured
+  response raises `LLMResponseParseError`, either of which fails the
+  `/v1/assign-codes` request — unlike the two `analyze` judges, which fall
+  back to `quality_score=None`. Same theme as #299.
+- That call site issues `complete()` without a `timeout`, so it runs on
+  `LiteLLMClient`'s default per-attempt budget rather than a deadline-derived
+  one. Pre-existing, but the budget now applies to a different model.
 
 ## Rollout
 
@@ -85,7 +100,11 @@ Stated as observables, not feelings:
    (`infra/observability.tf`).
 3. A sustained rise in `"Analyse judge call failed"` warnings, i.e.
    `quality_score` coming back `null` on `/v1/analyze`.
-4. `SELECT model, count(*), sum(cost_usd) FROM llm_calls WHERE model =
+4. Any `AnalysisError` with `"LLM judge returned score outside 0.0-1.0"` in
+   the logs, or a sustained rise in the 5xx alert on `/v1/assign-codes`
+   (`infra/observability.tf`) — the coding judge fails the request rather
+   than degrading.
+5. `SELECT model, count(*), sum(cost_usd) FROM llm_calls WHERE model =
    'azure_ai/mistral-medium-3-5' GROUP BY model` returning `sum(cost_usd) =
    0` — pricing didn't register and cost attribution is silently broken.
    `tests/scripts/test_infra_judge_config.py` guards this at build time;

@@ -20,9 +20,14 @@ Every environment variable the app reads. Settings are loaded by `pydantic-setti
 
 An optional *second* LLM connection used only for the LLM-as-judge quality
 scores, so the model that produces an analysis or summary is not the one that
-grades it. It applies to four call sites: the `analyze` judge, the hierarchical
-leaf judges, and the judges in `summarize` and `summarize_aggregate`. The
-per-level judge inside `assign_codes` stays on the primary connection.
+grades it. It applies to five call sites: the `analyze` judge, the hierarchical
+leaf judges, the judges in `summarize` and `summarize_aggregate`, and the
+per-level judge inside `assign_codes`. The one-shot code *pick* stays on the
+primary connection.
+
+Because the `assign_codes` judge fires once per level per selected path,
+enabling a judge model shifts a larger share of call volume — and cost — onto
+the judge connection than the analyse and summarise sites alone would.
 
 **Every variable below is optional, and an unset one inherits the matching
 `LLM_*` value** — including `LLM_API_KEY`. That inheritance is the whole point
