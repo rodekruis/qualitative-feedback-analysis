@@ -81,7 +81,7 @@ variable "app_service_plan_sku_by_env" {
   default = {
     dev     = "B2"
     staging = "B2"
-    prd     = "P0v3"
+    prd     = "B3"
   }
 }
 
