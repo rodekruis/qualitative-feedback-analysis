@@ -53,8 +53,10 @@ LLM provider rejected request: model=azure_ai/mistral-medium-3-5 response_format
 1. Read `rejected_keyword`. A named keyword is the fix: add it to
    `_UNSUPPORTED_SCHEMA_KEYWORDS` in `qfa.adapters.llm_client` and to the wire-schema
    contract test in `tests/adapters/test_llm_client.py`.
-2. `rejected_keyword=unknown` means the provider named nothing we recognise. Capture
-   the raw response body: raise `LOG_LOGLEVEL_3RDPARTY` to `debug` (or call
+2. `rejected_keyword=unknown` means the rejection did not use the "unsupported
+   keyword" phrasing that names a schema element — a parameter-level or
+   whole-schema refusal reads this way, so do not strip anything. Capture the raw
+   response body: raise `LOG_LOGLEVEL_3RDPARTY` to `debug` (or call
    `litellm._turn_on_debug()`), reproduce once, then revert immediately.
 3. **Step 2 is dev-test-only, with synthetic feedback only.** litellm's debug stream
    prints the assembled messages, so the Hard prohibitions above apply to it in full —

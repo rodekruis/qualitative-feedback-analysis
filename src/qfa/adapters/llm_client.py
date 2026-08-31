@@ -386,14 +386,6 @@ class LiteLLMClient(LLMPort):
                 user=tenant_id,
                 timeout=timeout,
                 response_format=response_format,
-                # On the ``azure_ai/`` route, a 400 whose body names a
-                # rejected top-level field is retried by litellm with that
-                # field removed — but only when this flag is set. Without it
-                # a single field the endpoint dislikes (we send ``user``)
-                # fails the whole call. Nothing is dropped pre-flight: every
-                # parameter above is a supported OpenAI param, so this only
-                # unlocks the reactive path.
-                drop_params=True,
             )
         except (Timeout, RateLimitError, BadRequestError, APIError) as exc:
             provider_status = _provider_status(exc)
@@ -440,9 +432,7 @@ class LiteLLMClient(LLMPort):
         ``_check_deadline_and_get_timeout``). Content-policy rejections are
         retried because Azure's filter severity classification is not
         guaranteed deterministic for identical input (#293); other bad-request
-        and generic API errors are not retried — they are not transient,
-        though litellm's own ``drop_params`` retry can still re-send a call
-        without a top-level parameter the provider named as unacceptable.
+        and generic API errors are not retried — they are not transient.
         Azure signals a rejection two ways, both mapped to
         ``LLMContentPolicyViolationError`` and both retried: a synchronous
         ``BadRequestError`` (sniffed by ``_to_domain_error``), or a ``200``

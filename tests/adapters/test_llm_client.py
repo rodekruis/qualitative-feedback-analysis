@@ -128,28 +128,6 @@ class TestLiteLLMClientCallParameters:
         assert messages[1] == {"role": "user", "content": USER_MSG}
 
     @pytest.mark.asyncio
-    async def test_passes_drop_params_so_provider_can_self_heal(self):
-        """`drop_params` is sent so litellm can retry a field-level 400 (#309).
-
-        litellm's Azure AI 400 handler re-sends the request without the field
-        the provider named, but only when this flag is set; without it one
-        rejected top-level parameter fails the whole call.
-        """
-        mock_response = _make_mock_response()
-        client = _make_client()
-        with (
-            patch(
-                "qfa.adapters.llm_client.acompletion",
-                new_callable=AsyncMock,
-                return_value=mock_response,
-            ) as mock_ac,
-            patch("qfa.adapters.llm_client.completion_cost", return_value=0.0),
-        ):
-            await client.complete(SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT)
-
-        assert mock_ac.call_args.kwargs["drop_params"] is True
-
-    @pytest.mark.asyncio
     async def test_empty_api_base_passed_as_none(self):
         mock_response = _make_mock_response()
         client = _make_client(api_base="", api_version="")
