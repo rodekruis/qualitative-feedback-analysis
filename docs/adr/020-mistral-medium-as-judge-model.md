@@ -133,24 +133,29 @@ Stated as observables, not feelings:
   deployment's launch parameters aren't exposed to the customer). Rollback
   condition 4 also fired the same day, for the same reason, on
   `/v1/assign-codes` — its judge has no degradation path, so it 502s outright
-  rather than degrading to `quality_score=null`. #314 fixed that one site by
-  moving `CodingService`'s per-level judge to free-text scoring (no
-  `response_format` at all), matching `summarize`'s existing judge sites. The
-  `analyze` and hierarchical-leaf judges still request structured output and
-  still degrade to `null` on this deployment — unaffected in effect, since
-  they already tolerate the failure, but the underlying incompatibility is
-  unresolved there too and out of scope for #314.
+  rather than degrading to `quality_score=null`.
+- **All five judge call sites converted to free-text scoring, 2026-08-31**
+  (#314): `CodingService`'s per-level judge, the `analyze` judge, and the
+  hierarchical leaf judge now parse a `SCORE:`/`EXPLANATION:` or
+  `QUALITY_SCORE:`/`UNCERTAINTY_EXPLANATION:` reply instead of requesting a
+  `response_format`, matching the pattern `summarize.py`'s two judge sites
+  already used successfully against this deployment. No judge call site
+  requests structured output any more — only the *generation* calls on the
+  primary connection (`CodingResponse`, `SummaryResultModel`,
+  `AggregateSummaryResultModel`) still do, and those are unaffected since
+  they run on a different model. This closes the incompatibility this ADR's
+  rollback conditions 3 and 4 both trace back to.
 
 ## Follow-up
 
-Opened as #299: the two free-text judge sites (`summarize.py`'s
-`summarize_bulk` and `summarize`) parse a bare float and raise
-`AnalysisError` on anything else, unlike the two structured `analyze`
-judge sites which degrade to `quality_score=None`. Converting them to a
-structured `response_model` would go through `_provider_safe_response_format`
-(`src/qfa/adapters/llm_client.py`) — which #309 shows is *not* yet proven
-against Azure AI Mistral: the structured judge call is the one currently
-being rejected. Not done in this change.
+#299 previously proposed converting the two free-text `summarize`/
+`summarize_bulk` judge sites to structured output, to match what the
+`analyze` and coding judges did at the time. That direction is now known to
+be wrong: #314 showed the opposite conversion (structured → free text) is
+what actually works against this deployment, and every judge site now
+follows `summarize`'s original free-text pattern instead. #299 has been
+closed as obsolete — there is no longer an asymmetry between judge sites to
+fix.
 
 ## Participants
 

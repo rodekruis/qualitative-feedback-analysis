@@ -2,7 +2,6 @@
 
 import json
 import logging
-import re
 from math import isnan
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -27,7 +26,6 @@ from qfa.domain.errors import (
     PromptInjectionDetectedError,
 )
 from qfa.domain.models import LLMResponse
-from qfa.services.analyze import AnalyzeJudgeResult
 
 SENTINEL = "LEAK-CANARY-7f3a"
 
@@ -1085,46 +1083,6 @@ class TestContentFilterSignal:
         assert _content_filter_signal(choice) == ("violence", "high")
 
 
-def _assert_mistral_strict_schema_contract(response_format: dict) -> None:
-    """Assert a built ``response_format`` satisfies Azure AI Mistral's strict contract.
-
-    Encodes what that endpoint is known to require: a named, strict
-    ``json_schema`` whose every object node is closed (``additionalProperties``
-    false, every property required), carrying no stripped validation keyword
-    and no ``$ref``/``$defs`` indirection. A constraint newly confirmed against
-    the provider belongs here (see #309).
-    """
-    assert response_format["type"] == "json_schema"
-    json_schema = response_format["json_schema"]
-    assert json_schema["strict"] is True
-    assert re.fullmatch(r"[A-Za-z0-9_-]{1,64}", json_schema["name"])
-
-    schema = json_schema["schema"]
-    assert schema["type"] == "object"
-
-    blob = json.dumps(response_format)
-    leaked = [k for k in _UNSUPPORTED_SCHEMA_KEYWORDS if f'"{k}"' in blob]
-    assert leaked == [], f"unsupported keywords leaked: {leaked}"
-    for indirection in ("$ref", "$defs"):
-        assert f'"{indirection}"' not in blob, f"{indirection} reached the wire schema"
-
-    def assert_closed(node: object) -> None:
-        if isinstance(node, dict):
-            fields: dict = dict(node)
-            if fields.get("type") == "object":
-                assert fields.get("additionalProperties") is False
-                assert set(fields.get("required", ())) == set(
-                    fields.get("properties", {})
-                )
-            for value in fields.values():
-                assert_closed(value)
-        elif isinstance(node, list):
-            for item in node:
-                assert_closed(item)
-
-    assert_closed(schema)
-
-
 class TestProviderSafeResponseFormat:
     """The response_format sanitiser keeps providers from seeing rejected keywords."""
 
@@ -1184,19 +1142,6 @@ class TestProviderSafeResponseFormat:
         # The model still rejects out-of-range values after sanitisation ran.
         with pytest.raises(ValueError):
             _Constrained(score=2.0)
-
-    def test_judge_response_format_meets_azure_ai_mistral_contract(self):
-        """The analyse judge's wire schema stays inside Mistral's strict contract.
-
-        Characterization test — it passes on today's schema, and exists as the
-        baseline a mitigation for #309 must not disturb, and as the place a
-        newly confirmed provider constraint gets pinned. ``AnalyzeJudgeResult``
-        is the response model for both structured judge sites (analyze_bulk and
-        the hierarchical leaf judge), so this covers both.
-        """
-        _assert_mistral_strict_schema_contract(
-            _provider_safe_response_format(AnalyzeJudgeResult)
-        )
 
 
 class TestInjectionPatterns:

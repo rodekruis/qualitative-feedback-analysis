@@ -46,19 +46,18 @@ class TestAnalyzeRecordsRow:
     ):
         """A successful /v1/analyze-bulk persists two ``ok`` rows.
 
-        AnalyzeService.analyze_bulk makes two LLM calls: one for the
-        main analysis (response_model=str) and one for the judge
-        (response_model=AnalyzeJudgeResult).  Both are tracked individually by
-        the TrackingLLMAdapter, so we expect two rows with operation=analyze
-        and status=ok.
+        AnalyzeService.analyze_bulk makes two LLM calls, both
+        response_model=str: one for the main analysis, one for the judge
+        (free text — some judge deployments reject any response schema
+        outright, see AnalyzeJudgeResult's docstring). Both are tracked
+        individually by the TrackingLLMAdapter, so we expect two rows with
+        operation=analyze and status=ok.
         """
-        # Call 1: analysis text (response_model=str).
+        # Call 1: analysis text.
         e2e_fake_llm.queue_response(_ok(text="Analysis result text."))
-        # Call 2: judge structured output.
+        # Call 2: judge free text (QUALITY_SCORE:/UNCERTAINTY_EXPLANATION:).
         e2e_fake_llm.queue_response(
-            _ok(
-                text='{"quality_score": 0.8, "uncertainty_explanation": "Good coverage."}'
-            )
+            _ok(text="QUALITY_SCORE: 0.8\nUNCERTAINTY_EXPLANATION: Good coverage.")
         )
 
         resp = await e2e_client.post(
@@ -100,12 +99,10 @@ class TestRequestIdEqualsCallId:
         """
         from uuid import UUID
 
-        # Two LLM calls: analysis text + judge structured output.
+        # Two LLM calls: analysis text + judge free text.
         e2e_fake_llm.queue_response(_ok(text="Analysis result text."))
         e2e_fake_llm.queue_response(
-            _ok(
-                text='{"quality_score": 0.8, "uncertainty_explanation": "Good coverage."}'
-            )
+            _ok(text="QUALITY_SCORE: 0.8\nUNCERTAINTY_EXPLANATION: Good coverage.")
         )
 
         resp = await e2e_client.post(
@@ -231,7 +228,7 @@ class TestAssignCodesRecordsMultipleRows:
             ]
         }
         e2e_fake_llm.queue_response(_ok(text='{"selected": [2]}'))
-        judge_response = '{"score": 0.9, "explanation": "fits well"}'
+        judge_response = "SCORE: 0.9\nEXPLANATION: fits well"
         e2e_fake_llm.queue_response(_ok(text=judge_response))
         e2e_fake_llm.queue_response(_ok(text=judge_response))
         e2e_fake_llm.queue_response(_ok(text=judge_response))

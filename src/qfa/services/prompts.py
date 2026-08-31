@@ -108,11 +108,17 @@ Clarity:
 Compute the final score as:
 quality_score = 0.6 * faithfulness + 0.3 * coverage + 0.1 * clarity
 
-Also produce ``uncertainty_explanation`` — one short paragraph explaining
+Also produce an uncertainty explanation — one short paragraph explaining
 which criterion drove the score, calling out unsupported claims if any.
 
-Return strictly the JSON object {{"quality_score": <float>, "uncertainty_explanation": "<text>"}}.
-No prose outside JSON, no markdown fences.
+Output format:
+Respond with exactly two lines and nothing else, in this exact format:
+QUALITY_SCORE: <a number between 0.0 and 1.0>
+UNCERTAINTY_EXPLANATION: <one short paragraph>
+
+Example:
+QUALITY_SCORE: 0.82
+UNCERTAINTY_EXPLANATION: The analysis is well-supported by the source records and covers the analyst's question, though it slightly overstates how widespread one minor theme is.
 """
 
 

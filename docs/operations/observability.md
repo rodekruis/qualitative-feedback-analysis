@@ -47,7 +47,7 @@ Every `BadRequestError` logs a second line at ERROR naming the schema we sent an
 the token the provider objected to:
 
 ```
-LLM provider rejected request: model=azure_ai/mistral-medium-3-5 response_format=json_schema schema_name=AnalyzeJudgeResult schema_keys=additionalProperties,properties,... rejected_keyword=minimum
+LLM provider rejected request: model=azure/gpt-5.4 response_format=json_schema schema_name=CodingResponse schema_keys=additionalProperties,properties,... rejected_keyword=minimum
 ```
 
 1. Read `rejected_keyword`. A named keyword is the fix: add it to
@@ -62,13 +62,19 @@ LLM provider rejected request: model=azure_ai/mistral-medium-3-5 response_format
    prints the assembled messages, so the Hard prohibitions above apply to it in full —
    never run it against real feedback or a production tenant.
 
-This diagnostic only fires for a call site that requests structured output. The
-`assign_codes` per-level judge (`CodingService._judge_code_level`) does not — its
-judge connection can point at a deployment (confirmed for
-`azure_ai/mistral-medium-3-5`) that rejects *any* `response_format`, structured or
-not, so it parses a free-text `SCORE:`/`EXPLANATION:` reply instead. A malformed
-reply there surfaces as `AnalysisError: LLM judge returned an unparsable response`,
-not this diagnostic.
+This diagnostic only fires for a call site that requests structured output.
+**No judge call site does.** All five judge calls (the `analyze` judge, the
+hierarchical leaf judge, both `summarize`/`summarize_bulk` judges, and the
+`assign_codes` per-level judge) parse a free-text reply instead of requesting a
+`response_format` — confirmed that the judge deployment
+(`azure_ai/mistral-medium-3-5`) rejects *any* `response_format`, structured or
+not, regardless of what it names. A malformed judge reply surfaces as
+`AnalysisError: LLM judge returned an unparsable response` (coding, analyze) or
+`AnalysisError: LLM judge returned invalid quality score` (the two free-text
+summarize sites), not this diagnostic. This diagnostic still applies to the
+*generation* calls that remain structured on the primary connection
+(`CodingResponse`, `SummaryResultModel`, `AggregateSummaryResultModel`) — the
+example above is one of those, not a judge call.
 
 ## Pipeline timing
 

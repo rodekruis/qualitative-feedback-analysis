@@ -18,6 +18,7 @@ composition-only decomposition in the first place.
 
 import asyncio
 import logging
+import re
 from datetime import datetime
 from typing import ClassVar, Optional
 
@@ -64,17 +65,55 @@ logger = logging.getLogger(__name__)
 
 
 class AnalyzeJudgeResult(BaseModel):
-    """Structured output of the analyse-judge LLM call.
+    """Quality score + explanation for one analyse-judge call.
 
-    The judge returns both a quality score in [0,1] and a short
-    natural-language ``uncertainty_explanation`` the analyst can read to
-    understand why the score is what it is.
+    Populated by parsing the judge LLM's free-text reply (see
+    ``ANALYZE_JUDGE_PROMPT``'s output-format instruction and
+    ``_parse_analyze_judge_response``) rather than schema-enforced
+    structured output: the judge connection can point at a model/deployment
+    that rejects a ``json_schema`` response format outright regardless of
+    its contents (confirmed against ``azure_ai/mistral-medium-3-5`` — its
+    serving backend has grammar-constrained decoding disabled), so neither
+    call site that uses this model can rely on the provider to enforce the
+    shape. Field-level validation (score range, non-empty explanation)
+    still runs here and surfaces as a ``pydantic.ValidationError``, which
+    both call sites already catch.
     """
 
     model_config = ConfigDict(frozen=True)
 
     quality_score: float = Field(ge=0.0, le=1.0)
     uncertainty_explanation: str = Field(min_length=1)
+
+
+_ANALYZE_JUDGE_RESPONSE_PATTERN = re.compile(
+    r"quality_score:\s*(?P<score>-?[0-9.]+)\s*\n\s*uncertainty_explanation:\s*(?P<explanation>.+)",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _parse_analyze_judge_response(raw: str) -> AnalyzeJudgeResult:
+    """Parse the analyse judge's free-text ``QUALITY_SCORE:``/``UNCERTAINTY_EXPLANATION:`` reply.
+
+    Mirrors ``coding._parse_judge_response``'s pattern (see
+    :class:`AnalyzeJudgeResult`'s docstring for why this call site cannot
+    rely on the provider to enforce a response schema). Only unparseable
+    input raises here (``AnalysisError``, caught by both call sites);
+    field-level validation (score range, non-empty explanation) is left to
+    ``AnalyzeJudgeResult`` itself, which raises ``pydantic.ValidationError``
+    — also already caught by both call sites.
+    """
+    match = _ANALYZE_JUDGE_RESPONSE_PATTERN.search(raw)
+    if match is None:
+        raise AnalysisError("LLM judge returned an unparsable response")
+    try:
+        score = float(match.group("score"))
+    except ValueError as exc:
+        raise AnalysisError("LLM judge returned an unparsable response") from exc
+    return AnalyzeJudgeResult(
+        quality_score=score,
+        uncertainty_explanation=match.group("explanation").strip(),
+    )
 
 
 class AnalyzeService:
@@ -263,11 +302,12 @@ class AnalyzeService:
                 system_message=judge_system,
                 user_message=JUDGE_USER_MESSAGE,
                 tenant_id=request.tenant_id,
-                response_model=AnalyzeJudgeResult,
+                response_model=str,
                 timeout=judge_timeout,
             )
-            quality_score = judge_response.structured.quality_score
-            uncertainty_explanation = judge_response.structured.uncertainty_explanation
+            judged = _parse_analyze_judge_response(judge_response.structured)
+            quality_score = judged.quality_score
+            uncertainty_explanation = judged.uncertainty_explanation
         except (
             LLMError,
             LLMTimeoutError,
@@ -716,11 +756,13 @@ class AnalyzeService:
                 system_message=judge_system,
                 user_message=JUDGE_USER_MESSAGE,
                 tenant_id=tenant_id,
-                response_model=AnalyzeJudgeResult,
+                response_model=str,
                 deadline=deadline,
                 timing=timing,
             )
-            return judge_response.structured.quality_score
+            return _parse_analyze_judge_response(
+                judge_response.structured
+            ).quality_score
         except (
             LLMError,
             LLMTimeoutError,

@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from pydantic import ValidationError
 
-from qfa.domain.errors import LLMBadRequestError, LLMError
+from qfa.domain.errors import AnalysisError, LLMBadRequestError, LLMError
 from qfa.domain.models import (
     AnalysisRequestModel,
     FeedbackRecordMetadataModel,
@@ -22,7 +22,11 @@ from qfa.domain.models import (
     LLMResponse,
 )
 from qfa.domain.ports import AnonymizationPort
-from qfa.services.analyze import AnalyzeJudgeResult, AnalyzeService
+from qfa.services.analyze import (
+    AnalyzeJudgeResult,
+    AnalyzeService,
+    _parse_analyze_judge_response,
+)
 from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.services.prompts import JUDGE_UNAVAILABLE_EXPLANATION
 from qfa.settings import OrchestratorSettings
@@ -116,16 +120,21 @@ def _build_analyze_service(
     )
 
 
+def _judge_text(quality_score, explanation):
+    """Render a judge score/explanation as the free-text reply the fake serves.
+
+    Matches ``ANALYZE_JUDGE_PROMPT``'s output-format instruction
+    (``prompts.py``), which ``analyze._parse_analyze_judge_response`` parses.
+    """
+    return f"QUALITY_SCORE: {quality_score}\nUNCERTAINTY_EXPLANATION: {explanation}"
+
+
 def _judging_llm(analysis="analysis", quality_score=0.5, explanation="ok"):
     """A fake LLM answering the two calls analyze_bulk makes (analysis, judge)."""
     return FakeLLMPort(
         responses=[
             _make_llm_response(structured=analysis),
-            _make_llm_response(
-                structured=AnalyzeJudgeResult(
-                    quality_score=quality_score, uncertainty_explanation=explanation
-                )
-            ),
+            _make_llm_response(structured=_judge_text(quality_score, explanation)),
         ]
     )
 
@@ -363,6 +372,41 @@ class TestAnalyzeJudgeResultParsing:
         """Pydantic rejects ``quality_score`` outside [0,1]."""
         with pytest.raises(ValidationError):
             AnalyzeJudgeResult(quality_score=1.5, uncertainty_explanation="ok")
+
+
+class TestParseAnalyzeJudgeResponse:
+    """Unit coverage for the QUALITY_SCORE:/UNCERTAINTY_EXPLANATION: free-text parser."""
+
+    def test_parses_well_formed_reply(self):
+        judged = _parse_analyze_judge_response(
+            "QUALITY_SCORE: 0.72\nUNCERTAINTY_EXPLANATION: Mostly faithful."
+        )
+        assert judged.quality_score == 0.72
+        assert judged.uncertainty_explanation == "Mostly faithful."
+
+    def test_tolerates_case_and_surrounding_whitespace(self):
+        judged = _parse_analyze_judge_response(
+            "  quality_score:  0.5  \n  uncertainty_explanation:  Plausible.  "
+        )
+        assert judged.quality_score == 0.5
+        assert judged.uncertainty_explanation == "Plausible."
+
+    def test_missing_score_line_raises_analysis_error(self):
+        with pytest.raises(AnalysisError, match="unparsable response"):
+            _parse_analyze_judge_response("UNCERTAINTY_EXPLANATION: No score given.")
+
+    def test_non_numeric_score_raises_analysis_error(self):
+        with pytest.raises(AnalysisError, match="unparsable response"):
+            _parse_analyze_judge_response(
+                "QUALITY_SCORE: high\nUNCERTAINTY_EXPLANATION: Confident."
+            )
+
+    def test_out_of_range_score_raises_validation_error(self):
+        """Range validation is left to ``AnalyzeJudgeResult`` itself, not the parser."""
+        with pytest.raises(ValidationError):
+            _parse_analyze_judge_response(
+                "QUALITY_SCORE: 1.5\nUNCERTAINTY_EXPLANATION: Too confident."
+            )
 
 
 class TestAnalyzeHappyPath:
