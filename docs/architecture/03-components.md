@@ -86,6 +86,13 @@ Three properties are worth knowing:
 - **One concurrency bound, not two.** In the hierarchical pipeline the shared
   semaphore caps total in-flight calls across map, leaf judge and reduce,
   regardless of which client serves them.
+- **A judge model may refuse a schema the generation model accepts.** The two
+  structured judge calls both request
+  {py:class}`~qfa.services.analyze.AnalyzeJudgeResult`, sent as a provider-safe
+  `response_format` whose shape is pinned by a contract test against Azure AI
+  Mistral's known constraints. A rejection is diagnosed from the content-free
+  `LLM provider rejected request:` log line — see
+  [Diagnosing a provider 400](../operations/observability.md#diagnosing-a-provider-400).
 
 This is [ADR-004](../adr/004-single-llm-client.md) applied, not contradicted:
 one client *class* serves every provider, and provider/model selection happens

@@ -118,6 +118,12 @@ Stated as observables, not feelings:
   this decision.
 - The follow-up issue below lands and changes the failure mode at the two
   free-text sites.
+- **Rollback condition 3 fired in dev-test on 2026-08-31** (#309): the judge
+  call 400s against `azure_ai/mistral-medium-3-5`, so every `/v1/analyze-bulk`
+  confidence score is `null` while the judge connection is active. The cause is
+  not yet confirmed; the lever if it needs pulling is the config rollback above
+  (`AZ_JUDGE_LLM_MODEL=""` + re-apply), which restores scores without a
+  redeploy.
 
 ## Follow-up
 
@@ -125,9 +131,10 @@ Opened as #299: the two free-text judge sites (`summarize.py`'s
 `summarize_bulk` and `summarize`) parse a bare float and raise
 `AnalysisError` on anything else, unlike the two structured `analyze`
 judge sites which degrade to `quality_score=None`. Converting them to a
-structured `response_model` is proven feasible against Azure AI Mistral by
-`_provider_safe_response_format` (`src/qfa/adapters/llm_client.py`). Not
-done in this change.
+structured `response_model` would go through `_provider_safe_response_format`
+(`src/qfa/adapters/llm_client.py`) — which #309 shows is *not* yet proven
+against Azure AI Mistral: the structured judge call is the one currently
+being rejected. Not done in this change.
 
 ## Participants
 
