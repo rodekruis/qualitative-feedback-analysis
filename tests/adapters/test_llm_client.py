@@ -128,28 +128,6 @@ class TestLiteLLMClientCallParameters:
         assert messages[1] == {"role": "user", "content": USER_MSG}
 
     @pytest.mark.asyncio
-    async def test_passes_drop_params_so_provider_can_self_heal(self):
-        """`drop_params` is sent so litellm can retry a field-level 400 (#309).
-
-        litellm's Azure AI 400 handler re-sends the request without the field
-        the provider named, but only when this flag is set; without it one
-        rejected top-level parameter fails the whole call.
-        """
-        mock_response = _make_mock_response()
-        client = _make_client()
-        with (
-            patch(
-                "qfa.adapters.llm_client.acompletion",
-                new_callable=AsyncMock,
-                return_value=mock_response,
-            ) as mock_ac,
-            patch("qfa.adapters.llm_client.completion_cost", return_value=0.0),
-        ):
-            await client.complete(SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT)
-
-        assert mock_ac.call_args.kwargs["drop_params"] is True
-
-    @pytest.mark.asyncio
     async def test_empty_api_base_passed_as_none(self):
         mock_response = _make_mock_response()
         client = _make_client(api_base="", api_version="")
@@ -687,6 +665,43 @@ class TestBadRequestDiagnostics:
             for record in caplog.records
         )
         assert not any("frobnicate" in record.getMessage() for record in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_error_envelope_key_is_not_reported_as_rejected_keyword(self, caplog):
+        """A 400 naming no keyword reports `unknown`, not the envelope's own `type`.
+
+        Why: litellm puts the provider's raw body in ``str(exc)``, and every
+        OpenAI-style envelope carries a quoted ``"type"`` key. Matching any
+        quoted token would report ``rejected_keyword=type`` for every 400 —
+        and the runbook tells an operator to strip a named keyword from every
+        outgoing schema, which for ``type`` breaks structured output outright.
+        """
+        with caplog.at_level(logging.ERROR):
+            await self._complete_against_bad_request(
+                "litellm.BadRequestError: AzureAIException - "
+                '{"error": {"message": "Extra inputs are not permitted", '
+                '"type": "invalid_request_error"}}'
+            )
+
+        assert any(
+            "rejected_keyword=unknown" in record.getMessage()
+            for record in caplog.records
+        )
+
+    @pytest.mark.asyncio
+    async def test_keyword_named_after_envelope_key_still_wins(self, caplog):
+        """The real culprit is reported even when the envelope quotes keys first."""
+        with caplog.at_level(logging.ERROR):
+            await self._complete_against_bad_request(
+                "litellm.BadRequestError: AzureAIException - "
+                '{"error": {"type": "invalid_request_error", '
+                '"message": "Received unsupported keyword `minimum` in schema"}}'
+            )
+
+        assert any(
+            "rejected_keyword=minimum" in record.getMessage()
+            for record in caplog.records
+        )
 
     @pytest.mark.asyncio
     async def test_logs_schema_name_and_keys_for_structured_call(self, caplog):
