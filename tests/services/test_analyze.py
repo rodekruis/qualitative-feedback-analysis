@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from pydantic import ValidationError
 
-from qfa.domain.errors import LLMError
+from qfa.domain.errors import LLMBadRequestError, LLMError
 from qfa.domain.models import (
     AnalysisRequestModel,
     FeedbackRecordMetadataModel,
@@ -509,6 +509,30 @@ class TestAnalyzeJudgeFailure:
         fake_llm = FakeLLMPort(
             responses=[_make_llm_response(structured="analysis ok")],
             errors=[None, LLMError("judge boom")],
+        )
+        service = _build_analyze_service(fake_llm, FakeAnonymizer(), settings)
+
+        result = await service.analyze_bulk(_make_request(), _future_deadline())
+
+        assert result.quality_score is None
+        assert result.uncertainty_explanation == JUDGE_UNAVAILABLE_EXPLANATION
+        assert "analysis ok" in result.result
+
+    @pytest.mark.asyncio
+    async def test_judge_bad_request_degrades_to_none_score(self, settings):
+        """A judge 400 degrades the score, it does not fail the request (#309).
+
+        The reported symptom — analyze-bulk answering 200 with a null
+        confidence score while the judge model rejects the call — is this
+        behaviour working as designed, and must stay that way whatever the
+        cause of the rejection.
+        """
+        fake_llm = FakeLLMPort(
+            responses=[_make_llm_response(structured="analysis ok")],
+            errors=[
+                None,
+                LLMBadRequestError("judge rejected", provider_status=400),
+            ],
         )
         service = _build_analyze_service(fake_llm, FakeAnonymizer(), settings)
 
