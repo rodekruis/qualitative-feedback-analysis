@@ -370,7 +370,7 @@ class SQLAlchemyAuthAdapter(AuthLookupPort, AuthManagementPort):
                     key_id=key_id,
                     name=key_name,
                     key=SecretStr(api_key),
-                    hashed_key=None,  # type: ignore[ty:invalid-argument-type]
+                    hashed_key=None,
                     tenant_id=tenant_id,
                     is_superuser=is_superuser,
                 )

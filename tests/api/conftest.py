@@ -294,16 +294,16 @@ def fake_api_keys():
         TenantApiKey(
             key_id=f"{FAKE_TENANT_ID}-0",
             name=FAKE_API_KEY_NAME,
-            key=FAKE_API_KEY,  # type:ignore [ty:invalid-argument-type]
-            hashed_key=None,  # type:ignore [ty:invalid-argument-type]
+            key=FAKE_API_KEY,
+            hashed_key=None,
             tenant_id=FAKE_TENANT_ID,
             is_superuser=False,
         ),
         TenantApiKey(
             key_id=f"{FAKE_TENANT_ID}-1",
             name="Superuser 2",
-            key=FAKE_SUPERUSER_KEY,  # type:ignore [ty:invalid-argument-type]
-            hashed_key=None,  # type:ignore [ty:invalid-argument-type]
+            key=FAKE_SUPERUSER_KEY,
+            hashed_key=None,
             tenant_id=FAKE_TENANT_ID,
             is_superuser=True,
         ),

@@ -27,7 +27,12 @@ repos:
     language: system
     pass_filenames: false
 - repo: https://github.com/astral-sh/ty-pre-commit
-  # ty version.
+  # Keep in sync with the ty pin in pyproject.toml's dev dependencies —
+  # ty adds new rules frequently, and a mismatched pre-commit rev flags
+  # diagnostics `make ty` / CI (which use the pyproject-pinned version)
+  # never see. (v0.0.34's hook script itself is broken — it passes
+  # --ignore-active-virtual-env, a flag ty 0.0.34's CLI doesn't support —
+  # so 0.0.75 is the oldest usable pairing.)
   rev: v0.0.75
   hooks:
     - id: ty

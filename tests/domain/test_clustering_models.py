@@ -35,7 +35,7 @@ def test_chunk_is_frozen() -> None:
         records=(_record("a"),),
     )
     with pytest.raises(ValidationError):
-        chunk.label = 1  # type: ignore[misc]
+        chunk.label = 1  # type: ignore[ty:invalid-assignment]
 
 
 def test_uncategorised_chunk_carries_noise_label() -> None:
