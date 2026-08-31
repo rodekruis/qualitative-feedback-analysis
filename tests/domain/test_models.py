@@ -69,7 +69,7 @@ class TestFeedbackRecordModel:
     def test_frozen_raises_on_assignment(self):
         doc = FeedbackRecordModel(id="doc-1", content="feedback")
         with pytest.raises(ValidationError):
-            doc.content = "changed"
+            doc.content = "changed"  # type: ignore[ty:invalid-assignment]
 
     def test_empty_text_raises(self):
         with pytest.raises(ValidationError):
@@ -113,7 +113,7 @@ class TestAnalysisRequestModel:
             feedback_records=(doc,), prompt="Summarize", tenant_id="tenant-1"
         )
         with pytest.raises(ValidationError):
-            req.prompt = "changed"
+            req.prompt = "changed"  # type: ignore[ty:invalid-assignment]
 
     def test_empty_feedback_records_raises(self):
         with pytest.raises(ValidationError):
@@ -158,7 +158,7 @@ class TestAnalysisResultModel:
             result="Summary",
         )
         with pytest.raises(ValidationError):
-            result.result = "changed"
+            result.result = "changed"  # type: ignore[ty:invalid-assignment]
 
 
 def test_analysis_request_accepts_hierarchical_mode() -> None:
@@ -228,7 +228,7 @@ class TestLLMResponse:
             cost=0.001,
         )
         with pytest.raises(ValidationError):
-            resp.structured = "changed"
+            resp.structured = "changed"  # type: ignore[ty:invalid-assignment]
 
 
 # --- TenantApiKey ---
@@ -239,8 +239,8 @@ class TestTenantApiKey:
         key = TenantApiKey(
             key_id="tenant-1-0",
             name="prod-key",
-            key="sk-abc123",  # type:ignore [ty:invalid-argument-type]
-            hashed_key=None,  # type:ignore [ty:invalid-argument-type]
+            key="sk-abc123",
+            hashed_key=None,
             tenant_id="tenant-1",
         )
         assert key.key_id == "tenant-1-0"
@@ -254,7 +254,7 @@ class TestTenantApiKey:
         key = TenantApiKey(
             key_id="tenant-1-0",
             name="prod-key",
-            hashed_key=key_hash,  # type:ignore [ty:invalid-argument-type]
+            hashed_key=key_hash,
             tenant_id="tenant-1",
         )
         assert key.key is None
@@ -265,8 +265,8 @@ class TestTenantApiKey:
             TenantApiKey(
                 key_id="tenant-1-0",
                 name="prod-key",
-                key="sk-abc123",  # type:ignore [ty:invalid-argument-type]
-                hashed_key="not-the-right-hash",  # type:ignore [ty:invalid-argument-type]
+                key="sk-abc123",
+                hashed_key="not-the-right-hash",
                 tenant_id="tenant-1",
             )
 
@@ -274,12 +274,12 @@ class TestTenantApiKey:
         key = TenantApiKey(
             key_id="tenant-1-0",
             name="prod-key",
-            key="sk-abc123",  # type:ignore [ty:invalid-argument-type]
-            hashed_key=None,  # type:ignore [ty:invalid-argument-type]
+            key="sk-abc123",
+            hashed_key=None,
             tenant_id="tenant-1",
         )
         with pytest.raises(ValidationError):
-            key.name = "changed"
+            key.name = "changed"  # type: ignore[ty:invalid-assignment]
 
 
 class TestSensitivityModels:

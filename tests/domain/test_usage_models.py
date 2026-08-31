@@ -40,7 +40,7 @@ class TestCallContext:
         """
         ctx = CallContext(tenant_id="t1", operation=Operation.ANALYZE, call_id=uuid4())
         with pytest.raises(ValidationError):
-            ctx.tenant_id = "t2"
+            ctx.tenant_id = "t2"  # type: ignore[ty:invalid-assignment]
 
     def test_call_id_required(self):
         """``call_id`` is mandatory — omitting it must raise ValidationError.

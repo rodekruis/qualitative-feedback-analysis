@@ -25,7 +25,7 @@ from collections.abc import AsyncIterator, Callable, Sequence
 from contextlib import asynccontextmanager
 from datetime import datetime
 from decimal import Decimal
-from typing import Literal, overload
+from typing import Literal, cast, overload
 
 import sqlalchemy as sa
 from sqlalchemy.exc import InterfaceError, OperationalError
@@ -190,8 +190,14 @@ class SqlAlchemyUsageRepository(UsageRepositoryPort):
             )
             for operation in operations
         ]
+
         # Cost desc, ties by operation asc — by-tenant sorts alphabetically.
-        results.sort(key=lambda block: (-block.total_cost_usd, block.operation.value))
+        # The grand-total (operation=None) row is appended after sorting, so
+        # every block here has a non-null operation.
+        def _sort_key(block: OperationUsageStats) -> tuple[Decimal, str]:
+            return (-block.total_cost_usd, cast(Operation, block.operation).value)
+
+        results.sort(key=_sort_key)
 
         # Grand total — always emitted, even when empty.
         results.append(

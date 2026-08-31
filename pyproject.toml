@@ -180,7 +180,7 @@ dev = [
     "ruff~=0.15.0",
     # ty is under development and adds new rules frequently.
     # Use pinned version so we don't get unexpected lint errors when ty gets updated
-    "ty~=0.0.34",
+    "ty~=0.0.75",
 ]
 docs = [
     "sphinx>=7",
