@@ -182,7 +182,11 @@ Scores between anchors are expected and encouraged. For example, a strong but no
 Output format:
 Respond with exactly two lines and nothing else, in this exact format:
 SCORE: <a number between 0.0 and 1.0>
-EXPLANATION: <at most two sentences>"""
+EXPLANATION: <at most two sentences>
+
+Example:
+SCORE: 0.85
+EXPLANATION: The feedback describes rude treatment from a staff member, which directly matches this code."""
 
 
 def build_judge_messages(
