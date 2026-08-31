@@ -39,6 +39,26 @@ Everything that's not in the prohibition list above is fine, especially:
 - Model name, latency, `prompt_tokens`, `completion_tokens`, `cost`
 - HTTP status codes
 - Azure content-filter `category`/`severity` on `LLMContentPolicyViolationError` (a closed annotation, e.g. `violence`/`high` — never the flagged text itself)
+- The provider-rejection diagnostic's `model`, `response_format`, `schema_name`, `schema_keys` and `rejected_keyword` — the first four describe a schema this repo built, the last is drawn from a closed vocabulary of JSON-Schema token names (never the provider's message)
+
+## Diagnosing a provider 400
+
+Every `BadRequestError` logs a second line at ERROR naming the schema we sent and
+the token the provider objected to:
+
+```
+LLM provider rejected request: model=azure_ai/mistral-medium-3-5 response_format=json_schema schema_name=AnalyzeJudgeResult schema_keys=additionalProperties,properties,... rejected_keyword=minimum
+```
+
+1. Read `rejected_keyword`. A named keyword is the fix: add it to
+   `_UNSUPPORTED_SCHEMA_KEYWORDS` in `qfa.adapters.llm_client` and to the wire-schema
+   contract test in `tests/adapters/test_llm_client.py`.
+2. `rejected_keyword=unknown` means the provider named nothing we recognise. Capture
+   the raw response body: raise `LOG_LOGLEVEL_3RDPARTY` to `debug` (or call
+   `litellm._turn_on_debug()`), reproduce once, then revert immediately.
+3. **Step 2 is dev-test-only, with synthetic feedback only.** litellm's debug stream
+   prints the assembled messages, so the Hard prohibitions above apply to it in full —
+   never run it against real feedback or a production tenant.
 
 ## Pipeline timing
 
