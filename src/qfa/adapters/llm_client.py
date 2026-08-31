@@ -60,12 +60,16 @@ _UNSUPPORTED_SCHEMA_KEYWORDS: frozenset[str] = frozenset(
     }
 )
 
-# Structured-output token names a provider could plausibly name when it
-# rejects a request. Used only to *classify* a rejection for the diagnostic
-# log line below — never to strip anything from an outgoing schema, which is
-# what ``_UNSUPPORTED_SCHEMA_KEYWORDS`` above is for. Keeping the rejection
+# JSON-Schema token names a provider could plausibly name when it rejects a
+# schema. Used only to *classify* a rejection for the diagnostic log line
+# below — never to strip anything from an outgoing schema, which is what
+# ``_UNSUPPORTED_SCHEMA_KEYWORDS`` above is for. Keeping the rejection
 # classification inside a closed vocabulary is what lets us report *why* a
-# provider refused without ever logging its text (ADR-018).
+# provider refused without ever logging its text (ADR-018). Members that are
+# also error-envelope keys (``type``, ``name``, ``description``, ``schema``)
+# are safe here only because the match below is anchored to the rejection
+# phrasing; an unanchored scan of the message would report them from the
+# envelope the provider serialised around its own error.
 _SCHEMA_KEYWORD_VOCABULARY: frozenset[str] = _UNSUPPORTED_SCHEMA_KEYWORDS | frozenset(
     {
         "type",
@@ -87,14 +91,20 @@ _SCHEMA_KEYWORD_VOCABULARY: frozenset[str] = _UNSUPPORTED_SCHEMA_KEYWORDS | froz
         "strict",
         "name",
         "schema",
-        "response_format",
-        "user",
     }
 )
 
-# A backticked or quoted identifier, as providers use to name the field they
-# refused ("Received unsupported keyword `minimum` in schema").
-_QUOTED_TOKEN_PATTERN = re.compile(r"""[`'"](\$?[A-Za-z][\w$]*)[`'"]""")
+# The rejection phrasing itself, quoted token included — recorded verbatim in
+# 24165c8: "Received unsupported keyword `minimum` in schema". The literal
+# prefix is load-bearing: litellm puts the provider's raw body in
+# ``str(exc)``, and an OpenAI-style envelope quotes its own keys
+# (``{"error": {"type": "invalid_request_error", ...}}``), so matching any
+# quoted token would report ``type`` for every 400 — including ones whose
+# message names the real culprit later in the body.
+_REJECTED_KEYWORD_PATTERN = re.compile(
+    r"""unsupported\s+keyword\s+\\?[`'"](\$?[A-Za-z][\w$]*)\\?[`'"]""",
+    re.IGNORECASE,
+)
 
 
 def _strip_unsupported_schema_keywords(node: object) -> object:
@@ -175,16 +185,20 @@ def _content_filter_signal(choice: object) -> tuple[str | None, str | None]:
 
 
 def _rejected_schema_keyword(message: str) -> str | None:
-    """Return the structured-output token a provider named in a rejection.
+    """Return the schema token a provider named as unsupported, if any.
 
     Reads the provider string only to classify it, and returns a member of
     ``_SCHEMA_KEYWORD_VOCABULARY`` or nothing at all, so no provider-derived
     text is propagated (ADR-018) — the same read-but-never-repeat pattern as
     the content-filter sniff in :func:`_to_domain_error`. ``None`` when the
-    message names no token we recognise.
+    message does not use the "unsupported keyword `x`" phrasing, or names a
+    token outside the vocabulary. Deliberately narrow: ``message`` is the
+    whole litellm exception string, provider error envelope and all, and a
+    false positive here sends an operator to strip a keyword the provider
+    never refused (see the runbook in ``docs/operations/observability.md``).
     """
     by_lowercase = {keyword.lower(): keyword for keyword in _SCHEMA_KEYWORD_VOCABULARY}
-    for candidate in _QUOTED_TOKEN_PATTERN.findall(message):
+    for candidate in _REJECTED_KEYWORD_PATTERN.findall(message):
         keyword = by_lowercase.get(candidate.lower())
         if keyword is not None:
             return keyword

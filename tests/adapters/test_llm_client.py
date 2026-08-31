@@ -689,6 +689,43 @@ class TestBadRequestDiagnostics:
         assert not any("frobnicate" in record.getMessage() for record in caplog.records)
 
     @pytest.mark.asyncio
+    async def test_error_envelope_key_is_not_reported_as_rejected_keyword(self, caplog):
+        """A 400 naming no keyword reports `unknown`, not the envelope's own `type`.
+
+        Why: litellm puts the provider's raw body in ``str(exc)``, and every
+        OpenAI-style envelope carries a quoted ``"type"`` key. Matching any
+        quoted token would report ``rejected_keyword=type`` for every 400 —
+        and the runbook tells an operator to strip a named keyword from every
+        outgoing schema, which for ``type`` breaks structured output outright.
+        """
+        with caplog.at_level(logging.ERROR):
+            await self._complete_against_bad_request(
+                "litellm.BadRequestError: AzureAIException - "
+                '{"error": {"message": "Extra inputs are not permitted", '
+                '"type": "invalid_request_error"}}'
+            )
+
+        assert any(
+            "rejected_keyword=unknown" in record.getMessage()
+            for record in caplog.records
+        )
+
+    @pytest.mark.asyncio
+    async def test_keyword_named_after_envelope_key_still_wins(self, caplog):
+        """The real culprit is reported even when the envelope quotes keys first."""
+        with caplog.at_level(logging.ERROR):
+            await self._complete_against_bad_request(
+                "litellm.BadRequestError: AzureAIException - "
+                '{"error": {"type": "invalid_request_error", '
+                '"message": "Received unsupported keyword `minimum` in schema"}}'
+            )
+
+        assert any(
+            "rejected_keyword=minimum" in record.getMessage()
+            for record in caplog.records
+        )
+
+    @pytest.mark.asyncio
     async def test_logs_schema_name_and_keys_for_structured_call(self, caplog):
         with caplog.at_level(logging.ERROR):
             await self._complete_against_bad_request(
