@@ -60,6 +60,42 @@ _UNSUPPORTED_SCHEMA_KEYWORDS: frozenset[str] = frozenset(
     }
 )
 
+# Structured-output token names a provider could plausibly name when it
+# rejects a request. Used only to *classify* a rejection for the diagnostic
+# log line below — never to strip anything from an outgoing schema, which is
+# what ``_UNSUPPORTED_SCHEMA_KEYWORDS`` above is for. Keeping the rejection
+# classification inside a closed vocabulary is what lets us report *why* a
+# provider refused without ever logging its text (ADR-018).
+_SCHEMA_KEYWORD_VOCABULARY: frozenset[str] = _UNSUPPORTED_SCHEMA_KEYWORDS | frozenset(
+    {
+        "type",
+        "title",
+        "description",
+        "properties",
+        "required",
+        "additionalProperties",
+        "items",
+        "enum",
+        "const",
+        "format",
+        "default",
+        "anyOf",
+        "oneOf",
+        "allOf",
+        "$ref",
+        "$defs",
+        "strict",
+        "name",
+        "schema",
+        "response_format",
+        "user",
+    }
+)
+
+# A backticked or quoted identifier, as providers use to name the field they
+# refused ("Received unsupported keyword `minimum` in schema").
+_QUOTED_TOKEN_PATTERN = re.compile(r"""[`'"](\$?[A-Za-z][\w$]*)[`'"]""")
+
 
 def _strip_unsupported_schema_keywords(node: object) -> object:
     """Return ``node`` with unsupported validation keywords removed, recursively.
@@ -136,6 +172,42 @@ def _content_filter_signal(choice: object) -> tuple[str | None, str | None]:
         if isinstance(result, dict) and result.get("filtered"):
             return category, result.get("severity")
     return None, None
+
+
+def _rejected_schema_keyword(message: str) -> str | None:
+    """Return the structured-output token a provider named in a rejection.
+
+    Reads the provider string only to classify it, and returns a member of
+    ``_SCHEMA_KEYWORD_VOCABULARY`` or nothing at all, so no provider-derived
+    text is propagated (ADR-018) — the same read-but-never-repeat pattern as
+    the content-filter sniff in :func:`_to_domain_error`. ``None`` when the
+    message names no token we recognise.
+    """
+    by_lowercase = {keyword.lower(): keyword for keyword in _SCHEMA_KEYWORD_VOCABULARY}
+    for candidate in _QUOTED_TOKEN_PATTERN.findall(message):
+        keyword = by_lowercase.get(candidate.lower())
+        if keyword is not None:
+            return keyword
+    return None
+
+
+def _schema_key_names(node: object) -> list[str]:
+    """Return every dict key occurring anywhere in ``node``, sorted and deduped.
+
+    Walks the schema *this repo* built, so every name returned — JSON-Schema
+    keywords and our own model field names alike — is repo-authored and safe
+    to log (ADR-018).
+    """
+    keys: set[str] = set()
+    pending: list[object] = [node]
+    while pending:
+        current = pending.pop()
+        if isinstance(current, dict):
+            keys.update(str(key) for key in current)
+            pending.extend(current.values())
+        elif isinstance(current, list):
+            pending.extend(current)
+    return sorted(keys)
 
 
 def _to_domain_error(
@@ -300,6 +372,14 @@ class LiteLLMClient(LLMPort):
                 user=tenant_id,
                 timeout=timeout,
                 response_format=response_format,
+                # On the ``azure_ai/`` route, a 400 whose body names a
+                # rejected top-level field is retried by litellm with that
+                # field removed — but only when this flag is set. Without it
+                # a single field the endpoint dislikes (we send ``user``)
+                # fails the whole call. Nothing is dropped pre-flight: every
+                # parameter above is a supported OpenAI param, so this only
+                # unlocks the reactive path.
+                drop_params=True,
             )
         except (Timeout, RateLimitError, BadRequestError, APIError) as exc:
             provider_status = _provider_status(exc)
@@ -309,6 +389,21 @@ class LiteLLMClient(LLMPort):
                 provider_status,
                 self._model,
             )
+            if isinstance(exc, BadRequestError):
+                json_schema = (response_format or {}).get("json_schema", {})
+                # Names which schema of ours the provider refused and which
+                # structured-output token it objected to. Every value is
+                # either written here or drawn from a closed vocabulary —
+                # none is provider text (ADR-018).
+                logger.error(
+                    "LLM provider rejected request: model=%s response_format=%s "
+                    "schema_name=%s schema_keys=%s rejected_keyword=%s",
+                    self._model,
+                    response_format["type"] if response_format else "none",
+                    json_schema.get("name", "none"),
+                    ",".join(_schema_key_names(json_schema.get("schema"))),
+                    _rejected_schema_keyword(str(exc)) or "unknown",
+                )
             raise _to_domain_error(exc, provider_status) from exc
 
     async def complete(
@@ -331,7 +426,9 @@ class LiteLLMClient(LLMPort):
         ``_check_deadline_and_get_timeout``). Content-policy rejections are
         retried because Azure's filter severity classification is not
         guaranteed deterministic for identical input (#293); other bad-request
-        and generic API errors are not retried — they are not transient.
+        and generic API errors are not retried — they are not transient,
+        though litellm's own ``drop_params`` retry can still re-send a call
+        without a top-level parameter the provider named as unacceptable.
         Azure signals a rejection two ways, both mapped to
         ``LLMContentPolicyViolationError`` and both retried: a synchronous
         ``BadRequestError`` (sniffed by ``_to_domain_error``), or a ``200``

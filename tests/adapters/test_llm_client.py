@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from math import isnan
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -26,6 +27,7 @@ from qfa.domain.errors import (
     PromptInjectionDetectedError,
 )
 from qfa.domain.models import LLMResponse
+from qfa.services.analyze import AnalyzeJudgeResult
 
 SENTINEL = "LEAK-CANARY-7f3a"
 
@@ -124,6 +126,28 @@ class TestLiteLLMClientCallParameters:
         messages = call_kwargs["messages"]
         assert messages[0] == {"role": "system", "content": SYSTEM_MSG}
         assert messages[1] == {"role": "user", "content": USER_MSG}
+
+    @pytest.mark.asyncio
+    async def test_passes_drop_params_so_provider_can_self_heal(self):
+        """`drop_params` is sent so litellm can retry a field-level 400 (#309).
+
+        litellm's Azure AI 400 handler re-sends the request without the field
+        the provider named, but only when this flag is set; without it one
+        rejected top-level parameter fails the whole call.
+        """
+        mock_response = _make_mock_response()
+        client = _make_client()
+        with (
+            patch(
+                "qfa.adapters.llm_client.acompletion",
+                new_callable=AsyncMock,
+                return_value=mock_response,
+            ) as mock_ac,
+            patch("qfa.adapters.llm_client.completion_cost", return_value=0.0),
+        ):
+            await client.complete(SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT)
+
+        assert mock_ac.call_args.kwargs["drop_params"] is True
 
     @pytest.mark.asyncio
     async def test_empty_api_base_passed_as_none(self):
@@ -592,6 +616,138 @@ class TestProviderTextContainment:
 
         assert not any(SENTINEL in record.getMessage() for record in caplog.records)
 
+    @pytest.mark.asyncio
+    async def test_bad_request_diagnostic_logs_no_sentinel(self, caplog):
+        """The bad-request diagnostic classifies the rejection without echoing it.
+
+        The provider names the offending token inside its own message; the
+        diagnostic reads that string, so this is the guard that it reports only
+        closed-vocabulary values and never the body itself (ADR-018).
+        """
+        client = _make_client()
+        with (
+            patch(
+                "qfa.adapters.llm_client.acompletion",
+                new_callable=AsyncMock,
+                side_effect=BadRequestError(
+                    message=f"Received unsupported keyword `{SENTINEL}` in schema",
+                    model=MODEL,
+                    llm_provider="azure_ai",
+                ),
+            ),
+            caplog.at_level(logging.DEBUG),
+        ):
+            with pytest.raises(LLMBadRequestError):
+                await client.complete(
+                    SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT
+                )
+
+        assert not any(SENTINEL in record.getMessage() for record in caplog.records)
+
+
+class TestBadRequestDiagnostics:
+    """A 400 is logged with enough repo-authored detail to act on it (#309)."""
+
+    @staticmethod
+    async def _complete_against_bad_request(message, response_model=str):
+        client = _make_client()
+        with patch(
+            "qfa.adapters.llm_client.acompletion",
+            new_callable=AsyncMock,
+            side_effect=BadRequestError(
+                message=message, model=MODEL, llm_provider="azure_ai"
+            ),
+        ):
+            with pytest.raises(LLMBadRequestError):
+                await client.complete(
+                    SYSTEM_MSG, USER_MSG, TENANT_ID, response_model, timeout=TIMEOUT
+                )
+
+    @pytest.mark.asyncio
+    async def test_logs_rejected_schema_keyword_from_closed_vocabulary(self, caplog):
+        with caplog.at_level(logging.ERROR):
+            await self._complete_against_bad_request(
+                "Received unsupported keyword `title` in schema"
+            )
+
+        assert any(
+            "rejected_keyword=title" in record.getMessage() for record in caplog.records
+        )
+
+    @pytest.mark.asyncio
+    async def test_unrecognised_rejection_reason_logs_unknown(self, caplog):
+        """A token outside the vocabulary is reported as `unknown`, not echoed."""
+        with caplog.at_level(logging.ERROR):
+            await self._complete_against_bad_request(
+                "Received unsupported keyword `frobnicate` in schema"
+            )
+
+        assert any(
+            "rejected_keyword=unknown" in record.getMessage()
+            for record in caplog.records
+        )
+        assert not any("frobnicate" in record.getMessage() for record in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_logs_schema_name_and_keys_for_structured_call(self, caplog):
+        with caplog.at_level(logging.ERROR):
+            await self._complete_against_bad_request(
+                "invalid request", response_model=_StructuredResponse
+            )
+
+        diagnostics = [
+            record.getMessage()
+            for record in caplog.records
+            if "LLM provider rejected request:" in record.getMessage()
+        ]
+        assert len(diagnostics) == 1
+        assert "response_format=json_schema" in diagnostics[0]
+        assert "schema_name=_StructuredResponse" in diagnostics[0]
+        assert "properties" in diagnostics[0]
+        assert "required" in diagnostics[0]
+
+    @pytest.mark.asyncio
+    async def test_unstructured_call_reports_no_response_format(self, caplog):
+        with caplog.at_level(logging.ERROR):
+            await self._complete_against_bad_request("invalid request")
+
+        diagnostics = [
+            record.getMessage()
+            for record in caplog.records
+            if "LLM provider rejected request:" in record.getMessage()
+        ]
+        assert len(diagnostics) == 1
+        assert "response_format=none" in diagnostics[0]
+        assert "schema_name=none" in diagnostics[0]
+
+    @pytest.mark.asyncio
+    async def test_non_bad_request_errors_get_no_diagnostic(self, caplog):
+        """Only a 400 carries the schema diagnostic — a timeout says nothing about it."""
+        client = _make_client()
+        with (
+            patch(
+                "qfa.adapters.llm_client.acompletion",
+                new_callable=AsyncMock,
+                side_effect=Timeout(
+                    message="timed out", model=MODEL, llm_provider="azure_ai"
+                ),
+            ),
+            patch(
+                "qfa.adapters.llm_client.wait_exponential",
+                return_value=wait_fixed(0.01),
+            ),
+            caplog.at_level(logging.ERROR),
+        ):
+            with pytest.raises(LLMTimeoutError):
+                await client.complete(
+                    SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=0.01
+                )
+
+        assert not any(
+            "LLM provider rejected request:" in record.getMessage()
+            for record in caplog.records
+        )
+
 
 class TestLiteLLMClientRetry:
     """`complete` retries transient failures up to its budget, then re-raises.
@@ -914,6 +1070,46 @@ class TestContentFilterSignal:
         assert _content_filter_signal(choice) == ("violence", "high")
 
 
+def _assert_mistral_strict_schema_contract(response_format: dict) -> None:
+    """Assert a built ``response_format`` satisfies Azure AI Mistral's strict contract.
+
+    Encodes what that endpoint is known to require: a named, strict
+    ``json_schema`` whose every object node is closed (``additionalProperties``
+    false, every property required), carrying no stripped validation keyword
+    and no ``$ref``/``$defs`` indirection. A constraint newly confirmed against
+    the provider belongs here (see #309).
+    """
+    assert response_format["type"] == "json_schema"
+    json_schema = response_format["json_schema"]
+    assert json_schema["strict"] is True
+    assert re.fullmatch(r"[A-Za-z0-9_-]{1,64}", json_schema["name"])
+
+    schema = json_schema["schema"]
+    assert schema["type"] == "object"
+
+    blob = json.dumps(response_format)
+    leaked = [k for k in _UNSUPPORTED_SCHEMA_KEYWORDS if f'"{k}"' in blob]
+    assert leaked == [], f"unsupported keywords leaked: {leaked}"
+    for indirection in ("$ref", "$defs"):
+        assert f'"{indirection}"' not in blob, f"{indirection} reached the wire schema"
+
+    def assert_closed(node: object) -> None:
+        if isinstance(node, dict):
+            fields: dict = dict(node)
+            if fields.get("type") == "object":
+                assert fields.get("additionalProperties") is False
+                assert set(fields.get("required", ())) == set(
+                    fields.get("properties", {})
+                )
+            for value in fields.values():
+                assert_closed(value)
+        elif isinstance(node, list):
+            for item in node:
+                assert_closed(item)
+
+    assert_closed(schema)
+
+
 class TestProviderSafeResponseFormat:
     """The response_format sanitiser keeps providers from seeing rejected keywords."""
 
@@ -973,6 +1169,19 @@ class TestProviderSafeResponseFormat:
         # The model still rejects out-of-range values after sanitisation ran.
         with pytest.raises(ValueError):
             _Constrained(score=2.0)
+
+    def test_judge_response_format_meets_azure_ai_mistral_contract(self):
+        """The analyse judge's wire schema stays inside Mistral's strict contract.
+
+        Characterization test — it passes on today's schema, and exists as the
+        baseline a mitigation for #309 must not disturb, and as the place a
+        newly confirmed provider constraint gets pinned. ``AnalyzeJudgeResult``
+        is the response model for both structured judge sites (analyze_bulk and
+        the hierarchical leaf judge), so this covers both.
+        """
+        _assert_mistral_strict_schema_contract(
+            _provider_safe_response_format(AnalyzeJudgeResult)
+        )
 
 
 class TestInjectionPatterns:
