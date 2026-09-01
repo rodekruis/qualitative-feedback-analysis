@@ -124,17 +124,38 @@ Stated as observables, not feelings:
   not yet confirmed; the lever if it needs pulling is the config rollback above
   (`AZ_JUDGE_LLM_MODEL=""` + re-apply), which restores scores without a
   redeploy.
+- **Cause confirmed 2026-08-31** (#314): this `azure_ai/mistral-medium-3-5`
+  deployment's serving backend has grammar-constrained decoding disabled
+  (`--grammar-backend none`), so it rejects *any* `response_format` a
+  structured judge call could send — `json_schema` and `json_object` alike,
+  verified directly against the endpoint. Not a schema-keyword problem, and
+  not something this repo's Terraform can reconfigure (a Foundry serverless
+  deployment's launch parameters aren't exposed to the customer). Rollback
+  condition 4 also fired the same day, for the same reason, on
+  `/v1/assign-codes` — its judge has no degradation path, so it 502s outright
+  rather than degrading to `quality_score=null`.
+- **All five judge call sites converted to free-text scoring, 2026-08-31**
+  (#314): `CodingService`'s per-level judge, the `analyze` judge, and the
+  hierarchical leaf judge now parse a `SCORE:`/`EXPLANATION:` or
+  `QUALITY_SCORE:`/`UNCERTAINTY_EXPLANATION:` reply instead of requesting a
+  `response_format`, matching the pattern `summarize.py`'s two judge sites
+  already used successfully against this deployment. No judge call site
+  requests structured output any more — only the *generation* calls on the
+  primary connection (`CodingResponse`, `SummaryResultModel`,
+  `AggregateSummaryResultModel`) still do, and those are unaffected since
+  they run on a different model. This closes the incompatibility this ADR's
+  rollback conditions 3 and 4 both trace back to.
 
 ## Follow-up
 
-Opened as #299: the two free-text judge sites (`summarize.py`'s
-`summarize_bulk` and `summarize`) parse a bare float and raise
-`AnalysisError` on anything else, unlike the two structured `analyze`
-judge sites which degrade to `quality_score=None`. Converting them to a
-structured `response_model` would go through `_provider_safe_response_format`
-(`src/qfa/adapters/llm_client.py`) — which #309 shows is *not* yet proven
-against Azure AI Mistral: the structured judge call is the one currently
-being rejected. Not done in this change.
+#299 previously proposed converting the two free-text `summarize`/
+`summarize_bulk` judge sites to structured output, to match what the
+`analyze` and coding judges did at the time. That direction is now known to
+be wrong: #314 showed the opposite conversion (structured → free text) is
+what actually works against this deployment, and every judge site now
+follows `summarize`'s original free-text pattern instead. #299 has been
+closed as obsolete — there is no longer an asymmetry between judge sites to
+fix.
 
 ## Participants
 

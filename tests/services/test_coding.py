@@ -31,9 +31,10 @@ from qfa.services.coding import (
     NO_CODING_NOTHING_RELEVANT_EXPLANATION,
     CodingService,
     _combine_rejected_explanations,
+    _parse_judge_response,
     _ScoredCode,
 )
-from qfa.services.coding_classifier import CodingResponse, JudgeResponse
+from qfa.services.coding_classifier import CodingResponse
 from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.settings import OrchestratorSettings
 
@@ -76,6 +77,15 @@ def _make_llm_response(structured, model="gpt-4", cost=0.001):
 
 def _future_deadline(seconds=300):
     return datetime.now(tz=UTC) + timedelta(seconds=seconds)
+
+
+def _judge_text(score, explanation):
+    """Render a judge score/explanation as the free-text reply the fake serves.
+
+    Matches ``_JUDGE_SYSTEM``'s output-format instruction
+    (``coding_classifier.py``), which ``coding._parse_judge_response`` parses.
+    """
+    return f"SCORE: {score}\nEXPLANATION: {explanation}"
 
 
 def _make_coding_service(fake_llm, settings):
@@ -133,15 +143,9 @@ class TestAssignCodesOneShot:
         fake_llm = FakeLLMPort(
             responses=[
                 _make_llm_response(structured=CodingResponse(selected=[2])),
-                _make_llm_response(
-                    structured=JudgeResponse(score=0.95, explanation="Level 1 fits.")
-                ),
-                _make_llm_response(
-                    structured=JudgeResponse(score=0.9, explanation="Level 2 fits.")
-                ),
-                _make_llm_response(
-                    structured=JudgeResponse(score=0.8, explanation="Level 3 fits.")
-                ),
+                _make_llm_response(structured=_judge_text(0.95, "Level 1 fits.")),
+                _make_llm_response(structured=_judge_text(0.9, "Level 2 fits.")),
+                _make_llm_response(structured=_judge_text(0.8, "Level 3 fits.")),
             ]
         )
         service = _make_coding_service(fake_llm, settings)
@@ -152,7 +156,7 @@ class TestAssignCodesOneShot:
 
         assert len(fake_llm.calls) == 4
         assert fake_llm.calls[0]["response_model"] is CodingResponse
-        assert [c["response_model"] for c in fake_llm.calls[1:]] == [JudgeResponse] * 3
+        assert [c["response_model"] for c in fake_llm.calls[1:]] == [str] * 3
         code = result.coded_feedback_records[0].assigned_codes[0]
         assert code.coding_level_1_id == "type-a"
         assert code.coding_level_2_id == "cat-a1"
@@ -180,9 +184,7 @@ class TestAssignCodesOneShot:
         fake_llm = FakeLLMPort(
             responses=[
                 _make_llm_response(structured=CodingResponse(selected=[0])),
-                _make_llm_response(
-                    structured=JudgeResponse(score=0.8, explanation="General fit.")
-                ),
+                _make_llm_response(structured=_judge_text(0.8, "General fit.")),
             ]
         )
         service = _make_coding_service(fake_llm, settings)
@@ -207,9 +209,7 @@ class TestAssignCodesOneShot:
         fake_llm = FakeLLMPort(
             responses=[
                 _make_llm_response(structured=CodingResponse(selected=[0, 0, 99])),
-                _make_llm_response(
-                    structured=JudgeResponse(score=0.9, explanation="Fits.")
-                ),
+                _make_llm_response(structured=_judge_text(0.9, "Fits.")),
             ]
         )
         service = _make_coding_service(fake_llm, settings)
@@ -283,14 +283,36 @@ class TestAssignCodesOneShot:
         fake_llm = FakeLLMPort(
             responses=[
                 _make_llm_response(structured=CodingResponse(selected=[0])),
-                _make_llm_response(
-                    structured=JudgeResponse(score=1.5, explanation="Too confident.")
-                ),
+                _make_llm_response(structured=_judge_text(1.5, "Too confident.")),
             ]
         )
         service = _make_coding_service(fake_llm, settings)
 
         with pytest.raises(AnalysisError, match=r"outside 0\.0-1\.0"):
+            await service.assign_codes(
+                _make_coding_request(root_codes=root_codes), _future_deadline()
+            )
+
+    @pytest.mark.asyncio
+    async def test_unparsable_judge_reply_raises_analysis_error(self, settings):
+        """A judge reply that doesn't match the SCORE:/EXPLANATION: format is a domain error.
+
+        The judge connection can point at a provider that refuses any
+        server-enforced response schema (see ``JudgeResponse``'s docstring),
+        so this call site parses free text instead — and free text a model
+        fails to format correctly must surface as clearly as an out-of-range
+        score, not as an opaque parse traceback.
+        """
+        root_codes = [CodingNode(id="code-1", name="Code A")]
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=CodingResponse(selected=[0])),
+                _make_llm_response(structured="I think this fits well, about 0.8."),
+            ]
+        )
+        service = _make_coding_service(fake_llm, settings)
+
+        with pytest.raises(AnalysisError, match="unparsable response"):
             await service.assign_codes(
                 _make_coding_request(root_codes=root_codes), _future_deadline()
             )
@@ -314,9 +336,7 @@ class TestAssignCodesOneShot:
         fake_llm = FakeLLMPort(
             responses=[
                 _make_llm_response(structured=CodingResponse(selected=[1])),
-                _make_llm_response(
-                    structured=JudgeResponse(score=0.05, explanation="Weak fit.")
-                ),
+                _make_llm_response(structured=_judge_text(0.05, "Weak fit.")),
             ]
         )
         service = _make_coding_service(fake_llm, settings)
@@ -329,6 +349,36 @@ class TestAssignCodesOneShot:
         assert len(fake_llm.calls) == 2
         assigned = result.coded_feedback_records[0].assigned_codes
         assert "Weak fit." in assigned[0].explanation
+
+
+class TestParseJudgeResponse:
+    """Unit coverage for the SCORE:/EXPLANATION: free-text parser itself."""
+
+    def test_parses_well_formed_reply(self):
+        judged = _parse_judge_response("SCORE: 0.72\nEXPLANATION: Clear fit.")
+        assert judged.score == 0.72
+        assert judged.explanation == "Clear fit."
+
+    def test_tolerates_case_and_surrounding_whitespace(self):
+        judged = _parse_judge_response("  score:  0.5  \n  explanation:  Plausible.  ")
+        assert judged.score == 0.5
+        assert judged.explanation == "Plausible."
+
+    def test_multiline_explanation_is_kept_in_full(self):
+        judged = _parse_judge_response(
+            "SCORE: 0.4\nEXPLANATION: Weak on the first point.\nAlso weak on the second."
+        )
+        assert judged.explanation == (
+            "Weak on the first point.\nAlso weak on the second."
+        )
+
+    def test_missing_score_line_raises_analysis_error(self):
+        with pytest.raises(AnalysisError, match="unparsable response"):
+            _parse_judge_response("EXPLANATION: No score given.")
+
+    def test_non_numeric_score_raises_analysis_error(self):
+        with pytest.raises(AnalysisError, match="unparsable response"):
+            _parse_judge_response("SCORE: high\nEXPLANATION: Confident.")
 
 
 def _make_scored_code(names, scores, explanations):
@@ -482,9 +532,7 @@ class TestAssignCodesConfidenceThreshold:
             responses=[
                 _make_llm_response(structured=CodingResponse(selected=[0])),
                 _make_llm_response(
-                    structured=JudgeResponse(
-                        score=0.5, explanation="Only loosely related."
-                    )
+                    structured=_judge_text(0.5, "Only loosely related.")
                 ),
             ]
         )
@@ -545,12 +593,8 @@ class TestAssignCodesConfidenceThreshold:
         fake_llm = FakeLLMPort(
             responses=[
                 _make_llm_response(structured=CodingResponse(selected=[0, 1])),
-                _make_llm_response(
-                    structured=JudgeResponse(score=0.4, explanation="Weak fit A.")
-                ),
-                _make_llm_response(
-                    structured=JudgeResponse(score=0.7, explanation="Weak fit B.")
-                ),
+                _make_llm_response(structured=_judge_text(0.4, "Weak fit A.")),
+                _make_llm_response(structured=_judge_text(0.7, "Weak fit B.")),
             ]
         )
         service = _make_coding_service(fake_llm, settings)

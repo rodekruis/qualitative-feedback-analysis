@@ -125,11 +125,14 @@ def test_judge_system_limits_explanation_to_two_sentences():
 
 
 def test_judge_response_explanation_field_documents_the_limit():
-    """The structured-output schema also documents the two-sentence cap.
+    """``JudgeResponse``'s field description also documents the two-sentence cap.
 
-    Why: field descriptions on the ``response_model`` reach the LLM as part
-    of the structured-output schema, so this is a second, independent
-    reinforcement of the same constraint communicated in the system prompt.
+    Why: ``JudgeResponse`` is populated by parsing the judge's free-text
+    reply, not schema-enforced structured output (some judge deployments
+    reject any response schema outright — see the class docstring), so this
+    field description never reaches the LLM. It still keeps the constraint
+    documented once at the model that carries it, alongside the system
+    prompt that's the actual enforcement mechanism.
     """
     field = JudgeResponse.model_fields["explanation"]
     assert "two sentences" in field.description

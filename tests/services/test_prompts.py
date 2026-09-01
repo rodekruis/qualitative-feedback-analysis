@@ -270,24 +270,25 @@ class TestBuildAnalyzeJudgeSystemMessage:
         )
         assert "The model said {{result}}." in out
 
-    def test_preserves_literal_json_example_in_template(self):
-        """The JSON shape line in the prompt template stays as single braces.
+    def test_states_the_free_text_output_format(self):
+        """The judge prompt spells out the SCORE:/EXPLANATION:-style reply it expects.
 
-        Whatever templating engine is used, the rendered instruction must
-        ask the model to return ``{"quality_score": ...}`` (single braces),
-        not the ``{{...}}`` ``str.format`` escape form that would confuse
-        the LLM.
+        The judge connection can point at a model/deployment that rejects a
+        schema-enforced ``response_format`` outright (see
+        ``AnalyzeJudgeResult``'s docstring), so ``analyze.py`` parses free
+        text instead — this only works if the prompt states the exact
+        two-line shape ``_parse_analyze_judge_response`` expects.
         """
         out = build_analyze_judge_system_message(
             source_text="s", analyst_prompt="p", analysis="a"
         )
-        assert '{"quality_score":' in out
-        assert '{{"quality_score":' not in out
+        assert "QUALITY_SCORE:" in out
+        assert "UNCERTAINTY_EXPLANATION:" in out
 
     def test_output_language_pins_the_uncertainty_explanation_language(self):
-        """``output_language`` adds a directive naming ``uncertainty_explanation``.
+        """``output_language`` adds a directive naming the uncertainty explanation.
 
-        Why: the judge's ``uncertainty_explanation`` is the only free text in
+        Why: the judge's uncertainty explanation is the only free text in
         its response that reaches the analyst, so it must honour
         ``output_language`` the same way the analysis text does.
         """
@@ -295,7 +296,7 @@ class TestBuildAnalyzeJudgeSystemMessage:
             source_text="s", analyst_prompt="p", analysis="a", output_language="Dutch"
         )
         assert "Dutch" in out
-        assert "uncertainty_explanation" in out
+        assert "uncertainty explanation" in out
 
     def test_no_language_directive_when_output_language_unset(self):
         """Omitting ``output_language`` leaves the judge prompt unchanged."""

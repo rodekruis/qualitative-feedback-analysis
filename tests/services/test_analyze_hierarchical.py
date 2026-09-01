@@ -21,7 +21,7 @@ from qfa.domain.models import (
     LLMResponse,
 )
 from qfa.domain.ports import AnonymizationPort, EmbeddingPort, LLMPort
-from qfa.services.analyze import AnalyzeJudgeResult, AnalyzeService
+from qfa.services.analyze import AnalyzeService
 from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.services.prompts import ANALYZE_GUARDRAILS_PROMPT
 from qfa.settings import AnalyzeSettings, OrchestratorSettings
@@ -68,12 +68,30 @@ class RecordingAnonymizer(AnonymizationPort):
         return text
 
 
+def _is_judge_call(system_message: str) -> bool:
+    """Distinguish a leaf-judge call from a map/reduce call by prompt shape.
+
+    All three call kinds share ``response_model=str`` now (the judge parses
+    free text instead of structured output — see ``AnalyzeJudgeResult``'s
+    docstring), so a fake LLM can no longer dispatch on ``response_model``.
+    ``<analysis_to_score>`` is unique to ``ANALYZE_JUDGE_PROMPT``
+    (``prompts.py``) — neither the map nor the reduce prompt
+    (``hierarchical_prompts.py``) uses it.
+    """
+    return "<analysis_to_score>" in system_message
+
+
+def _judge_text(quality_score=0.8, explanation="leaf ok"):
+    """Render a judge score/explanation as the free-text reply a fake serves."""
+    return f"QUALITY_SCORE: {quality_score}\nUNCERTAINTY_EXPLANATION: {explanation}"
+
+
 class RecordingLLM(LLMPort):
     """Fake LLM recording every (system, user) pair; returns canned outputs.
 
-    Map calls (response_model=str) return a partial; judge calls
-    (response_model=AnalyzeJudgeResult) return a fixed score; reduce calls
-    (response_model=str) return the synthesis.
+    Map calls return a partial; judge calls (detected via
+    :func:`_is_judge_call`) return a fixed score; reduce calls return the
+    synthesis. All three are ``response_model=str`` now.
     """
 
     def __init__(self):
@@ -84,11 +102,9 @@ class RecordingLLM(LLMPort):
     ):
         """Record the call and return a canned response."""
         self.calls.append((system_message, user_message, response_model))
-        if response_model is AnalyzeJudgeResult:
+        if _is_judge_call(system_message):
             return LLMResponse(
-                structured=AnalyzeJudgeResult(
-                    quality_score=0.8, uncertainty_explanation="leaf ok"
-                ),
+                structured=_judge_text(),
                 model="fake",
                 prompt_tokens=1,
                 completion_tokens=1,
@@ -189,9 +205,10 @@ async def test_guardrails_present_at_both_map_and_reduce():
     )
     deadline = datetime.now(UTC) + timedelta(seconds=120)
     await service.analyze_hierarchical(request, deadline, anonymize=True)
-    system_msgs = [c[0] for c in llm.calls if c[2] is str]
+    system_msgs = [c[0] for c in llm.calls if c[2] is str and not _is_judge_call(c[0])]
     assert any(ANALYZE_GUARDRAILS_PROMPT in s for s in system_msgs)
-    # The last str-model call is the top-level reduce.
+    # The last non-judge str-model call is the top-level reduce (judges run
+    # after reduce and share response_model=str, so they must be excluded).
     assert ANALYZE_GUARDRAILS_PROMPT in system_msgs[-1]
 
 
@@ -217,8 +234,9 @@ async def test_output_language_instructs_the_reduce_system_message():
     )
     deadline = datetime.now(UTC) + timedelta(seconds=120)
     await service.analyze_hierarchical(request, deadline, anonymize=True)
-    system_msgs = [c[0] for c in llm.calls if c[2] is str]
-    # The last str-model call is the top-level reduce — the final, user-facing output.
+    system_msgs = [c[0] for c in llm.calls if c[2] is str and not _is_judge_call(c[0])]
+    # The last non-judge str-model call is the top-level reduce — the final,
+    # user-facing output (judges run after reduce and share response_model=str).
     assert "Dutch" in system_msgs[-1]
     # Every map (per-chunk) call must also honour it — a partial should
     # already be in the target language rather than leaving translation of a
@@ -278,11 +296,9 @@ class LargeOutputLLM(LLMPort):
     ):
         """Return moderate output for map calls to trigger multi-level tree-reduce."""
         self.calls.append((system_message, user_message, response_model))
-        if response_model is AnalyzeJudgeResult:
+        if _is_judge_call(system_message):
             return LLMResponse(
-                structured=AnalyzeJudgeResult(
-                    quality_score=0.75, uncertainty_explanation="ok"
-                ),
+                structured=_judge_text(0.75, "ok"),
                 model="fake",
                 prompt_tokens=1,
                 completion_tokens=1,
@@ -379,11 +395,9 @@ class ConcurrencyTrackingLLM(LLMPort):
             await asyncio.sleep(0)
         finally:
             self.in_flight -= 1
-        if response_model is AnalyzeJudgeResult:
+        if _is_judge_call(system_message):
             return LLMResponse(
-                structured=AnalyzeJudgeResult(
-                    quality_score=0.8, uncertainty_explanation="ok"
-                ),
+                structured=_judge_text(),
                 model="fake",
                 prompt_tokens=1,
                 completion_tokens=1,
@@ -477,7 +491,8 @@ class OverlapTrackingLLM(LLMPort):
 
     Each call yields once via ``asyncio.sleep(0)`` so the event loop interleaves
     the concurrently-gathered judge tasks with the reduce task; the call's kind
-    is inferred from its response model (judge) and user message (reduce).
+    is inferred from its prompt shape (judge, via :func:`_is_judge_call`) and
+    user message (reduce).
     """
 
     def __init__(self):
@@ -490,7 +505,8 @@ class OverlapTrackingLLM(LLMPort):
     ):
         """Track which call kinds coexist in flight, then return a canned answer."""
         self.calls.append((system_message, user_message, response_model))
-        if response_model is AnalyzeJudgeResult:
+        is_judge = _is_judge_call(system_message)
+        if is_judge:
             kind = "judge"
         elif "<partial_analyses>" in user_message:
             kind = "reduce"
@@ -503,11 +519,9 @@ class OverlapTrackingLLM(LLMPort):
             await asyncio.sleep(0)
         finally:
             self._in_flight.remove(kind)
-        if response_model is AnalyzeJudgeResult:
+        if is_judge:
             return LLMResponse(
-                structured=AnalyzeJudgeResult(
-                    quality_score=0.8, uncertainty_explanation="ok"
-                ),
+                structured=_judge_text(),
                 model="fake",
                 prompt_tokens=1,
                 completion_tokens=1,
@@ -542,11 +556,9 @@ class OneChunkMapFailsLLM(LLMPort):
         is_map = response_model is str and "<feedback_records>" in user_message
         if is_map and "health" in user_message:
             raise LLMError("simulated map failure for one chunk")
-        if response_model is AnalyzeJudgeResult:
+        if _is_judge_call(system_message):
             return LLMResponse(
-                structured=AnalyzeJudgeResult(
-                    quality_score=0.8, uncertainty_explanation="ok"
-                ),
+                structured=_judge_text(),
                 model="fake",
                 prompt_tokens=1,
                 completion_tokens=1,
@@ -618,7 +630,7 @@ class AllJudgesFailLLM(LLMPort):
     ):
         """Raise on judge calls; return canned output for map and reduce."""
         self.calls.append((system_message, user_message, response_model))
-        if response_model is AnalyzeJudgeResult:
+        if _is_judge_call(system_message):
             raise LLMError("simulated judge failure")
         return LLMResponse(
             structured="PARTIAL_OR_REDUCE",
@@ -779,7 +791,7 @@ async def test_reduce_runs_to_completion_before_any_judge():
     # Every reduce call strictly precedes every judge call in the recorded order.
     kinds = [
         "judge"
-        if c[2] is AnalyzeJudgeResult
+        if _is_judge_call(c[0])
         else ("reduce" if "<partial_analyses>" in c[1] else "map")
         for c in llm.calls
     ]

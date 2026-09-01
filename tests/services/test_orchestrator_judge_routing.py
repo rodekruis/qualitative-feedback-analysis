@@ -50,10 +50,10 @@ from qfa.domain.ports import (
     UsageRepositoryPort,
 )
 from qfa.domain.usage_models import LLMCallRecord, Operation
-from qfa.services.analyze import AnalyzeJudgeResult, AnalyzeService
+from qfa.services.analyze import AnalyzeService
 from qfa.services.call_context import call_scope
 from qfa.services.coding import CodingService
-from qfa.services.coding_classifier import CodingResponse, JudgeResponse
+from qfa.services.coding_classifier import CodingResponse
 from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.services.summarize import SummarizeService
 from qfa.settings import AnalyzeSettings, OrchestratorSettings
@@ -67,6 +67,19 @@ MAX_TOKENS = 100_000
 # doubles as generic free text for the map/reduce/analysis calls.
 JUDGE_PARSEABLE_TEXT = "0.75\nThe summary is faithful to the source."
 
+# The coding per-level judge parses ``SCORE:``/``EXPLANATION:`` lines instead
+# (``coding._parse_judge_response``) — a different provider-compatibility
+# constraint (some judge deployments reject any response schema outright, see
+# ``JudgeResponse``'s docstring), so it needs its own parseable text rather
+# than sharing ``JUDGE_PARSEABLE_TEXT`` above.
+CODING_JUDGE_PARSEABLE_TEXT = "SCORE: 0.9\nEXPLANATION: clearly relevant"
+
+# The analyse judge (analyze_bulk and the hierarchical leaf judge) parses
+# QUALITY_SCORE:/UNCERTAINTY_EXPLANATION: lines instead
+# (``analyze._parse_analyze_judge_response``) — same provider-compatibility
+# constraint as the coding judge above, different field names.
+ANALYZE_JUDGE_PARSEABLE_TEXT = "QUALITY_SCORE: 0.8\nUNCERTAINTY_EXPLANATION: ok"
+
 
 class RoutingLLM(LLMPort):
     """Fake ``LLMPort`` that stamps its own name onto every response it serves.
@@ -77,14 +90,20 @@ class RoutingLLM(LLMPort):
     from the expected one — the same field usage tracking bills against.
 
     Payloads are selected by ``response_model`` because that is what actually
-    distinguishes the call kinds in the orchestrator (``AnalyzeJudgeResult``
-    for the analyse and leaf judges, ``CodingResponse`` for the one-shot
-    coding pick, ``JudgeResponse`` for the per-level coding judge, the
-    concrete summary models for generation, and ``str`` for everything
-    free-text). ``text_payload`` overrides the ``str`` case for callers
-    whose free-text contract is not a judge score, and ``coding_selection``
-    the indices the pick returns, which decides how deep a path the
-    per-level coding judge then walks.
+    distinguishes the call kinds in the orchestrator (``CodingResponse`` for
+    the one-shot coding pick, the concrete summary models for generation,
+    and ``str`` for everything free-text — including the analyse/leaf and
+    coding judges, both of which parse their own free-text format
+    (``QUALITY_SCORE:``/``UNCERTAINTY_EXPLANATION:`` and
+    ``SCORE:``/``EXPLANATION:`` respectively) out of that same ``str``
+    contract, since some judge deployments reject any response schema
+    outright — see ``JudgeResponse``'s docstring). ``text_payload``
+    overrides the ``str`` case for callers whose free-text contract differs
+    from the default judge-score float (pass
+    :data:`CODING_JUDGE_PARSEABLE_TEXT` or :data:`ANALYZE_JUDGE_PARSEABLE_TEXT`
+    for a client serving one of those judges), and ``coding_selection`` the
+    indices the pick returns, which decides how deep a path the per-level
+    coding judge then walks.
     """
 
     def __init__(
@@ -131,12 +150,8 @@ class RoutingLLM(LLMPort):
 
     def _payload(self, response_model: type) -> Any:
         """Build a minimal valid payload for ``response_model``."""
-        if response_model is AnalyzeJudgeResult:
-            return AnalyzeJudgeResult(quality_score=0.8, uncertainty_explanation="ok")
         if response_model is CodingResponse:
             return CodingResponse(selected=self.coding_selection)
-        if response_model is JudgeResponse:
-            return JudgeResponse(score=0.9, explanation="clearly relevant")
         if response_model is SummaryResultModel:
             return SummaryResultModel(
                 feedback_record_summaries=(
@@ -373,7 +388,7 @@ class TestDefaultsToThePrimaryClient:
         unchanged: both the analysis and its judge are served by, and billed
         to, the one model that served them before #258.
         """
-        primary = RoutingLLM("primary")
+        primary = RoutingLLM("primary", text_payload=ANALYZE_JUDGE_PARSEABLE_TEXT)
         analyze = _build_analyze(primary)
 
         await analyze.analyze_bulk(
@@ -385,7 +400,7 @@ class TestDefaultsToThePrimaryClient:
             _deadline(),
         )
 
-        assert primary.response_models == [str, AnalyzeJudgeResult]
+        assert primary.response_models == [str, str]
 
     @pytest.mark.asyncio
     async def test_summarize_judge_uses_the_primary_client_when_unset(self) -> None:
@@ -410,14 +425,14 @@ class TestDefaultsToThePrimaryClient:
         exclusion from the split: what it means now is that the default
         configuration is byte-for-byte the pre-#310 behaviour.
         """
-        primary = RoutingLLM("primary")
+        primary = RoutingLLM("primary", text_payload=CODING_JUDGE_PARSEABLE_TEXT)
         coding = _build_coding_service(primary)
 
         await coding.assign_codes(
             _coding_request(_single_level_framework()), _deadline()
         )
 
-        assert primary.response_models == [CodingResponse, JudgeResponse]
+        assert primary.response_models == [CodingResponse, str]
 
 
 class TestJudgeCallsRouteToTheJudgeClient:
@@ -431,7 +446,7 @@ class TestJudgeCallsRouteToTheJudgeClient:
         also pins that the orchestrator keeps the judge *client's* verdict.
         """
         primary = RoutingLLM("primary")
-        judge = RoutingLLM("judge")
+        judge = RoutingLLM("judge", text_payload=ANALYZE_JUDGE_PARSEABLE_TEXT)
         analyze = _build_analyze(primary, judge)
 
         result = await analyze.analyze_bulk(
@@ -444,7 +459,7 @@ class TestJudgeCallsRouteToTheJudgeClient:
         )
 
         assert primary.response_models == [str]
-        assert judge.response_models == [AnalyzeJudgeResult]
+        assert judge.response_models == [str]
         assert result.quality_score == 0.8
 
     @pytest.mark.asyncio
@@ -497,7 +512,7 @@ class TestJudgeCallsRouteToTheJudgeClient:
         model would still produce a plausible-looking result.
         """
         primary = RoutingLLM("primary")
-        judge = RoutingLLM("judge")
+        judge = RoutingLLM("judge", text_payload=ANALYZE_JUDGE_PARSEABLE_TEXT)
         analyze = _build_analyze(
             primary,
             judge,
@@ -523,7 +538,7 @@ class TestJudgeCallsRouteToTheJudgeClient:
         assert set(primary.response_models) == {str}
         # Every judge call, and only judge calls, landed on the judge client.
         assert judge.calls
-        assert set(judge.response_models) == {AnalyzeJudgeResult}
+        assert set(judge.response_models) == {str}
         assert result.confidence == 0.8
 
     @pytest.mark.asyncio
@@ -538,7 +553,7 @@ class TestJudgeCallsRouteToTheJudgeClient:
         phase and blow past the intended ceiling.
         """
         primary = RoutingLLM("primary")
-        judge = RoutingLLM("judge")
+        judge = RoutingLLM("judge", text_payload=ANALYZE_JUDGE_PARSEABLE_TEXT)
         analyze = _build_analyze(
             primary,
             judge,
@@ -574,7 +589,7 @@ class TestJudgeCallsRouteToTheJudgeClient:
         this the largest generator of judge calls.
         """
         primary = RoutingLLM("primary", coding_selection=[2])
-        judge = RoutingLLM("judge")
+        judge = RoutingLLM("judge", text_payload=CODING_JUDGE_PARSEABLE_TEXT)
         coding = _build_coding_service(primary, judge)
 
         result = await coding.assign_codes(
@@ -582,7 +597,7 @@ class TestJudgeCallsRouteToTheJudgeClient:
         )
 
         assert primary.response_models == [CodingResponse]
-        assert judge.response_models == [JudgeResponse] * 3
+        assert judge.response_models == [str] * 3
         assigned = result.coded_feedback_records[0].assigned_codes[0]
         assert assigned.confidence_level_1 == 0.9
         assert assigned.confidence_level_2 == 0.9
@@ -596,7 +611,7 @@ class TestGenerationCallsStayOnThePrimaryClient:
     async def test_analysis_call_keeps_the_primary_model(self) -> None:
         """The analysis itself is served by the primary client, not the judge one."""
         primary = RoutingLLM("primary")
-        judge = RoutingLLM("judge")
+        judge = RoutingLLM("judge", text_payload=ANALYZE_JUDGE_PARSEABLE_TEXT)
         analyze = _build_analyze(primary, judge)
 
         await analyze.analyze_bulk(
@@ -622,7 +637,7 @@ class TestGenerationCallsStayOnThePrimaryClient:
         quietly cut coverage instead of failing loudly.
         """
         primary = RoutingLLM("primary")
-        judge = RoutingLLM("judge")
+        judge = RoutingLLM("judge", text_payload=CODING_JUDGE_PARSEABLE_TEXT)
         coding = _build_coding_service(primary, judge)
 
         await coding.assign_codes(
@@ -672,7 +687,7 @@ class TestCostAccountingAcrossBothClients:
         """
         repo = FakeUsageRepository()
         primary = RoutingLLM("primary-model")
-        judge = RoutingLLM("judge-model")
+        judge = RoutingLLM("judge-model", text_payload=ANALYZE_JUDGE_PARSEABLE_TEXT)
         analyze = _build_analyze(
             TrackingLLMAdapter(inner=primary, usage_repo=repo),
             TrackingLLMAdapter(inner=judge, usage_repo=repo),
@@ -707,7 +722,7 @@ class TestCostAccountingAcrossBothClients:
         """
         repo = FakeUsageRepository()
         primary = RoutingLLM("primary-model", coding_selection=[2])
-        judge = RoutingLLM("judge-model")
+        judge = RoutingLLM("judge-model", text_payload=CODING_JUDGE_PARSEABLE_TEXT)
         coding = _build_coding_service(
             TrackingLLMAdapter(inner=primary, usage_repo=repo),
             TrackingLLMAdapter(inner=judge, usage_repo=repo),
