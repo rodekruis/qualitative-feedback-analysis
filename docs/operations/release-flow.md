@@ -111,6 +111,9 @@ The `terraform.yaml` workflow (`.github/workflows/terraform.yaml`) runs `plan` a
 4. Repeat step 3 for `staging`, then for `prd`.
 
 > [!IMPORTANT]
+> A change that creates or deletes `azurerm_role_assignment` resources (e.g. [ADR-021](../adr/021-split-cicd-identity.md)) cannot be applied by CI's identity and must be applied locally by an operator with RBAC-admin rights **before** the PR merges — `promote-to-staging.yaml` / `promote-to-prd.yaml` run `terraform apply` as part of promotion, so a merged-but-unapplied role-assignment diff blocks the next promotion. See [Roll out the split CI/CD identities](how-to.md#roll-out-the-split-cicd-identities-to-an-existing-environment).
+
+> [!IMPORTANT]
 > If an infrastructure change is a prerequisite for an app version (e.g. a new Key Vault reference, a new environment variable binding), apply the infra change to a given environment **before** promoting the app release that depends on it — otherwise the App Service will start but fail at runtime when the missing reference resolves.
 
 ## GitHub environments and variables

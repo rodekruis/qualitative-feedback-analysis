@@ -56,15 +56,15 @@ Seeding is described in [Set up a new environment § 6](setup-new-env.md#6-seed-
 
 Infrastructure changes:
 
-- PR touching `infra/` → CI runs `terraform plan` automatically.
+- PR touching `infra/` → CI runs `terraform plan` automatically, authenticated as the infra identity (`AZ_CLIENT_ID`, `Contributor` on the environment RG).
 - Merge to `main` → trigger `terraform apply` manually from the Actions tab.
 
 Application changes:
 
-- Merge to `main` → CI builds the container, pushes to ACR, and deploys to the target App Service. Branch protection and deployment gating are configured per environment in the GitHub Actions workflow.
+- Merge to `main` → CI builds the container, pushes to ACR, and deploys to the target App Service, authenticated as the deploy-only identity (`AZ_DEPLOY_CLIENT_ID`, `Website Contributor` scoped to that App Service). Branch protection and deployment gating are configured per environment in the GitHub Actions workflow. See [ADR-021](../adr/021-split-cicd-identity.md).
 
 ## Recovering from common situations
 
 - **Migration is stuck.** Check `pg_locks` for the advisory lock; if it's held by a dead session, the lock will release on connection close (a few seconds at most). If it doesn't, manually kill the holding backend with `pg_terminate_backend(pid)`.
-- **Managed identity recreated** (after `terraform destroy`/rebuild) — re-run steps 4 and 5 of [Set up a new environment](setup-new-env.md) for the affected environment to refresh `AZ_CLIENT_ID`.
+- **Managed identity recreated** (after `terraform destroy`/rebuild) — re-run steps 4 and 5 of [Set up a new environment](setup-new-env.md) for the affected environment to refresh `AZ_CLIENT_ID` and `AZ_DEPLOY_CLIENT_ID`.
 - **Usage tracking is broken but app must keep serving requests.** No action is needed to keep core operations running: {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter` logs recording failures but never raises, so analysis continues even when the database is unreachable — the only impact is dropped usage records and `503`s from the `/v1/usage*` endpoints. Note there is no switch to disable the database: a connection is required for the app to boot (see [settings reference](settings-reference.md)), so a *totally* misconfigured DB blocks startup rather than degrading gracefully.

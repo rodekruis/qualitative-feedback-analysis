@@ -1,29 +1,22 @@
 # =============================================================================
 # GitHub CI/CD
 # =============================================================================
-# Allow GitHub actions to read/write to the container registry, and modify the resource group
-# (e.g., to manage app service settings etc).
+# Two managed identities, split by blast radius (ADR-021):
+#   - "github" (infra): Contributor on the resource group. Used only by
+#     terraform.yaml, which needs to create/update/delete arbitrary
+#     RG-scoped resources.
+#   - "github_deploy": Website Contributor on the App Service only. Used by
+#     the release/promote/build-from-commit workflows, which only ever
+#     repoint the App Service's container image and tags.
 #
-# How it works:
-# 1. we create a managed identity
-# 2. assign roles "Container Registry Repository Writer" and "Contributor" to the managed identity
-# 3. add a federated identity credential to the managed identity
-#
-# Github actions authenticate as the managed identity via the federated identity credential.
-# This happens automatically -- Azure "knows" that an action is triggered from the
-# repository and environment specified in the federated identity credential.
+# Both authenticate via a federated identity credential -- Azure "knows" an
+# action is the identity it claims because the action is triggered from the
+# repository and environment named in that identity's credential.
 
 resource "azurerm_user_assigned_identity" "github" {
   name                = local.managed_identity_name
   resource_group_name = data.azurerm_resource_group.main.name
   location            = data.azurerm_resource_group.main.location
-}
-
-# Grant GitHub Actions write access to ACR (for CI/CD image builds)
-resource "azurerm_role_assignment" "github_acr_repository_writer" {
-  scope                = local.acr_id
-  role_definition_name = "Container Registry Repository Writer"
-  principal_id         = azurerm_user_assigned_identity.github.principal_id
 }
 
 # GitHub Actions identity gets Contributor on the resource group.
@@ -35,13 +28,9 @@ resource "azurerm_role_assignment" "github_acr_repository_writer" {
 #   role like Website Contributor would only cover the App Service, breaking
 #   all other Terraform-managed resources.
 #
-# When to revisit:
-#   If the team grows and you want least-privilege separation, split into two
-#   identities: one for Terraform (Contributor on the RG, used only by
-#   terraform.yaml) and one for deployment (Website Contributor on the App
-#   Service, used by the release/promote workflows). That requires a second
-#   managed identity, a second federated credential, and a second set of
-#   GitHub environment variables.
+# The deploy workflows (release/promote/build-from-commit) no longer use
+# this identity -- see azurerm_user_assigned_identity.github_deploy below
+# and ADR-021 for why the split was made and what it does and doesn't fix.
 resource "azurerm_role_assignment" "github_contributor" {
   scope                = data.azurerm_resource_group.main.id
   role_definition_name = "Contributor"
@@ -84,6 +73,55 @@ resource "azurerm_role_assignment" "github_tfstate_reader" {
 resource "azurerm_federated_identity_credential" "github_environment" {
   name                      = "gh-qualitative-feedback-analysis-${local.env}"
   user_assigned_identity_id = azurerm_user_assigned_identity.github.id
+  audience                  = ["api://AzureADTokenExchange"]
+  issuer                    = "https://token.actions.githubusercontent.com"
+  subject                   = "repo:${var.github_repo}:environment:${local.github_environment}"
+}
+
+# Deploy-only identity (ADR-021). Used by release.yaml, build-from-commit.yaml
+# and _deploy-release.yaml, which only ever run `az webapp config container
+# set` and `az webapp update --set tags.*` against this environment's App
+# Service -- never Terraform.
+resource "azurerm_user_assigned_identity" "github_deploy" {
+  name                = local.deploy_identity_name
+  resource_group_name = data.azurerm_resource_group.main.name
+  location            = data.azurerm_resource_group.main.location
+}
+
+# Scoped to the App Service *resource*, not the RG: the deploy path only
+# ever runs `az webapp config container set` and `az webapp update --set
+# tags.*`. Website Contributor is Microsoft.Web/sites/* (plus
+# Microsoft.Authorization/*/read) at that one resource -- it cannot touch
+# Postgres, Key Vault, the VNet, or Terraform state. A custom role would be
+# narrower still; see ADR-021 for why it was rejected.
+resource "azurerm_role_assignment" "github_deploy_website_contributor" {
+  scope                = azurerm_linux_web_app.backend.id
+  role_definition_name = "Website Contributor"
+  principal_id         = azurerm_user_assigned_identity.github_deploy.principal_id
+}
+
+# ACR push, dev only. release.yaml's build job and build-from-commit.yaml
+# both hardcode `environment: dev`, so no other workspace's deploy identity
+# has any reason to write to the shared registry. Reader is required on top:
+# Repository Writer is data-actions-only, and `az acr login` /
+# `az acr repository show` resolve the registry through ARM first.
+resource "azurerm_role_assignment" "github_deploy_acr_repository_writer" {
+  count                = local.env == "dev" ? 1 : 0
+  scope                = local.acr_id
+  role_definition_name = "Container Registry Repository Writer"
+  principal_id         = azurerm_user_assigned_identity.github_deploy.principal_id
+}
+
+resource "azurerm_role_assignment" "github_deploy_acr_reader" {
+  count                = local.env == "dev" ? 1 : 0
+  scope                = local.acr_id
+  role_definition_name = "Reader"
+  principal_id         = azurerm_user_assigned_identity.github_deploy.principal_id
+}
+
+resource "azurerm_federated_identity_credential" "github_deploy_environment" {
+  name                      = "gh-qualitative-feedback-analysis-${local.env}-deploy"
+  user_assigned_identity_id = azurerm_user_assigned_identity.github_deploy.id
   audience                  = ["api://AzureADTokenExchange"]
   issuer                    = "https://token.actions.githubusercontent.com"
   subject                   = "repo:${var.github_repo}:environment:${local.github_environment}"
