@@ -19,8 +19,6 @@
   "permissions": {
     "allow": [
       "Bash(git commit *)",
-      "Bash(git * main)",
-      "Bash(git * master)",
       "Bash(* --version)",
       "Bash(* --help *)",
       "mcp__context7__*"
