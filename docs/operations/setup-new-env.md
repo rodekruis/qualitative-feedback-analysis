@@ -58,6 +58,8 @@ That path is the supported production migration flow for Entra-authenticated dat
 
 `terraform output -raw az_client_id` reads from the current workspace's state, so this step must follow the `terraform apply` above.
 
+Two identities exist per environment (see [Restricting CI/CD blast radius](tfstate-network-lockdown.md)): `az_client_id` (the deploy identity — ACR push + Website Contributor, used by `build-from-commit.yaml`/`release.yaml`/`_deploy-release.yaml`/`promote-to-*.yaml` via GitHub-federated OIDC) and `az_terraform_client_id` (the Contributor-on-RG identity used only by `terraform.yaml`, attached to the self-hosted runner VM rather than set as a GitHub Actions variable read by OIDC).
+
 ```bash
 REPO="rodekruis/qualitative-feedback-analysis"
 
@@ -65,6 +67,11 @@ gh api repos/$REPO/environments/$ENV -X PUT
 gh variable set AZ_CLIENT_ID       --env "$ENV" --repo "$REPO" --body "$(terraform output -raw az_client_id)"
 gh variable set AZ_RESOURCE_GROUP  --env "$ENV" --repo "$REPO" --body "$TF_VAR_resource_group_name"
 gh variable set AZ_APP_NAME        --env "$ENV" --repo "$REPO" --body "qfa-${ENV}-backend"
+
+# Repo-scoped (shared across environments), read by terraform.yaml. Only
+# needs to be set once and then attached to the runner VM — see
+# tfstate-network-lockdown.md.
+gh variable set AZ_TERRAFORM_CLIENT_ID --repo "$REPO" --body "$(terraform output -raw az_terraform_client_id)"
 
 # Secret (not a variable): CI's `terraform.yaml` reads this into
 # TF_VAR_teams_webhook_url. Uses `gh secret`, not `gh variable`, so the

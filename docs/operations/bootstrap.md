@@ -159,6 +159,10 @@ Seeding secrets is a per-environment step. See [Set up a new environment § Seed
 
 Run [Set up a new environment](setup-new-env.md) once for each environment (`dev`, `staging`, `prd`). That doc creates a Terraform workspace, applies the per-environment resources (including the managed identity + federated credential that lets GitHub Actions authenticate without any secrets), configures the per-environment GitHub variables, and seeds Key Vault secrets.
 
+## Restricting CI/CD further
+
+Two identities exist per environment (a Contributor-scoped one for `terraform.yaml`, a narrower deploy-only one for the other workflows), and the Terraform state storage account can be locked behind a private endpoint instead of staying network-open. See [Restricting CI/CD blast radius](tfstate-network-lockdown.md) — optional, but recommended once the environments above are set up.
+
 ## Subsequent infrastructure changes
 
 After the bootstrap and per-environment setup are complete, infrastructure changes follow the normal workflow:
