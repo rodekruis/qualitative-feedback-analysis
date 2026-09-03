@@ -46,7 +46,7 @@ terraform workspace new "$ENV"
 terraform apply
 ```
 
-This provisions the App Service, Key Vault, managed identity, and federated identity credential for this environment.
+This provisions the App Service, Key Vault, two managed identities (infra + deploy), and their federated identity credentials for this environment.
 This manual step is especially required because GitHub Actions need the federated identity credential
 to modify the resource group in subsequent CI/CD runs. This is a chicken-and-egg problem
 -- without this manual run CI/CD does not have access to Azure.
@@ -62,15 +62,18 @@ That path is the supported production migration flow for Entra-authenticated dat
 REPO="rodekruis/qualitative-feedback-analysis"
 
 gh api repos/$REPO/environments/$ENV -X PUT
-gh variable set AZ_CLIENT_ID       --env "$ENV" --repo "$REPO" --body "$(terraform output -raw az_client_id)"
-gh variable set AZ_RESOURCE_GROUP  --env "$ENV" --repo "$REPO" --body "$TF_VAR_resource_group_name"
-gh variable set AZ_APP_NAME        --env "$ENV" --repo "$REPO" --body "qfa-${ENV}-backend"
+gh variable set AZ_CLIENT_ID        --env "$ENV" --repo "$REPO" --body "$(terraform output -raw az_client_id)"
+gh variable set AZ_DEPLOY_CLIENT_ID --env "$ENV" --repo "$REPO" --body "$(terraform output -raw az_deploy_client_id)"
+gh variable set AZ_RESOURCE_GROUP   --env "$ENV" --repo "$REPO" --body "$TF_VAR_resource_group_name"
+gh variable set AZ_APP_NAME         --env "$ENV" --repo "$REPO" --body "qfa-${ENV}-backend"
 
 # Secret (not a variable): CI's `terraform.yaml` reads this into
 # TF_VAR_teams_webhook_url. Uses `gh secret`, not `gh variable`, so the
 # value is masked in Actions logs.
 gh secret set TEAMS_ALERTS_WEBHOOK_URL --env "$ENV" --repo "$REPO" --body "$TF_VAR_teams_webhook_url"
 ```
+
+`terraform.yaml` reads `AZ_CLIENT_ID`; `release.yaml`, `build-from-commit.yaml` and `_deploy-release.yaml` read `AZ_DEPLOY_CLIENT_ID` (see [ADR-021](../adr/021-split-cicd-identity.md)).
 
 After this, the `terraform.yaml` workflow can manage this environment's infrastructure autonomously in CI.
 
@@ -112,7 +115,7 @@ Without these secrets the App Service will start and pass health checks, but API
 
 ## Re-running after `terraform destroy`
 
-If the managed identity is ever recreated (e.g. after `terraform destroy`), re-run steps 4 and 5 for the affected environment to update `AZ_CLIENT_ID` in its GitHub environment.
+If the managed identities are ever recreated (e.g. after `terraform destroy`), re-run steps 4 and 5 for the affected environment to update `AZ_CLIENT_ID` and `AZ_DEPLOY_CLIENT_ID` in its GitHub environment.
 
 ## Debugging database connectivity
 

@@ -291,6 +291,7 @@
         <li><strong>Infrastructure secrets</strong> — LLM API credentials, database access, superuser bootstrap keys — live in <strong>Azure Key Vault</strong>; injected into the app as configuration, never touched by application code directly.</li>
         <li><strong>Tenant API keys</strong> are not in Key Vault at all — they're stored hashed in the application database.</li>
         <li>Deployments authenticate to Azure via <strong>short-lived, keyless credentials</strong> (OIDC) — no long-lived deployment secrets.</li>
+        <li><strong>Separation of duties in the deployment pipeline:</strong> the credential that ships a new application version can only update that one application — it cannot alter the database, the secret store, the network, or the infrastructure's own records. Changing infrastructure requires a separate, more privileged credential used by a single, manually-triggered workflow.</li>
         <li>Secret values are excluded from source control and infrastructure state files.</li>
       </ul>
     </div>

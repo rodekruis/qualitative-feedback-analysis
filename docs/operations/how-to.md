@@ -128,3 +128,46 @@ real Azure constraint: an existing plan can only be scaled to a tier its scale
 unit supports. The remedy is a **new** `azurerm_service_plan` in a Pv3-capable
 scale unit plus repointing `azurerm_linux_web_app.backend.service_plan_id` — a
 longer outage and a separate PR.
+
+## Roll out the split CI/CD identities to an existing environment
+
+[ADR-021](../adr/021-split-cicd-identity.md) splits the single CI/CD identity
+into an infra identity (`terraform.yaml` only) and a deploy-only identity
+(release/promote/build-from-commit). Environments created before that ADR
+need this rollout, run **from the PR branch, before merge**, with credentials
+holding `Contributor` + `Role Based Access Control Administrator` on the
+environment RG and on the ACR:
+
+```bash
+export ENV=dev  # then staging, then prd
+cd infra && terraform workspace select "$ENV"
+terraform plan    # expect: +1 identity, +1 FIC, +2 role assignments (dev) or +1 (staging/prd), -1 acr repository writer
+terraform apply
+gh variable set AZ_DEPLOY_CLIENT_ID --env "$ENV" --repo rodekruis/qualitative-feedback-analysis \
+  --body "$(terraform output -raw az_deploy_client_id)"
+```
+
+- **Why local:** creating and deleting role assignments needs
+  `Microsoft.Authorization/roleAssignments/write|delete`, which `Contributor`
+  does not have — CI cannot apply this change. A CI `terraform apply`
+  attempted before the local apply fails with 403, and because
+  `promote-to-staging.yaml` / `promote-to-prd.yaml` run `terraform apply` as a
+  `needs:` dependency of their deploy job, that failure blocks promotion.
+- **Do the `terraform apply` and the `gh variable set` back to back.** Between
+  them, the release/promote workflows for that environment are broken (the
+  old identity has lost ACR push; the new client ID isn't published yet).
+- **First-failure diagnostics:** if `terraform apply` rejects the new
+  federated credential because issuer+subject duplicates the existing one,
+  the split cannot be done with a shared GitHub environment — see
+  [ADR-021](../adr/021-split-cicd-identity.md)'s rejected options.
+- **Verify after each environment:** `Build from commit` with
+  `deploy_to_dev: true` for dev (exercises push + `webapp config container
+  set` + `webapp update --set tags.*` on the new identity); for
+  staging/prd, a `Promote to <env>` of the currently-deployed tag (a no-op
+  redeploy that still exercises `terraform apply` and both `az webapp`
+  calls). This is the only way `Website Contributor`'s sufficiency gets
+  proven — nothing in `make test` or CI can check Azure RBAC.
+- **Rollback:** revert the four workflow lines to `vars.AZ_CLIENT_ID` and
+  re-apply the previous `cicd.tf` locally (restores
+  `github_acr_repository_writer`). The deploy identity can be left in place;
+  it is inert once no workflow uses it.
