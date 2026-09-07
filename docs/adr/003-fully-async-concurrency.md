@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted (amended 2026-09-07 — see [Amendment](#amendment-2026-09-07-thread-offload-for-blocking-work) below)
 
 ## Context
 
@@ -73,11 +73,50 @@ The orchestrator, LLM client, and all I/O operations are fully async.
 - `asyncio.sleep` is patched in tests (not `time.sleep`).
 - The `openai` SDK's async client (`AsyncOpenAI`) is used, which returns
   the same response types as the sync client.
-- No thread pool is used for request handling. Uvicorn's event loop handles
-  all concurrency.
+- No thread pool is used for request handling, **except** the two narrow
+  `asyncio.to_thread` call sites in the
+  [2026-09-07 amendment](#amendment-2026-09-07-thread-offload-for-blocking-work).
+  Uvicorn's event loop handles all other concurrency.
 
 ## Participants
 
 - Domain expert (identified cancellation propagation issue)
 - Devil's advocate (proposed async as strictly simpler)
 - Architect (accepted the async model)
+
+## Amendment (2026-09-07): thread offload for blocking work
+
+`analyze_bulk` anonymised its whole concatenated corpus in one synchronous
+Presidio call on the event loop thread. Presidio's within-call entity
+dedup is quadratic in entity count, so a large corpus could block the loop
+for tens of seconds — long enough to starve the `asgi` worker's heartbeat
+coroutine (`gunicorn/workers/gasgi.py`, ticked from `await asyncio.sleep(1.0)`
+in a loop) and get the process SIGKILLed by gunicorn's `--timeout` watchdog
+(issue #325). `analyze_hierarchical`'s embedding step (`EmbeddingPort.embed`,
+synchronous by design per [ADR-014](014-embedding-port-and-self-hosted-model.md))
+carried the same risk.
+
+This amends the "no thread pool is used for request handling" consequence:
+`AnalyzeService.analyze_bulk` and `analyze_hierarchical` now run their
+anonymisation (`LLMCallExecutor.anonymize_records_and_prompt`) and, for
+`analyze_hierarchical`, their embedding (`EmbeddingPort.embed`) calls via
+`asyncio.to_thread`, using Python's default thread pool executor rather than
+a dedicated one. Scope is deliberately narrow — only these two known
+CPU-bound, non-cancellable calls — not a general policy of moving
+synchronous work off the loop:
+
+- Both calls are one-shot and already complete by the time their `await`
+  returns, so the cancellation-propagation problem that ruled out Option A
+  above does not apply: cancelling the awaiting task does not need to stop
+  work already running to completion in the thread.
+- `asyncio.to_thread` copies the current `contextvars` context into the
+  worker thread, so `CallContext` (`qfa.services.call_context`) keeps
+  propagating to whatever the offloaded call logs or records.
+- Onnxruntime's `session.run()` releases the GIL during inference, so
+  embedding genuinely gains wall-clock concurrency from this, not just
+  heartbeat liveness; Presidio does not release the GIL, so its offload is
+  purely to keep the heartbeat alive on prd's 1 vCPU.
+- Thread pool sizing is not a concern here the way it was for Option A:
+  each in-flight request occupies at most one thread for the duration of
+  one anonymise/embed call rather than the whole request, and prd runs a
+  single gunicorn worker, so concurrent thread demand stays small.
