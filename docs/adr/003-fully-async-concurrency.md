@@ -120,3 +120,18 @@ synchronous work off the loop:
   each in-flight request occupies at most one thread for the duration of
   one anonymise/embed call rather than the whole request, and prd runs a
   single gunicorn worker, so concurrent thread demand stays small.
+
+**Accepted risk:** this is the first `asyncio.to_thread` usage in the
+codebase, so it is also the first time the process-wide `PresidioAnonymizer`
+(one `AnalyzerEngine`/`AnonymizerEngine` pair, shared by every service —
+see the composition root) can be entered from more than one OS thread at
+once — e.g. two concurrent `analyze_bulk` calls, or one overlapping with
+`CodingService`/`SummarizeService`'s still-synchronous anonymisation on the
+main thread. Presidio's maintainers describe the analyzer as "generally
+thread-safe, though worth validating" (it delegates to spaCy, which
+[explosion.ai built for exactly this multi-threaded pattern](https://explosion.ai/blog/multithreading-with-cython)),
+without an explicit hard guarantee. We accept this risk rather than
+serialising access with a lock, which would give back part of the
+heartbeat-liveness benefit this amendment exists for. Revisit if
+production sees anonymisation errors or corrupted placeholder mappings
+under concurrent load.
