@@ -174,7 +174,7 @@ is a {py:class}`~qfa.services.llm_call_executor.LLMCallExecutor` — an injected
 collaborator (never a base class, see
 [ADR-017](../adr/017-orchestrator-composition-only.md)) that owns four shared
 behaviours: `check_deadline_and_get_timeout` (step 1 above),
-`anonymize_records` (step 2 for a whole batch), `check_token_limit` (the
+`anonymize_records_and_prompt` (step 2 for a whole batch), `check_token_limit` (the
 pre-flight budget guard, used by the multi-call coding path), and
 `bounded_complete` (a semaphore-bounded completion for concurrent pipelines).
 Call them; do not re-derive the deadline arithmetic or the token estimate in a

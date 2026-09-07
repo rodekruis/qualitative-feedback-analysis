@@ -259,10 +259,13 @@ class AnalyzeService:
         anonymization_mapping: dict[str, str] = {}
         anonymized_prompt = request.prompt
         if anonymize:
-            anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
-                user_message
-            )
-            anonymized_prompt, _ = self._anonymizer.anonymize(request.prompt)
+            # One batch call, so message and prompt share a placeholder
+            # namespace: two separate calls each restart numbering, which
+            # makes `<LOCATION_0>` mean different things in each (#324).
+            (
+                (anonymized_user_message, anonymized_prompt),
+                anonymization_mapping,
+            ) = self._anonymizer.anonymize_batch((user_message, request.prompt))
 
         analyse_timeout = self._executor.check_deadline_and_get_timeout(deadline)
         analyse_response = await self._llm.complete(
