@@ -104,34 +104,42 @@ class LLMCallExecutor:
         self._llm_timeout_seconds = llm_timeout_seconds
         self._max_total_tokens = max_total_tokens
 
-    def anonymize_records(
+    def anonymize_records_and_prompt(
         self,
         records: tuple[FeedbackRecordModel, ...],
+        analyst_prompt: str,
         anonymize: bool,
-    ) -> tuple[tuple[FeedbackRecordModel, ...], dict[str, str]]:
-        """Anonymise each record's text, returning new records + merged mapping.
+    ) -> tuple[tuple[FeedbackRecordModel, ...], str, dict[str, str]]:
+        """Redact every record's text and the analyst prompt in one namespace.
+
+        The prompt travels with the records because it must share their
+        placeholder namespace: a separately anonymised prompt cannot be
+        merged in without placeholder collisions (see
+        :meth:`~qfa.domain.ports.AnonymizationPort.anonymize_batch`).
 
         Metadata is left untouched (codes/dates are not PII and feed the
-        deterministic trend table). When ``anonymize`` is False, records are
-        returned unchanged with an empty mapping.
+        deterministic trend table). When ``anonymize`` is False, records and
+        prompt are returned unchanged with an empty mapping.
         """
         if not anonymize:
-            return records, {}
-        merged: dict[str, str] = {}
-        new_records: list[FeedbackRecordModel] = []
-        for record in records:
-            redacted, mapping = self._anonymizer.anonymize(record.content)
-            merged.update(mapping)
-            new_records.append(record.model_copy(update={"content": redacted}))
-        return tuple(new_records), merged
+            return records, analyst_prompt, {}
+        redacted, mapping = self._anonymizer.anonymize_batch(
+            (analyst_prompt, *(record.content for record in records))
+        )
+        redacted_prompt, redacted_contents = redacted[0], redacted[1:]
+        new_records = tuple(
+            record.model_copy(update={"content": content})
+            for record, content in zip(records, redacted_contents, strict=True)
+        )
+        return new_records, redacted_prompt, mapping
 
     def anonymize_text(self, text: str) -> tuple[str, dict[str, str]]:
         """Redact PII from one assembled message, returning text + mapping.
 
         The single-record use cases anonymise the *assembled* user message
         rather than each record's content, because the envelope they send is
-        built before the call; :meth:`anonymize_records` is the batch
-        equivalent for the paths that chunk records first. Pair this with
+        built before the call; :meth:`anonymize_records_and_prompt` is the
+        batch equivalent for the paths that chunk records first. Pair this with
         :meth:`deanonymize_json` to restore the redacted values in the
         model's response.
         """

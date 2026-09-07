@@ -596,6 +596,12 @@ class TestAnalyzeAnonymizationOrdering:
             def anonymize(self, text):
                 return text + "\n<PERSON_0>", {"<PERSON_0>": "Alice"}
 
+            def anonymize_batch(self, texts):
+                return (
+                    tuple(text + "\n<PERSON_0>" for text in texts),
+                    {"<PERSON_0>": "Alice"},
+                )
+
             def deanonymize(self, text, mapping):
                 for placeholder, real in mapping.items():
                     text = text.replace(placeholder, real)
@@ -621,14 +627,18 @@ class TestAnalyzeAnonymizationOrdering:
         ``LOCATION`` and ``EMAIL_ADDRESS``) are still deanonymised as
         before — only PERSON is retained.
         """
+        placeholders = {
+            "<PERSON_0>": "Alice",
+            "<LOCATION_0>": "Atlanta",
+            "<EMAIL_ADDRESS_0>": "alice@example.com",
+        }
 
         class FakeAnonymizerWithPlaceholders(AnonymizationPort):
             def anonymize(self, text):
-                return text, {
-                    "<PERSON_0>": "Alice",
-                    "<LOCATION_0>": "Atlanta",
-                    "<EMAIL_ADDRESS_0>": "alice@example.com",
-                }
+                return text, dict(placeholders)
+
+            def anonymize_batch(self, texts):
+                return texts, dict(placeholders)
 
             def deanonymize(self, text, mapping):
                 for placeholder, real in mapping.items():
@@ -674,6 +684,14 @@ class TestAnalyzeAnonymizationOrdering:
             def anonymize(self, text):
                 return (
                     text.replace(sensitive_token, "<PERSON_0>"),
+                    {"<PERSON_0>": sensitive_token},
+                )
+
+            def anonymize_batch(self, texts):
+                return (
+                    tuple(
+                        text.replace(sensitive_token, "<PERSON_0>") for text in texts
+                    ),
                     {"<PERSON_0>": sensitive_token},
                 )
 

@@ -233,7 +233,8 @@ class AnonymizationPort(Protocol):
             The anonymised texts, same length and order as ``texts``, and
             one placeholder-to-original mapping covering all of them.
             Every placeholder maps to exactly one original value, and a
-            value recurring in two texts gets the same placeholder.
+            value recurring in two texts gets the same placeholder as
+            long as it is detected as the same entity type.
         """
         ...
 

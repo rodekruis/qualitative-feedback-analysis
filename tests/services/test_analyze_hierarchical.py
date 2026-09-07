@@ -9,10 +9,12 @@ single_pass call is byte-identical to before (no regression).
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+from html import unescape
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from qfa.adapters.presidio_anonymizer import PresidioAnonymizer
 from qfa.domain.errors import AnalysisError, AnalysisTimeoutError, LLMError
 from qfa.domain.models import (
     AnalysisRequestModel,
@@ -60,6 +62,16 @@ class RecordingAnonymizer(AnonymizationPort):
         """Anonymise by replacing 'Jane' with a placeholder."""
         self.anonymized_texts.append(text)
         return text.replace("Jane", "<PERSON_0>"), {"<PERSON_0>": "Jane"}
+
+    def anonymize_batch(self, texts):
+        """Redact each text, merging the (single-key) mappings."""
+        merged = {}
+        redacted = []
+        for text in texts:
+            text, mapping = self.anonymize(text)
+            redacted.append(text)
+            merged.update(mapping)
+        return tuple(redacted), merged
 
     def deanonymize(self, text, mapping):
         """Restore placeholders from the mapping."""
@@ -828,3 +840,130 @@ async def test_no_embedder_raises_analysis_error():
 
     with pytest.raises(AnalysisError, match="no embedder configured"):
         await service.analyze_hierarchical(request, deadline, anonymize=True)
+
+
+PERSON_NAME = "Maria Silva"
+
+
+class EchoingLLM(LLMPort):
+    """Fake LLM that echoes the user message back as its answer.
+
+    ``RecordingLLM`` returns a canned string, which cannot show whether
+    de-anonymisation restored the right value in the right place. Echoing
+    puts the placeholders the service supplied into the synthesis, the way
+    a real model that quotes the feedback would. Entities are unescaped
+    first because the envelope escapes ``<PERSON_0>`` to
+    ``&lt;PERSON_0&gt;`` on the way in and a real model writes the
+    placeholder back out unescaped.
+    """
+
+    def __init__(self):
+        self.calls = []
+
+    async def complete(
+        self, system_message, user_message, tenant_id, response_model=str, timeout=20.0
+    ):
+        """Record the call; echo the user message, or serve a judge score."""
+        self.calls.append((system_message, user_message, response_model))
+        structured = (
+            _judge_text() if _is_judge_call(system_message) else unescape(user_message)
+        )
+        return LLMResponse(
+            structured=structured,
+            model="fake",
+            prompt_tokens=1,
+            completion_tokens=1,
+            cost=0.0,
+        )
+
+
+class PresidioSpy(AnonymizationPort):
+    """The real Presidio adapter plus a record of what it redacted.
+
+    Wraps rather than fakes: the test needs the placeholder Presidio chose
+    for the repeated person, an index only the real allocator knows.
+    """
+
+    def __init__(self):
+        self._delegate = PresidioAnonymizer()
+        self.mapping = {}
+
+    def anonymize(self, text):
+        """Delegate, recording the mapping."""
+        redacted, mapping = self._delegate.anonymize(text)
+        self.mapping.update(mapping)
+        return redacted, mapping
+
+    def anonymize_batch(self, texts):
+        """Delegate, recording the shared mapping."""
+        redacted, mapping = self._delegate.anonymize_batch(texts)
+        self.mapping.update(mapping)
+        return redacted, mapping
+
+    def deanonymize(self, text, mapping):
+        """Delegate."""
+        return self._delegate.deanonymize(text, mapping)
+
+
+@pytest.mark.asyncio
+async def test_hierarchical_round_trips_distinct_entities_across_records():
+    """Each record's own entities come back in the synthesis, not another's.
+
+    Deliberately runs the *real* ``PresidioAnonymizer``: the collision this
+    pins (#324) lived in the real placeholder allocator, so no fake
+    anonymiser can exercise it. On the buggy version the locations of the
+    later records overwrote the earlier ones' in the merged mapping.
+    """
+    cities = ("Kharkiv", "Odesa", "Lviv", "Nairobi", "Kampala", "Jakarta")
+    contents = (
+        "The water point in Kharkiv ran dry for three days.",
+        "The water trucking schedule for Odesa stopped without notice.",
+        "Residents said the water queue in Lviv starts before dawn, "
+        f"according to {PERSON_NAME}.",
+        "The health clinic in Nairobi has no medicine left.",
+        "Health staff in Kampala turned patients away.",
+        f"{PERSON_NAME} waited at the health clinic in Jakarta all morning.",
+    )
+    records = tuple(
+        FeedbackRecordModel(
+            id=f"rec-{index}",
+            content=content,
+            metadata=FeedbackRecordMetadataModel(created="2024-01-05T00:00:00Z"),
+        )
+        for index, content in enumerate(contents)
+    )
+    request = AnalysisRequestModel(
+        feedback_records=records,
+        prompt="Which locations report service gaps?",
+        tenant_id=TENANT_ID,
+        mode="hierarchical",
+    )
+    llm = EchoingLLM()
+    anonymizer = PresidioSpy()
+    service = _build_analyze_service(
+        llm, anonymizer, FakeEmbeddingPort(), max_total_tokens=200_000
+    )
+
+    result = await service.analyze_hierarchical(
+        request, datetime.now(UTC) + timedelta(seconds=120), anonymize=True
+    )
+
+    # The repeated person gets one placeholder across both records, and
+    # analyse retains it rather than restoring the name.
+    person_placeholders = {p for p, v in anonymizer.mapping.items() if v == PERSON_NAME}
+    assert len(person_placeholders) == 1
+    person_placeholder = person_placeholders.pop()
+    assert person_placeholder.startswith("<PERSON_")
+    assert PERSON_NAME not in result.result
+    assert person_placeholder in result.result
+
+    # Every record's text is restored intact: no record's location was
+    # rewritten to another record's.
+    for content in contents:
+        assert content.replace(PERSON_NAME, person_placeholder) in result.result
+
+    # No raw entity ever reached the model.
+    for _, user_message, _ in llm.calls:
+        assert PERSON_NAME not in user_message
+        for city in cities:
+            assert city not in user_message

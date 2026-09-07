@@ -388,18 +388,11 @@ class AnalyzeService:
             "Starting anonymization of %d records...", len(request.feedback_records)
         )
         with timed() as anonymize_sw:
-            anonymized_records, mapping = self._executor.anonymize_records(
-                request.feedback_records, anonymize
-            )
-            anonymized_prompt = request.prompt
-            if anonymize:
-                # Single pass over the prompt, capturing both the redacted
-                # text and its mapping (previously this ran Presidio twice —
-                # once for the mapping, once for the text).
-                anonymized_prompt, prompt_map = self._anonymizer.anonymize(
-                    request.prompt
+            anonymized_records, anonymized_prompt, mapping = (
+                self._executor.anonymize_records_and_prompt(
+                    request.feedback_records, request.prompt, anonymize
                 )
-                mapping = {**mapping, **prompt_map}
+            )
         logger.info(
             "anonymisation: %d record(s) in %.2fs",
             len(request.feedback_records),

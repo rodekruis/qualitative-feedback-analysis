@@ -48,13 +48,23 @@ class RedactingAnonymizer(AnonymizationPort):
     """Anonymiser that actually redacts, so a round-trip is observable.
 
     The shared ``FakeAnonymizer`` is a deliberate no-op, which cannot show
-    that ``anonymize_records`` returns a mapping capable of restoring the
-    original text.
+    that ``anonymize_records_and_prompt`` returns a mapping capable of
+    restoring the original text.
     """
 
     def anonymize(self, text):
         """Replace every occurrence of ``Jane`` with a PERSON placeholder."""
         return text.replace("Jane", "<PERSON_0>"), {"<PERSON_0>": "Jane"}
+
+    def anonymize_batch(self, texts):
+        """Redact each text, merging the (single-key) mappings."""
+        merged = {}
+        redacted = []
+        for text in texts:
+            text, mapping = self.anonymize(text)
+            redacted.append(text)
+            merged.update(mapping)
+        return tuple(redacted), merged
 
     def deanonymize(self, text, mapping):
         """Substitute each placeholder in ``mapping`` back into ``text``."""
@@ -189,7 +199,7 @@ class TestCheckTokenLimit:
         executor.check_token_limit("", "x" * (10 * settings.chars_per_token))
 
 
-class TestAnonymizeRecords:
+class TestAnonymizeRecordsAndPrompt:
     def test_round_trips_through_the_returned_mapping(self):
         anonymizer = RedactingAnonymizer()
         executor = _make_executor(anonymizer=anonymizer)
@@ -198,33 +208,52 @@ class TestAnonymizeRecords:
             _make_record("doc-2", "Jane again, plus a clinic queue."),
         )
 
-        anonymized, mapping = executor.anonymize_records(records, anonymize=True)
+        anonymized, _, mapping = executor.anonymize_records_and_prompt(
+            records, "What did they say?", anonymize=True
+        )
 
         assert [r.content for r in anonymized] == [
             "<PERSON_0> reported a leak.",
             "<PERSON_0> again, plus a clinic queue.",
         ]
-        # The merged mapping restores every redacted record.
+        # The shared mapping restores every redacted record.
         assert [anonymizer.deanonymize(r.content, mapping) for r in anonymized] == [
             r.content for r in records
         ]
+
+    def test_redacts_the_analyst_prompt_in_the_same_call(self):
+        """The prompt shares the records' namespace, so it cannot be merged in."""
+        executor = _make_executor(anonymizer=RedactingAnonymizer())
+        records = (_make_record("doc-1", "Jane reported a leak."),)
+
+        _, prompt, mapping = executor.anonymize_records_and_prompt(
+            records, "What did Jane report?", anonymize=True
+        )
+
+        assert prompt == "What did <PERSON_0> report?"
+        assert mapping == {"<PERSON_0>": "Jane"}
 
     def test_leaves_metadata_and_ids_untouched(self):
         executor = _make_executor(anonymizer=RedactingAnonymizer())
         records = (_make_record("doc-1", "Jane reported a leak."),)
 
-        anonymized, _ = executor.anonymize_records(records, anonymize=True)
+        anonymized, _, _ = executor.anonymize_records_and_prompt(
+            records, "Prompt.", anonymize=True
+        )
 
         assert anonymized[0].id == "doc-1"
         assert anonymized[0].metadata == records[0].metadata
 
-    def test_disabled_returns_the_records_unchanged(self):
+    def test_disabled_returns_the_records_and_prompt_unchanged(self):
         executor = _make_executor(anonymizer=RedactingAnonymizer())
         records = (_make_record("doc-1", "Jane reported a leak."),)
 
-        anonymized, mapping = executor.anonymize_records(records, anonymize=False)
+        anonymized, prompt, mapping = executor.anonymize_records_and_prompt(
+            records, "What did Jane report?", anonymize=False
+        )
 
         assert anonymized is records
+        assert prompt == "What did Jane report?"
         assert mapping == {}
 
 
