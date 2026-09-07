@@ -235,6 +235,14 @@ class AnalyzeService:
         metadata and date parsing, not on map-reduce. When metadata is
         absent the field comes back as ``None`` rather than failing.
 
+        The token-budget guard runs on the *un-anonymised* message, before
+        anonymisation, so an over-cap request is rejected without paying
+        Presidio's cost (#325). Anonymisation itself runs per record
+        (bounding each Presidio call's entity count to one record, instead
+        of one quadratic-in-entities call over the whole concatenated
+        corpus) and off the event loop thread via ``asyncio.to_thread``, so
+        a large batch cannot stall gunicorn's asgi-worker heartbeat.
+
         Edge cases
         ----------
         - ``mode`` other than ``"single_pass"`` → 422.
@@ -254,18 +262,35 @@ class AnalyzeService:
         user_message = build_analyze_user_message(
             request.prompt, request.feedback_records
         )
+        self._executor.check_token_limit(system_message, user_message)
 
         anonymized_user_message = user_message
         anonymization_mapping: dict[str, str] = {}
         anonymized_prompt = request.prompt
         if anonymize:
-            # One batch call, so message and prompt share a placeholder
-            # namespace: two separate calls each restart numbering, which
-            # makes `<LOCATION_0>` mean different things in each (#324).
+            # Anonymise per record, not the one concatenated message:
+            # Presidio's within-call entity dedup is quadratic in entity
+            # count, so redacting the whole corpus in a single call is
+            # superlinear in corpus size. anonymize_records_and_prompt
+            # chunks to one Presidio call per record while keeping every
+            # record and the prompt in one shared placeholder namespace
+            # (#324). Offloaded via to_thread because it is synchronous,
+            # CPU-bound work that would otherwise starve gunicorn's
+            # heartbeat coroutine (#325) — asyncio.to_thread copies the
+            # current contextvars context, so CallContext still propagates.
             (
-                (anonymized_user_message, anonymized_prompt),
+                anonymized_records,
+                anonymized_prompt,
                 anonymization_mapping,
-            ) = self._anonymizer.anonymize_batch((user_message, request.prompt))
+            ) = await asyncio.to_thread(
+                self._executor.anonymize_records_and_prompt,
+                request.feedback_records,
+                request.prompt,
+                anonymize,
+            )
+            anonymized_user_message = build_analyze_user_message(
+                anonymized_prompt, anonymized_records
+            )
 
         analyse_timeout = self._executor.check_deadline_and_get_timeout(deadline)
         analyse_response = await self._llm.complete(
@@ -353,8 +378,9 @@ class AnalyzeService:
         """Analyse a corpus larger than the single-call token cap.
 
         Flow: anonymise each record → deterministic coding-trend table →
-        embed record texts (synchronous, CPU-bound) → cluster (HDBSCAN) →
-        MAP each chunk to a partial (leaf LLM call) → REDUCE the partials
+        embed record texts (CPU-bound, off the event loop thread) →
+        cluster (HDBSCAN) → MAP each chunk to a partial (leaf LLM call) →
+        REDUCE the partials
         (with the trend table), recursing when a chunk or the partial set
         overflows the token budget → leaf-JUDGE each partial for the
         confidence. Reduce runs before the judges: the synthesis is the
@@ -366,8 +392,11 @@ class AnalyzeService:
         reported in ``uncertainty_explanation``. ``confidence`` is ``None``
         when no chunk could be judged.
 
-        Anonymisation happens before embedding and before every LLM call.
-        Guardrails are applied at both the map and reduce prompts.
+        Anonymisation happens before embedding and before every LLM call, and
+        (like embedding) runs off the event loop thread via
+        ``asyncio.to_thread`` so a large corpus cannot stall gunicorn's
+        heartbeat coroutine (#325). Guardrails are applied at both the map
+        and reduce prompts.
 
         Raises
         ------
@@ -387,14 +416,20 @@ class AnalyzeService:
         )
 
         # 1. Anonymise each record's text up front (before embed + LLM).
+        # Offloaded via to_thread: Presidio's NER + dedup passes are
+        # synchronous CPU-bound work that would otherwise starve gunicorn's
+        # heartbeat coroutine on a corpus this size (#325). asyncio.to_thread
+        # copies the current contextvars context, so CallContext still
+        # propagates to the worker thread.
         logger.info(
             "Starting anonymization of %d records...", len(request.feedback_records)
         )
         with timed() as anonymize_sw:
-            anonymized_records, anonymized_prompt, mapping = (
-                self._executor.anonymize_records_and_prompt(
-                    request.feedback_records, request.prompt, anonymize
-                )
+            anonymized_records, anonymized_prompt, mapping = await asyncio.to_thread(
+                self._executor.anonymize_records_and_prompt,
+                request.feedback_records,
+                request.prompt,
+                anonymize,
             )
         logger.info(
             "anonymisation: %d record(s) in %.2fs",
@@ -413,10 +448,14 @@ class AnalyzeService:
         )
 
         # 3. Embed (synchronous, CPU-bound) then cluster into budget chunks.
+        # Offloaded via to_thread for the same reason as the anonymisation
+        # above: onnxruntime releases the GIL during session.run(), so this
+        # genuinely benefits rather than just avoiding the heartbeat stall
+        # (#325).
         texts = tuple(r.content for r in anonymized_records)
         logger.info("starting embedding of %d record(s)", len(texts))
         with timed() as embed_sw:
-            vectors = self._embedder.embed(texts)
+            vectors = await asyncio.to_thread(self._embedder.embed, texts)
         logger.info(
             "embedding: %d record(s) in %.2fs", len(texts), embed_sw.elapsed_seconds
         )

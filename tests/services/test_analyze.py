@@ -9,12 +9,19 @@ the call scaffolding is stubbed out.
 The hierarchical mode has its own file: ``test_analyze_hierarchical.py``.
 """
 
+import asyncio
+import time
 from datetime import UTC, datetime, timedelta
 
 import pytest
 from pydantic import ValidationError
 
-from qfa.domain.errors import AnalysisError, LLMBadRequestError, LLMError
+from qfa.domain.errors import (
+    AnalysisError,
+    FeedbackTooLargeError,
+    LLMBadRequestError,
+    LLMError,
+)
 from qfa.domain.models import (
     AnalysisRequestModel,
     FeedbackRecordMetadataModel,
@@ -139,11 +146,49 @@ def _judging_llm(analysis="analysis", quality_score=0.5, explanation="ok"):
     )
 
 
+class _AnonymizerMustNotBeCalled(AnonymizationPort):
+    """Fails the test if anonymisation runs — used to pin the 413 fast-path.
+
+    Acceptance criterion (#325): an over-cap payload returns 413 without
+    paying the anonymisation cost, so the token guard must reject the
+    request before either method here is ever invoked.
+    """
+
+    def anonymize(self, text):
+        raise AssertionError("anonymize() ran after an over-cap request")
+
+    def anonymize_batch(self, texts):
+        raise AssertionError("anonymize_batch() ran after an over-cap request")
+
+    def deanonymize(self, text, mapping):
+        raise AssertionError("deanonymize() ran after an over-cap request")
+
+
 class TestTokenLimit:
     @pytest.mark.asyncio
-    async def test_large_documents_are_forwarded_to_llm(self, settings):
-        """Large documents are forwarded to the LLM; the analyse path issues 2 calls (analyse + judge)."""
-        # Create a document large enough to exceed the token limit.
+    async def test_within_cap_documents_are_forwarded_to_llm(self, settings):
+        """A document within the cap is forwarded; the analyse path issues 2 calls (analyse + judge)."""
+        doc = _make_feedback_record(content="The quick brown fox jumps.")
+        request = _make_request(feedback_records=(doc,))
+
+        fake_llm = _judging_llm(analysis="analysis text")
+        service = _build_analyze_service(fake_llm, FakeAnonymizer(), settings)
+
+        await service.analyze_bulk(request, _future_deadline())
+
+        assert len(fake_llm.calls) == 2
+
+    @pytest.mark.asyncio
+    async def test_over_cap_request_raises_before_anonymising_or_calling_llm(
+        self, settings
+    ):
+        """An over-cap request is rejected by the token guard before any other work.
+
+        Pins #325 point 3: the guard used to live inside ``LiteLLMClient``,
+        reached only *after* anonymisation, so an oversized batch paid the
+        full Presidio cost before failing. It must now run first, on the
+        un-anonymised message.
+        """
         # Use varied text to avoid triggering the repeated-chars injection
         # filter. With chars_per_token=4 and max_tokens=100 we need >400 chars.
         large_text = "The quick brown fox jumps. " * 25  # ~675 chars
@@ -153,14 +198,114 @@ class TestTokenLimit:
         fake_llm = _judging_llm(analysis="analysis text")
         service = _build_analyze_service(
             fake_llm,
-            FakeAnonymizer(),
+            _AnonymizerMustNotBeCalled(),
             settings,
             max_total_tokens=100,  # very low limit
         )
 
+        with pytest.raises(FeedbackTooLargeError):
+            await service.analyze_bulk(request, _future_deadline())
+
+        assert fake_llm.calls == []
+
+
+class TestChunkedAnonymization:
+    """Pins #325 point 1: anonymisation is chunked per record.
+
+    Not one call over the whole concatenated corpus: that made Presidio's
+    within-call entity dedup (quadratic in entity count) superlinear in
+    corpus size, whereas one call per record bounds each call's entity
+    count to a single record's.
+    """
+
+    @pytest.mark.asyncio
+    async def test_anonymize_batch_receives_one_text_per_record_plus_prompt(
+        self, settings
+    ):
+        class RecordingAnonymizer(AnonymizationPort):
+            def __init__(self):
+                self.batches: list[tuple[str, ...]] = []
+
+            def anonymize(self, text):
+                (redacted,), mapping = self.anonymize_batch((text,))
+                return redacted, mapping
+
+            def anonymize_batch(self, texts):
+                self.batches.append(texts)
+                return texts, {}
+
+            def deanonymize(self, text, mapping):
+                return text
+
+        records = tuple(
+            _make_feedback_record(doc_id=f"doc-{i}", content=f"Feedback {i}.")
+            for i in range(3)
+        )
+        request = _make_request(feedback_records=records, prompt="Summarize this.")
+
+        anonymizer = RecordingAnonymizer()
+        fake_llm = _judging_llm()
+        service = _build_analyze_service(fake_llm, anonymizer, settings)
+
         await service.analyze_bulk(request, _future_deadline())
 
-        assert len(fake_llm.calls) == 2
+        # Exactly one anonymize_batch call, covering the prompt plus every
+        # record's content as separate texts — never one concatenated blob.
+        assert len(anonymizer.batches) == 1
+        (batch,) = anonymizer.batches
+        assert len(batch) == 4  # prompt + 3 records
+        assert batch[0] == "Summarize this."
+        assert set(batch[1:]) == {"Feedback 0.", "Feedback 1.", "Feedback 2."}
+
+
+class TestAnonymizationOffEventLoop:
+    """Pins #325 point 2: anonymisation runs off the event loop thread.
+
+    A synchronous, blocking ``anonymize_batch`` must not stall other
+    concurrently-scheduled coroutines — that stall is exactly what starved
+    gunicorn's asgi-worker heartbeat and got the process SIGKILLed.
+    """
+
+    @pytest.mark.asyncio
+    async def test_blocking_anonymizer_does_not_stall_concurrent_coroutines(
+        self, settings
+    ):
+        block_seconds = 0.3
+
+        class BlockingAnonymizer(AnonymizationPort):
+            def anonymize(self, text):
+                (redacted,), mapping = self.anonymize_batch((text,))
+                return redacted, mapping
+
+            def anonymize_batch(self, texts):
+                # Simulates real Presidio work: genuine thread-blocking
+                # sleep, not an awaitable — the point being tested is that
+                # this does NOT block the event loop.
+                time.sleep(block_seconds)
+                return texts, {}
+
+            def deanonymize(self, text, mapping):
+                return text
+
+        fake_llm = _judging_llm()
+        service = _build_analyze_service(fake_llm, BlockingAnonymizer(), settings)
+
+        ticker_finished_at: float | None = None
+
+        async def ticker() -> None:
+            nonlocal ticker_finished_at
+            # If the event loop were blocked by anonymize_batch's sleep,
+            # this could not resume until the sleep finished.
+            await asyncio.sleep(0.05)
+            ticker_finished_at = time.monotonic()
+
+        start = time.monotonic()
+        ticker_task = asyncio.create_task(ticker())
+        await service.analyze_bulk(_make_request(), _future_deadline())
+        await ticker_task
+
+        assert ticker_finished_at is not None
+        assert ticker_finished_at - start < block_seconds / 2
 
 
 class TestNonTransientError:

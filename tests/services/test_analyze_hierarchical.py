@@ -8,6 +8,7 @@ single_pass call is byte-identical to before (no regression).
 """
 
 import asyncio
+import time
 from datetime import UTC, datetime, timedelta
 from html import unescape
 from unittest.mock import AsyncMock, patch
@@ -286,6 +287,67 @@ async def test_anonymization_happens_before_any_llm_or_embed_call():
     # Anonymiser was invoked, and no LLM user message contains the raw name.
     assert anonymizer.anonymized_texts
     assert all("Jane" not in c[1] for c in llm.calls)
+
+
+@pytest.mark.asyncio
+async def test_anonymize_and_embed_do_not_block_the_event_loop():
+    """Anonymisation and embedding run off the event loop thread (#325).
+
+    A synchronous, blocking anonymiser/embedder must not stall other
+    concurrently-scheduled coroutines — that stall is exactly what starved
+    gunicorn's asgi-worker heartbeat and got the process SIGKILLed.
+    """
+    block_seconds = 0.3
+
+    class BlockingAnonymizer(AnonymizationPort):
+        def anonymize(self, text):
+            (redacted,), mapping = self.anonymize_batch((text,))
+            return redacted, mapping
+
+        def anonymize_batch(self, texts):
+            # Simulates real Presidio work: genuine thread-blocking sleep,
+            # not an awaitable — the point being tested is that this does
+            # NOT block the event loop.
+            time.sleep(block_seconds)
+            return texts, {}
+
+        def deanonymize(self, text, mapping):
+            return text
+
+    class BlockingEmbedder(EmbeddingPort):
+        def embed(self, texts):
+            time.sleep(block_seconds)
+            return tuple((0.0, 0.0) for _ in texts)
+
+    records = _records(4, "water access " * 5, "w")
+    request = AnalysisRequestModel(
+        feedback_records=records,
+        prompt="trends?",
+        tenant_id=TENANT_ID,
+        mode="hierarchical",
+    )
+    llm = RecordingLLM()
+    service = _build_analyze_service(
+        llm, BlockingAnonymizer(), BlockingEmbedder(), max_total_tokens=100_000
+    )
+    deadline = datetime.now(UTC) + timedelta(seconds=120)
+
+    ticker_finished_at: float | None = None
+
+    async def ticker() -> None:
+        nonlocal ticker_finished_at
+        # If the event loop were blocked by the anonymiser's or embedder's
+        # sleep, this could not resume until that sleep finished.
+        await asyncio.sleep(0.05)
+        ticker_finished_at = time.monotonic()
+
+    start = time.monotonic()
+    ticker_task = asyncio.create_task(ticker())
+    await service.analyze_hierarchical(request, deadline, anonymize=True)
+    await ticker_task
+
+    assert ticker_finished_at is not None
+    assert ticker_finished_at - start < block_seconds / 2
 
 
 class LargeOutputLLM(LLMPort):
