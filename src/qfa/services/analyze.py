@@ -278,15 +278,21 @@ class AnalyzeService:
             # CPU-bound work that would otherwise starve gunicorn's
             # heartbeat coroutine (#325) — asyncio.to_thread copies the
             # current contextvars context, so CallContext still propagates.
-            (
-                anonymized_records,
-                anonymized_prompt,
-                anonymization_mapping,
-            ) = await asyncio.to_thread(
-                self._executor.anonymize_records_and_prompt,
-                request.feedback_records,
-                request.prompt,
-                anonymize,
+            with timed() as anonymize_sw:
+                (
+                    anonymized_records,
+                    anonymized_prompt,
+                    anonymization_mapping,
+                ) = await asyncio.to_thread(
+                    self._executor.anonymize_records_and_prompt,
+                    request.feedback_records,
+                    request.prompt,
+                    anonymize,
+                )
+            logger.info(
+                "anonymisation: %d record(s) in %.2fs",
+                len(request.feedback_records),
+                anonymize_sw.elapsed_seconds,
             )
             anonymized_user_message = build_analyze_user_message(
                 anonymized_prompt, anonymized_records

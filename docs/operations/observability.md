@@ -80,6 +80,10 @@ example above is one of those, not a judge call.
 
 Hierarchical analysis (`mode=hierarchical`) logs where wall-clock time goes, so a
 slow run can be diagnosed from logs alone — no profiler attach required.
+`analyze_bulk` (`mode=single_pass`) logs the same `anonymisation: N record(s) in
+<seconds>s` line for its one anonymise-before-LLM step, at INFO — the single-pass
+path has only that one pre-LLM phase to account for, so it doesn't need the
+per-phase breakdown below.
 
 - **Per phase, at INFO** — `AnalyzeService.analyze_hierarchical` logs a `starting
   <phase>` line *before* each potentially slow step (embedding, clustering, map,
