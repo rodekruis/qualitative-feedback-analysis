@@ -190,7 +190,8 @@ class AnonymizationPort(Protocol):
     the original values via ``deanonymize``.
 
     Implementations must be deterministic for a given input within a
-    single call (same entity replaced by the same placeholder).
+    single call (same entity replaced by the same placeholder);
+    ``anonymize_batch`` is the multi-text form of that guarantee.
     """
 
     def anonymize(self, text: str) -> tuple[str, dict[str, str]]:
@@ -206,6 +207,33 @@ class AnonymizationPort(Protocol):
         tuple[str, dict[str, str]]
             The anonymised text and a mapping from placeholder to
             original value, suitable for passing to ``deanonymize``.
+        """
+        ...
+
+    def anonymize_batch(
+        self, texts: tuple[str, ...]
+    ) -> tuple[tuple[str, ...], dict[str, str]]:
+        """Replace sensitive entities in every text, sharing one namespace.
+
+        Each call opens an independent placeholder namespace, so
+        **mappings returned by separate calls must never be merged** —
+        the same placeholder means different things in each, and merging
+        silently substitutes one call's value into the other's text.
+        Callers needing one namespace across several texts must pass them
+        all to a single ``anonymize_batch`` call.
+
+        Parameters
+        ----------
+        texts : tuple[str, ...]
+            The texts to anonymise. May be empty.
+
+        Returns
+        -------
+        tuple[tuple[str, ...], dict[str, str]]
+            The anonymised texts, same length and order as ``texts``, and
+            one placeholder-to-original mapping covering all of them.
+            Every placeholder maps to exactly one original value, and a
+            value recurring in two texts gets the same placeholder.
         """
         ...
 

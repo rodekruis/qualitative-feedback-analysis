@@ -85,3 +85,87 @@ def test_detect_language_returns_expected_language_code(
 
     detected_language = detect_language(input_text)
     assert detected_language == expected_language
+
+
+# Presidio applies operators in reverse document order, so within one text the
+# *later* entity gets the *lower* index. Assert on uniqueness and round-trip,
+# never on which index a given entity received.
+
+
+def test_batch_gives_distinct_records_distinct_placeholders(
+    anonymizer: PresidioAnonymizer,
+) -> None:
+    """Regression test for #324: per-call numbering collided across records."""
+    texts = (
+        "Olena Kovalenko reported the water point in Kharkiv ran dry.",
+        "Piet Jansen reported the water point in Utrecht ran dry.",
+    )
+
+    redacted, mapping = anonymizer.anonymize_batch(texts)
+
+    assert len(set(mapping.values())) == len(mapping)
+    assert {"Kharkiv", "Utrecht"} <= set(mapping.values())
+    for original, anonymized_text in zip(texts, redacted, strict=True):
+        assert anonymizer.deanonymize(anonymized_text, mapping) == original
+
+
+def test_repeated_value_across_texts_reuses_one_placeholder(
+    anonymizer: PresidioAnonymizer,
+) -> None:
+    redacted, mapping = anonymizer.anonymize_batch(
+        (
+            "Olena Kovalenko queued for water in Kharkiv.",
+            "In Lviv we met Olena Kovalenko again.",
+        )
+    )
+
+    placeholders = [p for p, value in mapping.items() if value == "Olena Kovalenko"]
+    assert len(placeholders) == 1
+    assert placeholders[0] in redacted[0]
+    assert placeholders[0] in redacted[1]
+
+
+def test_deanonymize_is_unambiguous_with_double_digit_indices(
+    anonymizer: PresidioAnonymizer,
+) -> None:
+    """Double-digit indices must not be corrupted by prefix collisions.
+
+    ``deanonymize`` is a plain substring replace, which is only safe
+    because the trailing ``>`` stops ``<PERSON_1>`` matching inside
+    ``<PERSON_10>``. This pins that invariant.
+    """
+    cities = (
+        "Kharkiv",
+        "Utrecht",
+        "Lviv",
+        "Odesa",
+        "Amsterdam",
+        "Rotterdam",
+        "Nairobi",
+        "Kampala",
+        "Bogota",
+        "Caracas",
+        "Manila",
+        "Jakarta",
+        "Dakar",
+        "Kinshasa",
+    )
+    texts = tuple(f"The water point in {city} ran dry." for city in cities)
+
+    redacted, mapping = anonymizer.anonymize_batch(texts)
+
+    assert any(int(p.rsplit("_", 1)[1].rstrip(">")) > 9 for p in mapping)
+    for original, anonymized_text in zip(texts, redacted, strict=True):
+        assert anonymizer.deanonymize(anonymized_text, mapping) == original
+
+
+def test_anonymize_matches_a_single_text_batch(
+    anonymizer: PresidioAnonymizer,
+) -> None:
+    text = "Hi my name is Dick Schoof and I live in The Netherlands"
+
+    single_text, single_mapping = anonymizer.anonymize(text)
+    (batched_text,), batched_mapping = anonymizer.anonymize_batch((text,))
+
+    assert single_text == batched_text
+    assert single_mapping == batched_mapping
