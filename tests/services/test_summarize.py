@@ -159,6 +159,9 @@ class FakeAnonymizer(AnonymizationPort):
     def anonymize(self, text):
         return text, {}
 
+    def anonymize_batch(self, texts):
+        return texts, {}
+
     def deanonymize(self, text, mapping):
         return text
 
@@ -284,6 +287,9 @@ class TestNonTransientError:
         class RawSubstitutionAnonymizer:
             def anonymize(self, text):
                 return text, {"<PERSON_0>": 'Alice "Ally" Smith'}
+
+            def anonymize_batch(self, texts):
+                return texts, {"<PERSON_0>": 'Alice "Ally" Smith'}
 
             def deanonymize(self, text, mapping):
                 for placeholder, value in mapping.items():

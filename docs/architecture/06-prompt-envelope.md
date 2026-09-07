@@ -188,10 +188,8 @@ sequenceDiagram
 
     route->>orch: analyze_bulk(request, deadline)
     orch->>orch: build_analyze_user_message(prompt, records)
-    orch->>anon: anonymize(user_message)
-    anon-->>orch: (anonymised_msg, mapping)
-    orch->>anon: anonymize(prompt)
-    anon-->>orch: anonymised_prompt
+    orch->>anon: anonymize_batch(user_message, prompt)
+    anon-->>orch: (anonymised_msg, anonymised_prompt, shared mapping)
     orch->>llm: complete(system_msg, anonymised_msg, response_model=str)
     llm-->>orch: analysis_text
     orch->>orch: drop PERSON entries from mapping

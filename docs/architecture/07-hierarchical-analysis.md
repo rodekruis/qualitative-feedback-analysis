@@ -42,8 +42,9 @@ cross-lingual quality), which requires adding a fetch step to the image build
 1. **Availability guard.** If no embedder is configured (`EMBEDDING_*` unset),
    the call raises `AnalysisError` → **502 `analysis_unavailable`**. A
    deployment that never uses `hierarchical` carries no model on disk.
-2. **Anonymise first.** Every record's *text* is anonymised, and so is the
-   analyst prompt, **before** anything leaves the record — i.e. before embedding
+2. **Anonymise first.** Every record's *text* and the analyst prompt are
+   anonymised in a **single batch call**, so they share one placeholder
+   namespace, **before** anything leaves the record — i.e. before embedding
    and before any LLM call. Record *metadata* is left untouched (codes and dates
    are not PII and feed step 3).
 3. **Coding-trend table (deterministic, no LLM).**
@@ -184,8 +185,8 @@ sequenceDiagram
     participant judge as LLMPort (judge)
 
     route->>orch: analyze_hierarchical(request, deadline)
-    orch->>anon: anonymize(each record text, prompt)
-    anon-->>orch: anonymised texts + mapping
+    orch->>anon: anonymize_batch(prompt + every record text)
+    anon-->>orch: anonymised texts + one shared mapping
     orch->>orch: build_coding_trend_table(metadata)
     orch->>emb: embed(anonymised texts)
     emb-->>orch: dense vectors

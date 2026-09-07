@@ -41,7 +41,7 @@ generation reference, and the diagram collapses to a single `LLMPort` edge.
 | Port | Adapter(s) | What it owns |
 |---|---|---|
 | {py:class}`~qfa.domain.ports.LLMPort` | {py:class}`~qfa.adapters.llm_client.LiteLLMClient`, always wrapped by {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter` | One method, `complete(system_message, user_message, tenant_id, response_model, timeout)`. Returns `LLMResponse[T_Response]` carrying the structured output plus token counts and cost. {py:class}`~qfa.services.analyze.AnalyzeService`, {py:class}`~qfa.services.summarize.SummarizeService` and {py:class}`~qfa.services.coding.CodingService` each hold **one or two** of these — see [The judge connection](#the-judge-connection). |
-| {py:class}`~qfa.domain.ports.AnonymizationPort` | {py:class}`~qfa.adapters.presidio_anonymizer.PresidioAnonymizer` | `anonymize(text) -> (text, mapping)` and `deanonymize(text, mapping) -> text`. The mapping is held in memory for the request lifetime, then discarded. |
+| {py:class}`~qfa.domain.ports.AnonymizationPort` | {py:class}`~qfa.adapters.presidio_anonymizer.PresidioAnonymizer` | `anonymize(text) -> (text, mapping)`, `anonymize_batch(texts) -> (texts, mapping)` (one shared placeholder namespace, so placeholders are unique across the whole batch) and `deanonymize(text, mapping) -> text`. The mapping is held in memory for the request lifetime, then discarded. |
 | {py:class}`~qfa.domain.ports.UsageRepositoryPort` | {py:class}`~qfa.adapters.usage_repository.SqlAlchemyUsageRepository` | Writes one {py:class}`~qfa.domain.usage_models.LLMCallRecord` per LLM call (from {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter`) and reads aggregate stats (from the `/v1/usage` routes). |
 | {py:class}`~qfa.domain.ports.EmbeddingPort` | {py:class}`~qfa.adapters.embedding.BgeM3OnnxEmbedder` | One method, `embed(texts) -> vectors`. Multilingual dense embeddings (BGE-M3 ONNX-int8, dense-1024-d, in-process, CPU-only). Used only by `mode=hierarchical`. See [ADR-014](../adr/014-embedding-port-and-self-hosted-model.md). |
 
@@ -152,7 +152,7 @@ The scaffolding every use case wraps its LLM calls in lives on one collaborator,
 |---|---|
 | `check_deadline_and_get_timeout(deadline)` | Derive the per-call timeout from the remaining request budget; raise {py:exc}`~qfa.domain.errors.AnalysisTimeoutError` when too little time is left |
 | `check_token_limit(system_message, user_message)` | Pre-flight token estimate; raise {py:exc}`~qfa.domain.errors.FeedbackTooLargeError` when over `LLM_MAX_TOTAL_TOKENS` |
-| `anonymize_records(records, anonymize)` | Redact each record's text, returning new records plus the merged restore mapping |
+| `anonymize_records_and_prompt(records, analyst_prompt, anonymize)` | Redact every record's text *and* the analyst prompt in one shared placeholder namespace, returning new records, the redacted prompt, and the restore mapping |
 | `anonymize_text(text)` | Redact one assembled message, returning the redacted text plus its restore mapping |
 | `deanonymize_json(payload, mapping)` | Restore redacted values inside a serialized JSON response, escaping them so the payload stays valid JSON |
 | `complete(…)` | One completion bounded by the deadline; used by the single-call use cases |

@@ -26,7 +26,8 @@ sequenceDiagram
 Notes:
 
 - The mapping lives in memory for the request and is discarded when the service method returns.
-- Batch redaction (one call per record, mappings merged) goes through {py:meth}`~qfa.services.llm_call_executor.LLMCallExecutor.anonymize_records` rather than being open-coded per use case; single-message redaction calls the {py:class}`~qfa.domain.ports.AnonymizationPort` directly.
+- Batch redaction (one `anonymize_batch` call over every record plus the analyst prompt, one shared placeholder namespace) goes through {py:meth}`~qfa.services.llm_call_executor.LLMCallExecutor.anonymize_records_and_prompt` rather than being open-coded per use case; single-message redaction calls the {py:class}`~qfa.domain.ports.AnonymizationPort` directly.
+- Mappings from two `anonymize`/`anonymize_batch` calls must **never** be merged: each call restarts placeholder numbering, so merging silently substitutes one call's value into the other's text (#324). Texts that need one namespace go into one `anonymize_batch` call.
 - The de-anonymise step runs over the serialised response — substitutions are textual, so the round-trip is a string replacement, not a structured walk.
 
 ## Call context and usage tracking

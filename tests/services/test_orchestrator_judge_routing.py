@@ -174,6 +174,10 @@ class NoopAnonymizer(AnonymizationPort):
         """Return the text unchanged with an empty placeholder mapping."""
         return text, {}
 
+    def anonymize_batch(self, texts):
+        """Return the texts unchanged with an empty placeholder mapping."""
+        return texts, {}
+
     def deanonymize(self, text, mapping):
         """Return the text unchanged."""
         return text

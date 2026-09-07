@@ -5,6 +5,8 @@ analyzer and anonymizer engines. Owns the heavy spaCy-backed pipelines
 so the application service layer never imports Presidio directly.
 """
 
+from dataclasses import dataclass, field
+
 from langdetect import detect
 from langdetect.lang_detect_exception import LangDetectException
 from presidio_analyzer import AnalyzerEngine
@@ -60,13 +62,56 @@ def detect_language(text: str) -> str:
     return language_shortcode
 
 
+@dataclass
+class _PlaceholderSpace:
+    """One placeholder namespace, shared by every text in a batch.
+
+    Holds the mapping and the index counter together so they cannot
+    drift apart: numbering off ``len(mapping)`` is what let placeholders
+    collide across per-record calls (issue #324).
+    """
+
+    mapping: dict[str, str] = field(default_factory=dict)
+    """Placeholder -> original value, in allocation order."""
+
+    _by_value: dict[tuple[str, str], str] = field(default_factory=dict)
+    """Reverse index (entity_type, original) -> placeholder.
+
+    Not an optimisation: dedup by linear scan of ``mapping`` is
+    O(entities²) over a request-wide namespace, and hierarchical analyse
+    batches thousands of records.
+    """
+
+    _next_index: int = 0
+
+    def placeholder_for(self, original_value: str, entity_type: str) -> str:
+        """Return this namespace's placeholder for ``original_value``.
+
+        Allocates a new one on first sight, otherwise reuses the existing
+        placeholder for that (entity type, value) pair.
+        """
+        if original_value == "PII":
+            return "<PII>"
+
+        cached = self._by_value.get((entity_type, original_value))
+        if cached is not None:
+            return cached
+
+        placeholder = f"<{entity_type}_{self._next_index}>"
+        self._next_index += 1
+        self.mapping[placeholder] = original_value
+        self._by_value[entity_type, original_value] = placeholder
+        return placeholder
+
+
 class PresidioAnonymizer(AnonymizationPort):
     """``AnonymizationPort`` implementation backed by Presidio.
 
     Replaces detected entities with stable placeholders of the form
     ``<ENTITY_TYPE_N>`` (e.g. ``<PERSON_0>``, ``<LOCATION_1>``) so the
-    same value gets the same placeholder within a single ``anonymize``
-    call. ``DATE_TIME`` entities are preserved verbatim — they carry
+    same value gets the same placeholder within a single
+    ``anonymize``/``anonymize_batch`` call — across every text in the
+    batch. ``DATE_TIME`` entities are preserved verbatim — they carry
     relevant context for analysis without identifying individuals.
     """
 
@@ -86,9 +131,26 @@ class PresidioAnonymizer(AnonymizationPort):
 
     def anonymize(self, text: str) -> tuple[str, dict[str, str]]:
         """Replace sensitive entities in ``text`` with placeholders."""
+        (redacted,), mapping = self.anonymize_batch((text,))
+        return redacted, mapping
+
+    def anonymize_batch(
+        self, texts: tuple[str, ...]
+    ) -> tuple[tuple[str, ...], dict[str, str]]:
+        """Anonymise every text into one shared placeholder namespace.
+
+        Costs one Presidio analyse pass per text. Mappings from separate
+        calls must not be merged — see
+        :meth:`~qfa.domain.ports.AnonymizationPort.anonymize_batch`.
+        """
+        space = _PlaceholderSpace()
+        redacted = tuple(self._anonymize_into(text, space) for text in texts)
+        return redacted, dict(space.mapping)
+
+    def _anonymize_into(self, text: str, space: _PlaceholderSpace) -> str:
+        """Redact ``text``, allocating placeholders from ``space``."""
         detected_language = detect_language(text)
 
-        mapping: dict[str, str] = {}
         results = self._analyzer.analyze(text=text, language=detected_language)
         unique_entities = {res.entity_type for res in results}
 
@@ -98,7 +160,7 @@ class PresidioAnonymizer(AnonymizationPort):
                 "custom",
                 {
                     # Capture 'entity' as a default argument 'ent' to avoid closure issues
-                    "lambda": lambda x, ent=entity: self._get_unique_id(x, ent, mapping)
+                    "lambda": lambda x, ent=entity: space.placeholder_for(x, ent)
                 },
             )
 
@@ -110,26 +172,10 @@ class PresidioAnonymizer(AnonymizationPort):
             analyzer_results=results,  # type: ignore[ty:invalid-argument-type]
             operators=operators,
         )
-        return anonymized.text, mapping
+        return anonymized.text
 
     def deanonymize(self, text: str, mapping: dict[str, str]) -> str:
         """Restore original values in ``text`` using ``mapping``."""
         for placeholder, original in mapping.items():
             text = text.replace(placeholder, original)
         return text
-
-    @staticmethod
-    def _get_unique_id(
-        original_value: str, entity_type: str, mapping: dict[str, str]
-    ) -> str:
-        """Return a stable placeholder for ``original_value`` within ``mapping``."""
-        if original_value == "PII":
-            return "<PII>"
-
-        for placeholder, value in mapping.items():
-            if value == original_value and placeholder.startswith(f"<{entity_type}_"):
-                return placeholder
-
-        placeholder = f"<{entity_type}_{len(mapping.keys())}>"
-        mapping[placeholder] = original_value
-        return placeholder
