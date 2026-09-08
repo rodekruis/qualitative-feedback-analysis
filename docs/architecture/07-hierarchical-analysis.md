@@ -43,10 +43,13 @@ cross-lingual quality), which requires adding a fetch step to the image build
    the call raises `AnalysisError` → **502 `analysis_unavailable`**. A
    deployment that never uses `hierarchical` carries no model on disk.
 2. **Anonymise first.** Every record's *text* and the analyst prompt are
-   anonymised in a **single batch call**, so they share one placeholder
-   namespace, **before** anything leaves the record — i.e. before embedding
-   and before any LLM call. Record *metadata* is left untouched (codes and dates
-   are not PII and feed step 3).
+   anonymised in a **single batch call** (one Presidio pass per record, one
+   shared placeholder namespace — see
+   [ADR-003's amendment](../adr/003-fully-async-concurrency.md#amendment-2026-09-07-thread-offload-for-blocking-work)),
+   **before** anything leaves the record — i.e. before embedding and before
+   any LLM call. Runs off the event loop thread (`asyncio.to_thread`) so a
+   large corpus cannot stall the gunicorn heartbeat. Record *metadata* is
+   left untouched (codes and dates are not PII and feed step 3).
 3. **Coding-trend table (deterministic, no LLM).**
    {py:func}`~qfa.services.coding_trends.build_coding_trend_table` counts the
    coding labels in the records' metadata per time period, producing a
@@ -60,7 +63,8 @@ cross-lingual quality), which requires adding a fetch step to the image build
    default from `ANALYZE_DEFAULT_CODING_TREND_PERIOD`.
 4. **Embed.** {py:class}`~qfa.domain.ports.EmbeddingPort` turns the anonymised
    texts into dense vectors. Encoding is synchronous CPU-bound computation, not
-   I/O — see the port's design rationale in ADR-014.
+   I/O — see the port's design rationale in ADR-014. The call site runs it via
+   `asyncio.to_thread`, same reasoning as anonymisation above.
 5. **Cluster into budget chunks.**
    {py:func}`~qfa.services.clustering.cluster_records` runs HDBSCAN over the
    vectors and packs each resulting cluster into one or more chunks. Outliers

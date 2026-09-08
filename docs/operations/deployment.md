@@ -29,7 +29,7 @@ flowchart LR
 `entrypoint.sh` runs two things, in order:
 
 1. **`python -m qfa.cli.migrate`** — applies any pending Alembic migrations. Uses a Postgres advisory lock (`pg_advisory_lock(LOCK_KEY)`) scoped to the connection, so concurrent replicas wait for one migrator to finish and a crashed migrator's lock auto-releases when its connection closes.
-2. **`gunicorn qfa.main:app --worker-class asgi`** — binds the HTTP server. No `-w`, so one worker.
+2. **`gunicorn qfa.main:app --worker-class asgi --timeout 60`** — binds the HTTP server. No `-w`, so one worker. `--timeout` is a heartbeat check, not a request-duration limit (see [ADR-003](../adr/003-fully-async-concurrency.md#amendment-2026-09-07-thread-offload-for-blocking-work)) — left unset it defaulted to 30s and killed workers stalled on synchronous CPU work well within their own request deadline.
 
 Putting migrations before the server means the App Service health probe doesn't see a half-migrated database. The trade-off: container start time grows with migration time, so keep migrations small.
 

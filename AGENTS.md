@@ -121,3 +121,5 @@ Does not:
 detail belongs in the code. Prefer a list, table, or short code example over
 paragraphs. When editing an existing docstring or page, it must not get longer unless
 behaviour was added.
+
+xomnia:simple-english 
