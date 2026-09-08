@@ -56,6 +56,7 @@ from qfa.domain.errors import (
 from qfa.domain.ports import LLMPort
 from qfa.services.auth_orchestrator import AuthOrchestrator
 from qfa.settings import AppSettings, LLMSettings
+from qfa.telemetry import instrument_db_engine
 from qfa.utils import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -849,6 +850,11 @@ def _make_lifespan(llm_factory: LLMFactory):
         )
 
         engine = create_async_engine_from_settings(settings.db)
+        # Gated on the setting rather than on qfa.main's module state so the
+        # lifespan stays self-contained: without a configured exporter the
+        # spans would go nowhere anyway.
+        if settings.telemetry.applicationinsights_connection_string:
+            instrument_db_engine(engine)
         session_factory = create_session_factory(engine)
         usage_repo = SqlAlchemyUsageRepository(session_factory)
         auth_adapter = SQLAlchemyAuthAdapter(session_factory)

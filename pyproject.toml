@@ -47,7 +47,24 @@ dependencies = [
     "numpy>=2.4.4",
     "onnxruntime>=1.26.0",
     "tokenizers>=0.22.2",
-    "azure-monitor-opentelemetry>=1.8.8",
+    # The distro and the instrumentations it owns must move in lockstep:
+    # azure-monitor-opentelemetry 1.8.8 pins every instrumentation it bundles at
+    # ==0.61b0, and those all require opentelemetry-instrumentation==0.61b0. An
+    # unpinned add here resolves to a newer 0.6xbN and fails to co-resolve, hence
+    # the exact pins below and `~=` (not `>=`) on the distro.
+    "azure-monitor-opentelemetry~=1.8.8",
+    # Not bundled by the distro -- it only auto-instruments azure_sdk, django,
+    # fastapi, flask, psycopg2, requests, urllib, urllib3. This app reaches
+    # Postgres via SQLAlchemy and the LLM via litellm, so AppDependencies
+    # stays empty without all three of these (#223).
+    #
+    # Both HTTP client instrumentations are needed, and neither is redundant:
+    # litellm's default transport is aiohttp-backed (LiteLLMAiohttpTransport),
+    # which bypasses httpx's transport entirely, while its own housekeeping
+    # calls (e.g. the model-price list) do go over httpx.
+    "opentelemetry-instrumentation-aiohttp-client==0.61b0",
+    "opentelemetry-instrumentation-httpx==0.61b0",
+    "opentelemetry-instrumentation-sqlalchemy==0.61b0",
 ]
 
 [tool.uv]

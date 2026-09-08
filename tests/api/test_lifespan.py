@@ -19,6 +19,7 @@ import json
 import pytest
 
 from qfa.adapters.tracking_llm import TrackingLLMAdapter
+from qfa.api import app as app_module
 from qfa.api.app import create_app
 from qfa.domain.models import LLMResponse
 from qfa.domain.ports import LLMPort
@@ -207,3 +208,66 @@ async def test_every_service_is_published_on_app_state(app_env: None) -> None:
         assert isinstance(summarize, SummarizeService)
         assert summarize._llm is analyze._llm
         assert summarize._executor is analyze._executor
+
+
+CONNECTION_STRING_ENV = "APPLICATIONINSIGHTS_CONNECTION_STRING"
+FAKE_CONNECTION_STRING = (
+    "InstrumentationKey=00000000-0000-0000-0000-000000000000;"
+    "IngestionEndpoint=https://example.invalid/"
+)
+
+
+@pytest.mark.asyncio
+async def test_db_engine_is_instrumented_when_telemetry_is_configured(
+    app_env: None, monkeypatch
+):
+    """The DB engine is instrumented here because it is created here.
+
+    Why the lifespan and not ``qfa.telemetry``: the engine does not exist until
+    the lifespan builds it, and the instrumentation must target that specific
+    instance rather than patching ``create_async_engine`` globally (which
+    ``qfa.adapters.db`` from-imports, so the patch would miss). Without this,
+    ``AppDependencies`` has no Postgres rows and the Application Map cannot
+    render (#223).
+    """
+    monkeypatch.setenv(CONNECTION_STRING_ENV, FAKE_CONNECTION_STRING)
+    created: list[object] = []
+    real_create = app_module.create_async_engine_from_settings
+
+    def _recording_create(db_settings):
+        engine = real_create(db_settings)
+        created.append(engine)
+        return engine
+
+    monkeypatch.setattr(
+        app_module, "create_async_engine_from_settings", _recording_create
+    )
+    instrumented: list[object] = []
+    monkeypatch.setattr(
+        app_module, "instrument_db_engine", lambda engine: instrumented.append(engine)
+    )
+    app = create_app(llm_factory=_RecordingFakeLLM)
+
+    async with app.router.lifespan_context(app):
+        # The engine actually wired into the session factory, not a copy.
+        assert len(created) == 1
+        assert instrumented == created
+
+
+@pytest.mark.asyncio
+async def test_db_engine_is_not_instrumented_without_telemetry(
+    app_env: None, monkeypatch
+):
+    """No connection string means no exporter, so instrumenting is pure cost.
+
+    Local dev and the test suite both run in this state.
+    """
+    monkeypatch.delenv(CONNECTION_STRING_ENV, raising=False)
+    instrumented: list[object] = []
+    monkeypatch.setattr(
+        app_module, "instrument_db_engine", lambda engine: instrumented.append(engine)
+    )
+    app = create_app(llm_factory=_RecordingFakeLLM)
+
+    async with app.router.lifespan_context(app):
+        assert instrumented == []
