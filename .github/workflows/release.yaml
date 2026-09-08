@@ -6,7 +6,9 @@
 #   3. Builds a Docker image for the new version, pushes it to ACR,
 #      and reads back the registry-assigned digest.
 #   4. Creates a *draft* GitHub Release with the digest embedded in the body.
-#   5. Auto-deploys the digest to dev via the reusable _deploy-release.yaml.
+#   5. Applies Terraform to dev, so dev's infrastructure is current before
+#      the new image runs there (see #224 and docs/operations/release-flow.md).
+#   6. Auto-deploys the digest to dev via the reusable _deploy-release.yaml.
 #
 # After it runs: the release exists as a draft, dev is running the new
 # image, and you can validate. Once you're happy:
@@ -208,8 +210,20 @@ jobs:
             --title "${{ steps.semrel.outputs.tag }}" \
             $PRERELEASE_FLAG
 
-  deploy-to-dev:
+  terraform:
     needs: release
+    if: needs.release.outputs.released == 'true'
+    uses: ./.github/workflows/terraform.yaml
+    with:
+      environment: dev
+      command: apply
+    permissions:
+      contents: read
+      id-token: write
+    secrets: inherit
+
+  deploy-to-dev:
+    needs: [release, terraform]
     if: needs.release.outputs.released == 'true'
     uses: ./.github/workflows/_deploy-release.yaml
     with:

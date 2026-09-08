@@ -25,7 +25,7 @@ Three human actions drive the whole flow: run the Release workflow, click Publis
 **Another way onto `dev`: Build from commit.** The forward flow above is not the only route into `dev`. **Build from commit** with `deploy_to_dev: true` builds an ephemeral image from any branch, tag, or SHA and deploys it straight to `dev` — no release cut, no promotion. Because it never writes a release body, that image is a dead end: it *cannot* flow onward to staging or prd. Use it to try an in-flight feature branch in `dev`; run **Promote to dev** with a released tag to return `dev` to the normal flow. See [Testing a feature branch in dev without cutting a release](#testing-a-feature-branch-in-dev-without-cutting-a-release).
 
 > [!IMPORTANT]
-> **Infrastructure changes ride a separate track — mind them.** Application releases (this section) move as a single image digest; Terraform-managed infrastructure is deployed **independently** and does *not* travel with that digest. When a release depends on new infrastructure (a Key Vault reference, an env-var binding, a new managed identity), the infra change must be applied to each environment *before* the app release that needs it — otherwise the App Service starts but fails at runtime. See [Infrastructure changes](#infrastructure-changes) below.
+> Infrastructure changes ride a separate track from application releases. Every path that deploys a release, automatic or manual, applies Terraform for the target environment first. See [Infrastructure changes](#infrastructure-changes) below for the details.
 
 ### Normal release (e.g. v0.4.0)
 
@@ -86,32 +86,20 @@ The published site reflects releases, not `main`. A merge to `main` triggers a b
 
 ## Infrastructure changes
 
-```mermaid
-flowchart LR
-    PR["PR touches infra/"] -->|auto| Plan1[Plan on dev]
-    Plan1 --> Merge[Merge to main]
-    Merge -->|auto| Plan2[Plan on dev]
-    Plan2 --> Dispatch["Manual workflow_dispatch<br/>one run per environment"]
-    Dispatch --> Dev[Apply to dev]
-    Dispatch --> Staging[Apply to staging]
-    Dispatch --> Prd[Apply to prd]
-```
+Terraform manages infrastructure such as Azure App Service, Key Vault, and managed identities. `plan` runs automatically on every PR and push that touches `infra/`. `apply` runs manually through the Actions tab, or automatically as the last step before every deploy. This means a release cannot reach an environment ahead of the infrastructure it depends on. Every path that puts a release into an environment applies Terraform for that environment first:
 
-Contrast with the release flow above: applies fan out from a single manual-dispatch hub to three independent environments — there is no promotion chain and no enforced ordering between them. `plan` runs automatically on PRs and on `main`, but `apply` is manual-only.
+- `dev`: `release.yaml` (automatic, on every release cut) and Promote to dev (manual).
+- `staging`: `auto-staging-on-publish.yaml` (automatic, on publish) and Promote to staging (manual).
+- `prd`: Promote to prd, its only path.
 
-Infrastructure (Azure App Service, Key Vault, managed identities, etc.) is managed by Terraform and deployed **independently** of application code. For deployed environments, PostgreSQL application authentication is Entra-only via managed identity token flow (password auth is disabled on the server). Database migrations in production run via `python -m qfa.cli.migrate` (invoked by `entrypoint.sh`) so Alembic uses the lock-managed connection and Entra-capable auth path.
-
-The `terraform.yaml` workflow (`.github/workflows/terraform.yaml`) runs `plan` automatically on PRs and pushes touching `infra/`, but **never runs `apply` automatically** — `apply` only executes when dispatched manually with `command: apply`.
+For deployed environments, PostgreSQL application authentication is Entra-only, through a managed identity token flow (password authentication is disabled on the server). Database migrations in production run through `python -m qfa.cli.migrate`, invoked by `entrypoint.sh`, so Alembic uses the lock-managed connection and the Entra-capable authentication path.
 
 ### Applying an infra change
 
-1. Open a PR touching `infra/`. CI runs `terraform plan` automatically so reviewers can see the proposed diff. Note that the automated plan runs against the `dev` workspace only — diffs against `staging` / `prd` require a manual `workflow_dispatch` run.
-2. Merge the PR to `main`. Plan runs again on `main` as a sanity check. Nothing is applied.
-3. Run the `Terraform` workflow from the Actions tab with `environment: dev`, `command: apply`. Verify dev.
-4. Repeat step 3 for `staging`, then for `prd`.
-
-> [!IMPORTANT]
-> If an infrastructure change is a prerequisite for an app version (e.g. a new Key Vault reference, a new environment variable binding), apply the infra change to a given environment **before** promoting the app release that depends on it — otherwise the App Service will start but fail at runtime when the missing reference resolves.
+1. Open a PR that touches `infra/`. CI runs `terraform plan` automatically, so reviewers can see the proposed diff. The automated plan runs against the `dev` workspace only. A diff against `staging` or `prd` needs a manual `workflow_dispatch` run.
+2. Merge the PR to `main`. Plan runs again on `main` as a check. Nothing applies yet.
+3. To apply the change immediately, without waiting for a release, run the `Terraform` workflow from the Actions tab with the target `environment` and `command: apply`.
+4. Otherwise, the next release or promotion to that environment applies the change automatically, before it deploys.
 
 ## GitHub environments and variables
 

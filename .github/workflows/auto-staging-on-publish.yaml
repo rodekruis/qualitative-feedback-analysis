@@ -14,6 +14,10 @@
 #   - Guard cannot decide -> the guard job fails red and nothing deploys
 #     (fail closed).
 #
+# When the guard confirms the latest release, Terraform applies to staging
+# before the digest deploys, so staging's infrastructure is current first
+# (see #224 and docs/operations/release-flow.md).
+#
 # Pre-releases (vX.Y.Z-rc.N) are still eligible for staging — the guard ranks
 # them correctly (a pre-release is older than its final), so an rc auto-deploys
 # only while it is genuinely the top of the version tree. Prd remains protected
@@ -39,8 +43,20 @@ jobs:
     permissions:
       contents: write
 
-  deploy:
+  terraform:
     needs: guard
+    if: needs.guard.outputs.is_greatest == 'true'
+    uses: ./.github/workflows/terraform.yaml
+    with:
+      environment: staging
+      command: apply
+    permissions:
+      contents: read
+      id-token: write
+    secrets: inherit
+
+  deploy:
+    needs: [guard, terraform]
     if: needs.guard.outputs.is_greatest == 'true'
     uses: ./.github/workflows/_deploy-release.yaml
     with:
