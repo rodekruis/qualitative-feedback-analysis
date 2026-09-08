@@ -23,4 +23,4 @@ set -eu
 
 .venv/bin/python -m qfa.cli.migrate
 
-exec .venv/bin/gunicorn qfa.main:app --worker-class asgi --timeout 60 --bind 0.0.0.0:8000
+exec .venv/bin/gunicorn qfa.main:app --worker-class asgi --timeout 120 --bind 0.0.0.0:8000
