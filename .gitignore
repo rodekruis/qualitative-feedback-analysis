@@ -207,3 +207,8 @@ graphify-out/
 # they leak into PRs and can fail the loop's own clean-tree gate.
 tasks/
 
+# Per-developer Claude Code config: personal instructions and tool permissions,
+# often with machine-specific paths. The shared config stays tracked
+# (.claude/settings.json, .claude/skills/) — only the *.local* variants are ignored.
+CLAUDE.local.md
+.claude/settings.local.json
