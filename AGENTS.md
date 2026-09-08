@@ -17,12 +17,13 @@ Use `uv` for all dependency management (not `pip`). Examples:
 
 ### Workflow
 
-- if working from a github issue or requested to "follow the feature workflow":
-    1. create a new branch from `main`
-    2. commit small, focused changes to the branch
-    3. open a PR to merge the branch into `main`
-    4. close the issue when the PR is merged ("closes #123")
-- else: work directly on `main`
+`main` is protected and requires a pull request, so every change lands on a branch —
+direct pushes are rejected. Required approvals: 0, so self-merge is fine.
+
+1. create a new branch from `main`
+2. commit small, focused changes to the branch
+3. open a PR to merge the branch into `main`
+4. when working from a github issue, close it via the PR ("closes #123")
 
 ## Architecture
 
