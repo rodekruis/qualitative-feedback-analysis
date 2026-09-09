@@ -25,12 +25,14 @@ All long-form docs live in the [documentation home](docs/README.md). The most co
 ```bash
 git clone git@github.com:rodekruis/qualitative-feedback-analysis.git
 cd qualitative-feedback-analysis
-cp .env.example .env && $EDITOR .env    # set LLM_API_KEY and AUTH_API_KEYS at minimum
+cp .env.example .env                    # boots as-is — see below before any LLM call
 uv sync
 uv run pre-commit install
 make test
 uv run python -m qfa.main               # serves on http://0.0.0.0:8000
 ```
+
+Three variables are required — `LLM_API_KEY`, `AUTH_API_KEYS`, `DB_URL` — and the copied template satisfies all three, so the service starts and `GET /v1/health` answers 200 with no editing. Two placeholders need replacing before real use: `LLM_API_KEY` (LiteLLM only authenticates on the first call, so a dummy string boots) and, for any route that records usage, a reachable `DB_URL` — `docker compose up -d postgres` matches the shipped default.
 
 Full walkthrough (direnv, hooks, conventions, test tiers) is in the [Developer guide](docs/development/index.md). Required and optional environment variables are listed in the [Settings reference](docs/operations/settings-reference.md).
 
