@@ -14,7 +14,7 @@ The rendered Sphinx site is hosted at <https://rodekruis.github.io/qualitative-f
 All long-form docs live in the [documentation home](docs/README.md). The most common entry points:
 
 - **New to the project?** Start with the [Developer guide](docs/development/index.md) — local env setup, pre-commit, coding conventions.
-- **Want the fastest dev environment?** Use the [Devcontainer](.devcontainer/README.md).
+- **Want a containerised dev environment?** The [devcontainer](https://github.com/mariushelf/copier-devcontainer) is an optional, per-developer sandbox. It is not shipped in this repo — inject it locally with `uvx copier copy gh:mariushelf/copier-devcontainer "$(pwd)"`.
 - **Want to understand the design?** Read the [Architecture overview](docs/architecture/index.md).
 - **Operating the service?** See the [Operations index](docs/operations/index.md) — deployment, release flow, env provisioning, observability, settings reference.
 - **Calling the API?** See the [REST API overview](docs/rest-api/index.md).
