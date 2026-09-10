@@ -26,7 +26,8 @@
     "deny": [
       "Read(.envrc)",
       "Read(.env)",
-      "Read(.env.*)",
+      "Read(.env.local)",
+      "Read(.env.*.local)",
       "Read(~/.aws/**)"
     ]
   }

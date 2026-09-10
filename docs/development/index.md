@@ -22,12 +22,14 @@ You can use [direnv](https://direnv.net/) to load per-project environment variab
 # then hook it into your shell — see https://direnv.net/docs/hook.html
 
 cp .env.example .env
-$EDITOR .env                 # fill in the values you actually need locally
+$EDITOR .env                 # optional — the template already boots
 echo 'dotenv .env' > .envrc  # tell direnv to load .env (repo no longer ships this)
 direnv allow                 # one-time approval for this directory
 ```
 
 `.env.example` is the starter template — copy it, edit it, **never commit `.env`** (it's gitignored). Required variables and defaults are listed in [Settings reference](../operations/settings-reference.md).
+
+The template is bootable verbatim: it ships a placeholder `LLM_API_KEY`, valid `AUTH_API_KEYS` entries, and a `DB_URL` matching `docker-compose.yml`. Two things stay commented out on purpose, and both fail loudly rather than silently if you need them — the `EMBEDDING_*` paths (an absent model file kills startup in onnxruntime, so `mode=hierarchical` returns 502 `analysis_unavailable` until you run `scripts/fetch_embedding_model.py` and paste the printed lines back in) and `JUDGE_LLM_MODEL` (judge calls stay on the primary connection while unset).
 
 If you'd rather not use direnv, export the same variables manually or load `.env` from your shell profile. The application itself reads settings via pydantic-settings, so any mechanism that puts the variables into the process environment works.
 
