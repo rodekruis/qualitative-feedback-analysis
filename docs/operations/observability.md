@@ -26,6 +26,7 @@ Two more rules, added with [ADR-018](../adr/018-no-third-party-text-in-error-env
 
 - **Tracebacks are in scope for data classification.** Adapter code translates third-party exceptions (litellm, pydantic, SQLAlchemy) into domain errors with `raise ... from exc`, kept for debuggability. A log line emitted with `exc_info=True` or `logger.exception` therefore still carries the original provider-controlled text through `__cause__`, even though the log message itself does not. This is a deliberate trade-off, not an oversight — log output must not be exported to third-party log analytics without review.
 - **`str(exc)` may be logged or echoed in a response only when the message was authored in this repo.** A log line or exception handler may interpolate `str(exc)` only for domain errors whose messages are literal constants raised from `qfa.services` (e.g. `AnalysisError`). Provider-derived errors (`LLMError` and subclasses, `UsageRepositoryUnavailableError`) are logged as content-free scalars instead — `type=%s status=%s`, never the exception text.
+- **Dependency spans carry parameterised SQL and endpoint URLs only.** `AppDependencies` records `db.statement` in its placeholder form (`... VALUES (:tenant_id)`) plus the outbound host — never bound parameter values, feedback text, prompts, or model output. Guarded by `test_sqlalchemy_spans_do_not_record_bound_parameters` in `tests/test_telemetry.py`.
 
 ## Safe to log
 
@@ -226,7 +227,7 @@ it is *not* required for logs or host metrics.
 
 Two gotchas: **Run** executes the *whole* editor unless you first select a single query, and a *"failed to resolve table"* error means nothing has been ingested into that table yet — it is not a syntax error. Ingestion also lags the live log stream by a few minutes (see below), so re-run after a short wait if a fresh event is missing.
 
-The Application Insights `App*` tables (populated by the OpenTelemetry SDK — delivery pending verification, see below):
+The Application Insights `App*` tables (populated by the OpenTelemetry SDK — see [Application Insights (application telemetry)](#application-insights-application-telemetry) below):
 
 ```kql
 // All requests in the last hour
@@ -244,7 +245,7 @@ AppExceptions
 
 The queries above target the Application Insights `App*` tables, which the app's
 telemetry populates (see [Application Insights (application telemetry)](#application-insights-application-telemetry)
-below — delivery is currently pending verification). Independently of that, the App
+below). Independently of that, the App
 Service **diagnostic setting** in `infra/observability.tf` ships three log
 categories straight to the same workspace, so these tables are populated as soon
 as the container runs — they are the authoritative log source today:
@@ -344,6 +345,36 @@ Telemetry turns on automatically when the `APPLICATIONINSIGHTS_CONNECTION_STRING
 setting is present — i.e. in deployed environments, where Terraform wires it. Local dev
 leaves the setting unset and emits nothing, so an empty App Insights locally is expected.
 
+### What populates each `App*` table
+
+Each table has a *separate* cause, so they fail independently — one empty table is not
+evidence about the others. All four are wired in `qfa.telemetry`.
+
+| Table | Populated by | Breaks if |
+|---|---|---|
+| `AppRequests`, `AppExceptions` | FastAPI ASGI instrumentation, attached to the app **instance** by `instrument_app()` in `qfa.main` | the app is served from an instance that was never instrumented |
+| `AppDependencies` (Postgres) | SQLAlchemy instrumentation, attached to the **engine** in the `qfa.api.app` lifespan | the engine is created without `instrument_db_engine()` |
+| `AppDependencies` (LLM) | **aiohttp** instrumentation, process-global, from `configure_telemetry()` | litellm changes its default transport again (see below) |
+| `AppTraces` | the SDK's own handler on the **root logger** | anything removes root handlers — `logging.basicConfig(force=True)` did exactly this |
+
+Why the LLM row says aiohttp and not httpx: litellm calls the LLM through
+`LiteLLMAiohttpTransport` by default, which drives aiohttp directly and never passes
+through httpx's transport — so httpx instrumentation alone records **no** LLM
+dependencies. httpx instrumentation is still needed for litellm's own housekeeping
+requests (the model-price list), so both are installed.
+`test_litellms_default_transport_is_not_traced_by_httpx_alone` fails if litellm ever
+switches back, which is the signal to drop the extra dependency.
+
+Two things about `AppRequests` that read as data loss but are not:
+
+- It is **rate-limit sampled at 5 spans/sec** by default, so it is not a complete request
+  log. `AppServiceHTTPLogs` remains the authoritative one-row-per-request table.
+- The platform health probe hits `/v1/health` roughly every minute (`always_on` +
+  `health_check_path`), so an *idle* environment still shows a non-zero request rate.
+  That is the free continuous signal that telemetry is alive. Set
+  `OTEL_PYTHON_FASTAPI_EXCLUDED_URLS=/v1/health` if the volume ever becomes a cost
+  concern.
+
 > **Look at the `qfa-<env>-appinsights` resource, not the App Service tab.** Open that
 > Application Insights resource directly. Do **not** use `qfa-<env>-backend → Application
 > Insights` — that App Service tab controls Azure's *codeless* auto-instrumentation, a
@@ -352,10 +383,15 @@ leaves the setting unset and emits nothing, so an empty App Insights locally is 
 > would attach an injected agent on top of the app's own telemetry and duplicate every
 > record.
 
-> **Verification pending.** Telemetry is wired but end-to-end delivery has not yet been
-> confirmed against a deployed environment. Until it is, treat the App Service log stream
-> and the `AppService*` tables as the authoritative log source, and verify the `App*`
-> tables populate after the next deploy.
+> **Verification pending.** #223 fixed four defects, one per empty table: the app
+> instance was never instrumented (`AppRequests`, `AppExceptions`), `setup_logging` tore
+> the SDK's handler off the root logger (`AppTraces`), and neither SQLAlchemy nor the
+> LLM's HTTP client was instrumented at all (`AppDependencies`). Each is covered by a
+> unit test, but **end-to-end delivery to Azure is still unconfirmed** — that cannot be
+> tested outside a deployed environment. After the next deploy, run the KQL in step 3
+> below and check the Application Map renders; if both look right, replace this note with
+> the date it was verified. Until then, treat the App Service log stream and the
+> `AppService*` tables as the authoritative log source.
 
 **Validating that App Insights receives telemetry** (fastest → slowest):
 

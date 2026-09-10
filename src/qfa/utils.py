@@ -56,15 +56,24 @@ def setup_logging(log_settings: LogSettings | None = None) -> None:
         ``LogSettings`` instance is created.
     """
     log_config = log_settings or LogSettings()
-    # force=True: qfa.main calls configure_azure_monitor() before this runs
-    # whenever APPLICATIONINSIGHTS_CONNECTION_STRING is set (every deployed
-    # environment). That call attaches its own handler to the root logger,
-    # which makes a plain basicConfig() a silent no-op — every log call in the
-    # app would still "succeed" but never reach stdout/stderr, only the
-    # separately-configured OTel export.
+    # force=True replaces our own stdout handler on repeat calls, but it also
+    # removes *and closes* every other root handler — including the OTel
+    # export handler that configure_azure_monitor() attached to root earlier in
+    # startup. That silently emptied AppTraces (#223). So detach third-party
+    # sinks first (a closed exporter handler is unrecoverable) and re-attach
+    # them after. logging.FileHandler subclasses StreamHandler, so
+    # basicConfig-style output handlers are still replaced as before.
+    root = logging.getLogger()
+    preserved = [h for h in root.handlers if not isinstance(h, logging.StreamHandler)]
+    for handler in preserved:
+        root.removeHandler(handler)
+
     logging.basicConfig(
         level=log_config.loglevel_3rdparty, force=True, **log_config.basicConfig
     )
+
+    for handler in preserved:
+        root.addHandler(handler)
 
     our_loglevel = log_config.loglevel
     for package in log_config.our_packages:

@@ -14,7 +14,17 @@ def _isolate_settings_env(monkeypatch: pytest.MonkeyPatch) -> None:
     Tests that need specific values still call ``monkeypatch.setenv`` — that
     runs after autouse fixtures, so per-test setup wins as expected.
     """
-    _SETTINGS_ENV_PREFIXES = ("LLM_", "ORCHESTRATOR_", "AUTH_", "DB_", "NETWORK_")
+    # APPLICATIONINSIGHTS_ matters beyond settings hygiene: with it set, the
+    # lifespan really instruments the DB engine, which mutates process-global
+    # SQLAlchemy state and leaks across tests.
+    _SETTINGS_ENV_PREFIXES = (
+        "LLM_",
+        "ORCHESTRATOR_",
+        "AUTH_",
+        "DB_",
+        "NETWORK_",
+        "APPLICATIONINSIGHTS_",
+    )
     for key in list(os.environ):
         if key.startswith(_SETTINGS_ENV_PREFIXES):
             monkeypatch.delenv(key, raising=False)
