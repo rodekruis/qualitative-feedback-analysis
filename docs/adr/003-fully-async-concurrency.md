@@ -114,8 +114,12 @@ synchronous work off the loop:
   propagating to whatever the offloaded call logs or records.
 - Onnxruntime's `session.run()` releases the GIL during inference, so
   embedding genuinely gains wall-clock concurrency from this, not just
-  heartbeat liveness; Presidio does not release the GIL, so its offload is
-  purely to keep the heartbeat alive on prd's 1 vCPU.
+  heartbeat liveness. Presidio's `AnalyzerEngine.analyze()` **also** releases
+  the GIL during spaCy/thinc inference — measured 1.9× wall-clock on the
+  detect phase with 4 threads — so its offload buys real concurrency too,
+  not just heartbeat liveness as originally stated here. (prd has also been
+  **B3, 4 vCPU** since commit `0b9f511`, not the 1 vCPU this paragraph
+  originally assumed.)
 - Thread pool sizing is not a concern here the way it was for Option A:
   each in-flight request occupies at most one thread for the duration of
   one anonymise/embed call rather than the whole request, and prd runs a
@@ -135,3 +139,14 @@ serialising access with a lock, which would give back part of the
 heartbeat-liveness benefit this amendment exists for. Revisit if
 production sees anonymisation errors or corrupted placeholder mappings
 under concurrent load.
+
+**Extended risk (Part 1 speed-up):** `PresidioAnonymizer.anonymize_batch`
+now enters the same shared `AnalyzerEngine` from up to `ANONYMIZATION_
+MAX_WORKERS` threads **by design**, not just incidentally across concurrent
+requests — one call parallelises its own detection pass across the pool.
+This is mitigated three ways: each thread works a disjoint chunk of the
+batch (no two threads ever analyse the same text); placeholder allocation
+from `_PlaceholderSpace` happens afterwards, serially, on the calling
+thread, so the one piece of call-scoped mutable state is never touched
+concurrently; and `ANONYMIZATION_MAX_WORKERS=1` restores the original
+fully-serial behaviour with no deploy needed if this ever misbehaves.

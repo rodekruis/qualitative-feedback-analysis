@@ -115,6 +115,18 @@ gitignored `.models/` and prints every `EMBEDDING_*` value to paste, including
 | `EMBEDDING_INTRA_OP_NUM_THREADS` | no | core count | onnxruntime intra-op threads for the batched encode. |
 | `EMBEDDING_BATCH_SIZE` | no | `100` | Records encoded per onnxruntime batch. The corpus is embedded in sequential batches of this size to bound peak memory on large inputs (padding is per-batch). Lower it if the embedder is memory-pressured; raise it for throughput on roomy hosts. |
 
+## Anonymisation (`ANONYMIZATION_*`)
+
+Throughput tuning for the Presidio-based anonymisation adapter
+(`qfa.adapters.presidio_anonymizer`). Neither knob changes which entities
+get detected or how they are redacted — output is identical at every
+setting.
+
+| Variable | Required | Default | Notes |
+|---|---|---|---|
+| `ANONYMIZATION_MAX_WORKERS` | no | `4` | Threads used to parallelise entity detection across a batch. `1` restores fully serial detection — the kill switch if shared-engine concurrency ever misbehaves in production. |
+| `ANONYMIZATION_BATCH_SIZE` | no | `64` | spaCy `nlp.pipe` batch size for the detection pass. |
+
 ## Orchestrator (`ORCHESTRATOR_*`)
 
 Cross-cutting wiring shared by every use-case service (retry policy,

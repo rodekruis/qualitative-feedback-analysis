@@ -437,6 +437,27 @@ class TestBuildServices:
             settings.llm.max_total_tokens
         )
 
+    def test_anonymizer_gets_worker_count_and_batch_size_from_settings(
+        self, auth_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``ANONYMIZATION_*`` settings must reach the shared ``PresidioAnonymizer``.
+
+        A regression here would silently strand the settings unused and
+        leave every deployment on the hardcoded default regardless of
+        configuration — including the ``ANONYMIZATION_MAX_WORKERS=1`` kill
+        switch.
+        """
+        monkeypatch.setenv("ANONYMIZATION_MAX_WORKERS", "1")
+        monkeypatch.setenv("ANONYMIZATION_BATCH_SIZE", "32")
+        settings = AppSettings()
+
+        services = build_services(settings, llm=_StubLLM())
+
+        anonymizer = services.analyze._anonymizer
+        assert isinstance(anonymizer, PresidioAnonymizer)
+        assert anonymizer._max_workers == 1
+        assert anonymizer._batch_size == 32
+
     def test_summarize_service_gets_both_connections(self, auth_env: None) -> None:
         """Generation and judge clients reach the summarisation service.
 
