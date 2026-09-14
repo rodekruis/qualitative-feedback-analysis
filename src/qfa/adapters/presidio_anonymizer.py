@@ -8,7 +8,7 @@ so the application service layer never imports Presidio directly.
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
-from langdetect import detect
+from langdetect import DetectorFactory, detect
 from langdetect.lang_detect_exception import LangDetectException
 from presidio_analyzer import AnalyzerEngine, BatchAnalyzerEngine, RecognizerResult
 from presidio_analyzer.nlp_engine import NlpEngineProvider
@@ -19,6 +19,13 @@ from qfa.settings import (
     DEFAULT_ANONYMIZATION_BATCH_SIZE,
     DEFAULT_ANONYMIZATION_MAX_WORKERS,
 )
+
+# langdetect draws a random seed per process by default, so the same text can
+# get different language guesses (and therefore different redactions) across
+# calls. Pinning it makes detection deterministic — required for the
+# worker-count-parity and repeat-determinism tests below to be a guarantee
+# rather than a coincidence of which model happens to win on a given text.
+DetectorFactory.seed = 0
 
 LANGUAGES_AND_ANONYMIZATION_MODEL_PAIRINGS = [
     {"lang_code": "en", "model_name": "en_core_web_sm"},
@@ -242,14 +249,16 @@ class PresidioAnonymizer(AnonymizationPort):
         chunks = _plan_chunks(languages, self._max_workers)
 
         results_by_index: list[list[RecognizerResult]] = [[] for _ in texts]
-        if len(chunks) <= 1:
+        if len(chunks) == 1:
             # Fast path for the single-text anonymize() used synchronously
             # by coding/summarize/sensitivity, and any small batch that
             # plans to a single chunk: run inline, never touch the pool.
-            for lang, indices in chunks:
-                self._scatter(
-                    indices, self._analyze_chunk(texts, indices, lang), results_by_index
-                )
+            # chunks is never empty here — texts is non-empty (checked
+            # above) and _plan_chunks always emits >= 1 chunk per language.
+            lang, indices = chunks[0]
+            self._scatter(
+                indices, self._analyze_chunk(texts, indices, lang), results_by_index
+            )
         else:
             futures = [
                 (indices, self._pool.submit(self._analyze_chunk, texts, indices, lang))

@@ -144,9 +144,29 @@ under concurrent load.
 now enters the same shared `AnalyzerEngine` from up to `ANONYMIZATION_
 MAX_WORKERS` threads **by design**, not just incidentally across concurrent
 requests — one call parallelises its own detection pass across the pool.
-This is mitigated three ways: each thread works a disjoint chunk of the
-batch (no two threads ever analyse the same text); placeholder allocation
-from `_PlaceholderSpace` happens afterwards, serially, on the calling
-thread, so the one piece of call-scoped mutable state is never touched
-concurrently; and `ANONYMIZATION_MAX_WORKERS=1` restores the original
-fully-serial behaviour with no deploy needed if this ever misbehaves.
+
+Two different pieces of shared state are at risk here, protected by two
+different mechanisms — worth separating, because conflating them
+overstates what disjoint work actually buys:
+
+- **This call's own output**, `_PlaceholderSpace`. Disjoint chunking *does*
+  protect this: each thread only ever analyses its own slice of the batch,
+  and placeholder allocation happens afterwards, serially, on the calling
+  thread — the one piece of call-scoped mutable state this code owns is
+  never touched concurrently.
+- **The `AnalyzerEngine`/spaCy `Language` object itself**, shared across
+  every thread and every call regardless of which texts they process
+  (tokenizer cache, vocab string interning, memory pools). Disjoint inputs
+  do nothing to protect *this* — what protects it is the GIL. Verified
+  against spaCy/thinc 3.8.14: the hot Cython path spaCy's tokenizer and
+  vocab run on (`tokenizer.pyx`, `strings.pyx`, `vocab.pyx`) never releases
+  the GIL, so its internal writes stay serialised at the interpreter level;
+  the one stage in this path that does release the GIL (`thinc`'s
+  prediction step) only reads already-trained, read-only weights. **This
+  is a version-pinned fact, not a property of the code** — a future
+  spaCy/thinc release that moves tokenization or vocab writes off the GIL
+  would break this while the disjoint-chunking argument above kept looking
+  correct. Re-verify on any spaCy/thinc upgrade.
+
+`ANONYMIZATION_MAX_WORKERS=1` restores the original fully-serial behaviour
+with no deploy needed if either of these ever misbehaves.
