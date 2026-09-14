@@ -26,6 +26,7 @@ Run::
 from __future__ import annotations
 
 import os
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +41,10 @@ DATASET_NAME = "assign-codes/ukrain"
 DEFAULT_BASE_URL = "https://qfa-dev-backend.azurewebsites.net"
 MAX_CODES = 10
 REQUEST_TIMEOUT_SECONDS = 180.0
+# run_experiment defaults to 50 concurrent items, which exhausts the dev
+# backend's small Postgres connection pool (usage tracking then fails, and
+# every request slows down). Keep this well under that pool's capacity.
+MAX_CONCURRENCY = 5
 
 
 async def run_assign_codes(*, item: Any, **kwargs: Any) -> list[dict[str, Any]]:
@@ -115,15 +120,48 @@ def level_3_correct(
     return _level_evaluation(3, output, expected_output)
 
 
+def _git_output(*args: str) -> str:
+    """Run a git command in the repo; empty string on any failure."""
+    # Fixed executable, fixed-shape args from this file only — not user input.
+    result = subprocess.run(  # noqa: S603
+        ["git", *args],  # noqa: S607
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def _git_metadata() -> dict[str, str]:
+    """The commit SHA and branch this run is evaluating.
+
+    CI sets ``GIT_SHA``/``GIT_REF_NAME`` (from the GitHub Actions context,
+    which knows the ref even in a detached-HEAD checkout); a local run falls
+    back to asking git directly.
+    """
+    sha = os.environ.get("GIT_SHA") or _git_output("rev-parse", "HEAD") or "unknown"
+    branch = (
+        os.environ.get("GIT_REF_NAME")
+        or _git_output("rev-parse", "--abbrev-ref", "HEAD")
+        or "unknown"
+    )
+    return {"git_sha": sha, "git_branch": branch}
+
+
 def main() -> None:
     """Run the experiment against the full dataset and print a summary."""
+    git_meta = _git_metadata()
     langfuse = get_client()
     dataset = langfuse.get_dataset(DATASET_NAME)
     result = dataset.run_experiment(
         name="assign-codes eval",
+        run_name=f"assign-codes eval ({git_meta['git_branch']} @ {git_meta['git_sha'][:7]})",
         description="Per-level accuracy of POST /v1/assign-codes against ground truth.",
         task=run_assign_codes,
         evaluators=[level_1_correct, level_2_correct, level_3_correct],
+        max_concurrency=MAX_CONCURRENCY,
+        metadata=git_meta,
     )
     print(result.format())
 
