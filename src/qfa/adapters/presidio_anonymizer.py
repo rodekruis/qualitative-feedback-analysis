@@ -172,8 +172,13 @@ class PresidioAnonymizer(AnonymizationPort):
     across a bounded thread pool (spaCy/thinc releases the GIL during
     inference); placeholder allocation stays serial and in input order so
     ``_PlaceholderSpace`` is never touched by two threads at once. Output
-    is identical to the fully serial implementation regardless of
+    for a given set of detected entities is identical regardless of
     ``max_workers`` — see ``tests/adapters/test_presidio_anonymizer.py``.
+
+    Every text also gets a second, ``xx``-model, ``PERSON``-only detection
+    pass unioned onto the per-language model's result (PERSON wins any
+    overlap) — the per-language models miss or mislabel some real names,
+    which would otherwise leak verbatim. See :meth:`_merge_person_wins`.
     """
 
     def __init__(
@@ -236,36 +241,36 @@ class PresidioAnonymizer(AnonymizationPort):
         Detection (language + entity spans) is batched through
         ``nlp.pipe`` and, for a multi-chunk batch, parallelised across the
         adapter's thread pool. Allocation from the shared placeholder
-        namespace stays serial and in input order, so output is
-        byte-identical to a fully serial run. Mappings from separate calls
-        must not be merged — see
+        namespace stays serial and in input order, so output for a given
+        set of detected entities is byte-identical to a fully serial run.
+        Mappings from separate calls must not be merged — see
         :meth:`~qfa.domain.ports.AnonymizationPort.anonymize_batch`.
+
+        Every text whose language isn't already ``xx`` also gets a second,
+        ``xx``-model, ``PERSON``-only pass, unioned onto the first with
+        PERSON winning any overlap — see :meth:`_merge_person_wins`. NER is
+        statistical, so this reduces missed names, not eliminates them.
         """
         if not texts:
             return (), {}
 
         space = _PlaceholderSpace()
         languages = tuple(detect_language(text) for text in texts)
-        chunks = _plan_chunks(languages, self._max_workers)
+        results_by_index = self._run_pass(texts, languages)
 
-        results_by_index: list[list[RecognizerResult]] = [[] for _ in texts]
-        if len(chunks) == 1:
-            # Fast path for the single-text anonymize() used synchronously
-            # by coding/summarize/sensitivity, and any small batch that
-            # plans to a single chunk: run inline, never touch the pool.
-            # chunks is never empty here — texts is non-empty (checked
-            # above) and _plan_chunks always emits >= 1 chunk per language.
-            lang, indices = chunks[0]
-            self._scatter(
-                indices, self._analyze_chunk(texts, indices, lang), results_by_index
+        person_pass_indices = tuple(
+            i for i, lang in enumerate(languages) if lang != "xx"
+        )
+        if person_pass_indices:
+            person_pass_texts = tuple(texts[i] for i in person_pass_indices)
+            person_pass_languages = tuple("xx" for _ in person_pass_indices)
+            person_results = self._run_pass(
+                person_pass_texts, person_pass_languages, entities=["PERSON"]
             )
-        else:
-            futures = [
-                (indices, self._pool.submit(self._analyze_chunk, texts, indices, lang))
-                for lang, indices in chunks
-            ]
-            for indices, future in futures:
-                self._scatter(indices, future.result(), results_by_index)
+            for local_index, global_index in enumerate(person_pass_indices):
+                results_by_index[global_index] = self._merge_person_wins(
+                    results_by_index[global_index], person_results[local_index]
+                )
 
         redacted = tuple(
             self._redact(text, results, space)
@@ -273,14 +278,51 @@ class PresidioAnonymizer(AnonymizationPort):
         )
         return redacted, dict(space.mapping)
 
-    def _analyze_chunk(
-        self, texts: tuple[str, ...], indices: tuple[int, ...], language: str
+    def _run_pass(
+        self,
+        texts: tuple[str, ...],
+        languages: tuple[str, ...],
+        *,
+        entities: list[str] | None = None,
     ) -> list[list[RecognizerResult]]:
-        """Run the batched analyser over one language chunk of ``texts``."""
-        chunk_texts = [texts[i] for i in indices]
-        return self._batch_analyzer.analyze_iterator(
-            chunk_texts, language=language, batch_size=self._batch_size
-        )
+        """Analyse ``texts`` (each against its ``languages`` entry), chunked and merged back.
+
+        Chunked by language and, for more than one chunk, dispatched to
+        the adapter's pool; a single chunk (one language, or a small
+        batch) runs inline without touching the pool.
+        """
+        chunks = _plan_chunks(languages, self._max_workers)
+
+        def analyze(
+            indices: tuple[int, ...], language: str
+        ) -> list[list[RecognizerResult]]:
+            chunk_texts = [texts[i] for i in indices]
+            if entities is None:
+                return self._batch_analyzer.analyze_iterator(
+                    chunk_texts, language=language, batch_size=self._batch_size
+                )
+            return self._batch_analyzer.analyze_iterator(
+                chunk_texts,
+                language=language,
+                batch_size=self._batch_size,
+                entities=entities,
+            )
+
+        results_by_index: list[list[RecognizerResult]] = [[] for _ in texts]
+        if len(chunks) == 1:
+            # Never empty: the caller guarantees non-empty texts, and
+            # _plan_chunks emits >= 1 chunk per language. Run inline —
+            # the single-text synchronous callers must never touch the pool.
+            lang, indices = chunks[0]
+            self._scatter(indices, analyze(indices, lang), results_by_index)
+        else:
+            futures = [
+                (indices, self._pool.submit(analyze, indices, lang))
+                for lang, indices in chunks
+            ]
+            for indices, future in futures:
+                self._scatter(indices, future.result(), results_by_index)
+        return results_by_index
 
     @staticmethod
     def _scatter(
@@ -290,6 +332,39 @@ class PresidioAnonymizer(AnonymizationPort):
     ) -> None:
         for index, result in zip(indices, results, strict=True):
             results_by_index[index] = result
+
+    @staticmethod
+    def _merge_person_wins(
+        primary: list[RecognizerResult], person_pass: list[RecognizerResult]
+    ) -> list[RecognizerResult]:
+        """Union a ``PERSON``-only second pass onto ``primary``, PERSON winning overlaps.
+
+        Adds non-overlapping ``person_pass`` spans to ``primary``'s PERSON
+        spans, then drops any non-PERSON result overlapping the result —
+        e.g. an ``ORGANIZATION`` mislabel of a name the second pass
+        correctly tags. A union, not a replacement: a name only ``primary``
+        catches is untouched.
+        """
+
+        def overlaps_any(
+            candidate: RecognizerResult, spans: list[RecognizerResult]
+        ) -> bool:
+            return any(
+                candidate.start < span.end and span.start < candidate.end
+                for span in spans
+            )
+
+        persons = [result for result in primary if result.entity_type == "PERSON"]
+        for candidate in person_pass:
+            if not overlaps_any(candidate, persons):
+                persons.append(candidate)
+
+        non_person_survivors = [
+            result
+            for result in primary
+            if result.entity_type != "PERSON" and not overlaps_any(result, persons)
+        ]
+        return persons + non_person_survivors
 
     def _redact(
         self, text: str, results: list[RecognizerResult], space: _PlaceholderSpace

@@ -263,3 +263,49 @@ def test_every_configured_language_has_ner_and_lacks_parser(
         )
         assert "ner" in nlp.pipe_names
         assert "parser" not in nlp.pipe_names
+
+
+@pytest.mark.parametrize(
+    "input_text, leaked_name",
+    [
+        # en_core_web_sm misses the name entirely; only the xx PERSON pass
+        # catches it.
+        (
+            "Caller Ibrahim reported that the well in Bo District is broken.",
+            "Ibrahim",
+        ),
+        # en_core_web_sm mislabels the name as ORGANIZATION, which
+        # AnalyzeService would otherwise restore verbatim.
+        ("Caller Mariatu reported that the water point is broken.", "Mariatu"),
+    ],
+)
+def test_second_pass_catches_names_the_primary_model_misses_or_mislabels(
+    anonymizer: PresidioAnonymizer, input_text: str, leaked_name: str
+) -> None:
+    """Regression: a name must not reach redacted output verbatim.
+
+    These are the two measured leak symptoms — missed outright, and
+    mislabelled as a non-PERSON type — that motivated the second pass.
+    """
+    redacted, mapping = anonymizer.anonymize(input_text)
+
+    assert leaked_name not in redacted
+    matching_placeholders = [p for p, v in mapping.items() if leaked_name in v]
+    assert matching_placeholders, f"{leaked_name!r} missing from mapping: {mapping}"
+    assert all(p.startswith("<PERSON_") for p in matching_placeholders)
+
+
+def test_second_pass_is_a_union_not_a_replacement(
+    anonymizer: PresidioAnonymizer,
+) -> None:
+    """A name only the primary per-language model catches stays redacted.
+
+    The ``xx`` model mislabels this name as LOCATION, not PERSON — a
+    second pass that replaced rather than unioned would drop it.
+    """
+    text = "Mr Kamara Alieu Sesay called about shelter materials."
+
+    redacted, mapping = anonymizer.anonymize(text)
+
+    assert "Kamara Alieu Sesay" not in redacted
+    assert mapping == {"<PERSON_0>": "Kamara Alieu Sesay"}

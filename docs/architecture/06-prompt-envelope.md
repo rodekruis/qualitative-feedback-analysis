@@ -154,14 +154,18 @@ with `quality_score=null` and a constant unavailable explanation.
 ## Selective de-anonymisation (PERSON retention)
 
 `AnalyzeService` restores most placeholders before returning the analysis,
-but **deliberately leaves `<PERSON_*>` placeholders un-restored**. The set
+but **deliberately leaves `<PERSON_*>` and `<NRP_*>` placeholders
+un-restored**. `NRP` (nationality/religious/political group) joins
+`PERSON` because it's where the per-language NER model's misread given
+names land — see [ADR-021](../adr/021-two-model-person-union.md). The set
 of retained entity types is declared on the `AnalyzeService` class as
-`_ANALYZE_RETAINED_PLACEHOLDER_TYPES` (currently `frozenset({"PERSON"})`)
-and applied by filtering the mapping passed to
-`AnonymizationPort.deanonymize` — the port still does exactly what its
-contract promises ("restore everything in this mapping"); the policy of
-*what's in the mapping* is the service's domain decision. Both analyse
-modes share the one definition — which is why they share one service.
+`_ANALYZE_RETAINED_PLACEHOLDER_TYPES` (currently
+`frozenset({"PERSON", "NRP"})`) and applied by filtering the mapping
+passed to `AnonymizationPort.deanonymize` — the port still does exactly
+what its contract promises ("restore everything in this mapping"); the
+policy of *what's in the mapping* is the service's domain decision. Both
+analyse modes share the one definition — which is why they share one
+service.
 
 This is a deterministic backstop to the `ANALYZE_GUARDRAILS_PROMPT` rule
 "Do not identify individual people". Even if the analyse LLM echoes a
