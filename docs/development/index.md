@@ -70,6 +70,8 @@ The suite is split into three tiers. The default `make test` runs only the fast 
 
 All three tiers run in CI on every push: unit in the `test` job, integration + e2e in a dedicated `integration` job that brings up a Postgres 16 service container (see `.github/workflows/ci.yaml`).
 
+A fourth, separate category lives in [`eval/`](https://github.com/rodekruis/qualitative-feedback-analysis/blob/main/eval/README.md). These scripts score a live endpoint against ground truth and make real LLM calls. They are not part of `make test`. When a person starts the **evaluate** workflow by hand in GitHub Actions, they run.
+
 ### Postgres for tiers 2 and 3
 
 ```bash

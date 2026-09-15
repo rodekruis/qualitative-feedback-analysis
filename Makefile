@@ -29,8 +29,8 @@ ty:
 	uv run ty check
 
 ruff:
-	uv run ruff format --target-version py312 src tests
-	uv run ruff check --fix --exit-non-zero-on-fix src tests
+	uv run ruff format --target-version py312 src tests eval
+	uv run ruff check --fix --exit-non-zero-on-fix src tests eval
 
 type_check: ty
 
