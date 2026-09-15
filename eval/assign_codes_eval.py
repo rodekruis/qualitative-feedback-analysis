@@ -13,6 +13,11 @@ that level is one of the accepted names in the dataset item's
 is left unscored, not marked correct, since that means the record was never
 labelled at that level, not that no code should apply.
 
+Each run records the backend's deployed ``version`` and ``commit`` (both
+read from ``GET /v1/health``), plus the eval script's own commit and
+branch, as separate run-metadata fields, since a ``dev`` deploy can run
+code the script was never checked out at (see ``_deployed_info``).
+
 Prerequisites
 -------------
 - ``QFA_DEV_API_KEY`` — bearer token for ``QFA_API_BASE_URL`` (default
@@ -70,20 +75,29 @@ def _resolve_config() -> tuple[str, str]:
     return base_url, api_key
 
 
-def _deployed_version(base_url: str) -> str:
-    """The package version that ``base_url`` reports at ``/v1/health``.
+def _deployed_info(base_url: str) -> dict[str, str]:
+    """The package version and git commit that ``base_url`` reports at ``/v1/health``.
 
-    Returns ``"unknown"`` when the health check fails, so a run still
-    proceeds against a backend that is reachable for ``/v1/assign-codes``
-    but does not answer ``/v1/health`` for some other reason.
+    Both default to ``"unknown"`` when the health check fails, so a run
+    still proceeds against a backend that is reachable for
+    ``/v1/assign-codes`` but does not answer ``/v1/health`` for some other
+    reason. ``commit`` is the field that actually identifies the deployed
+    code: ``version`` only changes on a semantic-release bump, so an
+    ephemeral ``dev`` deploy (``build-from-commit.yaml``) can carry no
+    version bump at all and would otherwise be indistinguishable from
+    whatever was deployed before it.
     """
     try:
         response = httpx.get(f"{base_url}/v1/health", timeout=REQUEST_TIMEOUT_SECONDS)
         response.raise_for_status()
-        return str(response.json()["version"])
+        data = response.json()
+        return {
+            "deployed_version": str(data["version"]),
+            "deployed_commit": str(data["commit"]),
+        }
     except (httpx.HTTPError, KeyError) as e:
         print(f"warning: could not read {base_url}/v1/health ({e})")
-        return "unknown"
+        return {"deployed_version": "unknown", "deployed_commit": "unknown"}
 
 
 def _make_run_assign_codes(
@@ -198,7 +212,7 @@ def _git_metadata() -> dict[str, str]:
 
     This names the code that sent the requests, not the code that answered
     them — the backend under test may be running something else entirely
-    (see ``_deployed_version``). CI sets ``GIT_SHA``/``GIT_REF_NAME`` (from
+    (see ``_deployed_info``). CI sets ``GIT_SHA``/``GIT_REF_NAME`` (from
     the GitHub Actions context, which knows the ref even in a detached-HEAD
     checkout); a local run falls back to asking git directly.
     """
@@ -214,11 +228,11 @@ def _git_metadata() -> dict[str, str]:
 def main() -> None:
     """Run the experiment against the full dataset and print a summary."""
     base_url, api_key = _resolve_config()
-    deployed_version = _deployed_version(base_url)
+    deployed = _deployed_info(base_url)
     git_meta = _git_metadata()
     run_metadata = {
         **git_meta,
-        "deployed_version": deployed_version,
+        **deployed,
         "confidence_threshold": CONFIDENCE_THRESHOLD,
     }
 
@@ -227,8 +241,9 @@ def main() -> None:
     result = dataset.run_experiment(
         name="assign-codes eval",
         run_name=(
-            f"assign-codes eval (deployed {deployed_version}, "
-            f"script {git_meta['git_branch']} @ {git_meta['eval_script_sha'][:7]})"
+            f"assign-codes eval (deployed {deployed['deployed_version']} @ "
+            f"{deployed['deployed_commit'][:7]}, script {git_meta['git_branch']} @ "
+            f"{git_meta['eval_script_sha'][:7]})"
         ),
         description="Per-level accuracy of POST /v1/assign-codes against ground truth.",
         task=_make_run_assign_codes(base_url, api_key),

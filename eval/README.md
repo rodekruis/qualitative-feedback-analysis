@@ -38,9 +38,12 @@ aggregate results land in Langfuse, as a new Dataset Run under
 `assign-codes/ukrain`.
 
 Each run queries the backend's `/v1/health` endpoint for the deployed
-package version. The script records that version as `deployed_version`, in
-the run metadata and in the run name. This value names the code that
-answered the requests.
+package version and git commit. The script records both, as
+`deployed_version` and `deployed_commit`, in the run metadata and in the
+run name. These values name the code that answered the requests.
+`deployed_commit` is the one that actually tells two deploys apart:
+`build-from-commit.yaml` can push a commit to `dev` with no version bump
+at all, so `deployed_version` alone cannot tell such deploys apart.
 
 The script also records its own commit SHA and branch, as
 `eval_script_sha` and `git_branch`. This value names the code that sent
