@@ -32,12 +32,18 @@ When the app is up, every environment exposes its application version at
 `GET /v1/health`:
 
 ```bash
-curl https://<app-host>/v1/health   # → {"status":"ok","version":"2.0.0"}
+curl https://<app-host>/v1/health   # → {"status":"ok","version":"2.0.0","commit":"23247174df94..."}
 ```
 
 The version is `qfa.__version__`, read from the installed package. It is the
 ground truth for *what is actually serving* — but it only reports the **app**
 version, and it is unavailable when the App Service is down.
+
+`commit` is the git SHA baked into the image at build time, from the
+`GIT_SHA` build argument in the Dockerfile. It answers a question `version`
+cannot answer alone. A `dev` deploy from `build-from-commit.yaml` can carry
+no version bump at all. Two different commits on `dev` can then share the
+same `version`, but never the same `commit`.
 
 ## When the app is down: App Service tags
 

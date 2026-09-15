@@ -33,6 +33,13 @@ RUN uv run --no-project --with "huggingface-hub>=1.10" \
 # ── Runtime image ────────────────────────────────────────────────────────
 FROM python:3.13-slim
 ARG EMBEDDING_E5_REVISION
+# The commit this image was built from. Passed with `--build-arg GIT_SHA=...`
+# by the build/deploy workflows; defaults to "unknown" for a local
+# `docker build` with no build-arg (e.g. the CI build-check job). Exposed at
+# runtime via GET /v1/health so a live app names the exact commit it runs,
+# independent of qfa.__version__ (which only changes on a semantic-release
+# bump, not on every dev deploy).
+ARG GIT_SHA=unknown
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 WORKDIR /app
 
@@ -40,7 +47,8 @@ WORKDIR /app
 # that isn't attached to a TTY (always true in a container), so log lines can
 # sit in a buffer indefinitely instead of reaching the App Service log
 # pipeline in anything like real time.
-ENV PYTHONUNBUFFERED=1
+ENV PYTHONUNBUFFERED=1 \
+    GIT_SHA=${GIT_SHA}
 
 # Model layer first: it's large and rarely changes, so keeping it above the
 # frequently-churning app code means it stays cached (and isn't re-pushed)

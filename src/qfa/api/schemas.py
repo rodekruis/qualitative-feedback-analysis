@@ -996,6 +996,14 @@ class ApiHealthResponse(BaseModel):
 
     status: str = Field(description="Service health status.")
     version: str = Field(description="Package version string.")
+    commit: str = Field(
+        description=(
+            "Git commit SHA the running image was built from, or 'unknown' if"
+            " the image was built without one. Unlike `version`, this changes"
+            " on every build, including an ephemeral dev deploy that carries no"
+            " package version bump."
+        ),
+    )
 
 
 class ApiErrorFieldDetail(BaseModel):
