@@ -290,7 +290,10 @@ def build_services(
     if embedder is None:
         embedder = build_embedder(settings.embedding)
 
-    anonymizer = PresidioAnonymizer()
+    anonymizer = PresidioAnonymizer(
+        max_workers=settings.anonymization.max_workers,
+        batch_size=settings.anonymization.batch_size,
+    )
     # The shared LLM-call scaffolding is an injected collaborator, not a base
     # class (ADR-017), so the composition root builds it here and hands the
     # same instance to every service rather than letting each construct its

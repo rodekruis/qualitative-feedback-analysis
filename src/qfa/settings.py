@@ -25,6 +25,26 @@ Single source of truth shared by ``EmbeddingSettings.batch_size`` and the
 default and the library default cannot silently drift apart.
 """
 
+DEFAULT_ANONYMIZATION_MAX_WORKERS = 4
+"""Default thread count for Presidio's parallel entity-detection pass.
+
+Single source of truth shared by ``AnonymizationSettings.max_workers`` and
+the ``PresidioAnonymizer`` constructor default. A literal, not
+``os.cpu_count()``: an Azure App Service container reports the host's core
+count, not the plan's vCPU allocation, and 4 was the measured optimum on
+the B3 plan (4 vCPU) — 6 regressed.
+"""
+
+DEFAULT_ANONYMIZATION_BATCH_SIZE = 64
+"""Default ``nlp.pipe`` batch size for Presidio's entity-detection pass.
+
+Single source of truth shared by ``AnonymizationSettings.batch_size`` and
+the ``PresidioAnonymizer`` constructor default. ``batch_size=1`` (spaCy's
+own default) makes ``nlp.pipe`` exactly as slow as calling ``nlp()`` per
+document — this constant is the whole point of batching through
+``nlp.pipe`` in the first place.
+"""
+
 
 class LogSettings(BaseSettings):
     """Define settings for the logger."""
@@ -280,6 +300,35 @@ class AnalyzeSettings(BaseSettings):
     )
 
 
+class AnonymizationSettings(BaseSettings):
+    """Configuration for the Presidio-based anonymisation adapter.
+
+    Both knobs are pure throughput tuning: neither changes which entities
+    get detected or how they are redacted, only how the detection pass is
+    batched and parallelised (see ADR-003's amendment).
+    """
+
+    model_config = SettingsConfigDict(env_prefix="ANONYMIZATION_")
+
+    max_workers: int = Field(
+        default=DEFAULT_ANONYMIZATION_MAX_WORKERS,
+        ge=1,
+        description=(
+            "Threads used to parallelise Presidio's entity-detection pass"
+            " across a batch. Allocation from the shared placeholder"
+            " namespace stays serial regardless of this value, so output is"
+            " identical at every setting. Set to 1 to restore fully serial"
+            " detection — the kill switch if shared-engine concurrency ever"
+            " misbehaves in production."
+        ),
+    )
+    batch_size: int = Field(
+        default=DEFAULT_ANONYMIZATION_BATCH_SIZE,
+        ge=1,
+        description="spaCy `nlp.pipe` batch size for the detection pass.",
+    )
+
+
 class AuthSettings(BaseSettings):
     """Configuration for API-key based authentication."""
 
@@ -369,6 +418,7 @@ class AppSettings(BaseSettings):
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
     orchestrator: OrchestratorSettings = Field(default_factory=OrchestratorSettings)
     analyze: AnalyzeSettings = Field(default_factory=AnalyzeSettings)
+    anonymization: AnonymizationSettings = Field(default_factory=AnonymizationSettings)
     auth: AuthSettings = Field(default_factory=AuthSettings)
     log: LogSettings = Field(default_factory=LogSettings)
     db: DatabaseSettings = Field(default_factory=DatabaseSettings)

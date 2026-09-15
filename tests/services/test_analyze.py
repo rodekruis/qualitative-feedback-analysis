@@ -762,18 +762,20 @@ class TestAnalyzeAnonymizationOrdering:
         assert "<PERSON_0>" not in result.result
 
     @pytest.mark.asyncio
-    async def test_person_placeholders_are_retained_in_output(self, settings):
-        """Analyze leaves ``<PERSON_*>`` placeholders un-restored.
+    async def test_person_and_nrp_placeholders_are_retained_in_output(self, settings):
+        """Analyze leaves ``<PERSON_*>`` and ``<NRP_*>`` placeholders un-restored.
 
         Defense in depth for the "do not identify individuals" guardrail
-        in ``ANALYZE_GUARDRAILS_PROMPT``: if the LLM echoes a person
+        in ``ANALYZE_GUARDRAILS_PROMPT``: if the LLM echoes a retained
         placeholder we supplied back into its analysis, the analyst must
-        not see the underlying name. Other entity types (here,
-        ``LOCATION`` and ``EMAIL_ADDRESS``) are still deanonymised as
-        before — only PERSON is retained.
+        not see the underlying value. NRP joins PERSON because it's where
+        the per-language NER model's misread names land. Other entity
+        types (here, ``LOCATION`` and ``EMAIL_ADDRESS``) are still
+        deanonymised as before.
         """
         placeholders = {
             "<PERSON_0>": "Alice",
+            "<NRP_0>": "Bob",
             "<LOCATION_0>": "Atlanta",
             "<EMAIL_ADDRESS_0>": "alice@example.com",
         }
@@ -791,7 +793,7 @@ class TestAnalyzeAnonymizationOrdering:
                 return text
 
         analysis_with_placeholders = (
-            "Themes: <PERSON_0> from <LOCATION_0> reports issues; "
+            "Themes: <PERSON_0> and <NRP_0> from <LOCATION_0> report issues; "
             "contact <EMAIL_ADDRESS_0>."
         )
         fake_llm = _judging_llm(analysis=analysis_with_placeholders)
@@ -801,9 +803,11 @@ class TestAnalyzeAnonymizationOrdering:
 
         result = await service.analyze_bulk(_make_request(), _future_deadline())
 
-        # PERSON placeholders remain — analyst never sees the underlying name.
+        # Retained placeholders remain — analyst never sees the underlying value.
         assert "<PERSON_0>" in result.result
         assert "Alice" not in result.result
+        assert "<NRP_0>" in result.result
+        assert "Bob" not in result.result
         # Other entity types are still deanonymised as before.
         assert "<LOCATION_0>" not in result.result
         assert "Atlanta" in result.result

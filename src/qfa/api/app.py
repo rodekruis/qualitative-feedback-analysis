@@ -826,9 +826,13 @@ def _make_lifespan(llm_factory: LLMFactory):
            ``settings``, and ``usage_repo`` on ``app.state`` for
            routes/middleware to read.
 
-        On shutdown the only resource that needs explicit cleanup is the
-        DB engine's connection pool; everything else is plain Python
-        objects that the GC handles.
+        On shutdown the DB engine's connection pool is the only resource
+        this lifespan explicitly tears down. The process-lifetime
+        ``PresidioAnonymizer``'s ``ThreadPoolExecutor`` (see
+        ``qfa.api.composition.build_services``) needs no teardown here
+        either: ``concurrent.futures`` registers an ``atexit`` hook that
+        joins its worker threads at interpreter shutdown. Everything else
+        is plain Python objects that the GC handles.
 
         Parameters
         ----------

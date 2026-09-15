@@ -278,8 +278,8 @@
     <div class="card">
       <h2>Privacy &amp; PII Handling</h2>
       <ul>
-        <li>Every AI call is wrapped <strong>anonymise → send → de-anonymise</strong>; the model never sees raw personal data. <span class="cite">Presidio + spaCy</span></li>
-        <li>Analysis output <strong>never re-identifies named individuals</strong>.</li>
+        <li>Every AI call is wrapped <strong>anonymise → send → de-anonymise</strong>; the model never sees raw personal data. <span class="cite">Presidio + spaCy, two-model NER union for person-name recall</span></li>
+        <li>Analysis output <strong>keeps person-name placeholders un-restored</strong> — the analyst never sees the underlying name. NER is statistical, so this reduces re-identification risk; it does not guarantee zero.</li>
         <li><strong>Data minimisation by design:</strong> feedback content and model responses are never written to the database.</li>
         <li>Currently powered by <strong>OpenAI's GPT-5.4</strong> model — accessed through <strong>Azure AI Foundry</strong> (Microsoft-hosted, Sweden Central), not OpenAI's servers. Prompts and completions are never available to OpenAI, never used to improve their models, or to train foundation models without explicit permission. <a href="https://learn.microsoft.com/en-us/azure/foundry/responsible-ai/openai/data-privacy?tabs=azure-portal">Source</a></li>
       </ul>

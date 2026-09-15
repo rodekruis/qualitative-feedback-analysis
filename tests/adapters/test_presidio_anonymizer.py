@@ -1,8 +1,14 @@
 """Tests for the Presidio-based anonymisation adapter."""
 
+from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import MagicMock
+
 import pytest
 
-from qfa.adapters.presidio_anonymizer import PresidioAnonymizer
+from qfa.adapters.presidio_anonymizer import (
+    LANGUAGES_AND_ANONYMIZATION_MODEL_PAIRINGS,
+    PresidioAnonymizer,
+)
 
 
 @pytest.fixture(scope="module")
@@ -169,3 +175,137 @@ def test_anonymize_matches_a_single_text_batch(
 
     assert single_text == batched_text
     assert single_mapping == batched_mapping
+
+
+def test_anonymize_uses_the_inline_fast_path_not_the_pool(
+    anonymizer: PresidioAnonymizer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A single-text call must never touch the thread pool.
+
+    ``anonymize``/a one-chunk ``anonymize_batch`` runs synchronously inside
+    ``async def`` on the event loop thread today (coding/summarize/
+    sensitivity); submitting to the pool from there would add a needless
+    thread hop for zero parallelism benefit.
+    """
+    mock_submit = MagicMock(wraps=anonymizer._pool.submit)
+    monkeypatch.setattr(anonymizer._pool, "submit", mock_submit)
+
+    anonymizer.anonymize("Hi my name is Dick Schoof")
+
+    mock_submit.assert_not_called()
+
+
+_MULTI_LANGUAGE_BATCH = (
+    "Olena Kovalenko reported the water point in Kharkiv ran dry.",
+    "Piet Jansen reported the water point in Utrecht ran dry.",
+    "Je m'appelle Marie Dupont et j'habite à Lyon.",
+    "Me llamo Carlos García y vivo en Madrid.",
+    "Мене звати Олена Петренко.",
+    "Меня зовут Иван Иванов.",
+)
+
+
+def test_worker_count_parity(anonymizer: PresidioAnonymizer) -> None:
+    """Output must be identical whether detection runs serially or pooled.
+
+    Swaps in a 1-worker pool rather than building a second real adapter
+    (~3s, ~1.2GB to load six spaCy models) — restored after, since the
+    module-scoped fixture is shared with every other test in this file.
+    Never assert on which index a given entity received: Presidio applies
+    operators in reverse document order, so that is not a stable property.
+    """
+    pooled_redacted, pooled_mapping = anonymizer.anonymize_batch(_MULTI_LANGUAGE_BATCH)
+
+    original_pool = anonymizer._pool
+    original_max_workers = anonymizer._max_workers
+    anonymizer._pool = ThreadPoolExecutor(max_workers=1)
+    anonymizer._max_workers = 1
+    try:
+        serial_redacted, serial_mapping = anonymizer.anonymize_batch(
+            _MULTI_LANGUAGE_BATCH
+        )
+    finally:
+        anonymizer._pool.shutdown(wait=True)
+        anonymizer._pool = original_pool
+        anonymizer._max_workers = original_max_workers
+
+    assert serial_redacted == pooled_redacted
+    assert serial_mapping == pooled_mapping
+
+
+def test_repeated_batches_are_deterministic(anonymizer: PresidioAnonymizer) -> None:
+    """Repeated runs of the same batch must yield the same mapping.
+
+    Guards against cross-thread drift in the shared ``AnalyzerEngine``
+    under the default (pooled) ``max_workers``.
+    """
+    first_redacted, first_mapping = anonymizer.anonymize_batch(_MULTI_LANGUAGE_BATCH)
+
+    for _ in range(3):
+        redacted, mapping = anonymizer.anonymize_batch(_MULTI_LANGUAGE_BATCH)
+        assert redacted == first_redacted
+        assert mapping == first_mapping
+
+
+def test_every_configured_language_has_ner_and_lacks_parser(
+    anonymizer: PresidioAnonymizer,
+) -> None:
+    """Pin the pipeline shape the speed-up depends on.
+
+    Presidio reads ``doc.ents`` (``ner``); it never reads the dependency
+    parse. A Presidio/spaCy upgrade that changes either would silently
+    change detection quality or give back the CPU savings from dropping
+    ``parser``.
+    """
+    for pairing in LANGUAGES_AND_ANONYMIZATION_MODEL_PAIRINGS:
+        nlp = anonymizer._analyzer.nlp_engine.get_nlp(  # type: ignore[ty:unresolved-attribute]
+            pairing["lang_code"]
+        )
+        assert "ner" in nlp.pipe_names
+        assert "parser" not in nlp.pipe_names
+
+
+@pytest.mark.parametrize(
+    "input_text, leaked_name",
+    [
+        # en_core_web_sm misses the name entirely; only the xx PERSON pass
+        # catches it.
+        (
+            "Caller Ibrahim reported that the well in Bo District is broken.",
+            "Ibrahim",
+        ),
+        # en_core_web_sm mislabels the name as ORGANIZATION, which
+        # AnalyzeService would otherwise restore verbatim.
+        ("Caller Mariatu reported that the water point is broken.", "Mariatu"),
+    ],
+)
+def test_second_pass_catches_names_the_primary_model_misses_or_mislabels(
+    anonymizer: PresidioAnonymizer, input_text: str, leaked_name: str
+) -> None:
+    """Regression: a name must not reach redacted output verbatim.
+
+    These are the two measured leak symptoms — missed outright, and
+    mislabelled as a non-PERSON type — that motivated the second pass.
+    """
+    redacted, mapping = anonymizer.anonymize(input_text)
+
+    assert leaked_name not in redacted
+    matching_placeholders = [p for p, v in mapping.items() if leaked_name in v]
+    assert matching_placeholders, f"{leaked_name!r} missing from mapping: {mapping}"
+    assert all(p.startswith("<PERSON_") for p in matching_placeholders)
+
+
+def test_second_pass_is_a_union_not_a_replacement(
+    anonymizer: PresidioAnonymizer,
+) -> None:
+    """A name only the primary per-language model catches stays redacted.
+
+    The ``xx`` model mislabels this name as LOCATION, not PERSON — a
+    second pass that replaced rather than unioned would drop it.
+    """
+    text = "Mr Kamara Alieu Sesay called about shelter materials."
+
+    redacted, mapping = anonymizer.anonymize(text)
+
+    assert "Kamara Alieu Sesay" not in redacted
+    assert mapping == {"<PERSON_0>": "Kamara Alieu Sesay"}
