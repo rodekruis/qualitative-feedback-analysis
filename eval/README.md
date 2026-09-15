@@ -37,8 +37,17 @@ not gate CI. A summary prints to the console. The full per-item and
 aggregate results land in Langfuse, as a new Dataset Run under
 `assign-codes/ukrain`.
 
-Each run records the evaluated commit SHA and branch as run metadata, and
-shows them in the run name. In CI, these come from the GitHub Actions
+Each run queries the backend's `/v1/health` endpoint for the deployed
+package version. The script records that version as `deployed_version`, in
+the run metadata and in the run name. This value names the code that
+answered the requests.
+
+The script also records its own commit SHA and branch, as
+`eval_script_sha` and `git_branch`. This value names the code that sent
+the requests. When the backend does not yet run the latest merge, the two
+values can differ.
+
+In CI, `eval_script_sha` and `git_branch` come from the GitHub Actions
 context (`GIT_SHA`, `GIT_REF_NAME`). A local run reads them from `git`
 directly, so they show up even without those two variables set.
 
