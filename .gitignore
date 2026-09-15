@@ -212,3 +212,9 @@ tasks/
 # (.claude/settings.json, .claude/skills/) — only the *.local* variants are ignored.
 CLAUDE.local.md
 .claude/settings.local.json
+
+# Evaluation output: per-run reports and the translation cache are generated
+# artefacts of eval/summarize_explore.py, regenerated on demand.
+eval/runs/
+eval/translation-cache.json
+eval/summary-cache.json
