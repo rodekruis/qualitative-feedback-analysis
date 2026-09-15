@@ -58,10 +58,11 @@ jobs:
         run: |
           set -euo pipefail
           SHA=$(git rev-parse --short HEAD)
+          FULL_SHA=$(git rev-parse HEAD)
           # Sanitize the ref so it's a valid Docker tag (alnum, dot, dash, underscore).
           SAFE_REF=$(printf '%s' "${{ inputs.ref }}" | tr -c 'A-Za-z0-9._-' '-' | cut -c1-40)
           TAG="ephemeral-${SAFE_REF}-${SHA}"
-          docker build -t "$IMAGE:$TAG" .
+          docker build --build-arg GIT_SHA="$FULL_SHA" -t "$IMAGE:$TAG" .
           docker push "$IMAGE:$TAG"
           DIGEST=$(az acr repository show \
             --name "${{ vars.AZ_ACR_NAME }}" \

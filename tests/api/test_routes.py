@@ -1159,3 +1159,16 @@ class TestHealth:
         data = resp.json()
         assert data["status"] == "ok"
         assert "version" in data
+        assert "commit" in data
+
+    @pytest.mark.asyncio
+    async def test_health_commit_reflects_git_sha_env_var(self, client, monkeypatch):
+        monkeypatch.setenv("GIT_SHA", "abc1234")
+        resp = await client.get("/v1/health")
+        assert resp.json()["commit"] == "abc1234"
+
+    @pytest.mark.asyncio
+    async def test_health_commit_defaults_to_unknown(self, client, monkeypatch):
+        monkeypatch.delenv("GIT_SHA", raising=False)
+        resp = await client.get("/v1/health")
+        assert resp.json()["commit"] == "unknown"
