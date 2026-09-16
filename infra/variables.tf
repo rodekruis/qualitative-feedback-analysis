@@ -73,6 +73,18 @@ variable "judge_llm_api_base" {
   sensitive   = true
 }
 
+variable "langfuse_public_key" {
+  description = "Public key for Langfuse call tracing (LANGFUSE_PUBLIC_KEY). An empty string disables Langfuse tracing entirely — see qfa.settings.LangfuseSettings, which also requires langfuse_host whenever this is set. Not sensitive on its own (Langfuse documents its public key as safe to expose client-side), but still supplied per-environment via TF_VAR_langfuse_public_key rather than hardcoded, since its value is instance-specific."
+  type        = string
+  default     = ""
+}
+
+variable "langfuse_host" {
+  description = "Base URL of the self-hosted Langfuse instance (LANGFUSE_HOST), e.g. https://langfuse.510.global. Required whenever langfuse_public_key is set — qfa.settings.LangfuseSettings rejects a key with no host, since this deployment never falls back to Langfuse Cloud. Ignored (and app_settings omits every LANGFUSE_* key) while langfuse_public_key is empty."
+  type        = string
+  default     = ""
+}
+
 # --- App Service plan sizing ---
 
 variable "app_service_plan_sku_by_env" {

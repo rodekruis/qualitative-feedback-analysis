@@ -18,9 +18,11 @@ resource "azurerm_key_vault" "main" {
 # This avoids storing secrets in Terraform state.
 #
 # Secrets expected in this vault:
-#   - llm-api-base   (app_service.tf, read via @Microsoft.KeyVault app_settings resolver)
-#   - llm-api-key    (app_service.tf, read via @Microsoft.KeyVault app_settings resolver)
-#   - auth-api-keys  (app_service.tf, read via @Microsoft.KeyVault app_settings resolver)
+#   - llm-api-base       (app_service.tf, read via @Microsoft.KeyVault app_settings resolver)
+#   - llm-api-key        (app_service.tf, read via @Microsoft.KeyVault app_settings resolver)
+#   - auth-api-keys      (app_service.tf, read via @Microsoft.KeyVault app_settings resolver)
+#   - langfuse-secret-key (app_service.tf, read via @Microsoft.KeyVault app_settings resolver;
+#                          only referenced when var.langfuse_public_key is set — see locals.tf)
 #
 # The Teams alerting webhook (observability.tf) is deliberately NOT stored
 # here — see var.teams_webhook_url in variables.tf.

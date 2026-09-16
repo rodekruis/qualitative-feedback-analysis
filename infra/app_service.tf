@@ -50,11 +50,11 @@ resource "azurerm_linux_web_app" "backend" {
     container_registry_use_managed_identity = true
   }
 
-  # merge()'d with local.judge_app_settings rather than a static map so an
-  # unset judge_llm_model can omit JUDGE_LLM_MODEL/JUDGE_LLM_API_BASE
-  # entirely instead of writing them as empty strings — see the comment on
-  # local.judge_app_settings (infra/locals.tf) for why that distinction
-  # matters.
+  # merge()'d with local.judge_app_settings and local.langfuse_app_settings
+  # rather than a static map so an unset judge_llm_model / langfuse_public_key
+  # can omit their app settings entirely instead of writing them as empty
+  # strings — see the comments on those locals (infra/locals.tf) for why
+  # that distinction matters.
   app_settings = merge(
     {
       LLM_MODEL       = var.llm_model
@@ -79,6 +79,7 @@ resource "azurerm_linux_web_app" "backend" {
       APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.main.connection_string
     },
     local.judge_app_settings,
+    local.langfuse_app_settings,
   )
 
   logs {

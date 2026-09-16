@@ -131,6 +131,8 @@ jobs:
           TF_VAR_teams_webhook_url: ${{ secrets.TEAMS_ALERTS_WEBHOOK_URL }}
           TF_VAR_judge_llm_model: ${{ vars.AZ_JUDGE_LLM_MODEL }}
           TF_VAR_judge_llm_api_base: ${{ vars.AZ_JUDGE_LLM_API_BASE }}
+          TF_VAR_langfuse_public_key: ${{ vars.AZ_LANGFUSE_PUBLIC_KEY }}
+          TF_VAR_langfuse_host: ${{ vars.AZ_LANGFUSE_HOST }}
 
       - name: Terraform apply
         if: inputs.command == 'apply'
@@ -147,3 +149,5 @@ jobs:
           TF_VAR_tf_state_resource_group_name: ${{ vars.AZ_TF_STATE_RESOURCE_GROUP }}
           TF_VAR_teams_webhook_url: ${{ secrets.TEAMS_ALERTS_WEBHOOK_URL }}
           TF_VAR_judge_llm_api_base: ${{ vars.AZ_JUDGE_LLM_API_BASE }}
+          TF_VAR_langfuse_public_key: ${{ vars.AZ_LANGFUSE_PUBLIC_KEY }}
+          TF_VAR_langfuse_host: ${{ vars.AZ_LANGFUSE_HOST }}

@@ -31,4 +31,19 @@ locals {
     { JUDGE_LLM_MODEL = var.judge_llm_model },
     var.judge_llm_api_base == "" ? {} : { JUDGE_LLM_API_BASE = var.judge_llm_api_base },
   )
+
+  # App settings for the optional Langfuse call-tracing connection. Built
+  # conditionally, not as a static map with possibly-empty values:
+  # LangfuseSettings (src/qfa/settings.py) rejects LANGFUSE_HOST being unset
+  # while LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY are set, so writing all
+  # three unconditionally would crash the app at startup for any
+  # environment that only sets one of them, or whose Key Vault secret
+  # hasn't been seeded yet (an unresolved reference is not a clean
+  # absence). The secret itself is Key Vault only, exactly like
+  # llm-api-key: there is no langfuse_secret_key Terraform variable.
+  langfuse_app_settings = var.langfuse_public_key == "" ? {} : {
+    LANGFUSE_PUBLIC_KEY = var.langfuse_public_key
+    LANGFUSE_HOST       = var.langfuse_host
+    LANGFUSE_SECRET_KEY = "@Microsoft.KeyVault(SecretUri=https://${local.keyvault_name}.vault.azure.net/secrets/langfuse-secret-key)"
+  }
 }
