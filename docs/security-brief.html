@@ -324,6 +324,7 @@
         <li><strong>Automated dependency scanning</strong> keeps third-party libraries patched.</li>
         <li>Architectural boundaries are <strong>enforced by the build</strong>, not convention — the privacy-sensitive core stays isolated from vendor code.</li>
         <li>Releases require a <strong>named human's sign-off</strong> before reaching staging or production.</li>
+        <li>The release pipeline's elevated, branch-protection-bypassing credential is scoped to only the version-bump commit; every other release step uses a standard, non-bypassing token.</li>
       </ul>
     </div>
   </div>
