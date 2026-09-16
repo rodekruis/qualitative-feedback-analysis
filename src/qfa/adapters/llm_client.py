@@ -503,10 +503,16 @@ class LiteLLMClient(LLMPort):
         LLMError
             For any other provider error or empty response.
         """
-        with self._tracer.start_as_current_span("llm_call") as span:
+        ctx = current_call_context.get()
+        # Langfuse's OTel ingestion uses this one span both as the trace and
+        # as its sole observation, so its name is what both list views show.
+        # A bare "llm_call" is the same for every row; folding in the
+        # operation (when known) makes the list scannable without opening a
+        # trace or filtering by the langfuse.trace.tags attribute below.
+        span_name = f"llm_call:{ctx.operation}" if ctx is not None else "llm_call"
+        with self._tracer.start_as_current_span(span_name) as span:
             span.set_attribute("langfuse.observation.type", "generation")
             span.set_attribute("langfuse.user.id", tenant_id)
-            ctx = current_call_context.get()
             if ctx is not None:
                 span.set_attribute("langfuse.trace.tags", json.dumps([ctx.operation]))
             try:

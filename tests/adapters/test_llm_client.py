@@ -166,6 +166,7 @@ class TestLiteLLMClientLangfuseSpan:
 
         spans = exporter.get_finished_spans()
         assert len(spans) == 1
+        assert spans[0].name == "llm_call"
         attrs = spans[0].attributes or {}
         assert attrs["langfuse.observation.type"] == "generation"
         assert attrs["langfuse.user.id"] == TENANT_ID
@@ -215,6 +216,7 @@ class TestLiteLLMClientLangfuseSpan:
                 )
 
         span = exporter.get_finished_spans()[0]
+        assert span.name == "llm_call:summarize"
         assert json.loads(span.attributes["langfuse.trace.tags"]) == [
             Operation.SUMMARIZE
         ]
