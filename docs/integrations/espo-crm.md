@@ -87,9 +87,24 @@ These CSV files serve as the versioning mechanism: whenever a flowchart is updat
 
 ## Display output
 
-The `-bulk` responses include a backend-rendered `pretty_output` field — a human-readable text block (quality dots, title, summary) ready to write straight into an EspoCRM field. The formatting lives entirely in the backend, so the scripts do not assemble it.
+### analyze-bulk
 
-Its `QUALITY`/`TITLE`/`SUMMARY` headers are localized to the request's `output_language` (the same field that drives the title/summary language). Supported languages are English, French, Spanish, Arabic, Russian, Dutch, and Ukrainian; any other or absent value falls back to English headers.
+`analyze-bulk` returns four fields for EspoCRM to write to separate entity fields:
+
+| API field | EspoCRM field | Notes |
+|---|---|---|
+| `pretty_output` | `modelResponse` | Analysis text verbatim — no quality header, title, or separator. |
+| `quality_text` | `qualityText` | Dots and percentage, e.g. `"●●●●● 100%"`. `null` when the judge call failed. |
+| `quality_score` | `qualityScore` | Float in [0, 1]. `null` when the judge call failed. |
+| `title` | `title` | Constant `"Analysis"` (English only). |
+
+Both `quality_score` and `quality_text` are `null` when the judge call failed — the flowchart should tolerate `null` on both fields.
+
+### summarize-bulk
+
+`summarize-bulk` returns `pretty_output` — a backend-rendered text block (quality dots, title, summary) ready to write into a single EspoCRM field. The formatting lives entirely in the backend, so the scripts do not assemble it.
+
+Its `QUALITY`/`TITLE`/`SUMMARY` headers are localized to the request's `output_language`. Supported languages are English, French, Spanish, Arabic, Russian, Dutch, and Ukrainian; any other or absent value falls back to English.
 
 ### Hyperlinking feedback records in insight text
 

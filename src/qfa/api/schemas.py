@@ -601,7 +601,7 @@ class ApiAnalyzeBulkResponse(ApiBulkInferenceResponseBase):
         default="Analysis",
         description=(
             "Short label for the analysis; currently the constant"
-            " ``\"Analysis\"`` (English only). Declared as a plain field so a"
+            ' ``"Analysis"`` (English only). Declared as a plain field so a'
             " future LLM-generated title can be passed in without a schema break."
         ),
     )
@@ -636,7 +636,9 @@ class ApiAnalyzeBulkResponse(ApiBulkInferenceResponseBase):
     )
 
     @override
-    @computed_field(description="Analysis text verbatim; no quality header, title, or separator.")
+    @computed_field(
+        description="Analysis text verbatim; no quality header, title, or separator."
+    )
     @property
     def pretty_output(self) -> str:
         """Analysis text verbatim — no quality header, title, or separator.

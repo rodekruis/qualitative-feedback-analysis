@@ -640,7 +640,7 @@ def test_analyze_bulk_quality_text_is_none_when_judge_failed():
 
 
 def test_analyze_bulk_title_defaults_to_analysis():
-    """title defaults to "Analysis" without the route passing it explicitly.
+    """Title defaults to "Analysis" without the route passing it explicitly.
 
     The default keeps routes.py unchanged; a real title can be injected later
     without a schema break.
