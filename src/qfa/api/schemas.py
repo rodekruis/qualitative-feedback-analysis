@@ -182,6 +182,15 @@ def _quality_dots(score: float) -> str:
     return "○○○○○"
 
 
+def _format_quality(score: float) -> str:
+    """Render a quality score as dots and percentage, e.g. ``'●●●●● 100%'``.
+
+    Used by both ``_create_pretty_output`` and the ``quality_text`` computed
+    field so the two renderings can never drift.
+    """
+    return f"{_quality_dots(score)} {round(score * 100)}%"
+
+
 def _create_pretty_output(
     *,
     id: str | None = None,
@@ -208,10 +217,8 @@ def _create_pretty_output(
     if id is not None:
         lines.append(f"Feedback-ID:    {id}")
     if quality_score is not None:
-        dots = _quality_dots(quality_score)
-        percent = f"{round(quality_score * 100)}%"
         label = f"{_HEADER_LABELS['quality'][lang]}:"
-        lines.append(f"{label:<16}{dots} {percent}")
+        lines.append(f"{label:<16}{_format_quality(quality_score)}")
     if title is not None:
         label = f"{_HEADER_LABELS['title'][lang]}:"
         lines.append(f"{label:<16}{title}")
@@ -630,6 +637,24 @@ class ApiAnalyzeBulkResponse(ApiBulkInferenceResponseBase):
         field the flowchart reads. See ``docs/integrations/espo-crm.md``.
         """
         return self.analysis
+
+    @computed_field(
+        description=(
+            "Quality score as dots and percentage, e.g. ``'●●●●● 100%'``;"
+            " ``null`` when the judge call failed."
+        ),
+    )
+    @property
+    def quality_text(self) -> str | None:
+        """Quality score rendered as dots and percentage, e.g. ``'●●●●● 100%'``.
+
+        ``None`` when ``quality_score`` is ``None`` — the judge call failed;
+        rendering a score would mislead rather than inform. Use ``quality_score``
+        for threshold comparisons in EspoCRM.
+        """
+        if self.quality_score is None:
+            return None
+        return _format_quality(self.quality_score)
 
 
 # summarize-bulk
