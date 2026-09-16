@@ -597,6 +597,14 @@ class ApiAnalyzeBulkResponse(ApiBulkInferenceResponseBase):
     analysis: str = Field(
         description="Analysis output text.",
     )
+    title: str = Field(
+        default="Analysis",
+        description=(
+            "Short label for the analysis; currently the constant"
+            " ``\"Analysis\"`` (English only). Declared as a plain field so a"
+            " future LLM-generated title can be passed in without a schema break."
+        ),
+    )
     quality_score: float | None = Field(
         description="Judge model score in [0,1]; ``null`` when the judge call failed.",
     )

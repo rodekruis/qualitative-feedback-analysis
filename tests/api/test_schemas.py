@@ -639,6 +639,23 @@ def test_analyze_bulk_quality_text_is_none_when_judge_failed():
     assert response.quality_text is None
 
 
+def test_analyze_bulk_title_defaults_to_analysis():
+    """title defaults to "Analysis" without the route passing it explicitly.
+
+    The default keeps routes.py unchanged; a real title can be injected later
+    without a schema break.
+    """
+    response = ApiAnalyzeBulkResponse(
+        analysis="text",
+        quality_score=0.9,
+        uncertainty_explanation="ok",
+        feedback_record_count=5,
+        request_id="r",
+    )
+    assert response.title == "Analysis"
+    assert "title" in response.model_dump()
+
+
 class TestAssignCodesRequestExamples:
     """The Swagger examples must come from the bundled package resource (#158).
 
