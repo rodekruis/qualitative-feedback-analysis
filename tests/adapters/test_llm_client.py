@@ -216,7 +216,7 @@ class TestLiteLLMClientLangfuseSpan:
                 )
 
         span = exporter.get_finished_spans()[0]
-        assert span.name == "llm_call:summarize"
+        assert span.name == "summarize"
         assert json.loads(span.attributes["langfuse.trace.tags"]) == [
             Operation.SUMMARIZE
         ]
