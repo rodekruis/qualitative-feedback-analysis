@@ -9,6 +9,7 @@ import pytest
 from pydantic import ValidationError
 
 from qfa.api.schemas import (
+    ApiAnalyzeBulkResponse,
     ApiAnalyzeRequest,
     ApiAssignCodesRequest,
     ApiAssignedCode,
@@ -569,6 +570,26 @@ def test_summarize_bulk_response_output_language_excluded_from_serialization():
         output_language="French",
     )
     assert "output_language" not in response.model_dump()
+
+
+def test_analyze_bulk_pretty_output_is_analysis_text_only():
+    """pretty_output equals the analysis string — no quality header, title, or separator.
+
+    EspoCRM reads this field verbatim into modelResponse, so stray formatting
+    lines would be shown to the user.
+    """
+    analysis = "Some analysis text."
+    response = ApiAnalyzeBulkResponse(
+        analysis=analysis,
+        quality_score=1.0,
+        uncertainty_explanation="Looks good.",
+        feedback_record_count=10,
+        request_id="req-1",
+    )
+
+    assert response.pretty_output == analysis
+    for forbidden in ("QUALITY", "TITLE", "SUMMARY", "----"):
+        assert forbidden not in response.pretty_output
 
 
 class TestAssignCodesRequestExamples:

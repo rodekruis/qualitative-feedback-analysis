@@ -621,15 +621,15 @@ class ApiAnalyzeBulkResponse(ApiBulkInferenceResponseBase):
     )
 
     @override
-    @computed_field(description="Human-readable formatted output string.")
+    @computed_field(description="Analysis text verbatim; no quality header, title, or separator.")
     @property
     def pretty_output(self) -> str:
-        """Human-readable formatted output string."""
-        return _create_pretty_output(
-            quality_score=self.quality_score,
-            title="Analysis",
-            summary=self.analysis,
-        )
+        """Analysis text verbatim — no quality header, title, or separator.
+
+        Kept for EspoCRM's ``modelResponse`` mapping; ``pretty_output`` is the
+        field the flowchart reads. See ``docs/integrations/espo-crm.md``.
+        """
+        return self.analysis
 
 
 # summarize-bulk
