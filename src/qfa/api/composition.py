@@ -45,12 +45,17 @@ judge/primary inheritance rule here, once, before either client is built.
 
 from __future__ import annotations
 
+import base64
 import importlib.resources
 import logging
 from dataclasses import dataclass
 
 import litellm
 import yaml
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.trace import Tracer
 
 from qfa.adapters.embedding import build_onnx_embedder
 from qfa.adapters.presidio_anonymizer import PresidioAnonymizer
@@ -60,7 +65,26 @@ from qfa.services.coding import CodingService
 from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.services.sensitivity import SensitivityService
 from qfa.services.summarize import SummarizeService
-from qfa.settings import AppSettings, EmbeddingSettings, JudgeLLMSettings, LLMSettings
+from qfa.settings import (
+    AppSettings,
+    EmbeddingSettings,
+    JudgeLLMSettings,
+    LangfuseSettings,
+    LLMSettings,
+)
+
+#: Path Langfuse's self-hosted OTLP/HTTP ingestion listens on, appended to
+#: ``LangfuseSettings.host``. Explicit rather than the bare ``/api/public/otel``
+#: base, so this exporter's behaviour does not depend on whether the installed
+#: ``opentelemetry-exporter-otlp-proto-http`` version auto-appends the signal
+#: suffix.
+_LANGFUSE_OTLP_TRACES_PATH = "/api/public/otel/v1/traces"
+
+#: Enables Langfuse v4's real-time ingestion path. Without it, spans sent over
+#: OTLP still work but can take up to 10 minutes to appear in the UI (Langfuse
+#: OpenTelemetry docs). Hardcoded, not a setting: it names the ingestion
+#: protocol version this integration was built against, not a deployment knob.
+_LANGFUSE_INGESTION_VERSION_HEADER = {"x-langfuse-ingestion-version": "4"}
 
 logger = logging.getLogger(__name__)
 
@@ -203,6 +227,49 @@ def register_custom_model_prices() -> None:
             len(custom_prices["models"]),
             list(custom_prices["models"].keys()),
         )
+
+
+def build_langfuse_tracer(settings: LangfuseSettings) -> Tracer:
+    """Build the tracer used to emit one Langfuse span per completion.
+
+    :class:`~qfa.adapters.llm_client.LiteLLMClient` uses this to emit one
+    span per call, for browsing individual calls in Langfuse. Always returns
+    a tracer bound to its **own**, independent
+    ``TracerProvider`` — never the process-global one
+    :func:`qfa.telemetry.configure_telemetry` may install for Application
+    Insights. Mixing the two would ship Langfuse-shaped span attributes into
+    App Insights (and vice versa) regardless of whether either integration is
+    actually configured, since a global provider is shared by every caller of
+    ``opentelemetry.trace.get_tracer``.
+
+    While ``LANGFUSE_PUBLIC_KEY``/``LANGFUSE_SECRET_KEY`` are unset — the
+    local-dev case, mirroring :func:`qfa.telemetry.configure_telemetry` — the
+    returned tracer has no span processor attached, so every span it creates
+    is simply dropped and nothing is exported; callers do not need to know
+    whether Langfuse is configured. Otherwise attaches an OTLP/HTTP exporter
+    authenticated with HTTP Basic Auth (``public_key:secret_key``), per
+    Langfuse's self-hosted OpenTelemetry ingestion contract. Postgres
+    (``GET /v1/usage``) stays the source of truth for cost/token totals;
+    this is for browsing individual traces, not accounting.
+    """
+    provider = TracerProvider()
+    if settings.public_key is None or settings.secret_key is None:
+        logger.debug(
+            "LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY unset; Langfuse tracing disabled"
+        )
+    else:
+        credentials = f"{settings.public_key}:{settings.secret_key.get_secret_value()}"
+        auth_header = base64.b64encode(credentials.encode()).decode()
+        exporter = OTLPSpanExporter(
+            endpoint=f"{(settings.host or '').rstrip('/')}{_LANGFUSE_OTLP_TRACES_PATH}",
+            headers={
+                "Authorization": f"Basic {auth_header}",
+                **_LANGFUSE_INGESTION_VERSION_HEADER,
+            },
+        )
+        provider.add_span_processor(BatchSpanProcessor(exporter))
+        logger.info("Langfuse call tracing configured (host=%s)", settings.host)
+    return provider.get_tracer("qfa.adapters.llm_client")
 
 
 def build_services(

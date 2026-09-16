@@ -3,11 +3,18 @@
 import json
 import logging
 from math import isnan
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 from litellm.exceptions import APIError, BadRequestError, RateLimitError, Timeout
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
+from opentelemetry.trace import StatusCode
 from pydantic import BaseModel, Field
 from tenacity import wait_fixed
 
@@ -54,9 +61,9 @@ def _make_mock_response():
     return response
 
 
-def _make_client(**overrides):
+def _make_client(**overrides: Any) -> LiteLLMClient:
     """Create a LiteLLMClient with sensible defaults."""
-    defaults = {
+    defaults: dict[str, Any] = {
         "model": MODEL,
         "api_key": "sk-test",
         "api_base": "",
@@ -124,6 +131,114 @@ class TestLiteLLMClientCallParameters:
         messages = call_kwargs["messages"]
         assert messages[0] == {"role": "system", "content": SYSTEM_MSG}
         assert messages[1] == {"role": "user", "content": USER_MSG}
+
+
+def _client_with_span_capture(**overrides):
+    """Build a LiteLLMClient wired to an in-memory span exporter for assertions.
+
+    Mirrors the ``exporter``/``TracerProvider`` pattern in
+    ``tests/test_telemetry.py``: a local provider, never the process-global
+    one, so these tests need no teardown of ambient OTel state.
+    """
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    client = _make_client(tracer=provider.get_tracer("test"), **overrides)
+    return client, exporter
+
+
+class TestLiteLLMClientLangfuseSpan:
+    """Each ``complete()`` call emits one span carrying only call metadata."""
+
+    @pytest.mark.asyncio
+    async def test_span_carries_model_tokens_cost_and_tenant_but_no_content(self):
+        mock_response = _make_mock_response()
+        client, exporter = _client_with_span_capture()
+        with (
+            patch(
+                "qfa.adapters.llm_client.acompletion",
+                new_callable=AsyncMock,
+                return_value=mock_response,
+            ),
+            patch("qfa.adapters.llm_client.completion_cost", return_value=0.001),
+        ):
+            await client.complete(SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT)
+
+        spans = exporter.get_finished_spans()
+        assert len(spans) == 1
+        attrs = spans[0].attributes or {}
+        assert attrs["langfuse.observation.type"] == "generation"
+        assert attrs["langfuse.user.id"] == TENANT_ID
+        assert attrs["langfuse.observation.model.name"] == MODEL
+        assert json.loads(attrs["langfuse.observation.usage_details"]) == {
+            "input": 100,
+            "output": 50,
+            "total": 150,
+        }
+        assert json.loads(attrs["langfuse.observation.cost_details"]) == {
+            "total": 0.001
+        }
+        # No call_scope active outside an HTTP request, so no operation tag.
+        assert "langfuse.trace.tags" not in attrs
+        # Never the assembled prompt or the model's own response text.
+        for value in attrs.values():
+            assert SYSTEM_MSG not in str(value)
+            assert USER_MSG not in str(value)
+            assert "This is the summary." not in str(value)
+
+    @pytest.mark.asyncio
+    async def test_span_carries_the_operation_tag_inside_a_call_scope(self):
+        """Inside an API request, the span is also tagged with the operation.
+
+        ``TrackingLLMAdapter`` reads the same ``current_call_context`` for
+        DB usage tracking; this is the Langfuse-side consumer of that
+        request-scoped context.
+        """
+        from uuid import uuid4
+
+        from qfa.domain.usage_models import Operation
+        from qfa.services.call_context import call_scope
+
+        mock_response = _make_mock_response()
+        client, exporter = _client_with_span_capture()
+        with (
+            patch(
+                "qfa.adapters.llm_client.acompletion",
+                new_callable=AsyncMock,
+                return_value=mock_response,
+            ),
+            patch("qfa.adapters.llm_client.completion_cost", return_value=0.0),
+        ):
+            async with call_scope(TENANT_ID, Operation.SUMMARIZE, uuid4()):
+                await client.complete(
+                    SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT
+                )
+
+        span = exporter.get_finished_spans()[0]
+        assert json.loads(span.attributes["langfuse.trace.tags"]) == [
+            Operation.SUMMARIZE
+        ]
+
+    @pytest.mark.asyncio
+    async def test_span_marks_error_status_on_a_failed_call(self):
+        client, exporter = _client_with_span_capture()
+        with patch(
+            "qfa.adapters.llm_client.acompletion",
+            new_callable=AsyncMock,
+            side_effect=APIError(
+                status_code=500,
+                message="server error",
+                model=MODEL,
+                llm_provider="azure_ai",
+            ),
+        ):
+            with pytest.raises(LLMError):
+                await client.complete(
+                    SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT
+                )
+
+        span = exporter.get_finished_spans()[0]
+        assert span.status.status_code == StatusCode.ERROR
 
     @pytest.mark.asyncio
     async def test_empty_api_base_passed_as_none(self):

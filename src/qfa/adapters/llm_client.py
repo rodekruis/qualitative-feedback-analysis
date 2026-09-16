@@ -1,5 +1,6 @@
 """LLM client adapter using LiteLLM for unified provider access."""
 
+import json
 import logging
 import re
 from typing import cast
@@ -7,6 +8,8 @@ from typing import cast
 from litellm import acompletion, completion_cost
 from litellm.exceptions import APIError, BadRequestError, RateLimitError, Timeout
 from litellm.utils import type_to_response_format_param
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.trace import Status, StatusCode, Tracer
 from pydantic import BaseModel, ValidationError
 from tenacity import (
     AsyncRetrying,
@@ -28,6 +31,7 @@ from qfa.domain.errors import (
 )
 from qfa.domain.models import LLMResponse, T_Response
 from qfa.domain.ports import LLMPort
+from qfa.services.call_context import current_call_context
 from qfa.settings import LLM_RETRY_BUDGET_MULTIPLIER
 from qfa.utils import timed
 
@@ -277,6 +281,15 @@ class LiteLLMClient(LLMPort):
         Base URL for the provider endpoint. Empty string if not needed.
     api_version : str
         API version string. Empty string if not needed.
+    tracer : Tracer | None
+        Emits one span per :meth:`complete` call, for Langfuse call tracing
+        (see :func:`qfa.api.composition.build_langfuse_tracer`). ``None``
+        (the default) builds a tracer bound to a fresh, local
+        ``TracerProvider`` with no span processor attached, so every span it
+        creates is dropped and nothing is exported — deliberately *not* the
+        process-global provider :mod:`qfa.telemetry` may install for
+        Application Insights, which every caller of
+        ``opentelemetry.trace.get_tracer`` shares.
     """
 
     def __init__(
@@ -287,6 +300,7 @@ class LiteLLMClient(LLMPort):
         api_version: str,
         chars_per_token: int,
         max_total_tokens: int,
+        tracer: Tracer | None = None,
     ) -> None:
         self._model = model
         self._api_key = api_key
@@ -294,6 +308,9 @@ class LiteLLMClient(LLMPort):
         self._api_version = api_version
         self._chars_per_token = chars_per_token
         self._max_total_tokens = max_total_tokens
+        self._tracer = (
+            tracer if tracer is not None else TracerProvider().get_tracer(__name__)
+        )
 
     def _check_injection(self, user_message: str) -> None:
         """Scan user_message for known prompt injection strings.
@@ -446,6 +463,14 @@ class LiteLLMClient(LLMPort):
         the raised ``LLMContentPolicyViolationError``'s ``discarded_*``
         fields if every attempt is blocked.
 
+        Also emits one Langfuse span (via ``self._tracer``) around the whole
+        call, tagged with ``tenant_id`` and, inside an active
+        ``current_call_context`` (unset for scripts/tests outside an HTTP
+        request), the orchestrator ``operation``. Never carries the prompt,
+        completion, or any other request/response content — only the same
+        model/tokens/cost fields logged at DEBUG below and returned in
+        ``LLMResponse``.
+
         Parameters
         ----------
         system_message : str
@@ -477,6 +502,50 @@ class LiteLLMClient(LLMPort):
             When the input matches a known prompt-injection pattern.
         LLMError
             For any other provider error or empty response.
+        """
+        with self._tracer.start_as_current_span("llm_call") as span:
+            span.set_attribute("langfuse.observation.type", "generation")
+            span.set_attribute("langfuse.user.id", tenant_id)
+            ctx = current_call_context.get()
+            if ctx is not None:
+                span.set_attribute("langfuse.trace.tags", json.dumps([ctx.operation]))
+            try:
+                response = await self._complete_impl(
+                    system_message, user_message, tenant_id, response_model, timeout
+                )
+            except Exception as exc:
+                span.set_status(Status(StatusCode.ERROR, str(type(exc).__name__)))
+                raise
+            span.set_attribute("langfuse.observation.model.name", response.model)
+            span.set_attribute(
+                "langfuse.observation.usage_details",
+                json.dumps(
+                    {
+                        "input": response.prompt_tokens,
+                        "output": response.completion_tokens,
+                        "total": response.prompt_tokens + response.completion_tokens,
+                    }
+                ),
+            )
+            span.set_attribute(
+                "langfuse.observation.cost_details",
+                json.dumps({"total": response.cost}),
+            )
+            return response
+
+    async def _complete_impl(
+        self,
+        system_message: str,
+        user_message: str,
+        tenant_id: str,
+        response_model: type[T_Response],
+        timeout: float = 40.0,
+    ) -> LLMResponse[T_Response]:
+        """Run the retry/parse logic :meth:`complete` wraps in a Langfuse span.
+
+        Behaviour and contract are exactly :meth:`complete`'s docstring; split
+        out only so the span in :meth:`complete` wraps a single call rather
+        than being interleaved through this method's retry loop.
         """
         self._check_injection(user_message)
 

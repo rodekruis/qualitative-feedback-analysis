@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
+import base64
 import json
 from typing import Any
+from unittest.mock import patch
 
 import litellm
 import pytest
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 
 from qfa.adapters.llm_client import LiteLLMClient
 from qfa.adapters.presidio_anonymizer import PresidioAnonymizer
 from qfa.api.composition import (
     build_analyze_service,
+    build_langfuse_tracer,
     build_services,
     register_custom_model_prices,
     resolve_judge_llm_settings,
@@ -21,7 +24,7 @@ from qfa.services.analyze import AnalyzeService
 from qfa.services.coding import CodingService
 from qfa.services.sensitivity import SensitivityService
 from qfa.services.summarize import SummarizeService
-from qfa.settings import AppSettings, JudgeLLMSettings, LLMSettings
+from qfa.settings import AppSettings, JudgeLLMSettings, LangfuseSettings, LLMSettings
 
 JUDGE_ENV_VARS = (
     "JUDGE_LLM_MODEL",
@@ -29,6 +32,8 @@ JUDGE_ENV_VARS = (
     "JUDGE_LLM_API_BASE",
     "JUDGE_LLM_API_VERSION",
 )
+
+LANGFUSE_ENV_VARS = ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_HOST")
 
 
 class _StubLLM:
@@ -73,6 +78,12 @@ def auth_env(monkeypatch: pytest.MonkeyPatch) -> None:
     # below see the no-judge-client state rather than a locally-enabled one.
     for judge_var in JUDGE_ENV_VARS:
         monkeypatch.delenv(judge_var, raising=False)
+    # And any ambient Langfuse configuration: a partial one (e.g. a public
+    # key with no host, from a developer's local .env) would otherwise fail
+    # AppSettings() validation here for reasons unrelated to what these
+    # tests check.
+    for langfuse_var in LANGFUSE_ENV_VARS:
+        monkeypatch.delenv(langfuse_var, raising=False)
     monkeypatch.setenv("LLM_API_KEY", "sk-test-composition")
     # DatabaseSettings requires DB_HOST when DB_URL is unset; the
     # factory doesn't touch the DB but ``AppSettings()`` validates
@@ -509,3 +520,77 @@ class TestRegisterCustomModelPrices:
 
         assert entry["input_cost_per_token"] > 0
         assert entry["output_cost_per_token"] > 0
+
+
+@pytest.fixture
+def no_ambient_langfuse_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Clear ``LANGFUSE_*`` so a developer's local ``.env`` can't leak in.
+
+    Same rationale as the ``EMBEDDING_*``/``JUDGE_LLM_*`` clearing in
+    ``auth_env`` above: these tests construct a bare or partially-bare
+    ``LangfuseSettings()`` and need the unset-fields case to be
+    deterministic regardless of ambient environment.
+    """
+    for var in LANGFUSE_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+
+
+class TestBuildLangfuseTracer:
+    """Langfuse tracing is opt-in and never carries prompt/completion text.
+
+    ``build_langfuse_tracer`` returns a usable ``Tracer`` either way — these
+    tests check what it did to get there (attached an OTLP exporter, or
+    not), not the object's type.
+    """
+
+    def test_does_not_build_an_exporter_without_credentials(
+        self, no_ambient_langfuse_env: None
+    ) -> None:
+        """Local dev has no Langfuse keys, and must not pay for an exporter."""
+        with patch("qfa.api.composition.OTLPSpanExporter") as mock_exporter:
+            build_langfuse_tracer(LangfuseSettings())
+
+        mock_exporter.assert_not_called()
+
+    def test_configures_the_otlp_exporter_when_credentials_are_set(self) -> None:
+        settings = LangfuseSettings(
+            public_key="pk-test",
+            secret_key=SecretStr("sk-test"),
+            host="https://langfuse.internal.example",
+        )
+
+        with patch("qfa.api.composition.OTLPSpanExporter") as mock_exporter:
+            build_langfuse_tracer(settings)
+
+        mock_exporter.assert_called_once()
+        call_kwargs = mock_exporter.call_args.kwargs
+        assert (
+            call_kwargs["endpoint"]
+            == "https://langfuse.internal.example/api/public/otel/v1/traces"
+        )
+        expected_auth = base64.b64encode(b"pk-test:sk-test").decode()
+        assert call_kwargs["headers"]["Authorization"] == f"Basic {expected_auth}"
+        assert call_kwargs["headers"]["x-langfuse-ingestion-version"] == "4"
+
+    def test_strips_a_trailing_slash_from_the_host(self) -> None:
+        """A trailing slash in LANGFUSE_HOST must not produce a double slash."""
+        settings = LangfuseSettings(
+            public_key="pk-test",
+            secret_key=SecretStr("sk-test"),
+            host="https://langfuse.internal.example/",
+        )
+
+        with patch("qfa.api.composition.OTLPSpanExporter") as mock_exporter:
+            build_langfuse_tracer(settings)
+
+        assert (
+            mock_exporter.call_args.kwargs["endpoint"]
+            == "https://langfuse.internal.example/api/public/otel/v1/traces"
+        )
+
+    def test_requires_host_when_credentials_are_set(
+        self, no_ambient_langfuse_env: None
+    ) -> None:
+        """A self-hosted deployment must never fall back to Langfuse Cloud."""
+        with pytest.raises(ValidationError, match="LANGFUSE_HOST"):
+            LangfuseSettings(public_key="pk-test", secret_key=SecretStr("sk-test"))

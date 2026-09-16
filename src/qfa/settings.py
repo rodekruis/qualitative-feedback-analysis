@@ -410,6 +410,37 @@ class TelemetrySettings(BaseSettings):
     """
 
 
+class LangfuseSettings(BaseSettings):
+    """Configuration for Langfuse call tracing (self-hosted instance).
+
+    No required fields, so it constructs cleanly with tracing disabled —
+    the local-dev case, exactly like :class:`TelemetrySettings`.
+    :func:`qfa.api.composition.configure_langfuse_tracking` is a no-op while
+    ``public_key``/``secret_key`` are unset.
+
+    ``host`` has no cloud default: this deployment always points at a
+    self-hosted instance, so leaving it unset while the keys are set would
+    otherwise send call metadata to Langfuse's public cloud by LiteLLM's own
+    default — the validator below rejects that combination instead.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="LANGFUSE_")
+
+    public_key: str | None = None
+    secret_key: SecretStr | None = None
+    host: str | None = None
+
+    @model_validator(mode="after")
+    def _require_host_when_configured(self) -> "LangfuseSettings":
+        if (self.public_key or self.secret_key) and not self.host:
+            raise ValueError(
+                "LANGFUSE_HOST must be set when LANGFUSE_PUBLIC_KEY or "
+                "LANGFUSE_SECRET_KEY is set — this deployment self-hosts "
+                "Langfuse and never falls back to Langfuse Cloud"
+            )
+        return self
+
+
 class AppSettings(BaseSettings):
     """Root configuration composing all sub-settings groups."""
 
@@ -424,6 +455,7 @@ class AppSettings(BaseSettings):
     db: DatabaseSettings = Field(default_factory=DatabaseSettings)
     network: NetworkSettings = Field(default_factory=NetworkSettings)
     telemetry: TelemetrySettings = Field(default_factory=TelemetrySettings)
+    langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
     debug: bool = False
     """Whether to enable debug mode.
 

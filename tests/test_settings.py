@@ -35,6 +35,21 @@ def no_judge_env(monkeypatch):
         monkeypatch.delenv(var, raising=False)
 
 
+@pytest.fixture(autouse=True)
+def no_langfuse_env(monkeypatch):
+    """Clear ``LANGFUSE_*`` so a developer's local Langfuse key can't leak in.
+
+    ``LangfuseSettings`` rejects a public/secret key with no host (see
+    ``TestConfigureLangfuseTracking`` in ``tests/api/test_composition.py``),
+    so a bare key in a developer's ``.env`` would fail every ``AppSettings()``
+    construction in this module for reasons unrelated to what it tests.
+    Autouse because every test in ``TestAppSettings`` builds a full
+    ``AppSettings()`` and none of them are about Langfuse.
+    """
+    for var in ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_HOST"):
+        monkeypatch.delenv(var, raising=False)
+
+
 class TestLLMSettings:
     def test_reads_from_llm_prefixed_env_vars(self, monkeypatch):
         monkeypatch.setenv("LLM_API_KEY", "sk-test-key")

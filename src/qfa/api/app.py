@@ -24,6 +24,7 @@ from qfa.adapters.tracking_llm import TrackingLLMAdapter
 from qfa.adapters.usage_repository import SqlAlchemyUsageRepository
 from qfa.api.composition import (
     build_embedder,
+    build_langfuse_tracer,
     build_services,
     resolve_judge_llm_settings,
 )
@@ -55,7 +56,7 @@ from qfa.domain.errors import (
 )
 from qfa.domain.ports import LLMPort
 from qfa.services.auth_orchestrator import AuthOrchestrator
-from qfa.settings import AppSettings, LLMSettings
+from qfa.settings import AppSettings, LangfuseSettings, LLMSettings
 from qfa.telemetry import instrument_db_engine
 from qfa.utils import setup_logging
 
@@ -732,6 +733,15 @@ async def _handle_unhandled_exception(request: Request, exc: Exception) -> JSONR
 def build_llm_client(settings: LLMSettings) -> LiteLLMClient:
     """Build an LLM client from the provided settings.
 
+    Every client this factory builds gets a Langfuse tracer, built fresh
+    from ``LangfuseSettings()`` (its own env-var read, independent of
+    ``settings``) — so both the primary and, when configured, the judge
+    client that ``llm_factory(...)`` builds in the lifespan below get one.
+    Kept a single-argument factory (rather than threading ``AppSettings``
+    or a shared tracer through) so it stays assignable to ``LLMFactory``,
+    the ``Callable[[LLMSettings], LLMPort]`` the lifespan and its test
+    fakes are built against.
+
     Parameters
     ----------
     settings : LLMSettings
@@ -749,6 +759,7 @@ def build_llm_client(settings: LLMSettings) -> LiteLLMClient:
         api_version=settings.api_version,
         chars_per_token=settings.chars_per_token,
         max_total_tokens=settings.max_total_tokens,
+        tracer=build_langfuse_tracer(LangfuseSettings()),
     )
 
 
@@ -810,7 +821,10 @@ def _make_lifespan(llm_factory: LLMFactory):
         1. Load ``AppSettings`` and configure logging — must happen
            before anything that might log.
         2. Build the base ``LLMPort`` via the closed-over factory, plus a
-           second one for judge calls when ``JUDGE_LLM_MODEL`` is set.
+           second one for judge calls when ``JUDGE_LLM_MODEL`` is set. Each
+           call to the factory (``build_llm_client`` in production) also
+           attaches a Langfuse tracer, built from ``LANGFUSE_*`` — a no-op
+           tracer while that is unconfigured.
         3. Create the async DB engine and wrap *both* base LLMs in
            ``TrackingLLMAdapter`` so every call attempt is recorded —
            an unwrapped judge client would omit judge calls from usage.
