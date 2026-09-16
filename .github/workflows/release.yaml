@@ -163,7 +163,7 @@ jobs:
           TAG: ${{ steps.semrel.outputs.tag }}
         run: |
           set -euo pipefail
-          docker build -t "$IMAGE:$TAG" .
+          docker build --build-arg GIT_SHA="$(git rev-parse HEAD)" -t "$IMAGE:$TAG" .
           docker push "$IMAGE:$TAG"
           # Read the digest back from ACR — it is the authoritative value.
           DIGEST=$(az acr repository show \

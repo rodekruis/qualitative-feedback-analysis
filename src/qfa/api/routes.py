@@ -1,6 +1,7 @@
 """API route handlers for the feedback analysis backend."""
 
 import logging
+import os
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
@@ -566,9 +567,10 @@ async def health() -> ApiHealthResponse:
     Returns
     -------
     HealthResponse
-        Health status and package version.
+        Health status, package version, and the built commit SHA.
     """
     return ApiHealthResponse(
         status="ok",
         version=qfa.__version__,
+        commit=os.environ.get("GIT_SHA", "unknown"),
     )
