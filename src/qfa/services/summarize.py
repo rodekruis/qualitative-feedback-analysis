@@ -34,6 +34,7 @@ from qfa.domain.models import (
     SummaryResultModel,
 )
 from qfa.domain.ports import AnonymizationPort, LLMPort
+from qfa.services.call_context import judge_call
 from qfa.services.language import detect_source_language
 from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.services.prompts import (
@@ -220,13 +221,14 @@ class SummarizeService:
         )
 
         judge_timeout = self._executor.check_deadline_and_get_timeout(deadline)
-        judge_response = await self._judge_llm.complete(
-            system_message=judge_system,
-            user_message=JUDGE_USER_MESSAGE,
-            tenant_id=request.tenant_id,
-            response_model=str,
-            timeout=judge_timeout,
-        )
+        with judge_call():
+            judge_response = await self._judge_llm.complete(
+                system_message=judge_system,
+                user_message=JUDGE_USER_MESSAGE,
+                tenant_id=request.tenant_id,
+                response_model=str,
+                timeout=judge_timeout,
+            )
         quality_score = _parse_judge_quality_score(judge_response.structured)
 
         response.structured.quality_score = quality_score
@@ -315,13 +317,14 @@ class SummarizeService:
             llm_completion.structured.feedback_record_summaries[0].summary,
         )
         judge_timeout = self._executor.check_deadline_and_get_timeout(deadline)
-        judge_response = await self._judge_llm.complete(
-            system_message=judge_system,
-            user_message=JUDGE_USER_MESSAGE,
-            tenant_id=request.tenant_id,
-            response_model=str,
-            timeout=judge_timeout,
-        )
+        with judge_call():
+            judge_response = await self._judge_llm.complete(
+                system_message=judge_system,
+                user_message=JUDGE_USER_MESSAGE,
+                tenant_id=request.tenant_id,
+                response_model=str,
+                timeout=judge_timeout,
+            )
         quality_score = _parse_judge_quality_score(judge_response.structured)
 
         return_model_as_string = llm_completion.structured.model_dump_json()

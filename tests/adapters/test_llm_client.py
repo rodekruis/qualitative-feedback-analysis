@@ -222,6 +222,77 @@ class TestLiteLLMClientLangfuseSpan:
         ]
 
     @pytest.mark.asyncio
+    async def test_span_is_suffixed_and_tagged_as_judge_inside_judge_call(self):
+        """A judge call is distinguishable from the generation call it grades.
+
+        Every current judge call site (``analyze``, ``summarize``,
+        ``coding``) wraps itself in ``judge_call()``; this is the
+        Langfuse-side consumer of that.
+        """
+        from uuid import uuid4
+
+        from qfa.domain.usage_models import Operation
+        from qfa.services.call_context import call_scope, judge_call
+
+        mock_response = _make_mock_response()
+        client, exporter = _client_with_span_capture()
+        with (
+            patch(
+                "qfa.adapters.llm_client.acompletion",
+                new_callable=AsyncMock,
+                return_value=mock_response,
+            ),
+            patch("qfa.adapters.llm_client.completion_cost", return_value=0.0),
+        ):
+            async with call_scope(TENANT_ID, Operation.SUMMARIZE, uuid4()):
+                with judge_call():
+                    await client.complete(
+                        SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT
+                    )
+
+        span = exporter.get_finished_spans()[0]
+        assert span.name == "summarize:judge"
+        assert json.loads(span.attributes["langfuse.trace.tags"]) == [
+            Operation.SUMMARIZE,
+            "judge",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_judge_call_role_does_not_leak_to_the_next_call(self):
+        """The role resets between two calls sharing one call_scope.
+
+        Exactly the map-then-judge sequence hierarchical analysis runs per
+        chunk.
+        """
+        from uuid import uuid4
+
+        from qfa.domain.usage_models import Operation
+        from qfa.services.call_context import call_scope, judge_call
+
+        mock_response = _make_mock_response()
+        client, exporter = _client_with_span_capture()
+        with (
+            patch(
+                "qfa.adapters.llm_client.acompletion",
+                new_callable=AsyncMock,
+                return_value=mock_response,
+            ),
+            patch("qfa.adapters.llm_client.completion_cost", return_value=0.0),
+        ):
+            async with call_scope(TENANT_ID, Operation.ANALYZE, uuid4()):
+                with judge_call():
+                    await client.complete(
+                        SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT
+                    )
+                await client.complete(
+                    SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT
+                )
+
+        judge_span, generation_span = exporter.get_finished_spans()
+        assert judge_span.name == "analyze:judge"
+        assert generation_span.name == "analyze"
+
+    @pytest.mark.asyncio
     async def test_span_marks_error_status_on_a_failed_call(self):
         client, exporter = _client_with_span_capture()
         with patch(

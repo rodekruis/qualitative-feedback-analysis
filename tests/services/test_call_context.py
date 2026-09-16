@@ -6,7 +6,12 @@ from uuid import uuid4
 import pytest
 
 from qfa.domain.usage_models import Operation
-from qfa.services.call_context import call_scope, current_call_context
+from qfa.services.call_context import (
+    call_scope,
+    current_call_context,
+    current_call_role,
+    judge_call,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -95,6 +100,40 @@ async def test_nested_call_scope_wins_over_outer():
         # Outer scope restored on inner exit.
         assert current_call_context.get() is outer_ctx
         assert outer_ctx.call_id == outer
+
+
+async def test_current_call_role_defaults_to_generation():
+    """No ``judge_call()`` entered → the role is the common-case default.
+
+    Guards the default so a stray ``current_call_role.get()`` can't
+    accidentally see a leaked "judge" role from a prior call.
+    """
+    assert current_call_role.get() == "generation"
+
+
+async def test_judge_call_sets_and_resets():
+    """``judge_call`` flips the role for the block and restores it on exit."""
+    with judge_call():
+        assert current_call_role.get() == "judge"
+    assert current_call_role.get() == "generation"
+
+
+async def test_judge_call_propagates_through_create_task():
+    """A child task spawned inside ``judge_call`` sees the same role.
+
+    Same snapshot-on-spawn guarantee ``call_scope`` relies on — needed here
+    too, since the hierarchical leaf judges run as concurrently-spawned
+    tasks.
+    """
+    captured: list[str] = []
+
+    async def reader() -> None:
+        captured.append(current_call_role.get())
+
+    with judge_call():
+        await asyncio.create_task(reader())
+
+    assert captured == ["judge"]
 
 
 async def test_separate_call_scopes_produce_distinct_call_ids():

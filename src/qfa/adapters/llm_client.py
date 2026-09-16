@@ -31,7 +31,7 @@ from qfa.domain.errors import (
 )
 from qfa.domain.models import LLMResponse, T_Response
 from qfa.domain.ports import LLMPort
-from qfa.services.call_context import current_call_context
+from qfa.services.call_context import current_call_context, current_call_role
 from qfa.settings import LLM_RETRY_BUDGET_MULTIPLIER
 from qfa.utils import timed
 
@@ -466,10 +466,12 @@ class LiteLLMClient(LLMPort):
         Also emits one Langfuse span (via ``self._tracer``) around the whole
         call, tagged with ``tenant_id`` and, inside an active
         ``current_call_context`` (unset for scripts/tests outside an HTTP
-        request), the orchestrator ``operation``. Never carries the prompt,
-        completion, or any other request/response content — only the same
-        model/tokens/cost fields logged at DEBUG below and returned in
-        ``LLMResponse``.
+        request), the orchestrator ``operation``. Also tagged (and named)
+        as a judge call inside an active ``judge_call()`` block (see
+        ``qfa.services.call_context``) — every current judge call site
+        wraps itself in one. Never carries the prompt, completion, or any
+        other request/response content — only the same model/tokens/cost
+        fields logged at DEBUG below and returned in ``LLMResponse``.
 
         Parameters
         ----------
@@ -504,18 +506,23 @@ class LiteLLMClient(LLMPort):
             For any other provider error or empty response.
         """
         ctx = current_call_context.get()
+        is_judge = current_call_role.get() == "judge"
         # Langfuse's OTel ingestion uses this one span both as the trace and
         # as its sole observation, so its name is what both list views show.
         # Named by operation (when known) so the list is scannable without
         # opening a row or filtering by the langfuse.trace.tags attribute
         # below; "llm_call" is only the fallback outside an HTTP request
-        # (scripts, notebooks, tests), where no operation is known.
-        span_name = ctx.operation if ctx is not None else "llm_call"
+        # (scripts, notebooks, tests), where no operation is known. Suffixed
+        # with ":judge" for a judge call -- a generation call's name is
+        # unchanged, since that is the common case.
+        operation = ctx.operation if ctx is not None else "llm_call"
+        span_name = f"{operation}:judge" if is_judge else operation
         with self._tracer.start_as_current_span(span_name) as span:
             span.set_attribute("langfuse.observation.type", "generation")
             span.set_attribute("langfuse.user.id", tenant_id)
             if ctx is not None:
-                span.set_attribute("langfuse.trace.tags", json.dumps([ctx.operation]))
+                tags = [ctx.operation, "judge"] if is_judge else [ctx.operation]
+                span.set_attribute("langfuse.trace.tags", json.dumps(tags))
             try:
                 response = await self._complete_impl(
                     system_message, user_message, tenant_id, response_model, timeout

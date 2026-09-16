@@ -39,6 +39,7 @@ from qfa.domain.models import (
     FeedbackRecordModel,
 )
 from qfa.domain.ports import AnonymizationPort, EmbeddingPort, LLMPort
+from qfa.services.call_context import judge_call
 from qfa.services.clustering import cluster_records
 from qfa.services.coding_trends import build_coding_trend_table
 from qfa.services.hierarchical_prompts import (
@@ -330,13 +331,14 @@ class AnalyzeService:
                 analysis=analyse_response.structured,
                 output_language=request.output_language,
             )
-            judge_response = await self._judge_llm.complete(
-                system_message=judge_system,
-                user_message=JUDGE_USER_MESSAGE,
-                tenant_id=request.tenant_id,
-                response_model=str,
-                timeout=judge_timeout,
-            )
+            with judge_call():
+                judge_response = await self._judge_llm.complete(
+                    system_message=judge_system,
+                    user_message=JUDGE_USER_MESSAGE,
+                    tenant_id=request.tenant_id,
+                    response_model=str,
+                    timeout=judge_timeout,
+                )
             judged = _parse_analyze_judge_response(judge_response.structured)
             quality_score = judged.quality_score
             uncertainty_explanation = judged.uncertainty_explanation
@@ -789,16 +791,17 @@ class AnalyzeService:
                 analyst_prompt=analyst_prompt,
                 analysis=partial,
             )
-            judge_response = await self._executor.bounded_complete(
-                semaphore,
-                llm=self._judge_llm,
-                system_message=judge_system,
-                user_message=JUDGE_USER_MESSAGE,
-                tenant_id=tenant_id,
-                response_model=str,
-                deadline=deadline,
-                timing=timing,
-            )
+            with judge_call():
+                judge_response = await self._executor.bounded_complete(
+                    semaphore,
+                    llm=self._judge_llm,
+                    system_message=judge_system,
+                    user_message=JUDGE_USER_MESSAGE,
+                    tenant_id=tenant_id,
+                    response_model=str,
+                    deadline=deadline,
+                    timing=timing,
+                )
             return _parse_analyze_judge_response(
                 judge_response.structured
             ).quality_score

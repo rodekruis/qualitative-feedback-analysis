@@ -40,6 +40,7 @@ from qfa.domain.models import (
     FeedbackRecordModel,
 )
 from qfa.domain.ports import AnonymizationPort, LLMPort
+from qfa.services.call_context import judge_call
 from qfa.services.coding_classifier import (
     CodingResponse,
     JudgeResponse,
@@ -461,12 +462,13 @@ class CodingService:
         self._check_coding_deadline(deadline)
         self._executor.check_token_limit(system_message, user_message)
         user_message, _ = self._anonymizer.anonymize(user_message)
-        response = await self._judge_llm.complete(
-            system_message=system_message,
-            user_message=user_message,
-            tenant_id=tenant_id,
-            response_model=str,
-        )
+        with judge_call():
+            response = await self._judge_llm.complete(
+                system_message=system_message,
+                user_message=user_message,
+                tenant_id=tenant_id,
+                response_model=str,
+            )
         judged = _parse_judge_response(response.structured)
         if not 0.0 <= judged.score <= 1.0:
             raise AnalysisError("LLM judge returned score outside 0.0-1.0")

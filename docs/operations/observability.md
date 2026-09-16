@@ -152,6 +152,8 @@ Each span carries these attributes:
 - `langfuse.trace.tags`, set to the operation, inside an active request (unset for scripts and tests run outside one)
 - `langfuse.observation.usage_details` and `langfuse.observation.cost_details` (JSON, holding token counts and cost)
 
+A judge call is marked apart from the generation call it grades. This covers the leaf judges of hierarchical analysis, and the per-record and per-level judges in `summarize` and `coding`. Its span name gets a `:judge` suffix, for example `summarize:judge`, and its tags gain a `"judge"` entry. `qfa.services.call_context.judge_call` sets this. Every current judge call site wraps itself in it. A generation call's name and tags stay exactly as they were before this marker existed.
+
 The span's own start and end time carry the latency. Langfuse needs no separate attribute for it. No attribute ever carries the prompt or completion text. `langfuse.observation.input` and `langfuse.observation.output` are the only attributes that carry that text, and this integration never sets either one.
 
 ## Azure Monitor
