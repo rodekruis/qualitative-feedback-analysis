@@ -558,6 +558,25 @@ def test_summarize_bulk_pretty_output_is_summary_text_only():
     assert response.pretty_output == summary
 
 
+def test_summarize_bulk_quality_text_renders_dots_and_percent():
+    """quality_text formats quality_score as dot-chars and a percentage."""
+    response = ApiSummarizeBulkResponse(title="T", summary="S", quality_score=0.94)
+    assert response.quality_text == "●●●●● 94%"
+
+    response_85 = ApiSummarizeBulkResponse(title="T", summary="S", quality_score=0.85)
+    assert response_85.quality_text == "●●●●○ 85%"
+
+
+def test_summarize_bulk_quality_text_empty_batch_renders_zero():
+    """quality_score=0.0 (all-empty batch) renders '○○○○○ 0%'.
+
+    This is unchanged behaviour — the score was always shown in pretty_output —
+    but pinned here now that it lives in its own field.
+    """
+    response = ApiSummarizeBulkResponse(title="", summary="", quality_score=0.0)
+    assert response.quality_text == "○○○○○ 0%"
+
+
 def test_summarize_bulk_response_output_language_excluded_from_serialization():
     """output_language is a render input only and never appears in the JSON body.
 

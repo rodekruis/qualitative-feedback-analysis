@@ -702,6 +702,17 @@ class ApiSummarizeBulkResponse(ApiBulkInferenceResponseBase):
         """Summary text verbatim. Kept for EspoCRM's modelResponse mapping."""
         return self.summary
 
+    @computed_field(
+        description=("Quality score as dots and percentage, e.g. ``'●●●●● 100%'``."),
+    )
+    @property
+    def quality_text(self) -> str:
+        """Quality score rendered as dots and percentage, e.g. ``'●●●●● 100%'``.
+
+        Use ``quality_score`` for threshold comparisons in EspoCRM.
+        """
+        return _format_quality(self.quality_score)
+
 
 ##### Per-feedback-record requests #####
 
