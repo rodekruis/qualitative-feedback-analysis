@@ -544,18 +544,18 @@ def test_create_pretty_output_translates_headers_to_requested_language():
     assert "85%" in out
 
 
-def test_summarize_bulk_response_localizes_pretty_output():
-    """ApiSummarizeBulkResponse renders pretty_output in the configured language.
+def test_summarize_bulk_pretty_output_is_summary_text_only():
+    """ApiSummarizeBulkResponse.pretty_output returns the summary text verbatim.
 
-    The computed field must pick up the excluded output_language render input.
+    No quality line, title line, SUMMARY header, or trailing separator.
     """
+    summary = "Clean water access improved."
     response = ApiSummarizeBulkResponse(
-        title="Un titre",
-        summary="Un résumé",
-        quality_score=0.85,
-        output_language="French",
+        title="Any Title",
+        summary=summary,
+        quality_score=0.94,
     )
-    assert "QUALITÉ" in response.pretty_output
+    assert response.pretty_output == summary
 
 
 def test_summarize_bulk_response_output_language_excluded_from_serialization():

@@ -699,13 +699,8 @@ class ApiSummarizeBulkResponse(ApiBulkInferenceResponseBase):
     @computed_field(description="Human-readable formatted output string.")
     @property
     def pretty_output(self) -> str:
-        """Human-readable formatted output string."""
-        return _create_pretty_output(
-            quality_score=self.quality_score,
-            title=self.title,
-            summary=self.summary,
-            language=self.output_language,
-        )
+        """Summary text verbatim. Kept for EspoCRM's modelResponse mapping."""
+        return self.summary
 
 
 ##### Per-feedback-record requests #####
