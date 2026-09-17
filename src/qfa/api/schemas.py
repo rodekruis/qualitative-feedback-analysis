@@ -677,10 +677,11 @@ class ApiSummarizeBulkResponse(ApiBulkInferenceResponseBase):
     summary: str = Field(
         description="Generated bullet-point summary ordered by theme frequency."
     )
-    quality_score: float = Field(
+    quality_score: float | None = Field(
+        default=None,
         ge=0.0,
         le=1.0,
-        description="Judge score for summary quality in the range 0.0-1.0.",
+        description="Judge score for summary quality in the range 0.0-1.0; ``null`` when the batch was empty (no judge call was made).",
     )
     output_language: str | None = Field(
         default=None,
@@ -699,14 +700,20 @@ class ApiSummarizeBulkResponse(ApiBulkInferenceResponseBase):
         return self.summary
 
     @computed_field(
-        description=("Quality score as dots and percentage, e.g. ``'●●●●● 100%'``."),
+        description=(
+            "Quality score as dots and percentage, e.g. ``'●●●●● 100%'``; ``null`` when ``quality_score`` is ``null``."
+        ),
     )
     @property
-    def quality_text(self) -> str:
+    def quality_text(self) -> str | None:
         """Quality score rendered as dots and percentage, e.g. ``'●●●●● 100%'``.
 
-        Use ``quality_score`` for threshold comparisons in EspoCRM.
+        ``None`` when ``quality_score`` is ``None`` — the batch was empty so
+        no judge call was made; rendering a score would mislead. Use
+        ``quality_score`` for threshold comparisons in EspoCRM.
         """
+        if self.quality_score is None:
+            return None
         return _format_quality(self.quality_score)
 
 

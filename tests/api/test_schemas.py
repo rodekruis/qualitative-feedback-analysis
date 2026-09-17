@@ -567,14 +567,14 @@ def test_summarize_bulk_quality_text_renders_dots_and_percent():
     assert response_85.quality_text == "●●●●○ 85%"
 
 
-def test_summarize_bulk_quality_text_empty_batch_renders_zero():
-    """quality_score=0.0 (all-empty batch) renders '○○○○○ 0%'.
+def test_summarize_bulk_quality_text_empty_batch_is_none():
+    """quality_score=None (all-empty batch) renders quality_text=None.
 
-    This is unchanged behaviour — the score was always shown in pretty_output —
-    but pinned here now that it lives in its own field.
+    An empty batch means no judge call was made; returning 0 would signal
+    poor quality rather than "nothing to judge".
     """
-    response = ApiSummarizeBulkResponse(title="", summary="", quality_score=0.0)
-    assert response.quality_text == "○○○○○ 0%"
+    response = ApiSummarizeBulkResponse(title="", summary="", quality_score=None)
+    assert response.quality_text is None
 
 
 def test_summarize_bulk_response_output_language_excluded_from_serialization():

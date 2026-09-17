@@ -277,7 +277,7 @@ async def summarize_bulk(
     EspoCRM description must not fail the whole batch — issue #138). If
     *every* record is empty the response is a 200 empty aggregate (blank
     ``title``, a fallback ``summary`` explaining that no analysis was
-    performed, ``quality_score=0.0``).
+    performed, ``quality_score=null``).
 
     Parameters
     ----------
@@ -304,7 +304,7 @@ async def summarize_bulk(
         return ApiSummarizeBulkResponse(
             title="",
             summary="All records were empty: no analysis was performed.",
-            quality_score=0.0,
+            quality_score=None,
         )
 
     feedback_records = tuple(
@@ -350,7 +350,7 @@ async def summarize(
 
     If the record's ``content`` is empty the response is a 200 empty summary
     that still echoes the source ``id`` (blank ``title``/``summary``,
-    ``quality_score=0.0``), returned without an LLM call — a blank EspoCRM
+    ``quality_score=null``), returned without an LLM call — a blank EspoCRM
     description must not produce a silent 422 (issue #138).
 
     Parameters
@@ -378,7 +378,7 @@ async def summarize(
             id=body.feedback_record.id,
             title="",
             summary="",
-            quality_score=0.0,
+            quality_score=None,
         )
 
     domain_request = SingleSummaryRequestModel(
