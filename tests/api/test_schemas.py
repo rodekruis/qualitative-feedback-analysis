@@ -9,6 +9,7 @@ import pytest
 from pydantic import ValidationError
 
 from qfa.api.schemas import (
+    ApiAnalyzeBulkResponse,
     ApiAnalyzeRequest,
     ApiAssignCodesRequest,
     ApiAssignedCode,
@@ -17,6 +18,7 @@ from qfa.api.schemas import (
     ApiSummarizeBulkResponse,
     _assign_codes_request_examples,
     _create_pretty_output,
+    _format_quality,
     _resolve_language,
     sanitize_output_language,
 )
@@ -569,6 +571,89 @@ def test_summarize_bulk_response_output_language_excluded_from_serialization():
         output_language="French",
     )
     assert "output_language" not in response.model_dump()
+
+
+def test_analyze_bulk_pretty_output_is_analysis_text_only():
+    """pretty_output equals the analysis string — no quality header, title, or separator.
+
+    EspoCRM reads this field verbatim into modelResponse, so stray formatting
+    lines would be shown to the user.
+    """
+    analysis = "Some analysis text."
+    response = ApiAnalyzeBulkResponse(
+        analysis=analysis,
+        quality_score=1.0,
+        uncertainty_explanation="Looks good.",
+        feedback_record_count=10,
+        request_id="req-1",
+    )
+
+    assert response.pretty_output == analysis
+    for forbidden in ("QUALITY", "TITLE", "SUMMARY", "----"):
+        assert forbidden not in response.pretty_output
+
+
+def test_analyze_bulk_quality_text_renders_dots_and_percent():
+    """quality_text returns the dots-and-percentage string for a valid score.
+
+    Spot-checks two buckets to confirm the helper and the computed field
+    agree on formatting.
+    """
+    assert (
+        ApiAnalyzeBulkResponse(
+            analysis="a",
+            quality_score=1.0,
+            uncertainty_explanation="ok",
+            feedback_record_count=1,
+            request_id="r",
+        ).quality_text
+        == "●●●●● 100%"
+    )
+    assert (
+        ApiAnalyzeBulkResponse(
+            analysis="a",
+            quality_score=0.85,
+            uncertainty_explanation="ok",
+            feedback_record_count=1,
+            request_id="r",
+        ).quality_text
+        == "●●●●○ 85%"
+    )
+    # Consistency: the computed field and the helper must agree.
+    assert _format_quality(0.85) == "●●●●○ 85%"
+
+
+def test_analyze_bulk_quality_text_is_none_when_judge_failed():
+    """quality_text is None when quality_score is None (judge call failed).
+
+    Rendering a score string would look like 'terrible quality' rather than
+    'not measured'; None is the correct signal for EspoCRM to handle gracefully.
+    """
+    response = ApiAnalyzeBulkResponse(
+        analysis="a",
+        quality_score=None,
+        uncertainty_explanation="Judge unavailable.",
+        feedback_record_count=1,
+        request_id="r",
+    )
+    assert response.quality_text is None
+
+
+def test_analyze_bulk_title_defaults_to_analysis():
+    """Title defaults to "Analysis" without the route passing it explicitly.
+
+    The default keeps routes.py unchanged; a real title can be injected later
+    without a schema break.
+    """
+    response = ApiAnalyzeBulkResponse(
+        analysis="text",
+        quality_score=0.9,
+        uncertainty_explanation="ok",
+        feedback_record_count=5,
+        request_id="r",
+    )
+    assert response.title == "Analysis"
+    assert "title" in response.model_dump()
 
 
 class TestAssignCodesRequestExamples:

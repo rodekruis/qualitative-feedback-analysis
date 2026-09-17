@@ -43,7 +43,10 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 | Field | Type | Notes |
 |---|---|---|
 | `analysis` | string | Model output. |
+| `title` | string | `"Analysis"` — currently a constant (English only). |
 | `quality_score` | float or null | Judge score in [0, 1]. `null` when the judge call failed (not an error — see `uncertainty_explanation`). |
+| `quality_text` | string or null | Quality score as dots and percentage, e.g. `"●●●●● 100%"`. `null` when `quality_score` is `null`. |
+| `pretty_output` | string | Analysis text verbatim — exists for EspoCRM's `modelResponse` mapping so the flowchart needs no change when this backend is deployed. |
 | `uncertainty_explanation` | string | Natural-language judge reasoning, or a constant unavailable message when the judge failed. |
 | `feedback_record_count` | int | Number of records actually analyzed (records with empty `content` are dropped). |
 | `request_id` | string | Canonical UUID matching the `X-Request-ID` response header. |
@@ -129,7 +132,10 @@ Example 200 response:
 ```json
 {
   "analysis": "The feedback highlights ...",
+  "title": "Analysis",
   "quality_score": 0.82,
+  "quality_text": "●●●●○ 82%",
+  "pretty_output": "The feedback highlights ...",
   "uncertainty_explanation": "Coverage is high; all themes supported by at least two records.",
   "feedback_record_count": 1,
   "request_id": "550e8400-e29b-41d4-a716-446655440000"
