@@ -438,11 +438,7 @@ class ApiBulkInferenceRequestBase(BaseModel, ABC):
             "whitespace is collapsed, only letters/spaces/hyphens/parentheses/"
             "apostrophes are kept, capped at 50 characters) and never rejected. "
             "Prefer an ISO 639-1 code (e.g. 'nl') or an English language name "
-            "(e.g. 'Dutch') for the most predictable results. Note: only the "
-            "human-readable pretty_output headers are localized, and only for a "
-            "small set of languages (en, fr, es, ar, ru, nl, uk); for any other "
-            "language the analysis text is still written in the requested "
-            "language but those headers fall back to English."
+            "(e.g. 'Dutch') for the most predictable results."
         ),
     )
 
@@ -681,10 +677,11 @@ class ApiSummarizeBulkResponse(ApiBulkInferenceResponseBase):
     summary: str = Field(
         description="Generated bullet-point summary ordered by theme frequency."
     )
-    quality_score: float = Field(
+    quality_score: float | None = Field(
+        default=None,
         ge=0.0,
         le=1.0,
-        description="Judge score for summary quality in the range 0.0-1.0.",
+        description="Judge score for summary quality in the range 0.0-1.0; ``null`` when the batch was empty (no judge call was made).",
     )
     output_language: str | None = Field(
         default=None,
@@ -699,13 +696,25 @@ class ApiSummarizeBulkResponse(ApiBulkInferenceResponseBase):
     @computed_field(description="Human-readable formatted output string.")
     @property
     def pretty_output(self) -> str:
-        """Human-readable formatted output string."""
-        return _create_pretty_output(
-            quality_score=self.quality_score,
-            title=self.title,
-            summary=self.summary,
-            language=self.output_language,
-        )
+        """Summary text verbatim. Kept for EspoCRM's modelResponse mapping."""
+        return self.summary
+
+    @computed_field(
+        description=(
+            "Quality score as dots and percentage, e.g. ``'●●●●● 100%'``; ``null`` when ``quality_score`` is ``null``."
+        ),
+    )
+    @property
+    def quality_text(self) -> str | None:
+        """Quality score rendered as dots and percentage, e.g. ``'●●●●● 100%'``.
+
+        ``None`` when ``quality_score`` is ``None`` — the batch was empty so
+        no judge call was made; rendering a score would mislead. Use
+        ``quality_score`` for threshold comparisons in EspoCRM.
+        """
+        if self.quality_score is None:
+            return None
+        return _format_quality(self.quality_score)
 
 
 ##### Per-feedback-record requests #####

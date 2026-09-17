@@ -544,18 +544,37 @@ def test_create_pretty_output_translates_headers_to_requested_language():
     assert "85%" in out
 
 
-def test_summarize_bulk_response_localizes_pretty_output():
-    """ApiSummarizeBulkResponse renders pretty_output in the configured language.
+def test_summarize_bulk_pretty_output_is_summary_text_only():
+    """ApiSummarizeBulkResponse.pretty_output returns the summary text verbatim.
 
-    The computed field must pick up the excluded output_language render input.
+    No quality line, title line, SUMMARY header, or trailing separator.
     """
+    summary = "Clean water access improved."
     response = ApiSummarizeBulkResponse(
-        title="Un titre",
-        summary="Un résumé",
-        quality_score=0.85,
-        output_language="French",
+        title="Any Title",
+        summary=summary,
+        quality_score=0.94,
     )
-    assert "QUALITÉ" in response.pretty_output
+    assert response.pretty_output == summary
+
+
+def test_summarize_bulk_quality_text_renders_dots_and_percent():
+    """quality_text formats quality_score as dot-chars and a percentage."""
+    response = ApiSummarizeBulkResponse(title="T", summary="S", quality_score=0.94)
+    assert response.quality_text == "●●●●● 94%"
+
+    response_85 = ApiSummarizeBulkResponse(title="T", summary="S", quality_score=0.85)
+    assert response_85.quality_text == "●●●●○ 85%"
+
+
+def test_summarize_bulk_quality_text_empty_batch_is_none():
+    """quality_score=None (all-empty batch) renders quality_text=None.
+
+    An empty batch means no judge call was made; returning 0 would signal
+    poor quality rather than "nothing to judge".
+    """
+    response = ApiSummarizeBulkResponse(title="", summary="", quality_score=None)
+    assert response.quality_text is None
 
 
 def test_summarize_bulk_response_output_language_excluded_from_serialization():

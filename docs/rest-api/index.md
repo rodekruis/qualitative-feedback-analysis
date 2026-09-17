@@ -85,6 +85,26 @@ Water — 3%
 
 These explanations are English only, regardless of the language of the feedback.
 
+## POST /v1/summarize-bulk — field reference
+
+### Request
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `feedback_records` | list | — | Non-empty list of `{id, content, metadata?, url_id?}` records. Records with empty `content` are dropped. |
+| `output_language` | string or null | `null` | Free-text target language for the summary (e.g. `"Dutch"`). Sets the language of the generated text; `pretty_output` carries no localized headers. Omit to mirror the input records' language. |
+| `espo_feedback_base_url` | string or null | `null` | See [Hyperlinking feedback records](#hyperlinking-feedback-records). |
+
+### Response (200 OK)
+
+| Field | Type | Notes |
+|---|---|---|
+| `summary` | string | Generated bullet-point summary. |
+| `title` | string | LLM-generated short title. |
+| `quality_score` | float | Judge score in [0, 1]. Never `null`. |
+| `quality_text` | string | Quality score as dots and percentage, e.g. `"●●●●● 100%"`. Never `null`. |
+| `pretty_output` | string | Summary text verbatim — exists for EspoCRM's `modelResponse` mapping. |
+
 ## Hyperlinking feedback records
 
 `/v1/analyze-bulk` and `/v1/summarize-bulk` accept an optional `espo_feedback_base_url` alongside `feedback_records`. When it's set, any mention of a feedback record's `id` in the output text (e.g. an analysis citing `Form-07762` as supporting evidence) is rewritten as a markdown hyperlink:
