@@ -25,8 +25,8 @@ jobs:
         run: uv run python eval/assign_codes_eval.py
         env:
           QFA_DEV_API_KEY: ${{ secrets.QFA_DEV_API_KEY }}
-          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_PUBLIC_KEY: ${{ vars.LANGFUSE_PUBLIC_KEY }}
           LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
-          LANGFUSE_HOST: https://langfuse.510.global/
+          LANGFUSE_HOST: ${{ vars.LANGFUSE_HOST }}
           GIT_SHA: ${{ github.sha }}
           GIT_REF_NAME: ${{ github.ref_name }}
