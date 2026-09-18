@@ -68,18 +68,19 @@ and two repository variables, `LANGFUSE_PUBLIC_KEY` and
 
 ## Running `evaluate_sensitivity.py`
 
-Scores `POST /v1/detect-sensitive` against a Langfuse dataset you name on
-the command line, so one script covers every sensitivity dataset.
+This script scores `POST /v1/detect-sensitive` against a Langfuse dataset
+that you name on the command line, so the same script works for any
+sensitivity dataset you have.
 
-Set these first. The script reads `.env` at the repo root, so they can
-live there.
+Before running it, set the following. The script reads `.env` from the
+repo root, so they can live there rather than in your shell.
 
-- `QFA_API_BASE_URL` — the backend to call. Required, with no default, so
-  a local run names `http://localhost:8000` itself.
-- `QFA_DEV_API_KEY` — a bearer token for that backend. Locally you can set
-  `AUTH_API_KEYS` instead, the same JSON the server reads.
-- `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` for the Langfuse project
-  at `LANGFUSE_HOST` that holds the dataset.
+- `QFA_API_BASE_URL` is the backend to call. There is no default, so a
+  local run has to name `http://localhost:8000` itself.
+- `QFA_DEV_API_KEY` is a bearer token for that backend. Locally you can
+  set `AUTH_API_KEYS` instead, which is the same JSON the server reads.
+- `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` belong to the Langfuse
+  project at `LANGFUSE_HOST` that holds your dataset.
 
 ```bash
 # smoke test against the first 5 records
@@ -97,14 +98,17 @@ uv run python eval/evaluate_sensitivity.py \
 | `--limit N`  | Only the first N records. Default: all.                                             |
 | `--run-name` | Replaces the generated name, `smoke-<N>-<timestamp>` or `baseline-full-<timestamp>`. |
 
-Each item's `input` is the feedback text, sent to the backend as written,
-so pick a dataset that was anonymised before it was uploaded. Each item's
-`expected_output` is the human label, `Sensitive` or `Not sensitive`.
-Anything else stops the run rather than counting as a wrong answer.
+Each item in the dataset has two parts. The `input` is the feedback text,
+which is sent to the backend exactly as written, so choose a dataset that
+was anonymised before it was uploaded. The `expected_output` is the human
+label, either `Sensitive` or `Not sensitive`; if an item carries anything
+else the run stops, rather than quietly counting it as a wrong answer.
 
 ## What a run tells you
 
-Results land in Langfuse as a Dataset Run under `sensitivity-baseline`.
+Every run creates a Dataset Run in Langfuse under the experiment
+`sensitivity-baseline`, carrying two scores on each record and seven on
+the run as a whole.
 
 For each record:
 
@@ -125,8 +129,13 @@ For the run as a whole:
 | `n_distinct_sensitivity_types`              | How many different sensitivity types came up. The breakdown per type, split by right and wrong flags, sits in this score's metadata. |
 | `mean_sensitivity_types_per_flagged_record` | How many types were assigned to a flagged record on average.                                                                   |
 
-The first five also carry their underlying counts in score metadata.
+The five scores above the two type counts also store the numbers they
+were calculated from, so you can always see the raw totals behind a
+percentage.
 
-Records go five at a time, a low score never fails the run, and the
-console prints a summary and a link to the run. No workflow runs this
-script.
+The script sends five records at a time, so a run finishes faster than
+the record count suggests. It only measures, which means a poor score is
+never treated as an error and the run always ends normally. When it
+finishes, the totals appear in your terminal together with a link to the
+full results in Langfuse. Unlike `assign_codes_eval.py`, no GitHub
+Actions workflow runs this script, so you start it yourself.
