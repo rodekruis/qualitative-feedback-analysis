@@ -56,8 +56,11 @@ directly, so they show up even without those two variables set.
 
 ## Running it in CI
 
-The **evaluate** GitHub Actions workflow, in
-`.github/workflows/evaluate.yaml`, runs this script against the same dev
-backend. To trigger it, open the Actions tab, select **evaluate**, and
-click Run workflow. Before the first run, add three repository secrets:
-`QFA_DEV_API_KEY`, `LANGFUSE_PUBLIC_KEY`, and `LANGFUSE_SECRET_KEY`.
+The **evaluate-assign-codes** GitHub Actions workflow, in
+`.github/workflows/evaluate-assign-codes.yaml`, runs this script against
+the same dev backend. The **evaluate** workflow calls it on every run.
+To trigger either one, open the Actions tab, select **evaluate** or
+**evaluate-assign-codes**, and click Run workflow. Before the first run,
+add two repository secrets, `QFA_DEV_API_KEY` and `LANGFUSE_SECRET_KEY`,
+and two repository variables, `LANGFUSE_PUBLIC_KEY` and
+`LANGFUSE_HOST`, for the dev environment.
