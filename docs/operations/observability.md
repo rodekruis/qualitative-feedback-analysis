@@ -41,6 +41,7 @@ Everything that's not in the prohibition list above is fine, especially:
 - HTTP status codes
 - Azure content-filter `category`/`severity` on `LLMContentPolicyViolationError` (a closed annotation, e.g. `violence`/`high` — never the flagged text itself)
 - The provider-rejection diagnostic's `model`, `response_format`, `schema_name`, `schema_keys` and `rejected_keyword` — the first four describe a schema this repo built, the last is drawn from a closed vocabulary of JSON-Schema token names (never the provider's message)
+- Judge component scores (`faithfulness`, `coverage`, `clarity`, `quality_score`) — never the `uncertainty_explanation`
 
 ## Diagnosing a provider 400
 
@@ -119,6 +120,21 @@ feedback text, prompts, or model output. The timing itself comes from
 
 Raise the app log level to `INFO` (`LOG_LOGLEVEL=info`) to keep the phase
 breakdown while dropping the per-call/per-chunk noise.
+
+## Judge components (single_pass)
+
+Each successful `analyze_bulk` judge emits one INFO line:
+
+```
+judge components: call_id=<uuid> faithfulness=0.900 coverage=0.800 clarity=0.400 quality_score=0.820
+```
+
+`call_id` is the same UUID as `X-Request-ID` and `llm_calls.call_id`, so the
+line joins the cost rows for that request. Outside an HTTP request it is `-`.
+A judge failure logs no such line — the existing
+`Analyse judge call failed: error_class=...` warning stands. Hierarchical
+keeps only its per-chunk DEBUG line until per-chunk aggregation lands.
+The uncertainty explanation is LLM free text and is never logged.
 
 ## Request tracing
 
