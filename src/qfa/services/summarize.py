@@ -28,8 +28,11 @@ from datetime import datetime
 from qfa.domain.errors import AnalysisError
 from qfa.domain.models import (
     AggregateSummaryResultModel,
+    CommunityMeetingRecordSummaryModel,
     FeedbackRecordSummaryModel,
+    SingleSummaryCommunityMeetingRequestModel,
     SingleSummaryRequestModel,
+    SummaryCommunityMeetingResultModel,
     SummaryRequestModel,
     SummaryResultModel,
 )
@@ -39,6 +42,7 @@ from qfa.services.language import detect_source_language
 from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.services.prompts import (
     JUDGE_USER_MESSAGE,
+    build_community_meeting_record_envelope,
     build_feedback_record_envelope,
     build_feedback_records_envelope,
     build_output_language_instruction,
@@ -53,6 +57,16 @@ _DEFAULT_SUMMARIZATION_PROMPT = (
     "Do not include markdown code fences.\n"
     "Do not end with a question, an offer of further help, or an invitation for follow-up input.\n"
     "Use the same language as the input feedback item unless a target language is specified."
+)
+_DEFAULT_SUMMARIZATION_COMMUNITY_MEETING_PROMPT = (
+    "Summarize the Community Meeting notes as concise bullet points.\n"
+    "Strict Constraint: The summary must be  concise, using no more than 5-10 bullet points.\n"
+    "Constraint: Each bullet point should be a single sentence fragment focusing only on the core sentiment or issue.\n"
+    "Also create a short, 3-5 word descriptive title.\n"
+    "Definition of common abbreviations: fgd means focus group discussion and kii means key informant interview.\n"
+    "Do not include markdown code fences.\n"
+    "Do not end with a question, an offer of further help, or an invitation for follow-up input.\n"
+    "Use the same language as the input Community Meeting item unless a target language is specified."
 )
 
 _DEFAULT_AGGREGATE_SUMMARIZATION_PROMPT = (
@@ -337,4 +351,76 @@ class SummarizeService:
 
         return result.feedback_record_summaries[0].model_copy(
             update={"id": request.feedback_record.id, "quality_score": quality_score}
+        )
+
+    async def summarize_community_meeting(
+        self,
+        request: SingleSummaryCommunityMeetingRequestModel,
+        deadline: datetime,
+    ) -> CommunityMeetingRecordSummaryModel:
+        """Summarize a single community meeting record."""
+        timeout = self._executor.check_deadline_and_get_timeout(deadline)
+        detected_language = detect_source_language(
+            request.community_meeting_record.meetingNotes
+        )
+        system_message = (
+            _DEFAULT_SUMMARIZATION_COMMUNITY_MEETING_PROMPT
+            + build_output_language_instruction(
+                detected_language, subject="title and summary"
+            )
+        )
+
+        user_message = build_community_meeting_record_envelope(
+            request.community_meeting_record, include_metadata=True
+        )
+        anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
+            user_message
+        )
+
+        llm_completion = await self._llm.complete(
+            system_message=system_message,
+            user_message=anonymized_user_message,
+            tenant_id=request.tenant_id,
+            response_model=SummaryCommunityMeetingResultModel,
+            timeout=timeout,
+        )
+
+        if not llm_completion.structured.community_meeting_record_summaries:
+            raise AnalysisError(
+                "LLM returned no summaries for the community meeting record."
+            )
+
+        judge_system = _build_judge_system_message(
+            anonymized_user_message,
+            llm_completion.structured.community_meeting_record_summaries[0].summary,
+        )
+        judge_timeout = self._executor.check_deadline_and_get_timeout(deadline)
+        with judge_call():
+            judge_response = await self._judge_llm.complete(
+                system_message=judge_system,
+                user_message=JUDGE_USER_MESSAGE,
+                tenant_id=request.tenant_id,
+                response_model=str,
+                timeout=judge_timeout,
+            )
+        quality_score = _parse_judge_quality_score(judge_response.structured)
+
+        return_model_as_string = llm_completion.structured.model_dump_json()
+        unanonymized_return_model_as_string = self._executor.deanonymize_json(
+            return_model_as_string, anonymization_mapping
+        )
+        result = SummaryCommunityMeetingResultModel.model_validate_json(
+            unanonymized_return_model_as_string
+        )
+
+        return result.community_meeting_record_summaries[0].model_copy(
+            update={
+                "id": request.community_meeting_record.id,
+                "summary": hyperlink_form_references(
+                    result.community_meeting_record_summaries[0].summary,
+                    (request.community_meeting_record,),
+                    request.espo_feedback_base_url,
+                ),
+                "quality_score": quality_score,
+            }
         )

@@ -137,6 +137,7 @@ class FakeService:
         self.last_detect_sensitive_request = None
         self.last_analyze_request = None
         self.last_summarize_bulk_request = None
+        self.last_summarize_community_meeting_request = None
 
     async def analyze_bulk(
         self,
@@ -169,6 +170,14 @@ class FakeService:
         if self._error is not None:
             raise self._error
         return self._summarize_result
+
+    async def summarize_community_meeting(self, request, deadline):
+        self.last_summarize_community_meeting_request = request
+        if self._error is not None:
+            raise self._error
+        return self._summarize_result.model_copy(
+            update={"id": request.community_meeting_record.id}
+        )
 
     async def summarize_bulk(
         self,

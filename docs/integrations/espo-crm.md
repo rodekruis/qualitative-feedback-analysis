@@ -6,7 +6,7 @@ EspoCRM is the primary upstream feeding feedback records into the service. The i
 
 The flows are built as EspoCRM flowcharts in the EspoCRM UI. Their steps are written in EspoCRM Formula Script, a specialized language similar to PHP, embedded directly in the flowchart's exported CSV — there is no separate `.php` copy to keep in sync (see [Flowcharts](#flowcharts) below).
 
-The flowcharts compose request bodies based on two distinct workflows.
+The flowcharts compose request bodies based on three distinct workflows.
 
 ### Single-feedback record flow
 
@@ -24,7 +24,15 @@ These use all single-feedback record endpoints such as `summarize`, `detect-sens
 
 ![Espo flowchart for creating an insight entity](../assets/espo_insight_creation_flow.png)
 
-The two flows build their distinctive `motherPayload` — a JSON object containing all key-value pairs needed by the endpoints. This holds information about the selected feedback item(s) and their attributes. The attributes are saved as metadata in this flow.
+### Community meeting flow
+
+`Community_meeting_summary_flowchart.csv` triggers on a `CCommunityMeetingData` record **save** while `autoSummaryStatus` is `requested`, and calls `summarize-community-meeting`. An exclusive gateway re-checks the status (`requested` or `queued`) and routes straight to the end event otherwise, so a save that touches any other field costs nothing.
+
+The record's nine metadata fields are sent as `metadata`. `dateOfMeeting` and `groupSize` are coerced with `string\concatenate($x, '')` because the API types every metadata value as a string while Espo stores them as a date and an enum. `url_id` is set to Espo's internal record `id`, since that is the path segment of the detail view the hyperlink has to join onto.
+
+> **Meeting notes are rich text.** `meetingNotes` is a WYSIWYG field, so notes pasted from Word arrive as tens of thousands of characters of inline CSS wrapping a few kilobytes of prose — enough to exceed the endpoint's 100 000-character limit and 422 the record. The backend reduces the markup to plain text *before* checking that limit, so the flowchart sends the field untouched. Stripping it in Formula Script is not a workable alternative: `string\replace()` matches literal substrings only, Espo has no regex-replace, and rewriting field values in a flowchart is forbidden by `tests/scripts/test_espo_flowcharts.py` for the reasons in [Building a request body](#building-a-request-body).
+
+Each flow builds its own `motherPayload` — a JSON object containing all key-value pairs needed by the endpoints. This holds information about the selected record(s) and their attributes. The attributes are saved as metadata in this flow.
 
 ### Building a request body
 
@@ -37,7 +45,7 @@ The two flows build their distinctive `motherPayload` — a JSON object containi
 
 ## Error handling
 
-Both flows wrap each outbound call in an EspoCRM error-boundary event. On success, the relevant status field is set to `completed`; on failure, the boundary runs an "error notification" step instead, which sets the status field to `failed` and stores the underlying error via `bpm\caughtErrorCode()` / `bpm\caughtErrorMessage()`. All of these are plain fields on the triggering feedback record or insight, so the outcome and any error detail are visible directly on that record in the EspoCRM UI — there is no separate error log to check.
+Every flow wraps each outbound call in an EspoCRM error-boundary event. On success, the relevant status field is set to `completed`; on failure, the boundary runs an "error notification" step instead, which sets the status field to `failed` and stores the underlying error via `bpm\caughtErrorCode()` / `bpm\caughtErrorMessage()`. All of these are plain fields on the triggering feedback record or insight, so the outcome and any error detail are visible directly on that record in the EspoCRM UI — there is no separate error log to check.
 
 ### Single-feedback record flow
 
@@ -55,12 +63,17 @@ The `assign-codes` step copies `assigned_codes.0.explanation` into `autoCodingEx
 
 The insight call tracks a single status field, `autoInsightStatus`, moving through the same `processing` → `completed` (or `failed`) states, alongside `autoInsightErrorCode` and `autoInsightErrorMessage` on failure.
 
+### Community meeting flow
+
+Tracks `autoSummaryStatus` on the meeting record through the same states, with `autoSummaryErrorCode` and `autoSummaryErrorMessage` on failure. On success it writes the response `summary` and `title` to `generatedSummary` and `generatedTitle`.
+
 ## Flowcharts
 
-The two workflows above are implemented as EspoCRM flowcharts, built and maintained inside the EspoCRM UI. Exports of these flowcharts are stored in `scripts/espo_crm/flowcharts/` as CSV files:
+The three workflows above are implemented as EspoCRM flowcharts, built and maintained inside the EspoCRM UI. Exports of these flowcharts are stored in `scripts/espo_crm/flowcharts/` as CSV files:
 
 - `Feedback_saving_flowchart.csv` — feedback record save trigger
 - `Insight_creation_flowchart.csv` — insight creation trigger
+- `Community_meeting_summary_flowchart.csv` — community meeting record save trigger
 
 These CSV files serve as the versioning mechanism: whenever a flowchart is updated in the EspoCRM UI, export a fresh copy and commit it. Promoting a flowchart to staging or production is then a matter of importing the CSV through the EspoCRM UI. The CSV is the only maintained copy of a flow's formula script — do not add a separate `.php` mirror, since the flowchart's `data` column already embeds the same script and a second copy would drift out of sync.
 
@@ -110,3 +123,4 @@ Within your EspoCRM instance, set the following values under _Administration_ �
 |---|---|
 | `QFA_API_BASE_URL` | Base URL of the QFA backend for that environment, e.g. `https://qfa-dev-backend.azurewebsites.net` |
 | `QFA_API_KEY` | Bearer token for the QFA instance |
+| `QFA_ESPO_MEETING_BASE_URL` | Optional. Community meeting detail view, e.g. `https://cea.feedbackmanagement.dev2.510.global/#CCommunityMeetingData/view`. Unset disables hyperlinking in meeting summaries; the flow omits the key rather than sending an empty one. |
