@@ -80,6 +80,74 @@ class FeedbackRecordModel(BaseModel):
             "caller doesn't need hyperlinking for this request."
         ),
     )
+class CommunityMeetingRecordMetadataModel(BaseModel):
+    """Metadata associated with a community meeting record."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    created: str = Field(
+        default="",
+        description="ISO 8601 timestamp string for the community meeting record when documented in the database.",
+    )
+    dateOfMeeting: str | None = Field(
+        default=None,
+        description="ISO 8601 timestamp string for the community meeting record when the meeting actually took place.",
+    )
+    methodOfCollection: str | None = Field(
+        default=None,
+        description="Method by which the community meeting record was collected.",
+    )
+    format: str | None = Field(
+        default=None,
+        description="Format in which the community meeting record was collected.",
+    )
+    project: str | None = Field(
+        default=None,
+        description="Project associated with the community meeting record.",
+    )
+    location: str | None = Field(
+        default=None,
+        description="Location where the community meeting took place.",
+    )
+    ageGroup: str | None = Field(
+        default=None,
+        description="Age group of the participants in the community meeting.",
+    )
+    gender: str | None = Field(
+        default=None,
+        description="Gender majority of the participants in the community meeting.",
+    )
+    groupSize: str | None = Field(
+        default=None,
+        description="Size of the group participating in the community meeting.",
+    )
+
+
+class CommunityMeetingRecordModel(BaseModel):
+    """A single community meeting record submitted for analysis."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str = Field(description="Unique identifier for the community meeting record.")
+    meetingNotes: str = Field(
+        min_length=1,
+        max_length=100_000,
+        description="Community meeting text content.",
+    )
+    metadata: CommunityMeetingRecordMetadataModel = Field(
+        default_factory=CommunityMeetingRecordMetadataModel,
+        description="Metadata key-value pairs associated with the community meeting record.",
+    )
+    url_id: str = Field(
+        default="",
+        description=(
+            "EspoCRM URL path segment for this record, used to build a "
+            "hyperlink back to it — see AnalysisRequestModel/"
+            "SummaryRequestModel.espo_feedback_base_url. Empty when the "
+            "caller doesn't need hyperlinking for this request."
+        ),
+    )
+
 
 
 class CodingNode(BaseModel):
@@ -232,6 +300,16 @@ class SingleSummaryRequestModel(BaseModel):
 
     feedback_record: FeedbackRecordModel = Field(
         description="The feedback record to summarize.",
+    )
+    tenant_id: str = Field(description="Tenant identifier injected by the auth layer.")
+
+class SingleSummaryCommunityMeetingRequestModel(BaseModel):
+    """A request to summarize a single community meeting record."""
+
+    model_config = ConfigDict(frozen=True)
+
+    community_meeting_record: CommunityMeetingRecordModel = Field(
+        description="The community meeting record to summarize.",
     )
     tenant_id: str = Field(description="Tenant identifier injected by the auth layer.")
 
