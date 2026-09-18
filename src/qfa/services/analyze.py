@@ -48,7 +48,7 @@ from qfa.services.hierarchical_prompts import (
     build_reduce_system_message,
     build_reduce_user_message,
 )
-from qfa.services.judge_scoring import parse_judge_components
+from qfa.services.judge_scoring import log_judge_components, parse_judge_components
 from qfa.services.llm_call_executor import LLMCallExecutor, SlotTiming
 from qfa.services.prompts import (
     ANALYZE_ACTION_PROMPT,
@@ -362,6 +362,9 @@ class AnalyzeService:
             quality_score = None
             uncertainty_explanation = JUDGE_UNAVAILABLE_EXPLANATION
             components = None
+
+        if components is not None:
+            log_judge_components(logger, components)
 
         # Deterministic, non-LLM coding-trend table from ORIGINAL metadata
         # (metadata is not anonymised; codes/dates are not PII). Built for
