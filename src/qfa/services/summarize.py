@@ -84,30 +84,36 @@ Summary:
 Score the summary using three criteria. Each must be a float between 0 and 1.
 
 Faithfulness:
-1.0 = fully supported by source, no hallucinations
+1.0 = fully supported by the source text above, no hallucinations
 0.5 = mostly correct, minor issues
 0.0 = major inaccuracies
 
 Coverage:
-1.0 = includes all key points
-0.5 = partially covers key points
-0.0 = misses most important points
+1.0 = captures every key point in the source text above — whether that is
+one feedback record's own points, or the recurring themes across a batch
+0.5 = partially covers the key points in the source text above
+0.0 = misses most of the key points in the source text above
 
 Clarity:
 1.0 = very clear and concise
 0.5 = somewhat clear
 0.0 = confusing or poorly written
 
-Compute the final score as:
-quality_score = 0.6 * faithfulness + 0.3 * coverage + 0.1 * clarity
+Also produce an uncertainty explanation — one short paragraph explaining
+which criterion drove the score, calling out unsupported claims if any.
 
-Output rules:
-- Return ONLY the final quality_score
-- Return a single float between 0 and 1
-- No JSON
-- No explanation
-- No extra text
-- Example output: 0.82
+Output format:
+Respond with exactly four lines and nothing else, in this exact format:
+FAITHFULNESS: <0.0-1.0>
+COVERAGE: <0.0-1.0>
+CLARITY: <0.0-1.0>
+UNCERTAINTY_EXPLANATION: <one short paragraph>
+
+Example:
+FAITHFULNESS: 0.9
+COVERAGE: 0.8
+CLARITY: 0.9
+UNCERTAINTY_EXPLANATION: The summary is well-supported by the source text and captures its key points, though it slightly overstates how significant one minor detail is.
 """
 
 
