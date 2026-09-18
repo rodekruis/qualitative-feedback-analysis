@@ -318,6 +318,38 @@ class TestSummarizeSuccess:
         assert resp.json()["summary"] == ""
         assert resp.json()["quality_score"] is None
 
+    @pytest.mark.asyncio
+    async def test_community_meeting_summary_accepts_oversized_word_html(
+        self, client, test_app
+    ):
+        """Word-pasted notes exceed the 100k cap as markup but not as prose.
+
+        EspoCRM's rich-text editor stores the inline CSS Word emits, which
+        used to 422 the whole record before any handler ran.
+        """
+        style = "font-family:Calibri;mso-ascii-theme-font:minor-latin;color:#1F497D"
+        notes = "".join(
+            f'<p><span style="{style}">Water point {i} needs repair.</span></p>'
+            for i in range(2000)
+        )
+        assert len(notes) > 100_000
+
+        resp = await client.post(
+            "/v1/summarize-community-meeting",
+            json={
+                "community_meeting_record": {"id": "meeting-1", "meetingNotes": notes}
+            },
+            headers=_auth_header(),
+        )
+
+        assert resp.status_code == 200
+        forwarded = (
+            test_app.state.summarize_service.last_summarize_community_meeting_request
+        )
+        received = forwarded.community_meeting_record.meetingNotes
+        assert "mso-ascii-theme-font" not in received
+        assert received.startswith("Water point 0 needs repair.")
+
 
 class TestDetectSensitiveSuccess:
     @pytest.mark.asyncio

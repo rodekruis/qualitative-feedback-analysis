@@ -14,6 +14,7 @@ from typing import Any, Literal, override
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
+from qfa.api.html_text import html_to_text
 from qfa.domain.clustering_models import TrendPeriod
 
 logger = logging.getLogger(__name__)
@@ -440,7 +441,13 @@ class ApiCommunityMeetingRecordInput(BaseModel):
     meetingNotes: str = Field(
         min_length=0,
         max_length=100_000,
-        description="Community meeting notes. May be empty and are handled without an LLM call.",
+        description=(
+            "Community meeting notes. May be empty and are handled without an"
+            " LLM call. HTML is accepted — EspoCRM's rich-text editor stores"
+            " whatever is pasted into it — and reduced to plain text before"
+            " the length limit is applied, so the limit bounds the prose"
+            " rather than the markup around it."
+        ),
     )
     metadata: ApiCommunityMeetingRecordMetadata = Field(
         default_factory=ApiCommunityMeetingRecordMetadata,
@@ -456,6 +463,12 @@ class ApiCommunityMeetingRecordInput(BaseModel):
             " isn't needed."
         ),
     )
+
+    @field_validator("meetingNotes", mode="before")
+    @classmethod
+    def _strip_markup(cls, value: Any) -> Any:
+        """Runs before ``max_length``, so the cap bounds prose and not markup."""
+        return html_to_text(value) if isinstance(value, str) else value
 
 
 ##### Bulk requests Base Model #####
