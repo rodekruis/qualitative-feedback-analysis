@@ -330,7 +330,22 @@ class FeedbackRecordSummaryModel(BaseModel):
         le=1.0,
         description="Judge model score for summary quality in the range 0.0-1.0.",
     )
+class CommunityMeetingRecordSummaryModel(BaseModel):
+    """Summary output for a single community meeting record."""
 
+    model_config = ConfigDict(frozen=True)
+
+    id: str = Field(description="Identifier of the source community meeting record.")
+    title: str = Field(description="Generated short title for the community meeting record.")
+    summary: str = Field(
+        description="Generated bullet-point summary for the community meeting record."
+    )
+    quality_score: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Judge model score for summary quality in the range 0.0-1.0.",
+    )
 
 class SummaryResultModel(BaseModel):
     """The result of summarizing multiple feedback records individually."""
@@ -340,7 +355,14 @@ class SummaryResultModel(BaseModel):
     feedback_record_summaries: tuple[FeedbackRecordSummaryModel, ...] = Field(
         description="Per-feedback-record summaries returned by the summarize flow.",
     )
+class SummaryCommunityMeetingResultModel(BaseModel):
+    """The result of summarizing multiple community meeting records individually."""
 
+    model_config = ConfigDict(frozen=True)
+
+    community_meeting_record_summaries: tuple[CommunityMeetingRecordSummaryModel, ...] = Field(
+        description="Per-community-meeting-record summaries returned by the summarize flow.",
+    )
 
 class AggregateSummaryResultModel(BaseModel):
     """The result of summarizing multiple feedback records as a single aggregate.
