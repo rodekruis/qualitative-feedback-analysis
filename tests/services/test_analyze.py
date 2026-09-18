@@ -10,8 +10,10 @@ The hierarchical mode has its own file: ``test_analyze_hierarchical.py``.
 """
 
 import asyncio
+import logging
 import time
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 import pytest
 
@@ -29,11 +31,13 @@ from qfa.domain.models import (
     LLMResponse,
 )
 from qfa.domain.ports import AnonymizationPort
+from qfa.domain.usage_models import Operation
 from qfa.services.analyze import (
     AnalyzeJudgeResult,
     AnalyzeService,
     _parse_analyze_judge_response,
 )
+from qfa.services.call_context import call_scope
 from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.services.prompts import JUDGE_UNAVAILABLE_EXPLANATION
 from qfa.settings import OrchestratorSettings
@@ -759,6 +763,75 @@ class TestAnalyzeJudgeFailure:
         assert result.components is None
         assert result.uncertainty_explanation == JUDGE_UNAVAILABLE_EXPLANATION
         assert "analysis ok" in result.result
+
+
+class TestAnalyzeJudgeComponentsLog:
+    @pytest.mark.asyncio
+    async def test_logs_one_judge_components_line_with_call_id(self, settings, caplog):
+        """Exactly one ``judge components:`` line, joined to the request by call_id."""
+        request_id = uuid4()
+        explanation = "SECRET_EXPLANATION_MUST_NOT_APPEAR"
+        fake_llm = _judging_llm(
+            faithfulness=0.9,
+            coverage=0.8,
+            clarity=0.4,
+            explanation=explanation,
+        )
+        service = _build_analyze_service(fake_llm, FakeAnonymizer(), settings)
+
+        with caplog.at_level(logging.INFO, logger="qfa.services.analyze"):
+            async with call_scope(TENANT_ID, Operation.ANALYZE, request_id):
+                await service.analyze_bulk(_make_request(), _future_deadline())
+
+        lines = [
+            record.getMessage()
+            for record in caplog.records
+            if "judge components:" in record.getMessage()
+        ]
+        assert len(lines) == 1
+        line = lines[0]
+        assert f"call_id={request_id}" in line
+        assert "faithfulness=0.900" in line
+        assert "coverage=0.800" in line
+        assert "clarity=0.400" in line
+        assert "quality_score=0.820" in line
+        assert explanation not in line
+        assert "UNCERTAINTY" not in line
+
+    @pytest.mark.asyncio
+    async def test_logs_placeholder_call_id_outside_request_scope(
+        self, settings, caplog
+    ):
+        """Outside an HTTP request ``call_id`` is ``-``, never a raise."""
+        fake_llm = _judging_llm()
+        service = _build_analyze_service(fake_llm, FakeAnonymizer(), settings)
+
+        with caplog.at_level(logging.INFO, logger="qfa.services.analyze"):
+            await service.analyze_bulk(_make_request(), _future_deadline())
+
+        lines = [
+            record.getMessage()
+            for record in caplog.records
+            if "judge components:" in record.getMessage()
+        ]
+        assert len(lines) == 1
+        assert "call_id=-" in lines[0]
+
+    @pytest.mark.asyncio
+    async def test_judge_failure_logs_no_components_line(self, settings, caplog):
+        """A failed judge keeps the warning and emits no components line."""
+        fake_llm = FakeLLMPort(
+            responses=[_make_llm_response(structured="analysis ok")],
+            errors=[None, LLMError("judge boom")],
+        )
+        service = _build_analyze_service(fake_llm, FakeAnonymizer(), settings)
+
+        with caplog.at_level(logging.INFO, logger="qfa.services.analyze"):
+            await service.analyze_bulk(_make_request(), _future_deadline())
+
+        messages = [record.getMessage() for record in caplog.records]
+        assert not any("judge components:" in message for message in messages)
+        assert any("Analyse judge call failed" in message for message in messages)
 
 
 class TestAnalyzeAnonymizationOrdering:
