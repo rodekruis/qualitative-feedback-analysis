@@ -69,18 +69,18 @@ and two repository variables, `LANGFUSE_PUBLIC_KEY` and
 ## Running `evaluate_sensitivity.py`
 
 This script scores `POST /v1/detect-sensitive` against a Langfuse dataset
-that you name on the command line, so the same script works for any
-sensitivity dataset you have.
+you name on the command line, so the same script works for any
+sensitivity dataset.
 
-Before running it, set the following. The script reads `.env` from the
-repo root, so they can live there rather than in your shell.
+Set these before you run it. The script reads `.env` from the repo root,
+so they can live there rather than in your shell.
 
-- `QFA_API_BASE_URL` is the backend to call. There is no default, so a
-  local run has to name `http://localhost:8000` itself.
-- `QFA_DEV_API_KEY` is a bearer token for that backend. Locally you can
-  set `AUTH_API_KEYS` instead, which is the same JSON the server reads.
-- `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` belong to the Langfuse
-  project at `LANGFUSE_HOST` that holds your dataset.
+- Set `QFA_API_BASE_URL` to the backend you want to measure. There is no
+  default, so a local run has to name `http://localhost:8000` itself.
+- Set `QFA_DEV_API_KEY` to a bearer token for that backend, or, locally,
+  set `AUTH_API_KEYS` to the same JSON the server reads.
+- Set `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` for a Langfuse
+  project at `LANGFUSE_HOST` that holds the dataset.
 
 ```bash
 # smoke test against the first 5 records
@@ -92,32 +92,30 @@ uv run python eval/evaluate_sensitivity.py \
   --dataset sensitivity/SubsetIFRCBorderlineSensitiveRecords
 ```
 
-| Flag         | Meaning                                                                             |
-| ------------ | ----------------------------------------------------------------------------------- |
-| `--dataset`  | Langfuse dataset name. Required.                                                    |
-| `--limit N`  | Only the first N records. Default: all.                                             |
-| `--run-name` | Replaces the generated name, `smoke-<N>-<timestamp>` or `baseline-full-<timestamp>`. |
+`--dataset` is the only required flag. `--limit N` runs just the first N
+records, which is how you check a change before paying for a full run,
+and `--run-name` replaces the name the script generates itself, either
+`smoke-<N>-<timestamp>` or `baseline-full-<timestamp>`.
 
-Each item in the dataset has two parts. The `input` is the feedback text,
-which is sent to the backend exactly as written, so choose a dataset that
-was anonymised before it was uploaded. The `expected_output` is the human
-label, either `Sensitive` or `Not sensitive`; if an item carries anything
-else the run stops, rather than quietly counting it as a wrong answer.
+Each dataset item's `input` field is the feedback text, and it is sent to
+the backend exactly as written, so choose a dataset that was anonymised
+before it was uploaded. Each item's `expected_output` field is the human
+label, either `Sensitive` or `Not sensitive`. An item carrying anything
+else stops the run, rather than being counted quietly as a wrong answer.
 
-## What a run tells you
+The script never fails on a low score. It only reports results, and does
+not gate anything. A summary prints to the console along with a link to
+the run, and the full results land in Langfuse as a Dataset Run under the
+experiment `sensitivity-baseline`.
 
-Every run creates a Dataset Run in Langfuse under the experiment
-`sensitivity-baseline`, carrying two scores on each record and seven on
-the run as a whole.
+Every record there carries two scores. `correct` is 1 when the label
+matched the human's and 0 when it did not. `classification_case` says
+which kind of outcome it was: `TP` and `TN` are the correct ones, `FP` is
+a record that was flagged when it should not have been, and `FN` is a
+sensitive record that was missed. Filtering a run on `FN` shows you
+everything that slipped through.
 
-For each record:
-
-| Score                 | Meaning                                                                                                                                             |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `correct`             | 1 when the label matched the human's, 0 when it did not.                                                                                            |
-| `classification_case` | `TP` and `TN` are correct. `FP` is a record flagged that should not have been. `FN` is a sensitive record that was missed — filter on it to see what slipped through. |
-
-For the run as a whole:
+The run as a whole carries seven more:
 
 | Score                                       | The question it answers                                                                                                        |
 | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
@@ -129,13 +127,12 @@ For the run as a whole:
 | `n_distinct_sensitivity_types`              | How many different sensitivity types came up. The breakdown per type, split by right and wrong flags, sits in this score's metadata. |
 | `mean_sensitivity_types_per_flagged_record` | How many types were assigned to a flagged record on average.                                                                   |
 
-The five scores above the two type counts also store the numbers they
-were calculated from, so you can always see the raw totals behind a
-percentage.
+The five scores above the two type counts also record the numbers they
+were calculated from, so the raw totals behind a percentage are always
+one click away.
 
-The script sends five records at a time, so a run finishes faster than
-the record count suggests. It only measures, which means a poor score is
-never treated as an error and the run always ends normally. When it
-finishes, the totals appear in your terminal together with a link to the
-full results in Langfuse. Unlike `assign_codes_eval.py`, no GitHub
-Actions workflow runs this script, so you start it yourself.
+Records are sent five at a time. Left to itself the Langfuse SDK would
+run fifty in parallel, which exhausts the dev backend's small Postgres
+connection pool and slows every request down. Unlike
+`assign_codes_eval.py`, no GitHub Actions workflow runs this script, so
+you start it yourself.

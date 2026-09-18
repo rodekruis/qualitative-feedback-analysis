@@ -15,6 +15,10 @@ from langfuse import Evaluation, get_client
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXPERIMENT_NAME = "sensitivity-baseline"
+# run_experiment defaults to 50 concurrent items, which exhausts the dev
+# backend's small Postgres connection pool (usage tracking then fails, and
+# every request slows down). Keep this well under that pool's capacity.
+MAX_CONCURRENCY = 5
 
 
 def _parse_args() -> argparse.Namespace:
@@ -382,7 +386,7 @@ def main() -> None:
             binary_metrics_evaluator,
             sensitivity_type_distribution_evaluator,
         ],
-        max_concurrency=5,
+        max_concurrency=MAX_CONCURRENCY,
         metadata={
             "dataset": args.dataset,
             "endpoint": "/v1/detect-sensitive",
