@@ -10,12 +10,12 @@ import the other to reach it.
 
 import re
 
-from qfa.domain.models import FeedbackRecordModel
+from qfa.domain.models import CommunityMeetingRecordModel, FeedbackRecordModel
 
 
 def hyperlink_form_references(
     text: str,
-    feedback_records: tuple[FeedbackRecordModel, ...],
+    feedback_records: tuple[FeedbackRecordModel | CommunityMeetingRecordModel, ...],
     espo_feedback_base_url: str | None,
 ) -> str:
     """Rewrite feedback-record-id mentions in ``text`` as EspoCRM hyperlinks.

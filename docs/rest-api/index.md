@@ -17,6 +17,7 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 |---|---|---|
 | `POST` | `/v1/analyze-bulk` | Bulk free-text analysis over submitted feedback records |
 | `POST` | `/v1/summarize` | Per-record summaries with quality scores |
+| `POST` | `/v1/summarize-community-meeting` | Community meeting note summaries with quality scores |
 | `POST` | `/v1/summarize-bulk` | Single bulk summary with judge score |
 | `POST` | `/v1/assign-codes` | Hierarchical code assignment |
 | `GET` | `/v1/usage` | Aggregate stats for the caller's tenant |
@@ -60,7 +61,7 @@ populated for both modes, so existing single-pass integrations that ignored
 the field are unaffected; clients that want trends can now read them from
 the single-pass response too.
 
-Per-record inference endpoints (`/v1/summarize`, `/v1/assign-codes`, `/v1/detect-sensitive`) accept a single `feedback_record` and return one result object, unlike bulk endpoints that accept multiple records and return aggregated output.
+Per-record inference endpoints (`/v1/summarize`, `/v1/summarize-community-meeting`, `/v1/assign-codes`, `/v1/detect-sensitive`) accept a single record and return one result object, unlike bulk endpoints that accept multiple records and return aggregated output.
 
 `POST /v1/summarize` takes no language parameter: the generated title and summary follow the record's own language, detected server-side from its content. Records too short to detect fall back to instructing the model to mirror the input language.
 

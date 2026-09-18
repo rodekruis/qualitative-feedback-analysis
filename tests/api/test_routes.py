@@ -281,6 +281,41 @@ class TestSummarizeSuccess:
         assert "x-request-id" in resp.headers
         UUID(resp.headers["x-request-id"])
 
+    @pytest.mark.asyncio
+    async def test_community_meeting_summary_returns_result(self, client):
+        resp = await client.post(
+            "/v1/summarize-community-meeting",
+            json={
+                "community_meeting_record": {
+                    "id": "meeting-1",
+                    "meetingNotes": "The community requested safer water access.",
+                    "metadata": {"location": "Camp A", "groupSize": "12"},
+                }
+            },
+            headers=_auth_header(),
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["id"] == "meeting-1"
+        assert data["title"] == "Fake summary title"
+        assert data["summary"] == "- Fake summary point"
+        assert data["quality_score"] == 0.9
+        assert "pretty_output" in data
+
+    @pytest.mark.asyncio
+    async def test_community_meeting_summary_empty_notes_returns_empty_result(self, client):
+        resp = await client.post(
+            "/v1/summarize-community-meeting",
+            json={"community_meeting_record": {"id": "meeting-1", "meetingNotes": ""}},
+            headers=_auth_header(),
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["id"] == "meeting-1"
+        assert resp.json()["summary"] == ""
+        assert resp.json()["quality_score"] is None
+
 
 class TestDetectSensitiveSuccess:
     @pytest.mark.asyncio

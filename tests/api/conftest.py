@@ -170,6 +170,11 @@ class FakeService:
             raise self._error
         return self._summarize_result
 
+    async def summarize_community_meeting(self, request, deadline):
+        if self._error is not None:
+            raise self._error
+        return self._summarize_result.model_copy(update={"id": request.community_meeting_record.id})
+
     async def summarize_bulk(
         self,
         request: SummaryRequestModel,
