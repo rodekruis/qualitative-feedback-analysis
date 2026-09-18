@@ -324,6 +324,10 @@ class FeedbackRecordSummaryModel(BaseModel):
         le=1.0,
         description="Judge model score for summary quality in the range 0.0-1.0.",
     )
+    components: JudgeComponents | None = Field(
+        default=None,
+        description="Judge faithfulness/coverage/clarity; ``None`` when the judge call failed.",
+    )
 
 
 class SummaryResultModel(BaseModel):
@@ -348,6 +352,10 @@ class AggregateSummaryResultModel(BaseModel):
     )
     quality_score: float = Field(
         description="Judge model score for summary quality in the range 0.0-1.0.",
+    )
+    components: JudgeComponents | None = Field(
+        default=None,
+        description="Judge faithfulness/coverage/clarity; ``None`` when the judge call failed.",
     )
 
 
