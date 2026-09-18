@@ -231,7 +231,7 @@ def binary_metrics_evaluator(*, item_results: Any, **kwargs: Any) -> list[Evalua
 
     precision = _divide(tp, tp + fp)
     recall = _divide(tp, tp + fn)
-    specificity = _divide(tn, tn + fp)
+    recall_not_sensitive = _divide(tn, tn + fp)
     accuracy = _divide(tp + tn, len(predictions))
     f1 = _divide(2 * precision * recall, precision + recall)
 
@@ -260,8 +260,8 @@ def binary_metrics_evaluator(*, item_results: Any, **kwargs: Any) -> list[Evalua
             metadata=counts,
         ),
         Evaluation(
-            name="specificity_not_sensitive",
-            value=specificity,
+            name="recall_not_sensitive",
+            value=recall_not_sensitive,
             metadata=counts,
         ),
         Evaluation(
@@ -332,7 +332,7 @@ def sensitivity_type_distribution_evaluator(
             },
         ),
         Evaluation(
-            name="mean_sensitivity_types_per_sensitive_record",
+            name="mean_sensitivity_types_per_flagged_record",
             value=mean_types,
         ),
     ]

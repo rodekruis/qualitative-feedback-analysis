@@ -68,20 +68,18 @@ and two repository variables, `LANGFUSE_PUBLIC_KEY` and
 
 ## Running `evaluate_sensitivity.py`
 
-This script takes its dataset as an argument instead of hard-coding one,
-so the same script serves every sensitivity dataset in Langfuse.
+Scores `POST /v1/detect-sensitive` against a Langfuse dataset you name on
+the command line, so one script covers every sensitivity dataset.
 
-Set these before you run it:
+Set these first. The script reads `.env` at the repo root, so they can
+live there.
 
 - `QFA_API_BASE_URL` — the backend to call. Required, with no default, so
-  a local run has to name `http://localhost:8000` itself.
-- `QFA_DEV_API_KEY` — a bearer token for that backend. A local run can
-  instead set `AUTH_API_KEYS` to the same JSON the server reads; the
-  script takes the first entry that still holds a plaintext `key`.
-- `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` for the Langfuse
-  project at `LANGFUSE_HOST` that holds the dataset.
-
-The script loads `.env` from the repo root, so these can live there.
+  a local run names `http://localhost:8000` itself.
+- `QFA_DEV_API_KEY` — a bearer token for that backend. Locally you can set
+  `AUTH_API_KEYS` instead, the same JSON the server reads.
+- `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` for the Langfuse project
+  at `LANGFUSE_HOST` that holds the dataset.
 
 ```bash
 # smoke test against the first 5 records
@@ -93,33 +91,42 @@ uv run python eval/evaluate_sensitivity.py \
   --dataset sensitivity/SubsetIFRCBorderlineSensitiveRecords
 ```
 
-| Flag         | Meaning                                                                                                     |
-| ------------ | ------------------------------------------------------------------------------------------------------------- |
-| `--dataset`  | Langfuse dataset name. Required.                                                                              |
-| `--limit N`  | Only the first N records. Default: all of them.                                                               |
-| `--run-name` | Replaces the generated name: `smoke-<N>-<timestamp>` with `--limit`, otherwise `baseline-full-<timestamp>`.    |
+| Flag         | Meaning                                                                             |
+| ------------ | ----------------------------------------------------------------------------------- |
+| `--dataset`  | Langfuse dataset name. Required.                                                    |
+| `--limit N`  | Only the first N records. Default: all.                                             |
+| `--run-name` | Replaces the generated name, `smoke-<N>-<timestamp>` or `baseline-full-<timestamp>`. |
 
-Each dataset item's `input` field is the raw feedback text. Its
-`expected_output` field is the human label, either the string `Sensitive`
-or `Not sensitive`. Any other label stops the run instead of scoring as a
-miss, so a mislabelled dataset shows up as an error rather than a bad
-score.
+Each item's `input` is the feedback text, sent to the backend as written,
+so pick a dataset that was anonymised before it was uploaded. Each item's
+`expected_output` is the human label, `Sensitive` or `Not sensitive`.
+Anything else stops the run rather than counting as a wrong answer.
 
-Results land in Langfuse under the experiment `sensitivity-baseline`, as a
-Dataset Run:
+## What a run tells you
 
-- Per record, `correct` (1 or 0) and `classification_case` (`TP`, `TN`,
-  `FP`, `FN`), so a run can be filtered down to only its false positives.
-- Per run, `accuracy`, `precision_sensitive`, `recall_sensitive`,
-  `specificity_not_sensitive` and `f1_sensitive`. Each carries the raw
-  TP/TN/FP/FN counts in its score metadata.
-- Per run, `n_distinct_sensitivity_types` and
-  `mean_sensitivity_types_per_sensitive_record`, which show which
-  sensitivity types drive the sensitive predictions, counted separately
-  for true and false positives. The full distribution sits in the first
-  score's metadata.
+Results land in Langfuse as a Dataset Run under `sensitivity-baseline`.
 
-Records are sent 5 at a time. Like the other script, this one never fails
-on a low score: the console gets a summary and a link to the Langfuse run.
+For each record:
 
-No workflow runs this script. Run it locally.
+| Score                 | Meaning                                                                                                                                             |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `correct`             | 1 when the label matched the human's, 0 when it did not.                                                                                            |
+| `classification_case` | `TP` and `TN` are correct. `FP` is a record flagged that should not have been. `FN` is a sensitive record that was missed — filter on it to see what slipped through. |
+
+For the run as a whole:
+
+| Score                                       | The question it answers                                                                                                        |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `accuracy`                                  | Of all records, how many were labelled correctly?                                                                              |
+| `recall_sensitive`                          | Of the records that really are sensitive, how many were flagged? Missing one is the costly mistake, so this is the number to watch. |
+| `precision_sensitive`                       | Of the records that were flagged, how many really were sensitive?                                                              |
+| `f1_sensitive`                              | One number balancing `recall_sensitive` and `precision_sensitive`.                                                             |
+| `recall_not_sensitive`                      | Of the records that are not sensitive, how many were correctly left alone?                                                     |
+| `n_distinct_sensitivity_types`              | How many different sensitivity types came up. The breakdown per type, split by right and wrong flags, sits in this score's metadata. |
+| `mean_sensitivity_types_per_flagged_record` | How many types were assigned to a flagged record on average.                                                                   |
+
+The first five also carry their underlying counts in score metadata.
+
+Records go five at a time, a low score never fails the run, and the
+console prints a summary and a link to the run. No workflow runs this
+script.
