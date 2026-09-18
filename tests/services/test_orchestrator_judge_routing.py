@@ -75,10 +75,12 @@ JUDGE_PARSEABLE_TEXT = "0.75\nThe summary is faithful to the source."
 CODING_JUDGE_PARSEABLE_TEXT = "SCORE: 0.9\nEXPLANATION: clearly relevant"
 
 # The analyse judge (analyze_bulk and the hierarchical leaf judge) parses
-# QUALITY_SCORE:/UNCERTAINTY_EXPLANATION: lines instead
+# FAITHFULNESS:/COVERAGE:/CLARITY:/UNCERTAINTY_EXPLANATION: lines instead
 # (``analyze._parse_analyze_judge_response``) — same provider-compatibility
 # constraint as the coding judge above, different field names.
-ANALYZE_JUDGE_PARSEABLE_TEXT = "QUALITY_SCORE: 0.8\nUNCERTAINTY_EXPLANATION: ok"
+ANALYZE_JUDGE_PARSEABLE_TEXT = (
+    "FAITHFULNESS: 0.8\nCOVERAGE: 0.8\nCLARITY: 0.8\nUNCERTAINTY_EXPLANATION: ok"
+)
 
 
 class RoutingLLM(LLMPort):
@@ -94,8 +96,8 @@ class RoutingLLM(LLMPort):
     the one-shot coding pick, the concrete summary models for generation,
     and ``str`` for everything free-text — including the analyse/leaf and
     coding judges, both of which parse their own free-text format
-    (``QUALITY_SCORE:``/``UNCERTAINTY_EXPLANATION:`` and
-    ``SCORE:``/``EXPLANATION:`` respectively) out of that same ``str``
+    (``FAITHFULNESS:``/``COVERAGE:``/``CLARITY:``/``UNCERTAINTY_EXPLANATION:``
+    and ``SCORE:``/``EXPLANATION:`` respectively) out of that same ``str``
     contract, since some judge deployments reject any response schema
     outright — see ``JudgeResponse``'s docstring). ``text_payload``
     overrides the ``str`` case for callers whose free-text contract differs

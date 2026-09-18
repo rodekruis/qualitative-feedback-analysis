@@ -204,6 +204,9 @@ async def analyze_bulk(
         return ApiAnalyzeBulkResponse(
             analysis="All records were empty: no analysis was performed.",
             quality_score=None,
+            faithfulness=None,
+            coverage=None,
+            clarity=None,
             uncertainty_explanation=_NO_CONTENT_EXPLANATION,
             feedback_record_count=0,
             request_id=request.state.request_id,
@@ -247,9 +250,13 @@ async def analyze_bulk(
             ],
         )
 
+    components = result.components
     return ApiAnalyzeBulkResponse(
         analysis=result.result,
         quality_score=result.quality_score,
+        faithfulness=None if components is None else components.faithfulness,
+        coverage=None if components is None else components.coverage,
+        clarity=None if components is None else components.clarity,
         uncertainty_explanation=result.uncertainty_explanation,
         feedback_record_count=len(records),
         request_id=request.state.request_id,

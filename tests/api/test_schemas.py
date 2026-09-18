@@ -675,6 +675,13 @@ def test_analyze_bulk_title_defaults_to_analysis():
     assert "title" in response.model_dump()
 
 
+def test_analyze_bulk_response_schema_includes_component_fields():
+    """OpenAPI schema exposes faithfulness, coverage and clarity."""
+    properties = ApiAnalyzeBulkResponse.model_json_schema()["properties"]
+    for name in ("faithfulness", "coverage", "clarity"):
+        assert name in properties
+
+
 class TestAssignCodesRequestExamples:
     """The Swagger examples must come from the bundled package resource (#158).
 

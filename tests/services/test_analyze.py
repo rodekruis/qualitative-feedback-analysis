@@ -543,6 +543,14 @@ class TestParseAnalyzeJudgeResponse:
         assert judged.components.coverage == pytest.approx(0.9)
         assert judged.components.clarity == pytest.approx(0.8)
 
+    def test_quality_score_rounds_to_four_decimals(self):
+        """0.9 / 0.9 / 0.8 → 0.89 (weighted, rounded 4 dp)."""
+        judged = _parse_analyze_judge_response(
+            "FAITHFULNESS: 0.9\nCOVERAGE: 0.9\nCLARITY: 0.8\n"
+            "UNCERTAINTY_EXPLANATION: ok."
+        )
+        assert judged.quality_score == 0.89
+
     def test_tolerates_case_and_surrounding_whitespace(self):
         judged = _parse_analyze_judge_response(
             "  faithfulness:  0.5  \n  coverage:  0.5  \n  clarity:  0.5  \n"
@@ -590,6 +598,10 @@ class TestAnalyzeHappyPath:
 
         assert "Top themes are A and B." in result.result
         assert result.quality_score == pytest.approx(0.82)
+        assert result.components is not None
+        assert result.components.faithfulness == pytest.approx(0.9)
+        assert result.components.coverage == pytest.approx(0.8)
+        assert result.components.clarity == pytest.approx(0.4)
         assert result.uncertainty_explanation == "Coverage high, faithfulness strong."
         assert len(fake_llm.calls) == 2
 
@@ -719,6 +731,7 @@ class TestAnalyzeJudgeFailure:
         result = await service.analyze_bulk(_make_request(), _future_deadline())
 
         assert result.quality_score is None
+        assert result.components is None
         assert result.uncertainty_explanation == JUDGE_UNAVAILABLE_EXPLANATION
         assert "analysis ok" in result.result
 
@@ -743,6 +756,7 @@ class TestAnalyzeJudgeFailure:
         result = await service.analyze_bulk(_make_request(), _future_deadline())
 
         assert result.quality_score is None
+        assert result.components is None
         assert result.uncertainty_explanation == JUDGE_UNAVAILABLE_EXPLANATION
         assert "analysis ok" in result.result
 

@@ -327,6 +327,7 @@ class AnalyzeService:
 
         quality_score: float | None
         uncertainty_explanation: str
+        components: JudgeComponents | None
         try:
             judge_timeout = self._executor.check_deadline_and_get_timeout(deadline)
             judge_system = build_analyze_judge_system_message(
@@ -346,6 +347,7 @@ class AnalyzeService:
             judged = _parse_analyze_judge_response(judge_response.structured)
             quality_score = judged.quality_score
             uncertainty_explanation = judged.uncertainty_explanation
+            components = judged.components
         except (
             LLMError,
             LLMTimeoutError,
@@ -359,6 +361,7 @@ class AnalyzeService:
             )
             quality_score = None
             uncertainty_explanation = JUDGE_UNAVAILABLE_EXPLANATION
+            components = None
 
         # Deterministic, non-LLM coding-trend table from ORIGINAL metadata
         # (metadata is not anonymised; codes/dates are not PII). Built for
@@ -376,6 +379,7 @@ class AnalyzeService:
             result=analysis_text,
             quality_score=quality_score,
             uncertainty_explanation=uncertainty_explanation,
+            components=components,
             coding_trends=trend_table,
         )
 
