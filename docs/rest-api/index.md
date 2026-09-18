@@ -105,9 +105,35 @@ These explanations are English only, regardless of the language of the feedback.
 |---|---|---|
 | `summary` | string | Generated bullet-point summary. |
 | `title` | string | LLM-generated short title. |
-| `quality_score` | float | Judge score in [0, 1]. Never `null`. |
-| `quality_text` | string | Quality score as dots and percentage, e.g. `"●●●●● 100%"`. Never `null`. |
+| `quality_score` | float or null | Weighted composite of `faithfulness`, `coverage` and `clarity`, computed in Python. `null` only when the batch was empty (no judge call was made) — a malformed judge reply raises a 502 instead of a `null` score. |
+| `faithfulness` | float or null | How well the summary is supported by the source records, in [0, 1]. `null` only when the batch was empty. |
+| `coverage` | float or null | How thoroughly the summary covers the source records' key points, in [0, 1]. `null` only when the batch was empty. |
+| `clarity` | float or null | How clear and concise the summary is, in [0, 1]. `null` only when the batch was empty. |
+| `quality_text` | string or null | Quality score as dots and percentage, e.g. `"●●●●● 100%"`. `null` when `quality_score` is `null`. |
 | `pretty_output` | string | Summary text verbatim — exists for EspoCRM's `modelResponse` mapping. |
+
+## POST /v1/summarize — field reference
+
+### Request
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `feedback_record` | object | — | A single `{id, content, metadata?}` record. `content` may be empty — see below. |
+
+### Response (200 OK)
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | string | Echoes the source record's `id`. |
+| `title` | string | LLM-generated short title. |
+| `summary` | string | Generated bullet-point summary. |
+| `quality_score` | float or null | Weighted composite of `faithfulness`, `coverage` and `clarity`, computed in Python. `null` only when `content` was empty (no LLM call was made) — a malformed judge reply raises a 502 instead of a `null` score. |
+| `faithfulness` | float or null | How well the summary is supported by the source record, in [0, 1]. `null` only when `content` was empty. |
+| `coverage` | float or null | How thoroughly the summary captures the record's own key points, in [0, 1]. `null` only when `content` was empty. |
+| `clarity` | float or null | How clear and concise the summary is, in [0, 1]. `null` only when `content` was empty. |
+| `pretty_output` | string | Human-readable formatted output string, built from `id`/`title`/`summary`/`quality_score`. |
+
+Empty `content` short-circuits to a 200 with blank `title`/`summary` and every score `null`, without calling the LLM (issue #138).
 
 ## Hyperlinking feedback records
 
