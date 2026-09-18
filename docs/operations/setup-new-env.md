@@ -66,6 +66,13 @@ gh variable set AZ_CLIENT_ID       --env "$ENV" --repo "$REPO" --body "$(terrafo
 gh variable set AZ_RESOURCE_GROUP  --env "$ENV" --repo "$REPO" --body "$TF_VAR_resource_group_name"
 gh variable set AZ_APP_NAME        --env "$ENV" --repo "$REPO" --body "qfa-${ENV}-backend"
 
+# Optional: only needed to turn on Langfuse call tracing for this
+# environment (see docs/operations/observability.md). Leaving these unset
+# is the default. It disables tracing entirely, and no other step below
+# applies in that case.
+gh variable set AZ_LANGFUSE_PUBLIC_KEY --env "$ENV" --repo "$REPO" --body "<your-langfuse-public-key>"
+gh variable set AZ_LANGFUSE_HOST       --env "$ENV" --repo "$REPO" --body "<your-self-hosted-langfuse-url>"
+
 # Secret (not a variable): CI's `terraform.yaml` reads this into
 # TF_VAR_teams_webhook_url. Uses `gh secret`, not `gh variable`, so the
 # value is masked in Actions logs.
@@ -91,6 +98,10 @@ az role assignment create \
 # Set the two LLM secrets
 az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "llm-api-base" --value "<your-azure-openai-endpoint-url>"
 az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "llm-api-key"  --value "<your-llm-api-key>"
+
+# Optional: only needed if you set AZ_LANGFUSE_PUBLIC_KEY/AZ_LANGFUSE_HOST
+# in step 5 above, to turn on Langfuse call tracing.
+az keyvault secret set --vault-name "qfa-${ENV}-keyvault" --name "langfuse-secret-key" --value "<your-langfuse-secret-key>"
 ```
 
 For the `auth-api-keys` secret, prefer [`scripts/update_auth_api_keys.py`](../../scripts/update_auth_api_keys.py) — it generates a secure token, manages the JSON shape, and works for the initial seed (the secret does not need to exist yet). See the module docstring at the top of the script for the full set of operations (`--add`, `--replace`, `--remove`).
@@ -107,8 +118,9 @@ uv run python3 scripts/update_auth_api_keys.py --add <tenant>
 | `llm-api-base`   | Base URL of your Azure OpenAI deployment (e.g. `https://<resource>.openai.azure.com/`) |
 | `llm-api-key`    | API key for the Azure OpenAI deployment |
 | `auth-api-keys`  | JSON array of API-key objects that authenticate callers to this backend (see [API key management](auth-management.md)) |
+| `langfuse-secret-key` | Secret key for the self-hosted Langfuse instance. Optional. Used only when `AZ_LANGFUSE_PUBLIC_KEY` is set in step 5 (see [Langfuse tracing](observability.md#langfuse-tracing)) |
 
-Without these secrets the App Service will start and pass health checks, but API calls will fail with a Key Vault reference resolution error.
+Without the first three secrets, the App Service starts and passes health checks, but API calls fail with a Key Vault reference resolution error. The `langfuse-secret-key` secret works differently: it matters only when Langfuse tracing is configured, and its absence never breaks an API call.
 
 ## Re-running after `terraform destroy`
 

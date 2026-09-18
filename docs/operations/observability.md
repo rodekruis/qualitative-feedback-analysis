@@ -135,6 +135,27 @@ Returned shape: counts and token totals per operation, plus simple latency distr
 
 If the database is down, both endpoints return 503 with `code=usage_backend_unavailable` — a transient condition, so retry with backoff.
 
+## Langfuse tracing
+
+This is a fourth channel, next to Postgres usage and the two Azure signals below. Every LLM call also produces one span in a self-hosted [Langfuse](https://langfuse.com) instance, sent over OpenTelemetry (OTLP/HTTP). `qfa.api.composition.build_langfuse_tracer` builds the tracer that `LiteLLMClient.complete` wraps each call in.
+
+This channel is for browsing individual calls, including the map, reduce, and judge calls of hierarchical analysis. Postgres (`GET /v1/usage`) remains the source of truth for total cost and token counts.
+
+The tracer's span processor is attached only when `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` are set. It stays detached in local dev, the same pattern as `APPLICATIONINSIGHTS_CONNECTION_STRING` below. If you set the keys, you must also set `LANGFUSE_HOST`. This deployment always self-hosts Langfuse, so it has no cloud fallback. `LangfuseSettings` rejects a key that has no host.
+
+The tracer's `TracerProvider` is independent from the process-global one that Application Insights installs when it is configured. This keeps Langfuse-shaped span attributes out of App Insights, and Azure spans out of Langfuse, regardless of which of the two is configured.
+
+Each span carries these attributes:
+
+- `langfuse.observation.model.name`
+- `langfuse.user.id`, set to the tenant ID (matches the per-tenant grouping in `GET /v1/usage`)
+- `langfuse.trace.tags`, set to the operation, inside an active request (unset for scripts and tests run outside one)
+- `langfuse.observation.usage_details` and `langfuse.observation.cost_details` (JSON, holding token counts and cost)
+
+A judge call is marked apart from the generation call it grades. This covers the leaf judges of hierarchical analysis, and the per-record and per-level judges in `summarize` and `coding`. Its span name gets a `:judge` suffix, for example `summarize:judge`, and its tags gain a `"judge"` entry. `qfa.services.call_context.judge_call` sets this. Every current judge call site wraps itself in it. A generation call's name and tags stay exactly as they were before this marker existed.
+
+The span's own start and end time carry the latency. Langfuse needs no separate attribute for it. No attribute ever carries the prompt or completion text. `langfuse.observation.input` and `langfuse.observation.output` are the only attributes that carry that text, and this integration never sets either one.
+
 ## Azure Monitor
 
 App Service logs are shipped to an Azure Log Analytics workspace (`qfa-<env>-logs`) and surfaced in Application Insights (`qfa-<env>-appinsights`). Both are created by Terraform in `infra/observability.tf`. The App Service passes the App Insights connection string to the container as the `APPLICATIONINSIGHTS_CONNECTION_STRING` app setting (wired in `infra/app_service.tf`); when that setting is present, the app enables application telemetry at startup — see [Application Insights (application telemetry)](#application-insights-application-telemetry) below.

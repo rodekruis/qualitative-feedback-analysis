@@ -18,8 +18,8 @@ via snapshot-on-spawn, so fan-out from a public orchestrator method
 preserves the context without explicit forwarding.
 """
 
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
 from uuid import UUID
 
@@ -29,6 +29,37 @@ current_call_context: ContextVar[CallContext | None] = ContextVar(
     "current_call_context",
     default=None,
 )
+
+current_call_role: ContextVar[str] = ContextVar(
+    "current_call_role", default="generation"
+)
+"""Whether the LLM call in flight is a judge call or a generation call.
+
+Read by ``LiteLLMClient`` to name/tag its Langfuse span -- a dimension
+``current_call_context`` cannot carry, since one ``call_scope`` (one
+orchestrator operation) makes calls of *both* roles (e.g. hierarchical
+analyze's map/reduce generation calls and its leaf-judge calls). Not read
+by ``TrackingLLMAdapter``: ``LLMCallRecord`` has no such column, so this
+role is currently a Langfuse-only, not a Postgres-usage, dimension.
+"""
+
+
+@contextmanager
+def judge_call() -> Iterator[None]:
+    """Mark the LLM calls made inside this block as judge calls.
+
+    Wrap a judge call site in ``with judge_call():`` — every current site
+    already knows it is calling the judge (it is calling ``self._judge_llm``,
+    or passing ``llm=self._judge_llm`` to the executor), this just makes that
+    fact visible to ``LiteLLMClient`` too. Synchronous (no ``async with``
+    needed): setting/resetting a ``ContextVar`` does no I/O, only the
+    caller's own ``await`` inside the block does.
+    """
+    token = current_call_role.set("judge")
+    try:
+        yield
+    finally:
+        current_call_role.reset(token)
 
 
 @asynccontextmanager

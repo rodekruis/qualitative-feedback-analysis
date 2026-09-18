@@ -36,6 +36,8 @@ JUDGE_ENV_VARS = (
     "JUDGE_LLM_API_VERSION",
 )
 
+LANGFUSE_ENV_VARS = ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_HOST")
+
 
 class _RecordingFakeLLM(LLMPort):
     """LLM fake that remembers the settings it was built from."""
@@ -58,15 +60,17 @@ class _RecordingFakeLLM(LLMPort):
 def app_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Provide the minimum environment for the lifespan to compose successfully.
 
-    Also clears ``EMBEDDING_*`` and ``JUDGE_LLM_*`` so a developer's local
-    ``.env`` cannot turn the no-judge baseline into a judge-enabled run (or
-    make startup load a real embedding model).
+    Also clears ``EMBEDDING_*``, ``JUDGE_LLM_*`` and ``LANGFUSE_*`` so a
+    developer's local ``.env`` cannot turn the no-judge baseline into a
+    judge-enabled run (or make startup load a real embedding model, or fail
+    ``AppSettings()`` on a Langfuse key with no host).
     """
     for var in (
         "EMBEDDING_MODEL_PATH",
         "EMBEDDING_TOKENIZER_PATH",
         "EMBEDDING_REVISION_HASH",
         *JUDGE_ENV_VARS,
+        *LANGFUSE_ENV_VARS,
     ):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("LLM_API_KEY", "sk-test-lifespan")
