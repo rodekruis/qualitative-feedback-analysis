@@ -62,10 +62,15 @@ TENANT_ID = "tenant-42"
 LLM_TIMEOUT = 30.0
 MAX_TOKENS = 100_000
 
-# A bare float on the first line is the contract the two summary judges parse
-# with ``_parse_judge_quality_score``; the rest of the string is ignored. It
-# doubles as generic free text for the map/reduce/analysis calls.
-JUDGE_PARSEABLE_TEXT = "0.75\nThe summary is faithful to the source."
+# The two summary judges parse FAITHFULNESS:/COVERAGE:/CLARITY: lines via
+# ``_parse_judge_quality_score`` (the same ``parse_judge_components`` the
+# analyse judge below uses). Weights are equal so the weighted total stays
+# 0.75, matching what the pre-#352 bare-float fixture asserted. It doubles as
+# generic free text for the map/reduce/analysis calls.
+JUDGE_PARSEABLE_TEXT = (
+    "FAITHFULNESS: 0.75\nCOVERAGE: 0.75\nCLARITY: 0.75\n"
+    "UNCERTAINTY_EXPLANATION: The summary is faithful to the source."
+)
 
 # The coding per-level judge parses ``SCORE:``/``EXPLANATION:`` lines instead
 # (``coding._parse_judge_response``) — a different provider-compatibility
@@ -472,8 +477,9 @@ class TestJudgeCallsRouteToTheJudgeClient:
     async def test_aggregate_summary_judge_call(self) -> None:
         """``summarize_bulk`` judges on the judge client, generates on the primary.
 
-        Its judge uses the free-text contract (a bare float parsed off the
-        first line), which the switch of client must not disturb.
+        Its judge uses the same FAITHFULNESS:/COVERAGE:/CLARITY: free-text
+        contract as the analyse judge, which the switch of client must not
+        disturb.
         """
         primary = RoutingLLM("primary")
         judge = RoutingLLM("judge")
