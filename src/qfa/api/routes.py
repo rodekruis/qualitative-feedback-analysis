@@ -22,10 +22,10 @@ from qfa.api.schemas import (
     ApiAssignCodesRequest,
     ApiAssignCodesResponse,
     ApiAssignedCode,
-    ApiCommunityMeetingRecordMetadata,
     ApiCodingNode,
     ApiCodingTrendCell,
     ApiCodingTrends,
+    ApiCommunityMeetingRecordMetadata,
     ApiDetectSensitiveRequest,
     ApiDetectSensitiveResponse,
     ApiFeedbackRecordInput,
@@ -33,9 +33,9 @@ from qfa.api.schemas import (
     ApiHealthResponse,
     ApiSummarizeBulkRequest,
     ApiSummarizeBulkResponse,
-    ApiSummarizeRequest,
     ApiSummarizeCommunityMeetingRequest,
     ApiSummarizeCommunityMeetingResponse,
+    ApiSummarizeRequest,
     ApiSummarizeResponse,
 )
 from qfa.domain.models import (
@@ -48,8 +48,8 @@ from qfa.domain.models import (
     FeedbackRecordMetadataModel,
     FeedbackRecordModel,
     SensitivityAnalysisRequestModel,
-    SingleSummaryRequestModel,
     SingleSummaryCommunityMeetingRequestModel,
+    SingleSummaryRequestModel,
     SummaryRequestModel,
     TenantApiKey,
 )

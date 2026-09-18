@@ -849,7 +849,9 @@ class ApiSummarizeCommunityMeetingResponse(BaseModel):
     """Community meeting summary response."""
 
     id: str = Field(description="Identifier of the source community meeting record.")
-    title: str = Field(description="Generated short title for the community meeting record.")
+    title: str = Field(
+        description="Generated short title for the community meeting record."
+    )
     summary: str = Field(
         description="Generated bullet-point summary for the community meeting record."
     )

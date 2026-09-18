@@ -304,7 +304,9 @@ class TestSummarizeSuccess:
         assert "pretty_output" in data
 
     @pytest.mark.asyncio
-    async def test_community_meeting_summary_empty_notes_returns_empty_result(self, client):
+    async def test_community_meeting_summary_empty_notes_returns_empty_result(
+        self, client
+    ):
         resp = await client.post(
             "/v1/summarize-community-meeting",
             json={"community_meeting_record": {"id": "meeting-1", "meetingNotes": ""}},

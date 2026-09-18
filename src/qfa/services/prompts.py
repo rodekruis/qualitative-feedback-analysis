@@ -258,9 +258,7 @@ def build_community_meeting_record_envelope(
 ) -> str:
     """Build a single ``<community_meeting_record>`` envelope."""
     record_content = escape_for_tag_envelope(community_meeting_record.meetingNotes)
-    id_attr = (
-        f" id={_xml_quoteattr(community_meeting_record.id)}" if include_id else ""
-    )
+    id_attr = f" id={_xml_quoteattr(community_meeting_record.id)}" if include_id else ""
     metadata_block = ""
     if include_metadata:
         metadata_lines = "\n".join(

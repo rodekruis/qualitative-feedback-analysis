@@ -23,8 +23,8 @@ from qfa.domain.models import (
     FeedbackRecordModel,
     FeedbackRecordSummaryModel,
     LLMResponse,
-    SingleSummaryRequestModel,
     SingleSummaryCommunityMeetingRequestModel,
+    SingleSummaryRequestModel,
     SummaryCommunityMeetingResultModel,
     SummaryRequestModel,
     SummaryResultModel,
@@ -283,9 +283,7 @@ class TestNonTransientError:
     async def test_community_meeting_summary_returns_structured_result(self, settings):
         fake_llm = FakeLLMPort(
             responses=[
-                _make_llm_response(
-                    structured=_make_community_meeting_summary_result()
-                ),
+                _make_llm_response(structured=_make_community_meeting_summary_result()),
                 _make_llm_response(structured="0.8"),
             ]
         )
@@ -302,9 +300,7 @@ class TestNonTransientError:
             "The community requested safer water access."
             in fake_llm.calls[0]["user_message"]
         )
-        assert (
-            fake_llm.calls[0]["response_model"] is SummaryCommunityMeetingResultModel
-        )
+        assert fake_llm.calls[0]["response_model"] is SummaryCommunityMeetingResultModel
 
     @pytest.mark.asyncio
     async def test_community_meeting_summary_hyperlinks_record_id(self, settings):
