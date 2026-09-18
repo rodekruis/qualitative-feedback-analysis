@@ -312,6 +312,9 @@ async def summarize_bulk(
             title="",
             summary="All records were empty: no analysis was performed.",
             quality_score=None,
+            faithfulness=None,
+            coverage=None,
+            clarity=None,
         )
 
     feedback_records = tuple(
@@ -332,10 +335,14 @@ async def summarize_bulk(
 
     result = await summarize_service.summarize_bulk(domain_request, deadline)
 
+    components = result.components
     return ApiSummarizeBulkResponse(
         title=result.title,
         summary=result.summary,
         quality_score=result.quality_score,
+        faithfulness=None if components is None else components.faithfulness,
+        coverage=None if components is None else components.coverage,
+        clarity=None if components is None else components.clarity,
         output_language=body.output_language,
     )
 
@@ -386,6 +393,9 @@ async def summarize(
             title="",
             summary="",
             quality_score=None,
+            faithfulness=None,
+            coverage=None,
+            clarity=None,
         )
 
     domain_request = SingleSummaryRequestModel(
@@ -402,11 +412,15 @@ async def summarize(
         deadline,
     )
 
+    components = result.components
     return ApiSummarizeResponse(
         id=result.id,
         title=result.title,
         summary=result.summary,
         quality_score=result.quality_score,
+        faithfulness=None if components is None else components.faithfulness,
+        coverage=None if components is None else components.coverage,
+        clarity=None if components is None else components.clarity,
     )
 
 

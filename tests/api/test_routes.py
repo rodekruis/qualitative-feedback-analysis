@@ -668,6 +668,11 @@ class TestEmptyFeedbackContent:
         body = resp.json()
         assert body["title"] == ""
         assert body["summary"] == "All records were empty: no analysis was performed."
+        assert body["quality_score"] is None
+        assert body["quality_text"] is None
+        assert body["faithfulness"] is None
+        assert body["coverage"] is None
+        assert body["clarity"] is None
 
     @pytest.mark.asyncio
     async def test_summarize_empty_content_returns_empty_result(self, client):
@@ -687,6 +692,10 @@ class TestEmptyFeedbackContent:
         assert body["id"] == "doc-1"
         assert body["title"] == ""
         assert body["summary"] == ""
+        assert body["quality_score"] is None
+        assert body["faithfulness"] is None
+        assert body["coverage"] is None
+        assert body["clarity"] is None
 
     @pytest.mark.asyncio
     async def test_assign_codes_empty_content_returns_no_codes(self, client):
