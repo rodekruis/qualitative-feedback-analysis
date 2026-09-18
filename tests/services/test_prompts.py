@@ -271,19 +271,22 @@ class TestBuildAnalyzeJudgeSystemMessage:
         assert "The model said {{result}}." in out
 
     def test_states_the_free_text_output_format(self):
-        """The judge prompt spells out the SCORE:/EXPLANATION:-style reply it expects.
+        """The judge prompt spells out the four-line reply it expects.
 
         The judge connection can point at a model/deployment that rejects a
         schema-enforced ``response_format`` outright (see
         ``AnalyzeJudgeResult``'s docstring), so ``analyze.py`` parses free
         text instead — this only works if the prompt states the exact
-        two-line shape ``_parse_analyze_judge_response`` expects.
+        four-line shape ``_parse_analyze_judge_response`` expects.
         """
         out = build_analyze_judge_system_message(
             source_text="s", analyst_prompt="p", analysis="a"
         )
-        assert "QUALITY_SCORE:" in out
+        assert "FAITHFULNESS:" in out
+        assert "COVERAGE:" in out
+        assert "CLARITY:" in out
         assert "UNCERTAINTY_EXPLANATION:" in out
+        assert "QUALITY_SCORE:" not in out
 
     def test_output_language_pins_the_uncertainty_explanation_language(self):
         """``output_language`` adds a directive naming the uncertainty explanation.

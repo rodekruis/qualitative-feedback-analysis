@@ -8,6 +8,7 @@ from qfa.domain.models import (
     AnalysisResultModel,
     FeedbackRecordMetadataModel,
     FeedbackRecordModel,
+    JudgeComponents,
     LLMResponse,
     SensitivityAnalysisResultModelList,
     TenantApiKey,
@@ -200,6 +201,23 @@ def test_analysis_result_carries_optional_hierarchical_fields() -> None:
     default = AnalysisResultModel(result="text")
     assert default.confidence is None
     assert default.coding_trends is None
+    assert default.components is None
+
+
+class TestJudgeComponents:
+    def test_quality_score_is_weighted_and_rounded_to_4_dp(self):
+        """0.9 / 0.9 / 0.8 → 0.89 after 0.6/0.3/0.1 weighting, rounded 4 dp."""
+        components = JudgeComponents(faithfulness=0.9, coverage=0.9, clarity=0.8)
+        assert components.quality_score == 0.89
+
+    def test_rejects_component_outside_unit_interval(self):
+        with pytest.raises(ValidationError):
+            JudgeComponents(faithfulness=1.1, coverage=0.5, clarity=0.5)
+
+    def test_frozen(self):
+        components = JudgeComponents(faithfulness=0.5, coverage=0.5, clarity=0.5)
+        with pytest.raises(ValidationError):
+            components.faithfulness = 0.0  # type: ignore[ty:invalid-assignment]
 
 
 # --- LLMResponse ---

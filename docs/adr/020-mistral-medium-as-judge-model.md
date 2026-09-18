@@ -145,6 +145,15 @@ Stated as observables, not feelings:
   `AggregateSummaryResultModel`) still do, and those are unaffected since
   they run on a different model. This closes the incompatibility this ADR's
   rollback conditions 3 and 4 both trace back to.
+- **Analyze judge returns three components, 2026-09-18** (#351): the analyze
+  judge prompt now asks for four lines —
+  `FAITHFULNESS:` / `COVERAGE:` / `CLARITY:` / `UNCERTAINTY_EXPLANATION:`
+  (explanation last, so the greedy explanation group cannot swallow a
+  component). Python parses the three floats and computes `quality_score`
+  from `QUALITY_SCORE_WEIGHTS`. The reply is still free text, still
+  regex-parsed — this widens the same decision as #314 rather than reversing
+  it. Hierarchical leaf judges share the parser; the hierarchical response
+  still returns the three components as `null`.
 
 ## Follow-up
 

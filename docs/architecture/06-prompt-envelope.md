@@ -128,12 +128,24 @@ add further layers.
 
 After the main analysis LLM call, `AnalyzeService` issues a second
 **judge call** using `build_analyze_judge_system_message` from
-`qfa.services.prompts`. The analyse judge is a dedicated prompt
-distinct from the `summarize_aggregate` judge (different output shape:
-analyse returns structured JSON, `summarize_aggregate` returns a bare
-float). The judge returns a structured
-`AnalyzeJudgeResult(quality_score: float, uncertainty_explanation: str)`
-parsed by Pydantic.
+`qfa.services.prompts`. The analyse judge is a dedicated prompt,
+distinct from the `summarize_aggregate` judge. It asks for four free-text
+lines, explanation last:
+
+```
+FAITHFULNESS: <0.0-1.0>
+COVERAGE: <0.0-1.0>
+CLARITY: <0.0-1.0>
+UNCERTAINTY_EXPLANATION: <one short paragraph>
+```
+
+`parse_judge_components` in `qfa.services.judge_scoring` extracts the three
+floats (raises `AnalysisError` for a missing or out-of-range value).
+`AnalyzeJudgeResult` holds the components plus the explanation;
+`quality_score` is a passthrough property computed in Python from
+`QUALITY_SCORE_WEIGHTS`. The judge connection can point at a model that
+rejects any `response_format`, so neither call site requests structured
+output.
 
 The full judge prompt (source records, analyst question, analysis to
 score, and instructions) is sent in the **system message**; the user
@@ -143,12 +155,14 @@ reaches the judge LLM.
 
 The judge call is tracked as a separate row in `llm_calls` (same `call_id`
 as the analysis call, same `operation=analyze`). Analysts see the result as
-`quality_score` (0–1) and `uncertainty_explanation` in the API response.
+`faithfulness`, `coverage`, `clarity`, `quality_score` (0–1) and
+`uncertainty_explanation` in the API response. Hierarchical mode still
+returns the three components as `null`.
 
 If the judge call fails for any reason
 (`LLMError`, `LLMTimeoutError`, `LLMRateLimitError`, `ValidationError`,
 `AnalysisError`), the service logs a warning and returns the analysis
-with `quality_score=null` and a constant unavailable explanation.
+with all four score fields `null` and a constant unavailable explanation.
 **The analysis itself is always returned** — judge failure is not an error.
 
 ## Selective de-anonymisation (PERSON retention)
@@ -200,9 +214,10 @@ sequenceDiagram
     orch->>anon: deanonymize(analysis_text, filtered_mapping)
     anon-->>orch: partially-deanonymised_text
     orch->>orch: build_analyze_judge_system_message(anonymised_msg, anonymised_prompt, analysis_text)
-    orch->>judge: complete(judge_system_msg, ".", response_model=AnalyzeJudgeResult)
-    judge-->>orch: AnalyzeJudgeResult(quality_score, uncertainty_explanation)
-    orch-->>route: AnalysisResultModel(result, quality_score, uncertainty_explanation)
+    orch->>judge: complete(judge_system_msg, ".", response_model=str)
+    judge-->>orch: four-line free text
+    orch->>orch: parse_judge_components + explanation
+    orch-->>route: AnalysisResultModel(result, quality_score, components, uncertainty_explanation)
 ```
 
 The judge participant is a *separate* `LLMPort` only when `JUDGE_LLM_MODEL` is
