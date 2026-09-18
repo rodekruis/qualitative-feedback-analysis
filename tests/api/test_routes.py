@@ -623,6 +623,10 @@ class TestEmptyFeedbackContent:
         body = resp.json()
         assert body["feedback_record_count"] == 0
         assert body["analysis"] == "All records were empty: no analysis was performed."
+        assert body["quality_score"] is None
+        assert body["faithfulness"] is None
+        assert body["coverage"] is None
+        assert body["clarity"] is None
 
     @pytest.mark.asyncio
     async def test_summarize_bulk_drops_empty_records_and_processes_rest(

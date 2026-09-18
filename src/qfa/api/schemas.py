@@ -604,6 +604,33 @@ class ApiAnalyzeBulkResponse(ApiBulkInferenceResponseBase):
     quality_score: float | None = Field(
         description="Judge model score in [0,1]; ``null`` when the judge call failed.",
     )
+    faithfulness: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Judge faithfulness in [0,1]; ``null`` when the judge call "
+            "failed, and for ``mode=hierarchical``."
+        ),
+    )
+    coverage: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Judge coverage in [0,1]; ``null`` when the judge call "
+            "failed, and for ``mode=hierarchical``."
+        ),
+    )
+    clarity: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Judge clarity in [0,1]; ``null`` when the judge call "
+            "failed, and for ``mode=hierarchical``."
+        ),
+    )
     uncertainty_explanation: str = Field(
         description=(
             "Natural-language explanation from the judge call. A constant"
@@ -619,8 +646,9 @@ class ApiAnalyzeBulkResponse(ApiBulkInferenceResponseBase):
         ge=0.0,
         le=1.0,
         description=(
-            "Coverage-weighted mean of per-chunk faithfulness scores."
-            " Populated only for ``mode=hierarchical``."
+            "Coverage-weighted mean of per-chunk judge quality scores "
+            "(the weighted composite of faithfulness, coverage and "
+            "clarity). Populated only for ``mode=hierarchical``."
         ),
     )
     coding_trends: ApiCodingTrends | None = Field(

@@ -236,6 +236,14 @@ class AnalysisResultModel(BaseModel):
         le=1.0,
         description="Judge model score in [0,1]; ``None`` when the judge call failed.",
     )
+    components: JudgeComponents | None = Field(
+        default=None,
+        description=(
+            "Judge faithfulness/coverage/clarity; ``None`` when the judge "
+            "call failed, and for hierarchical mode until per-chunk "
+            "aggregation lands."
+        ),
+    )
     uncertainty_explanation: str = Field(
         default="",
         description="Natural-language explanation from the judge model.",

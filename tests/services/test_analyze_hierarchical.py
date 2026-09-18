@@ -94,9 +94,14 @@ def _is_judge_call(system_message: str) -> bool:
     return "<analysis_to_score>" in system_message
 
 
-def _judge_text(quality_score=0.8, explanation="leaf ok"):
-    """Render a judge score/explanation as the free-text reply a fake serves."""
-    return f"QUALITY_SCORE: {quality_score}\nUNCERTAINTY_EXPLANATION: {explanation}"
+def _judge_text(faithfulness=0.8, coverage=0.8, clarity=0.8, explanation="leaf ok"):
+    """Render judge components as the four-line free-text reply a fake serves."""
+    return (
+        f"FAITHFULNESS: {faithfulness}\n"
+        f"COVERAGE: {coverage}\n"
+        f"CLARITY: {clarity}\n"
+        f"UNCERTAINTY_EXPLANATION: {explanation}"
+    )
 
 
 class RecordingLLM(LLMPort):
@@ -193,8 +198,8 @@ async def test_hierarchical_covers_all_records_and_returns_confidence():
     )
     deadline = datetime.now(UTC) + timedelta(seconds=120)
     result = await service.analyze_hierarchical(request, deadline, anonymize=True)
-    assert result.confidence is not None
-    assert 0.0 <= result.confidence <= 1.0
+    assert result.confidence == pytest.approx(0.8)
+    assert result.components is None
     assert result.result  # non-empty synthesis
 
 
@@ -372,7 +377,7 @@ class LargeOutputLLM(LLMPort):
         self.calls.append((system_message, user_message, response_model))
         if _is_judge_call(system_message):
             return LLMResponse(
-                structured=_judge_text(0.75, "ok"),
+                structured=_judge_text(0.75, 0.75, 0.75, "ok"),
                 model="fake",
                 prompt_tokens=1,
                 completion_tokens=1,
