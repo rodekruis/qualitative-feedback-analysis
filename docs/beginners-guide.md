@@ -38,6 +38,10 @@ The codebase has many folders. As a beginner, you only need these:
   An endpoint is a web address the app answers. Add a new endpoint here.
 - `tests/`: the automated tests.
 - `docs/`: this documentation site.
+- `infra/`: the Terraform files that manage the Azure infrastructure, such
+  as the App Service and the model name for each deployed environment.
+- `scripts/`: helper scripts a developer runs by hand, such as one that
+  fetches an embedding model.
 
 ## Add a new endpoint
 
@@ -78,6 +82,13 @@ time it starts.
 ```
 LLM_MODEL=azure/gpt-5.4
 ```
+
+This `.env` change only affects your own machine. A deployed environment
+reads `LLM_MODEL` from Terraform, not from `.env`. To change the model
+there, edit the default value of `llm_model` in `infra/variables.tf`. Open a
+pull request with that change. The
+[release flow](operations/release-flow.md#applying-an-infra-change) describes
+how Terraform applies infrastructure changes.
 
 The prefix before the slash names the provider, such as `azure/`,
 `azure_ai/`, or `openai/`. A library called LiteLLM reads this prefix and
