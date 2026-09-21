@@ -128,9 +128,11 @@ add further layers.
 
 After the main analysis LLM call, `AnalyzeService` issues a second
 **judge call** using `build_analyze_judge_system_message` from
-`qfa.services.prompts`. The analyse judge is a dedicated prompt,
-distinct from the `summarize_aggregate` judge. It asks for four free-text
-lines, explanation last:
+`qfa.services.prompts`. The analyse judge is a dedicated prompt, distinct
+from the `summarize_aggregate` judge, but both ask for the same four
+free-text lines, explanation last — the summarise judge just has no
+`uncertainty_explanation` field to carry that fourth line into, so it's
+parsed and discarded:
 
 ```
 FAITHFULNESS: <0.0-1.0>
