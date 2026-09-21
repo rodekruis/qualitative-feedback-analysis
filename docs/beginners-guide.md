@@ -67,7 +67,12 @@ the full walkthrough. It shows real code for every step.
 ## Change the model
 
 The app reads the model name from one environment variable, `LLM_MODEL`.
-Change its value in your `.env` file. The app uses the new model the next
+
+Before you change this value, make sure that the new model is already
+deployed on the Azure AI Foundry resource. The app cannot call a model that
+is not deployed there, and this repository does not deploy models for you.
+
+Change the value in your `.env` file. The app uses the new model the next
 time it starts.
 
 ```
