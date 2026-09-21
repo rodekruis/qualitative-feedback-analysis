@@ -152,12 +152,20 @@ class TestRequestIdEqualsCallId:
         from uuid import UUID
 
         # /v1/summarize-bulk fans out into 2 LLM calls: the aggregate
-        # summary itself, then a judge call that scores the summary as a
-        # plain float string. Queue both.
+        # summary itself, then a judge call that scores the summary as
+        # FAITHFULNESS:/COVERAGE:/CLARITY:/UNCERTAINTY_EXPLANATION: free
+        # text. Queue both.
         e2e_fake_llm.queue_response(
             _ok(text='{"title": "t", "summary": "s", "quality_score": 0.5}')
         )
-        e2e_fake_llm.queue_response(_ok(text="0.9"))
+        e2e_fake_llm.queue_response(
+            _ok(
+                text=(
+                    "FAITHFULNESS: 0.9\nCOVERAGE: 0.9\nCLARITY: 0.9\n"
+                    "UNCERTAINTY_EXPLANATION: Good coverage."
+                )
+            )
+        )
 
         resp = await e2e_client.post(
             "/v1/summarize-bulk",
