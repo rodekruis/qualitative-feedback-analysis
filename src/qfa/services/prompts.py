@@ -82,7 +82,7 @@ You are evaluating the quality of an analysis produced from feedback records.
 
 <analyst_prompt>
 {analyst_prompt}
-=</analyst_prompt>
+</analyst_prompt>
 
 <analysis_to_score>
 {analysis}
@@ -105,19 +105,20 @@ Clarity:
 0.5 = somewhat clear
 0.0 = confusing or poorly written
 
-Compute the final score as:
-quality_score = 0.6 * faithfulness + 0.3 * coverage + 0.1 * clarity
-
 Also produce an uncertainty explanation — one short paragraph explaining
 which criterion drove the score, calling out unsupported claims if any.
 
 Output format:
-Respond with exactly two lines and nothing else, in this exact format:
-QUALITY_SCORE: <a number between 0.0 and 1.0>
+Respond with exactly four lines and nothing else, in this exact format:
+FAITHFULNESS: <0.0-1.0>
+COVERAGE: <0.0-1.0>
+CLARITY: <0.0-1.0>
 UNCERTAINTY_EXPLANATION: <one short paragraph>
 
 Example:
-QUALITY_SCORE: 0.82
+FAITHFULNESS: 0.9
+COVERAGE: 0.8
+CLARITY: 0.9
 UNCERTAINTY_EXPLANATION: The analysis is well-supported by the source records and covers the analyst's question, though it slightly overstates how widespread one minor theme is.
 """
 

@@ -5,7 +5,7 @@ All models are immutable (frozen) Pydantic models per ADR-001.
 
 import hashlib
 import secrets
-from typing import Any, Generic, Literal, TypeVar, Union
+from typing import Any, Generic, Literal, NamedTuple, TypeVar, Union
 
 from pydantic import (
     BaseModel,
@@ -160,6 +160,70 @@ class AnalysisRequestModel(BaseModel):
     )
 
 
+class _QualityScoreWeights(NamedTuple):
+    faithfulness: float
+    coverage: float
+    clarity: float
+
+
+QUALITY_SCORE_WEIGHTS = _QualityScoreWeights(
+    faithfulness=0.6,
+    coverage=0.3,
+    clarity=0.1,
+)
+"""Single authoritative copy of the judge scoring weights.
+
+Formula: ``quality_score = 0.6 * faithfulness + 0.3 * coverage + 0.1 * clarity``.
+Used by :class:`JudgeComponents` and must not be duplicated elsewhere in ``src/``.
+"""
+
+
+class JudgeComponents(BaseModel):
+    """Quality-score components from one judge call.
+
+    A value object — the three floats are all-or-nothing: use
+    ``JudgeComponents | None`` instead of three ``float | None`` fields
+    so the impossible partial states cannot be constructed.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    faithfulness: float = Field(
+        ge=0.0,
+        le=1.0,
+        description=(
+            "How well the analysis is supported by the source records "
+            "(1.0 = fully supported, 0.0 = major inaccuracies)."
+        ),
+    )
+    coverage: float = Field(
+        ge=0.0,
+        le=1.0,
+        description=(
+            "How thoroughly the analysis answers the analyst question "
+            "(1.0 = all key themes captured, 0.0 = misses the question)."
+        ),
+    )
+    clarity: float = Field(
+        ge=0.0,
+        le=1.0,
+        description=(
+            "How clear and well-structured the analysis is "
+            "(1.0 = clear, 0.0 = confusing or poorly written)."
+        ),
+    )
+
+    @property
+    def quality_score(self) -> float:
+        """Weighted composite: ``0.6*faithfulness + 0.3*coverage + 0.1*clarity``, rounded to 2 dp."""
+        return round(
+            QUALITY_SCORE_WEIGHTS.faithfulness * self.faithfulness
+            + QUALITY_SCORE_WEIGHTS.coverage * self.coverage
+            + QUALITY_SCORE_WEIGHTS.clarity * self.clarity,
+            2,
+        )
+
+
 class AnalysisResultModel(BaseModel):
     """The result of a feedback analysis."""
 
@@ -171,6 +235,14 @@ class AnalysisResultModel(BaseModel):
         ge=0.0,
         le=1.0,
         description="Judge model score in [0,1]; ``None`` when the judge call failed.",
+    )
+    components: JudgeComponents | None = Field(
+        default=None,
+        description=(
+            "Judge faithfulness/coverage/clarity; ``None`` when the judge "
+            "call failed, and for hierarchical mode until per-chunk "
+            "aggregation lands."
+        ),
     )
     uncertainty_explanation: str = Field(
         default="",

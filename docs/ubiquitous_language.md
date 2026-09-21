@@ -25,6 +25,11 @@ name in all contexts such as code, documentation, dashboards and training materi
 | Community member | This is the person giving feedback to a Red Cross/Red Crescent National Society. People‑centred term aligned with IFRC CEA commitments, emphasising rights and participation; never referred to as a user. | Beneficiary, client |
 | QFA user | Umbrella term for any person using QFA outputs or workflows to analyse feedback and produce insights, clearly distinct from community members. | Operator, end‑user (generic), beneficiary, client |
 | Insight | A human‑interpretable analytical output derived from patterns across multiple feedback records; provisional and subject to revision. | Finding (too vague), conclusion (too strong) |
+| Judge | A second LLM call that scores an analysis or summary against the source records. Distinct from the generation call. | Grader, evaluator, critic |
+| Quality score | Weighted composite of faithfulness, coverage and clarity, in [0, 1]. Python computes it from `QUALITY_SCORE_WEIGHTS`. `null` when the judge call failed. | Rating, grade; do not confuse with hierarchical `confidence` |
+| Faithfulness | How well the analysis is supported by the source records (1.0 = fully supported, 0.0 = major inaccuracies). | Accuracy, correctness |
+| Coverage | How thoroughly the analysis answers the analyst question (1.0 = all key themes, 0.0 = misses the question). | Completeness, recall |
+| Clarity | How clear and well-structured the analysis is (1.0 = clear, 0.0 = confusing). | Readability, style |
 
 ## Feedback types
 A single feedback record may fall under multiple feedback types.

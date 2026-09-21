@@ -37,6 +37,7 @@ from qfa.domain.models import (
     AnalysisRequestModel,
     AnalysisResultModel,
     FeedbackRecordModel,
+    JudgeComponents,
 )
 from qfa.domain.ports import AnonymizationPort, EmbeddingPort, LLMPort
 from qfa.services.call_context import judge_call
@@ -47,6 +48,7 @@ from qfa.services.hierarchical_prompts import (
     build_reduce_system_message,
     build_reduce_user_message,
 )
+from qfa.services.judge_scoring import log_judge_components, parse_judge_components
 from qfa.services.llm_call_executor import LLMCallExecutor, SlotTiming
 from qfa.services.prompts import (
     ANALYZE_ACTION_PROMPT,
@@ -66,7 +68,7 @@ logger = logging.getLogger(__name__)
 
 
 class AnalyzeJudgeResult(BaseModel):
-    """Quality score + explanation for one analyse-judge call.
+    """Components + explanation for one analyse-judge call.
 
     Populated by parsing the judge LLM's free-text reply (see
     ``ANALYZE_JUDGE_PROMPT``'s output-format instruction and
@@ -76,43 +78,45 @@ class AnalyzeJudgeResult(BaseModel):
     its contents (confirmed against ``azure_ai/mistral-medium-3-5`` — its
     serving backend has grammar-constrained decoding disabled), so neither
     call site that uses this model can rely on the provider to enforce the
-    shape. Field-level validation (score range, non-empty explanation)
-    still runs here and surfaces as a ``pydantic.ValidationError``, which
-    both call sites already catch.
+    shape. Out-of-range components are caught in
+    :func:`~qfa.services.judge_scoring.parse_judge_components` and
+    re-raised as ``AnalysisError``, which both call sites already catch.
     """
 
     model_config = ConfigDict(frozen=True)
 
-    quality_score: float = Field(ge=0.0, le=1.0)
+    components: JudgeComponents
     uncertainty_explanation: str = Field(min_length=1)
 
+    @property
+    def quality_score(self) -> float:
+        """Passthrough to ``components.quality_score``; keeps existing readers unchanged."""
+        return self.components.quality_score
 
-_ANALYZE_JUDGE_RESPONSE_PATTERN = re.compile(
-    r"quality_score:\s*(?P<score>-?[0-9.]+)\s*\n\s*uncertainty_explanation:\s*(?P<explanation>.+)",
+
+_ANALYZE_JUDGE_EXPLANATION_PATTERN = re.compile(
+    r"uncertainty_explanation:\s*(?P<explanation>.+)",
     re.IGNORECASE | re.DOTALL,
 )
 
 
 def _parse_analyze_judge_response(raw: str) -> AnalyzeJudgeResult:
-    """Parse the analyse judge's free-text ``QUALITY_SCORE:``/``UNCERTAINTY_EXPLANATION:`` reply.
+    """Parse the analyse judge's four-line FAITHFULNESS/COVERAGE/CLARITY/EXPLANATION reply.
 
-    Mirrors ``coding._parse_judge_response``'s pattern (see
+    Components are extracted by
+    :func:`~qfa.services.judge_scoring.parse_judge_components`;
+    the explanation is matched by a separate pattern so a missing component
+    raises ``AnalysisError`` independently of whether the explanation is
+    present. Mirrors ``coding._parse_judge_response``'s pattern (see
     :class:`AnalyzeJudgeResult`'s docstring for why this call site cannot
-    rely on the provider to enforce a response schema). Only unparseable
-    input raises here (``AnalysisError``, caught by both call sites);
-    field-level validation (score range, non-empty explanation) is left to
-    ``AnalyzeJudgeResult`` itself, which raises ``pydantic.ValidationError``
-    — also already caught by both call sites.
+    rely on the provider to enforce a response schema).
     """
-    match = _ANALYZE_JUDGE_RESPONSE_PATTERN.search(raw)
+    components = parse_judge_components(raw)
+    match = _ANALYZE_JUDGE_EXPLANATION_PATTERN.search(raw)
     if match is None:
         raise AnalysisError("LLM judge returned an unparsable response")
-    try:
-        score = float(match.group("score"))
-    except ValueError as exc:
-        raise AnalysisError("LLM judge returned an unparsable response") from exc
     return AnalyzeJudgeResult(
-        quality_score=score,
+        components=components,
         uncertainty_explanation=match.group("explanation").strip(),
     )
 
@@ -323,6 +327,7 @@ class AnalyzeService:
 
         quality_score: float | None
         uncertainty_explanation: str
+        components: JudgeComponents | None
         try:
             judge_timeout = self._executor.check_deadline_and_get_timeout(deadline)
             judge_system = build_analyze_judge_system_message(
@@ -342,6 +347,7 @@ class AnalyzeService:
             judged = _parse_analyze_judge_response(judge_response.structured)
             quality_score = judged.quality_score
             uncertainty_explanation = judged.uncertainty_explanation
+            components = judged.components
         except (
             LLMError,
             LLMTimeoutError,
@@ -355,6 +361,10 @@ class AnalyzeService:
             )
             quality_score = None
             uncertainty_explanation = JUDGE_UNAVAILABLE_EXPLANATION
+            components = None
+
+        if components is not None:
+            log_judge_components(logger, components)
 
         # Deterministic, non-LLM coding-trend table from ORIGINAL metadata
         # (metadata is not anonymised; codes/dates are not PII). Built for
@@ -372,6 +382,7 @@ class AnalyzeService:
             result=analysis_text,
             quality_score=quality_score,
             uncertainty_explanation=uncertainty_explanation,
+            components=components,
             coding_trends=trend_table,
         )
 

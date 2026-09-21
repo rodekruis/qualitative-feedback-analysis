@@ -10,11 +10,12 @@ The hierarchical mode has its own file: ``test_analyze_hierarchical.py``.
 """
 
 import asyncio
+import logging
 import time
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 import pytest
-from pydantic import ValidationError
 
 from qfa.domain.errors import (
     AnalysisError,
@@ -26,14 +27,17 @@ from qfa.domain.models import (
     AnalysisRequestModel,
     FeedbackRecordMetadataModel,
     FeedbackRecordModel,
+    JudgeComponents,
     LLMResponse,
 )
 from qfa.domain.ports import AnonymizationPort
+from qfa.domain.usage_models import Operation
 from qfa.services.analyze import (
     AnalyzeJudgeResult,
     AnalyzeService,
     _parse_analyze_judge_response,
 )
+from qfa.services.call_context import call_scope
 from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.services.prompts import JUDGE_UNAVAILABLE_EXPLANATION
 from qfa.settings import OrchestratorSettings
@@ -127,21 +131,34 @@ def _build_analyze_service(
     )
 
 
-def _judge_text(quality_score, explanation):
-    """Render a judge score/explanation as the free-text reply the fake serves.
+def _judge_text(faithfulness, coverage, clarity, explanation):
+    """Render judge components/explanation as the free-text reply the fake serves.
 
-    Matches ``ANALYZE_JUDGE_PROMPT``'s output-format instruction
+    Matches ``ANALYZE_JUDGE_PROMPT``'s four-line output format
     (``prompts.py``), which ``analyze._parse_analyze_judge_response`` parses.
     """
-    return f"QUALITY_SCORE: {quality_score}\nUNCERTAINTY_EXPLANATION: {explanation}"
+    return (
+        f"FAITHFULNESS: {faithfulness}\n"
+        f"COVERAGE: {coverage}\n"
+        f"CLARITY: {clarity}\n"
+        f"UNCERTAINTY_EXPLANATION: {explanation}"
+    )
 
 
-def _judging_llm(analysis="analysis", quality_score=0.5, explanation="ok"):
+def _judging_llm(
+    analysis="analysis",
+    faithfulness=0.9,
+    coverage=0.9,
+    clarity=0.8,
+    explanation="ok",
+):
     """A fake LLM answering the two calls analyze_bulk makes (analysis, judge)."""
     return FakeLLMPort(
         responses=[
             _make_llm_response(structured=analysis),
-            _make_llm_response(structured=_judge_text(quality_score, explanation)),
+            _make_llm_response(
+                structured=_judge_text(faithfulness, coverage, clarity, explanation)
+            ),
         ]
     )
 
@@ -507,50 +524,64 @@ class TestInjectionErrorNoMatchedText:
 
 
 class TestAnalyzeJudgeResultParsing:
-    def test_judge_result_parses_score_and_explanation(self):
-        """``AnalyzeJudgeResult`` carries both numeric score and prose."""
-        r = AnalyzeJudgeResult(quality_score=0.7, uncertainty_explanation="ok")
-        assert r.quality_score == 0.7
+    def test_judge_result_carries_components_and_explanation(self):
+        """``AnalyzeJudgeResult`` holds three components and proxies quality_score."""
+        components = JudgeComponents(faithfulness=0.9, coverage=0.9, clarity=0.8)
+        r = AnalyzeJudgeResult(components=components, uncertainty_explanation="ok")
+        assert r.components is components
+        assert r.quality_score == pytest.approx(0.89)
         assert r.uncertainty_explanation == "ok"
-
-    def test_judge_result_rejects_out_of_range_score(self):
-        """Pydantic rejects ``quality_score`` outside [0,1]."""
-        with pytest.raises(ValidationError):
-            AnalyzeJudgeResult(quality_score=1.5, uncertainty_explanation="ok")
 
 
 class TestParseAnalyzeJudgeResponse:
-    """Unit coverage for the QUALITY_SCORE:/UNCERTAINTY_EXPLANATION: free-text parser."""
+    """Unit coverage for the four-line FAITHFULNESS/COVERAGE/CLARITY/EXPLANATION free-text parser."""
 
     def test_parses_well_formed_reply(self):
         judged = _parse_analyze_judge_response(
-            "QUALITY_SCORE: 0.72\nUNCERTAINTY_EXPLANATION: Mostly faithful."
+            "FAITHFULNESS: 0.9\nCOVERAGE: 0.9\nCLARITY: 0.8\n"
+            "UNCERTAINTY_EXPLANATION: Mostly faithful."
         )
-        assert judged.quality_score == 0.72
+        assert judged.quality_score == pytest.approx(0.89)
         assert judged.uncertainty_explanation == "Mostly faithful."
+        assert judged.components.faithfulness == pytest.approx(0.9)
+        assert judged.components.coverage == pytest.approx(0.9)
+        assert judged.components.clarity == pytest.approx(0.8)
+
+    def test_quality_score_rounds_to_four_decimals(self):
+        """0.9 / 0.9 / 0.8 → 0.89 (weighted, rounded 4 dp)."""
+        judged = _parse_analyze_judge_response(
+            "FAITHFULNESS: 0.9\nCOVERAGE: 0.9\nCLARITY: 0.8\n"
+            "UNCERTAINTY_EXPLANATION: ok."
+        )
+        assert judged.quality_score == 0.89
 
     def test_tolerates_case_and_surrounding_whitespace(self):
         judged = _parse_analyze_judge_response(
-            "  quality_score:  0.5  \n  uncertainty_explanation:  Plausible.  "
+            "  faithfulness:  0.5  \n  coverage:  0.5  \n  clarity:  0.5  \n"
+            "  uncertainty_explanation:  Plausible.  "
         )
-        assert judged.quality_score == 0.5
+        assert judged.quality_score == pytest.approx(0.5)
         assert judged.uncertainty_explanation == "Plausible."
 
-    def test_missing_score_line_raises_analysis_error(self):
-        with pytest.raises(AnalysisError, match="unparsable response"):
-            _parse_analyze_judge_response("UNCERTAINTY_EXPLANATION: No score given.")
-
-    def test_non_numeric_score_raises_analysis_error(self):
+    def test_missing_component_raises_analysis_error(self):
         with pytest.raises(AnalysisError, match="unparsable response"):
             _parse_analyze_judge_response(
-                "QUALITY_SCORE: high\nUNCERTAINTY_EXPLANATION: Confident."
+                "FAITHFULNESS: 0.9\nCLARITY: 0.8\nUNCERTAINTY_EXPLANATION: No coverage."
             )
 
-    def test_out_of_range_score_raises_validation_error(self):
-        """Range validation is left to ``AnalyzeJudgeResult`` itself, not the parser."""
-        with pytest.raises(ValidationError):
+    def test_non_numeric_component_raises_analysis_error(self):
+        with pytest.raises(AnalysisError, match="unparsable response"):
             _parse_analyze_judge_response(
-                "QUALITY_SCORE: 1.5\nUNCERTAINTY_EXPLANATION: Too confident."
+                "FAITHFULNESS: high\nCOVERAGE: 0.9\nCLARITY: 0.8\n"
+                "UNCERTAINTY_EXPLANATION: Confident."
+            )
+
+    def test_out_of_range_component_raises_analysis_error(self):
+        """Out-of-range raises ``AnalysisError``, never ``ValidationError``."""
+        with pytest.raises(AnalysisError):
+            _parse_analyze_judge_response(
+                "FAITHFULNESS: 1.5\nCOVERAGE: 0.9\nCLARITY: 0.8\n"
+                "UNCERTAINTY_EXPLANATION: Too confident."
             )
 
 
@@ -560,7 +591,9 @@ class TestAnalyzeHappyPath:
         """Happy path: result carries analysis text + judge score/explanation."""
         fake_llm = _judging_llm(
             analysis="Top themes are A and B.",
-            quality_score=0.82,
+            faithfulness=0.9,
+            coverage=0.8,
+            clarity=0.4,
             explanation="Coverage high, faithfulness strong.",
         )
         service = _build_analyze_service(fake_llm, FakeAnonymizer(), settings)
@@ -568,7 +601,11 @@ class TestAnalyzeHappyPath:
         result = await service.analyze_bulk(_make_request(), _future_deadline())
 
         assert "Top themes are A and B." in result.result
-        assert result.quality_score == 0.82
+        assert result.quality_score == pytest.approx(0.82)
+        assert result.components is not None
+        assert result.components.faithfulness == pytest.approx(0.9)
+        assert result.components.coverage == pytest.approx(0.8)
+        assert result.components.clarity == pytest.approx(0.4)
         assert result.uncertainty_explanation == "Coverage high, faithfulness strong."
         assert len(fake_llm.calls) == 2
 
@@ -601,7 +638,7 @@ class TestAnalyzeHappyPath:
         against ``YYYY-MM`` labels without depending on ISO-week
         calendaring of the chosen dates.
         """
-        fake_llm = _judging_llm(quality_score=0.7)
+        fake_llm = _judging_llm()
         service = _build_analyze_service(fake_llm, FakeAnonymizer(), settings)
         records = (
             _make_feedback_record(
@@ -634,9 +671,7 @@ class TestAnalyzeHappyPath:
         self, settings
     ):
         """A record id mentioned in the analysis becomes a markdown hyperlink."""
-        fake_llm = _judging_llm(
-            analysis="See Form-07762 for context.", quality_score=0.7
-        )
+        fake_llm = _judging_llm(analysis="See Form-07762 for context.")
         service = _build_analyze_service(fake_llm, FakeAnonymizer(), settings)
         records = (_make_feedback_record(doc_id="Form-07762", url_id="abc123"),)
         request = _make_request(feedback_records=records).model_copy(
@@ -653,9 +688,7 @@ class TestAnalyzeHappyPath:
     @pytest.mark.asyncio
     async def test_no_hyperlink_without_base_url(self, settings):
         """No base URL → the id is left as plain text, even with a url_id set."""
-        fake_llm = _judging_llm(
-            analysis="See Form-07762 for context.", quality_score=0.7
-        )
+        fake_llm = _judging_llm(analysis="See Form-07762 for context.")
         service = _build_analyze_service(fake_llm, FakeAnonymizer(), settings)
         records = (_make_feedback_record(doc_id="Form-07762", url_id="abc123"),)
 
@@ -668,9 +701,7 @@ class TestAnalyzeHappyPath:
     @pytest.mark.asyncio
     async def test_hyperlink_does_not_match_id_substring(self, settings):
         """Form-1 must not match inside Form-10 — word-boundary safety."""
-        fake_llm = _judging_llm(
-            analysis="Form-1 and Form-10 both raised this issue.", quality_score=0.7
-        )
+        fake_llm = _judging_llm(analysis="Form-1 and Form-10 both raised this issue.")
         service = _build_analyze_service(fake_llm, FakeAnonymizer(), settings)
         records = (
             _make_feedback_record(doc_id="Form-1", content="a", url_id="id-1"),
@@ -704,6 +735,7 @@ class TestAnalyzeJudgeFailure:
         result = await service.analyze_bulk(_make_request(), _future_deadline())
 
         assert result.quality_score is None
+        assert result.components is None
         assert result.uncertainty_explanation == JUDGE_UNAVAILABLE_EXPLANATION
         assert "analysis ok" in result.result
 
@@ -728,8 +760,78 @@ class TestAnalyzeJudgeFailure:
         result = await service.analyze_bulk(_make_request(), _future_deadline())
 
         assert result.quality_score is None
+        assert result.components is None
         assert result.uncertainty_explanation == JUDGE_UNAVAILABLE_EXPLANATION
         assert "analysis ok" in result.result
+
+
+class TestAnalyzeJudgeComponentsLog:
+    @pytest.mark.asyncio
+    async def test_logs_one_judge_components_line_with_call_id(self, settings, caplog):
+        """Exactly one ``judge components:`` line, joined to the request by call_id."""
+        request_id = uuid4()
+        explanation = "SECRET_EXPLANATION_MUST_NOT_APPEAR"
+        fake_llm = _judging_llm(
+            faithfulness=0.9,
+            coverage=0.8,
+            clarity=0.4,
+            explanation=explanation,
+        )
+        service = _build_analyze_service(fake_llm, FakeAnonymizer(), settings)
+
+        with caplog.at_level(logging.INFO, logger="qfa.services.analyze"):
+            async with call_scope(TENANT_ID, Operation.ANALYZE, request_id):
+                await service.analyze_bulk(_make_request(), _future_deadline())
+
+        lines = [
+            record.getMessage()
+            for record in caplog.records
+            if "judge components:" in record.getMessage()
+        ]
+        assert len(lines) == 1
+        line = lines[0]
+        assert f"call_id={request_id}" in line
+        assert "faithfulness=0.900" in line
+        assert "coverage=0.800" in line
+        assert "clarity=0.400" in line
+        assert "quality_score=0.820" in line
+        assert explanation not in line
+        assert "UNCERTAINTY" not in line
+
+    @pytest.mark.asyncio
+    async def test_logs_placeholder_call_id_outside_request_scope(
+        self, settings, caplog
+    ):
+        """Outside an HTTP request ``call_id`` is ``-``, never a raise."""
+        fake_llm = _judging_llm()
+        service = _build_analyze_service(fake_llm, FakeAnonymizer(), settings)
+
+        with caplog.at_level(logging.INFO, logger="qfa.services.analyze"):
+            await service.analyze_bulk(_make_request(), _future_deadline())
+
+        lines = [
+            record.getMessage()
+            for record in caplog.records
+            if "judge components:" in record.getMessage()
+        ]
+        assert len(lines) == 1
+        assert "call_id=-" in lines[0]
+
+    @pytest.mark.asyncio
+    async def test_judge_failure_logs_no_components_line(self, settings, caplog):
+        """A failed judge keeps the warning and emits no components line."""
+        fake_llm = FakeLLMPort(
+            responses=[_make_llm_response(structured="analysis ok")],
+            errors=[None, LLMError("judge boom")],
+        )
+        service = _build_analyze_service(fake_llm, FakeAnonymizer(), settings)
+
+        with caplog.at_level(logging.INFO, logger="qfa.services.analyze"):
+            await service.analyze_bulk(_make_request(), _future_deadline())
+
+        messages = [record.getMessage() for record in caplog.records]
+        assert not any("judge components:" in message for message in messages)
+        assert any("Analyse judge call failed" in message for message in messages)
 
 
 class TestAnalyzeAnonymizationOrdering:
@@ -752,7 +854,7 @@ class TestAnalyzeAnonymizationOrdering:
                     text = text.replace(placeholder, real)
                 return text
 
-        fake_llm = _judging_llm(analysis="Alice raised concerns.", quality_score=0.4)
+        fake_llm = _judging_llm(analysis="Alice raised concerns.")
         service = _build_analyze_service(
             fake_llm, DeanonymisingFakeAnonymizer(), settings
         )

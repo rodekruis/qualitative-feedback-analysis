@@ -55,9 +55,14 @@ class TestAnalyzeRecordsRow:
         """
         # Call 1: analysis text.
         e2e_fake_llm.queue_response(_ok(text="Analysis result text."))
-        # Call 2: judge free text (QUALITY_SCORE:/UNCERTAINTY_EXPLANATION:).
+        # Call 2: judge free text (FAITHFULNESS:/COVERAGE:/CLARITY:/UNCERTAINTY_EXPLANATION:).
         e2e_fake_llm.queue_response(
-            _ok(text="QUALITY_SCORE: 0.8\nUNCERTAINTY_EXPLANATION: Good coverage.")
+            _ok(
+                text=(
+                    "FAITHFULNESS: 0.8\nCOVERAGE: 0.8\nCLARITY: 0.8\n"
+                    "UNCERTAINTY_EXPLANATION: Good coverage."
+                )
+            )
         )
 
         resp = await e2e_client.post(
@@ -69,6 +74,11 @@ class TestAnalyzeRecordsRow:
             headers={"Authorization": f"Bearer {E2E_API_KEY}"},
         )
         assert resp.status_code == 200
+        data = resp.json()
+        assert data["faithfulness"] == pytest.approx(0.8)
+        assert data["coverage"] == pytest.approx(0.8)
+        assert data["clarity"] == pytest.approx(0.8)
+        assert data["quality_score"] == pytest.approx(0.8)
 
         rows = await _fetch_rows(e2e_engine)
         assert len(rows) == 2
@@ -102,7 +112,12 @@ class TestRequestIdEqualsCallId:
         # Two LLM calls: analysis text + judge free text.
         e2e_fake_llm.queue_response(_ok(text="Analysis result text."))
         e2e_fake_llm.queue_response(
-            _ok(text="QUALITY_SCORE: 0.8\nUNCERTAINTY_EXPLANATION: Good coverage.")
+            _ok(
+                text=(
+                    "FAITHFULNESS: 0.8\nCOVERAGE: 0.8\nCLARITY: 0.8\n"
+                    "UNCERTAINTY_EXPLANATION: Good coverage."
+                )
+            )
         )
 
         resp = await e2e_client.post(
