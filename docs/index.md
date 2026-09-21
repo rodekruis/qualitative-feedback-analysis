@@ -4,6 +4,13 @@ A backend that receives qualitative feedback records from a CRM, runs LLM-driven
 
 ```{toctree}
 :maxdepth: 1
+:caption: Getting started
+
+beginners-guide
+```
+
+```{toctree}
+:maxdepth: 1
 :caption: Language
 
 ubiquitous_language

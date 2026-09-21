@@ -4,6 +4,10 @@ A short map of where things live. Each section links to its own index page with 
 
 The rendered version of this site is hosted on [GitHub Pages](https://rodekruis.github.io/qualitative-feedback-analysis/) and is refreshed when a release is published — see [Documentation publishing](operations/release-flow.md#documentation-publishing) for the trigger details.
 
+## Getting started
+
+- [Beginners guide](beginners-guide.md): a plain-language tour of the codebase, for a reader who can program but does not know this project yet. Covers the folders that matter, how to add an endpoint, and how to change the model.
+
 ## Language
 
 - [Ubiquitous language](ubiquitous_language.md) — the domain vocabulary the API and code share. Read this before naming anything new.
