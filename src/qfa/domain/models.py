@@ -215,12 +215,12 @@ class JudgeComponents(BaseModel):
 
     @property
     def quality_score(self) -> float:
-        """Weighted composite: ``0.6*faithfulness + 0.3*coverage + 0.1*clarity``, rounded to 4 dp."""
+        """Weighted composite: ``0.6*faithfulness + 0.3*coverage + 0.1*clarity``, rounded to 2 dp."""
         return round(
             QUALITY_SCORE_WEIGHTS.faithfulness * self.faithfulness
             + QUALITY_SCORE_WEIGHTS.coverage * self.coverage
             + QUALITY_SCORE_WEIGHTS.clarity * self.clarity,
-            4,
+            2,
         )
 
 
