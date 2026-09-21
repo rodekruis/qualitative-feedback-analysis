@@ -39,7 +39,7 @@ from qfa.domain.models import (
     FeedbackRecordModel,
     JudgeComponents,
 )
-from qfa.domain.ports import AnonymizationPort, EmbeddingPort, LLMPort
+from qfa.domain.ports import AnonymizationPort, EmbeddingPort, EvaluationPort, LLMPort
 from qfa.services.call_context import judge_call
 from qfa.services.clustering import cluster_records
 from qfa.services.coding_trends import build_coding_trend_table
@@ -48,7 +48,11 @@ from qfa.services.hierarchical_prompts import (
     build_reduce_system_message,
     build_reduce_user_message,
 )
-from qfa.services.judge_scoring import log_judge_components, parse_judge_components
+from qfa.services.judge_scoring import (
+    log_judge_components,
+    parse_judge_components,
+    record_judge_scores,
+)
 from qfa.services.llm_call_executor import LLMCallExecutor, SlotTiming
 from qfa.services.prompts import (
     ANALYZE_ACTION_PROMPT,
@@ -167,6 +171,14 @@ class AnalyzeService:
         when no ``JUDGE_LLM_MODEL`` is configured. Configured via
         ``JUDGE_LLM_*`` and resolved in
         :func:`qfa.api.composition.resolve_judge_llm_settings`.
+    evaluator : EvaluationPort | None
+        Where judge components are sent as live Langfuse scores (#354).
+        ``None`` (the default) means every judge call's scores are simply
+        not sent — the composition root
+        (:func:`qfa.api.composition.build_services`) always injects a
+        real port, a no-op one when Langfuse is unconfigured, so ``None``
+        here is only ever a test/script default, never production
+        behaviour.
     """
 
     # Entity types whose placeholders are NOT restored in `analyze` output.
@@ -189,9 +201,11 @@ class AnalyzeService:
         analyze_settings: AnalyzeSettings | None = None,
         embedder: EmbeddingPort | None = None,
         judge_llm: LLMPort | None = None,
+        evaluator: EvaluationPort | None = None,
     ) -> None:
         self._executor = executor
         self._llm = llm
+        self._evaluator = evaluator
         # Judge calls run on their own connection when one is configured, so
         # the generator does not grade its own output. Falling back to the
         # primary client keeps the default (no JUDGE_LLM_MODEL) behaviour
@@ -365,6 +379,7 @@ class AnalyzeService:
 
         if components is not None:
             log_judge_components(logger, components)
+            record_judge_scores(self._evaluator, components)
 
         # Deterministic, non-LLM coding-trend table from ORIGINAL metadata
         # (metadata is not anonymised; codes/dates are not PII). Built for
@@ -813,9 +828,14 @@ class AnalyzeService:
                     deadline=deadline,
                     timing=timing,
                 )
-            return _parse_analyze_judge_response(
-                judge_response.structured
-            ).quality_score
+            judged = _parse_analyze_judge_response(judge_response.structured)
+            # One score per chunk, not one aggregate for the whole
+            # hierarchical run: every leaf judge call in this request shares
+            # one Langfuse trace (call_context.call_scope, #354), so each
+            # chunk's score lands against the same trace as its own
+            # observation within it.
+            record_judge_scores(self._evaluator, judged.components)
+            return judged.quality_score
         except (
             LLMError,
             LLMTimeoutError,

@@ -12,6 +12,7 @@ import time
 from datetime import UTC, datetime, timedelta
 from html import unescape
 from unittest.mock import AsyncMock, patch
+from uuid import uuid4
 
 import pytest
 
@@ -24,10 +25,14 @@ from qfa.domain.models import (
     LLMResponse,
 )
 from qfa.domain.ports import AnonymizationPort, EmbeddingPort, LLMPort
+from qfa.domain.usage_models import Operation
 from qfa.services.analyze import AnalyzeService
+from qfa.services.call_context import call_scope
 from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.services.prompts import ANALYZE_GUARDRAILS_PROMPT
 from qfa.settings import AnalyzeSettings, OrchestratorSettings
+
+from .test_summarize import FakeEvaluationPort
 
 TENANT_ID = "tenant-42"
 LLM_TIMEOUT = 30.0
@@ -149,7 +154,7 @@ def _records(n: int, text: str, prefix: str) -> tuple[FeedbackRecordModel, ...]:
 
 
 def _build_analyze_service(
-    llm, anonymizer, embedder, max_total_tokens, analyze_settings=None
+    llm, anonymizer, embedder, max_total_tokens, analyze_settings=None, evaluator=None
 ):
     """Build an ``AnalyzeService`` over the *real* ``LLMCallExecutor``.
 
@@ -173,6 +178,7 @@ def _build_analyze_service(
         settings=settings,
         analyze_settings=analyze_settings or AnalyzeSettings(min_cluster_size=2),
         max_total_tokens=max_total_tokens,
+        evaluator=evaluator,
     )
 
 
@@ -201,6 +207,47 @@ async def test_hierarchical_covers_all_records_and_returns_confidence():
     assert result.confidence == pytest.approx(0.8)
     assert result.components is None
     assert result.result  # non-empty synthesis
+
+
+@pytest.mark.asyncio
+async def test_hierarchical_sends_one_set_of_scores_per_chunk():
+    """Each leaf judge call sends its own four named scores (#354), not one aggregate.
+
+    Every chunk's judge call shares one Langfuse trace with the rest of
+    the request (``call_scope``'s trace-id sharing), so every score here
+    carries the same ``trace_id``.
+    """
+    water = _records(4, "water access was limited " * 5, "w")
+    health = _records(4, "health clinic medicine " * 5, "h")
+    records = water + health
+    request = AnalysisRequestModel(
+        feedback_records=records,
+        prompt="trends?",
+        tenant_id=TENANT_ID,
+        mode="hierarchical",
+    )
+    llm = RecordingLLM()
+    evaluator = FakeEvaluationPort()
+    service = _build_analyze_service(
+        llm,
+        RecordingAnonymizer(),
+        FakeEmbeddingPort(),
+        max_total_tokens=100_000,
+        evaluator=evaluator,
+    )
+    deadline = datetime.now(UTC) + timedelta(seconds=120)
+    request_id = uuid4()
+
+    async with call_scope(TENANT_ID, Operation.ANALYZE, request_id):
+        await service.analyze_hierarchical(request, deadline, anonymize=True)
+
+    # More than one chunk's worth of scores (each chunk sends 4), and every
+    # chunk sent a complete set — never a partial one.
+    assert len(evaluator.calls) > 4
+    assert len(evaluator.calls) % 4 == 0
+    names_sent = {call["name"] for call in evaluator.calls}
+    assert names_sent == {"faithfulness", "coverage", "clarity", "quality_score"}
+    assert all(call["trace_id"] == request_id.hex for call in evaluator.calls)
 
 
 @pytest.mark.asyncio

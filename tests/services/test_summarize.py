@@ -28,7 +28,7 @@ from qfa.domain.models import (
     SummaryRequestModel,
     SummaryResultModel,
 )
-from qfa.domain.ports import AnonymizationPort, LLMPort
+from qfa.domain.ports import AnonymizationPort, EvaluationPort, LLMPort
 from qfa.domain.usage_models import Operation
 from qfa.services.call_context import call_scope
 from qfa.services.llm_call_executor import LLMCallExecutor
@@ -198,6 +198,16 @@ class FakeAnonymizer(AnonymizationPort):
         return text
 
 
+class FakeEvaluationPort(EvaluationPort):
+    """Records every ``record_score`` call for assertions (#354)."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    def record_score(self, *, trace_id, name, value):
+        self.calls.append({"trace_id": trace_id, "name": name, "value": value})
+
+
 @pytest.fixture
 def settings():
     return OrchestratorSettings()
@@ -209,6 +219,7 @@ def _build_service(
     anonymizer=None,
     judge_llm=None,
     max_total_tokens=MAX_TOKENS,
+    evaluator=None,
 ):
     """Build a ``SummarizeService`` over the real executor.
 
@@ -221,6 +232,7 @@ def _build_service(
         llm=llm,
         anonymizer=anonymizer,
         judge_llm=judge_llm,
+        evaluator=evaluator,
         executor=LLMCallExecutor(
             llm=llm,
             anonymizer=anonymizer,
@@ -734,3 +746,70 @@ class TestSummarizeJudgeComponentsLog:
         ]
         assert len(lines) == 1
         assert f"call_id={request_id}" in lines[0]
+
+
+class TestSummarizeJudgeScores:
+    """Live Langfuse scores (#354) run beside the log line, not instead of it."""
+
+    @pytest.mark.asyncio
+    async def test_summarize_bulk_sends_four_named_scores(self, settings):
+        request_id = uuid4()
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=_make_aggregate_summary_result()),
+                _make_llm_response(
+                    structured=_judge_text(faithfulness=0.9, coverage=0.8, clarity=0.4)
+                ),
+            ]
+        )
+        evaluator = FakeEvaluationPort()
+        service = _build_service(fake_llm, settings, evaluator=evaluator)
+
+        async with call_scope(TENANT_ID, Operation.SUMMARIZE_AGGREGATE, request_id):
+            await service.summarize_bulk(_make_aggregate_request(), _future_deadline())
+
+        sent = {call["name"]: call["value"] for call in evaluator.calls}
+        assert sent["faithfulness"] == pytest.approx(0.9)
+        assert sent["coverage"] == pytest.approx(0.8)
+        assert sent["clarity"] == pytest.approx(0.4)
+        assert "quality_score" in sent
+        assert all(call["trace_id"] == request_id.hex for call in evaluator.calls)
+
+    @pytest.mark.asyncio
+    async def test_summarize_sends_four_named_scores(self, settings):
+        request_id = uuid4()
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=_make_summary_result()),
+                _make_llm_response(
+                    structured=_judge_text(faithfulness=0.7, coverage=0.6, clarity=0.5)
+                ),
+            ]
+        )
+        evaluator = FakeEvaluationPort()
+        service = _build_service(fake_llm, settings, evaluator=evaluator)
+
+        async with call_scope(TENANT_ID, Operation.SUMMARIZE, request_id):
+            await service.summarize(_make_summary_request(), _future_deadline())
+
+        names = {call["name"] for call in evaluator.calls}
+        assert names == {"faithfulness", "coverage", "clarity", "quality_score"}
+        assert all(call["trace_id"] == request_id.hex for call in evaluator.calls)
+
+    @pytest.mark.asyncio
+    async def test_no_evaluator_means_no_scores_and_no_error(self, settings):
+        """A service built without an evaluator (the test-double default) just skips it."""
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=_make_summary_result()),
+                _make_llm_response(structured=_judge_text()),
+            ]
+        )
+        service = _build_service(fake_llm, settings)
+
+        async with call_scope(TENANT_ID, Operation.SUMMARIZE, uuid4()):
+            result = await service.summarize(
+                _make_summary_request(), _future_deadline()
+            )
+
+        assert result.components is not None

@@ -4,6 +4,7 @@ import asyncio
 from uuid import uuid4
 
 import pytest
+from opentelemetry.sdk.trace import TracerProvider
 
 from qfa.domain.usage_models import Operation
 from qfa.services.call_context import (
@@ -14,6 +15,20 @@ from qfa.services.call_context import (
 )
 
 pytestmark = pytest.mark.asyncio
+
+_tracer = TracerProvider().get_tracer("test_call_context")
+
+
+def _current_span_trace_id_hex() -> str:
+    """Open a throwaway span with no explicit context and read its trace id.
+
+    Mirrors exactly how ``LiteLLMClient.complete`` opens its span
+    (``self._tracer.start_as_current_span(span_name)``, no ``context=``),
+    so this is what a real LLM-call span's trace id would be at this
+    point in the ambient OTel context.
+    """
+    with _tracer.start_as_current_span("probe") as span:
+        return format(span.get_span_context().trace_id, "032x")
 
 
 async def test_current_call_context_is_none_outside_scope():
@@ -152,3 +167,60 @@ async def test_separate_call_scopes_produce_distinct_call_ids():
     ) as ctx2:
         second = ctx2.call_id
     assert first != second
+
+
+async def test_call_scope_makes_call_id_the_otel_trace_id():
+    """A span opened inside ``call_scope`` inherits ``call_id`` as its trace id.
+
+    This is the #354 mechanism: it lets a live judge score sent against
+    ``call_id.hex`` land in the same Langfuse trace as the LLM-call spans
+    ``LiteLLMClient.complete`` opens for that request.
+    """
+    request_id = uuid4()
+    async with call_scope(
+        tenant_id="t1", operation=Operation.ANALYZE, request_id=request_id
+    ):
+        assert _current_span_trace_id_hex() == request_id.hex
+
+
+async def test_call_scope_shares_one_trace_id_across_multiple_spans():
+    """Every span opened inside one ``call_scope`` shares one trace id.
+
+    A request's generation call and its judge call open separate spans;
+    both must land in the same Langfuse trace rather than two.
+    """
+    request_id = uuid4()
+    async with call_scope(
+        tenant_id="t1", operation=Operation.ANALYZE, request_id=request_id
+    ):
+        first = _current_span_trace_id_hex()
+        second = _current_span_trace_id_hex()
+    assert first == second == request_id.hex
+
+
+async def test_separate_call_scopes_produce_distinct_otel_trace_ids():
+    """Two API invocations must not collide on the Langfuse trace id either."""
+    async with call_scope(
+        tenant_id="t1", operation=Operation.ANALYZE, request_id=uuid4()
+    ):
+        first = _current_span_trace_id_hex()
+    async with call_scope(
+        tenant_id="t1", operation=Operation.ANALYZE, request_id=uuid4()
+    ):
+        second = _current_span_trace_id_hex()
+    assert first != second
+
+
+async def test_otel_trace_id_not_leaked_after_call_scope_exit():
+    """A span opened after ``call_scope`` exits gets a fresh, unrelated trace id.
+
+    Guards against the OTel context attach leaking past the block — the
+    same concern ``test_call_scope_sets_and_resets`` covers for
+    ``current_call_context``.
+    """
+    request_id = uuid4()
+    async with call_scope(
+        tenant_id="t1", operation=Operation.ANALYZE, request_id=request_id
+    ):
+        pass
+    assert _current_span_trace_id_hex() != request_id.hex

@@ -45,7 +45,7 @@ from qfa.settings import OrchestratorSettings
 # Reuse the doubles the summarize suite already ships rather than growing a
 # second, drifting pair (ADR-017) — same call the sensitivity and coding
 # suites make.
-from .test_summarize import FakeAnonymizer, FakeLLMPort
+from .test_summarize import FakeAnonymizer, FakeEvaluationPort, FakeLLMPort
 
 TENANT_ID = "tenant-42"
 LLM_TIMEOUT = 30.0
@@ -832,6 +832,58 @@ class TestAnalyzeJudgeComponentsLog:
         messages = [record.getMessage() for record in caplog.records]
         assert not any("judge components:" in message for message in messages)
         assert any("Analyse judge call failed" in message for message in messages)
+
+
+class TestAnalyzeJudgeScores:
+    """Live Langfuse scores (#354) run beside the log line, not instead of it."""
+
+    @pytest.mark.asyncio
+    async def test_sends_four_named_scores_keyed_to_call_id(self, settings):
+        request_id = uuid4()
+        fake_llm = _judging_llm(faithfulness=0.9, coverage=0.8, clarity=0.4)
+        evaluator = FakeEvaluationPort()
+        service = _build_analyze_service(
+            fake_llm, FakeAnonymizer(), settings, evaluator=evaluator
+        )
+
+        async with call_scope(TENANT_ID, Operation.ANALYZE, request_id):
+            await service.analyze_bulk(_make_request(), _future_deadline())
+
+        sent = {call["name"]: call["value"] for call in evaluator.calls}
+        assert sent["faithfulness"] == pytest.approx(0.9)
+        assert sent["coverage"] == pytest.approx(0.8)
+        assert sent["clarity"] == pytest.approx(0.4)
+        assert "quality_score" in sent
+        assert all(call["trace_id"] == request_id.hex for call in evaluator.calls)
+
+    @pytest.mark.asyncio
+    async def test_no_scores_outside_an_http_request(self, settings):
+        """No ``call_scope`` entered → no ``call_id`` to key a trace on."""
+        fake_llm = _judging_llm()
+        evaluator = FakeEvaluationPort()
+        service = _build_analyze_service(
+            fake_llm, FakeAnonymizer(), settings, evaluator=evaluator
+        )
+
+        await service.analyze_bulk(_make_request(), _future_deadline())
+
+        assert evaluator.calls == []
+
+    @pytest.mark.asyncio
+    async def test_judge_failure_sends_no_scores(self, settings):
+        fake_llm = FakeLLMPort(
+            responses=[_make_llm_response(structured="analysis ok")],
+            errors=[None, LLMError("judge boom")],
+        )
+        evaluator = FakeEvaluationPort()
+        service = _build_analyze_service(
+            fake_llm, FakeAnonymizer(), settings, evaluator=evaluator
+        )
+
+        async with call_scope(TENANT_ID, Operation.ANALYZE, uuid4()):
+            await service.analyze_bulk(_make_request(), _future_deadline())
+
+        assert evaluator.calls == []
 
 
 class TestAnalyzeAnonymizationOrdering:
