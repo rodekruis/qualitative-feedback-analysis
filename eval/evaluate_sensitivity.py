@@ -27,7 +27,7 @@ def _parse_args() -> argparse.Namespace:
         epilog=(
             "Examples:\n"
             "  uv run python eval/evaluate_sensitivity.py "
-            "--dataset sensitivity/SubsetIFRCBorderlineSensitiveRecords --limit 5\n"
+            "--dataset sensitivity/SubsetIFRCBorderlineSensitiveRecords --smoke-limit 5\n"
             "\n"
             "  uv run python eval/evaluate_sensitivity.py "
             "--dataset sensitivity/SubsetIFRCBorderlineSensitiveRecords"
@@ -41,10 +41,10 @@ def _parse_args() -> argparse.Namespace:
         help="Name of the Langfuse dataset to evaluate.",
     )
     parser.add_argument(
-        "--limit",
+        "--smoke-limit",
         type=int,
         default=None,
-        help="Only evaluate the first N records. Default: all records.",
+        help="Run only the first N records for local smoke testing. Default: full dataset.",
     )
     parser.add_argument(
         "--run-name",
@@ -352,10 +352,10 @@ def main() -> None:
     langfuse = get_client()
     dataset = langfuse.get_dataset(args.dataset)
 
-    if args.limit is not None:
-        if args.limit <= 0:
-            raise SystemExit("--limit must be greater than 0.")
-        items = dataset.items[: args.limit]
+    if args.smoke_limit is not None:
+        if args.smoke_limit <= 0:
+            raise SystemExit("--smoke-limit must be greater than 0.")
+        items = dataset.items[: args.smoke_limit]
     else:
         items = dataset.items
 
@@ -363,8 +363,8 @@ def main() -> None:
 
     if args.run_name:
         run_name = args.run_name
-    elif args.limit:
-        run_name = f"smoke-{args.limit}-{timestamp}"
+    elif args.smoke_limit:
+        run_name = f"smoke-{args.smoke_limit}-{timestamp}"
     else:
         run_name = f"baseline-full-{timestamp}"
 
@@ -391,7 +391,7 @@ def main() -> None:
             "dataset": args.dataset,
             "endpoint": "/v1/detect-sensitive",
             "evaluation": "baseline",
-            "limit": args.limit,
+            "limit": args.smoke_limit,
         },
     )
 

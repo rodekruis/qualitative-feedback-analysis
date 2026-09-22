@@ -85,14 +85,14 @@ so they can live there rather than in your shell.
 ```bash
 # smoke test against the first 5 records
 uv run python eval/evaluate_sensitivity.py \
-  --dataset sensitivity/SubsetIFRCBorderlineSensitiveRecords --limit 5
+  --dataset sensitivity/SubsetIFRCBorderlineSensitiveRecords --smoke-limit 5
 
 # full run
 uv run python eval/evaluate_sensitivity.py \
   --dataset sensitivity/SubsetIFRCBorderlineSensitiveRecords
 ```
 
-`--dataset` is the only required flag. `--limit N` runs just the first N
+`--dataset` is the only required flag. `--smoke-limit N` runs just the first N
 records, which is how you check a change before paying for a full run,
 and `--run-name` replaces the name the script generates itself, either
 `smoke-<N>-<timestamp>` or `baseline-full-<timestamp>`.
