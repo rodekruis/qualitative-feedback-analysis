@@ -66,7 +66,7 @@ Per-record inference endpoints (`/v1/summarize`, `/v1/assign-codes`, `/v1/detect
 
 `POST /v1/summarize` takes no language parameter: the generated title and summary follow the record's own language, detected server-side from its content. Records too short to detect fall back to instructing the model to mirror the input language.
 
-Anonymisation is unconditional on every inference endpoint: record text and the analyst prompt are redacted before the LLM call and restored in the response. There is no request field to switch it off and no response field reporting it — see [crosscutting concerns](../architecture/04-crosscutting.md).
+Anonymisation is unconditional on every inference endpoint: record text (plus the analyst prompt on `/v1/analyze-bulk`) is redacted before the LLM call, and placeholders are restored in the response — except person-name placeholders on `/v1/analyze-bulk`, which stay redacted by design. There is no request field to switch it off and no response field reporting it — see [crosscutting concerns](../architecture/04-crosscutting.md).
 
 Empty `content` is accepted on every endpoint and never causes a 422. A record with empty content carries no information, so it is dropped (bulk) or short-circuited to a 200 with no LLM call (per-record) — see each endpoint's reference for the exact result shape. This keeps a single blank EspoCRM description from silently failing a whole request (issue #138).
 
