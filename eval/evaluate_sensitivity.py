@@ -19,6 +19,7 @@ EXPERIMENT_NAME = "sensitivity-baseline"
 # backend's small Postgres connection pool (usage tracking then fails, and
 # every request slows down). Keep this well under that pool's capacity.
 MAX_CONCURRENCY = 5
+DEFAULT_BASE_URL = "https://qfa-dev-backend.azurewebsites.net"
 
 
 def _parse_args() -> argparse.Namespace:
@@ -103,16 +104,8 @@ def _resolve_api_key() -> str:
 
 
 def _resolve_config() -> tuple[str, str]:
-    """The backend base URL and bearer token for this run.
-
-    Exits with a clear message when either is missing, instead of letting
-    every dataset item fail separately after the run has started.
-    """
-    base_url = os.environ.get("QFA_API_BASE_URL")
-    if not base_url:
-        raise SystemExit(
-            "QFA_API_BASE_URL is not set. See eval/README.md for prerequisites."
-        )
+    """Resolve the backend URL and API key."""
+    base_url = os.environ.get("QFA_API_BASE_URL") or DEFAULT_BASE_URL
     return base_url.rstrip("/"), _resolve_api_key()
 
 
@@ -369,6 +362,7 @@ def main() -> None:
         run_name = f"baseline-full-{timestamp}"
 
     print(f"Dataset: {args.dataset}")
+    print(f"Backend: {base_url}")
     print(f"Records: {len(items)}")
     print(f"Run:     {run_name}")
     print()

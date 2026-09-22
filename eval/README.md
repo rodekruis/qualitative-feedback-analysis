@@ -75,8 +75,9 @@ sensitivity dataset.
 Set these before you run it. The script reads `.env` from the repo root,
 so they can live there rather than in your shell.
 
-- Set `QFA_API_BASE_URL` to the backend you want to measure. There is no
-  default, so a local run has to name `http://localhost:8000` itself.
+- Set `QFA_API_BASE_URL` to the backend you want to measure. It defaults
+  to the dev backend, so a local run against `http://localhost:8000` has
+  to name it.
 - Set `QFA_DEV_API_KEY` to a bearer token for that backend, or, locally,
   set `AUTH_API_KEYS` to the same JSON the server reads.
 - Set `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` for a Langfuse
@@ -133,6 +134,17 @@ one click away.
 
 Records are sent five at a time. Left to itself the Langfuse SDK would
 run fifty in parallel, which exhausts the dev backend's small Postgres
-connection pool and slows every request down. Unlike
-`assign_codes_eval.py`, no GitHub Actions workflow runs this script, so
-you start it yourself.
+connection pool and slows every request down.
+
+### Running it in CI
+
+The **evaluate-sensitivity** workflow, in
+`.github/workflows/evaluate-sensitivity.yaml`, runs this script against
+the dev backend. Open the Actions tab, select **evaluate-sensitivity**,
+and click Run workflow to choose a dataset and start it. Other workflows
+can call it too, and must name a dataset when they do.
+
+It reuses the secrets and variables listed above for
+`assign_codes_eval.py` and needs nothing of its own. The backend URL is
+not among them: CI measures the dev backend, which is the script's
+default.
