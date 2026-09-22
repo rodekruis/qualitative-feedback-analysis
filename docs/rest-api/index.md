@@ -45,7 +45,7 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 |---|---|---|
 | `analysis` | string | Model output. |
 | `title` | string | `"Analysis"` — currently a constant (English only). |
-| `quality_score` | float or null | Weighted composite of `faithfulness`, `coverage` and `clarity`, computed in Python. `null` when the judge call failed (not an error — see `uncertainty_explanation`) and for `mode=hierarchical`. |
+| `quality_score` | float or null | Weighted composite of `faithfulness`, `coverage` and `clarity`, computed in Python. `null` when the judge call failed (not an error — see `uncertainty_explanation`). |
 | `faithfulness` | float or null | How well the analysis is supported by the source records, in [0, 1]. `null` when the judge failed, and for `mode=hierarchical`. |
 | `coverage` | float or null | How thoroughly the analysis answers the analyst question, in [0, 1]. `null` when the judge failed, and for `mode=hierarchical`. |
 | `clarity` | float or null | How clear and well-structured the analysis is, in [0, 1]. `null` when the judge failed, and for `mode=hierarchical`. |
