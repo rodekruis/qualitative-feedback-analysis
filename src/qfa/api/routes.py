@@ -25,6 +25,7 @@ from qfa.api.schemas import (
     ApiCodingNode,
     ApiCodingTrendCell,
     ApiCodingTrends,
+    ApiCommunityMeetingRecordMetadata,
     ApiDetectSensitiveRequest,
     ApiDetectSensitiveResponse,
     ApiFeedbackRecordInput,
@@ -32,6 +33,8 @@ from qfa.api.schemas import (
     ApiHealthResponse,
     ApiSummarizeBulkRequest,
     ApiSummarizeBulkResponse,
+    ApiSummarizeCommunityMeetingRequest,
+    ApiSummarizeCommunityMeetingResponse,
     ApiSummarizeRequest,
     ApiSummarizeResponse,
 )
@@ -40,9 +43,12 @@ from qfa.domain.models import (
     CodingAssignmentRequestModel,
     CodingFramework,
     CodingNode,
+    CommunityMeetingRecordMetadataModel,
+    CommunityMeetingRecordModel,
     FeedbackRecordMetadataModel,
     FeedbackRecordModel,
     SensitivityAnalysisRequestModel,
+    SingleSummaryCommunityMeetingRequestModel,
     SingleSummaryRequestModel,
     SummaryRequestModel,
     TenantApiKey,
@@ -86,6 +92,12 @@ def _to_domain_metadata(
     return FeedbackRecordMetadataModel.model_validate(
         metadata.model_dump(exclude={"feedback_record_id"})
     )
+
+
+def _to_domain_community_meeting_metadata(
+    metadata: ApiCommunityMeetingRecordMetadata,
+) -> CommunityMeetingRecordMetadataModel:
+    return CommunityMeetingRecordMetadataModel.model_validate(metadata.model_dump())
 
 
 def _drop_empty_records(
@@ -414,6 +426,60 @@ async def summarize(
 
     components = result.components
     return ApiSummarizeResponse(
+        id=result.id,
+        title=result.title,
+        summary=result.summary,
+        quality_score=result.quality_score,
+        faithfulness=None if components is None else components.faithfulness,
+        coverage=None if components is None else components.coverage,
+        clarity=None if components is None else components.clarity,
+    )
+
+
+@router.post(
+    "/v1/summarize-community-meeting",
+    response_model=ApiSummarizeCommunityMeetingResponse,
+    status_code=200,
+    tags=["Inference"],
+)
+async def summarize_community_meeting(
+    body: ApiSummarizeCommunityMeetingRequest,
+    request: Request,
+    tenant: TenantApiKey = Depends(authenticate_request),
+    summarize_service: SummarizeService = Depends(get_summarize_service),
+    _scope: CallContext = Depends(call_scope_for(Operation.SUMMARIZE)),
+) -> ApiSummarizeCommunityMeetingResponse:
+    """Summarize submitted community meeting notes."""
+    deadline = datetime.now(UTC) + timedelta(seconds=240)
+    record = body.community_meeting_record
+
+    if not record.meetingNotes:
+        return ApiSummarizeCommunityMeetingResponse(
+            id=record.id,
+            title="",
+            summary="",
+            quality_score=None,
+            faithfulness=None,
+            coverage=None,
+            clarity=None,
+        )
+
+    domain_request = SingleSummaryCommunityMeetingRequestModel(
+        community_meeting_record=CommunityMeetingRecordModel(
+            id=record.id,
+            meetingNotes=record.meetingNotes,
+            metadata=_to_domain_community_meeting_metadata(record.metadata),
+            url_id=record.url_id,
+        ),
+        tenant_id=tenant.tenant_id,
+        espo_feedback_base_url=body.espo_feedback_base_url,
+    )
+    result = await summarize_service.summarize_community_meeting(
+        domain_request, deadline
+    )
+    components = result.components
+
+    return ApiSummarizeCommunityMeetingResponse(
         id=result.id,
         title=result.title,
         summary=result.summary,
