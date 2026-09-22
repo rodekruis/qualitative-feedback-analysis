@@ -149,7 +149,7 @@ def _weighted_quality_score(faithfulness, coverage, clarity):
         QUALITY_SCORE_WEIGHTS.faithfulness * faithfulness
         + QUALITY_SCORE_WEIGHTS.coverage * coverage
         + QUALITY_SCORE_WEIGHTS.clarity * clarity,
-        4,
+        2,
     )
 
 
