@@ -364,9 +364,9 @@ def build_services(
         one from ``settings.langfuse``. ``None`` (the default) builds one
         via :func:`build_evaluator`, which never itself returns ``None`` —
         it is a :class:`~qfa.adapters.evaluation.NoOpEvaluationAdapter`
-        when Langfuse is unconfigured, so :class:`AnalyzeService` and
-        :class:`SummarizeService` always hold a real
-        :class:`~qfa.domain.ports.EvaluationPort` (#354).
+        when Langfuse is unconfigured, so :class:`AnalyzeService`,
+        :class:`SummarizeService`, and :class:`CodingService` always hold
+        a real :class:`~qfa.domain.ports.EvaluationPort` (#354).
 
     Returns
     -------
@@ -437,6 +437,7 @@ def build_services(
             judge_llm=judge_llm,
             anonymizer=anonymizer,
             executor=executor,
+            evaluator=evaluator,
         ),
         analyze=analyze,
         # Neither summarisation path runs the token-budget guard or needs an

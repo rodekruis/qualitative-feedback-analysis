@@ -39,7 +39,7 @@ from qfa.domain.models import (
     CodingAssignmentResultModel,
     FeedbackRecordModel,
 )
-from qfa.domain.ports import AnonymizationPort, LLMPort
+from qfa.domain.ports import AnonymizationPort, EvaluationPort, LLMPort
 from qfa.services.call_context import judge_call
 from qfa.services.coding_classifier import (
     CodingResponse,
@@ -49,6 +49,7 @@ from qfa.services.coding_classifier import (
     flatten_coding_nodes,
     format_code_path,
 )
+from qfa.services.judge_scoring import record_coding_judge_score
 from qfa.services.llm_call_executor import LLMCallExecutor
 
 logger = logging.getLogger(__name__)
@@ -202,6 +203,14 @@ class CodingService:
         ``JUDGE_LLM_MODEL`` is configured. Configured via ``JUDGE_LLM_*``
         and resolved in
         :func:`qfa.api.composition.resolve_judge_llm_settings`.
+    evaluator : EvaluationPort | None
+        Where each level's judge score is sent as a live Langfuse score,
+        via :func:`~qfa.services.judge_scoring.record_coding_judge_score`.
+        ``None`` (the default) means scores are simply not sent — the
+        composition root (:func:`qfa.api.composition.build_services`)
+        always injects a real port, a no-op one when Langfuse is
+        unconfigured, so ``None`` here is only ever a test/script default,
+        never production behaviour.
     """
 
     def __init__(
@@ -210,6 +219,7 @@ class CodingService:
         anonymizer: AnonymizationPort,
         executor: LLMCallExecutor,
         judge_llm: LLMPort | None = None,
+        evaluator: EvaluationPort | None = None,
     ) -> None:
         self._llm = llm
         # Same rule as AnalyzeService/SummarizeService: judging runs on its
@@ -219,6 +229,7 @@ class CodingService:
         self._judge_llm = judge_llm if judge_llm is not None else llm
         self._anonymizer: AnonymizationPort = anonymizer
         self._executor = executor
+        self._evaluator = evaluator
 
     async def assign_codes(
         self,
@@ -417,6 +428,7 @@ class CodingService:
             judge = await self._judge_code_level(
                 feedback_record=feedback_record,
                 level=level_label,
+                level_num=level_num,
                 path=current_path,
                 tenant_id=tenant_id,
                 deadline=deadline,
@@ -443,6 +455,7 @@ class CodingService:
         *,
         feedback_record: FeedbackRecordModel,
         level: str,
+        level_num: int,
         path: list[tuple[str, str]],
         tenant_id: str,
         deadline: datetime,
@@ -472,6 +485,9 @@ class CodingService:
         judged = _parse_judge_response(response.structured)
         if not 0.0 <= judged.score <= 1.0:
             raise AnalysisError("LLM judge returned score outside 0.0-1.0")
+        record_coding_judge_score(
+            self._evaluator, level_num=level_num, score=judged.score
+        )
         return judged
 
     def _check_coding_deadline(self, deadline: datetime) -> None:

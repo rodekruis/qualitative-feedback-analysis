@@ -153,6 +153,19 @@ each leaf judge: a request-level average would hide which chunk the judge
 scored. Both `summarize` and `summarize_bulk` send one set per request, the
 same as `single_pass`.
 
+`assign_codes` sends a different shape. Its judge reports one score per
+hierarchy level, not the four-component set above.
+`qfa.services.judge_scoring.record_coding_judge_score` sends one score per
+judged level instead. Each score uses the name `confidence_level_1`,
+`confidence_level_2`, or `confidence_level_3`. These names match the field
+names on `AssignedCodeModel`.
+
+`CodingService` stops judging a candidate path at the first level that
+falls below `confidence_threshold`. A trace can therefore carry fewer
+`confidence_level_*` scores than the path depth. When the request judges
+several candidate paths, a trace can carry more than one set of these
+scores.
+
 `qfa.adapters.evaluation.LangfuseEvaluationAdapter` sends the scores through
 the `langfuse` Python client. `NoOpEvaluationAdapter` discards them instead.
 When `LANGFUSE_PUBLIC_KEY` or `LANGFUSE_SECRET_KEY` is unset, the
