@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import subprocess
 from collections import Counter
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -19,6 +20,8 @@ EXPERIMENT_NAME = "sensitivity-baseline"
 # backend's small Postgres connection pool (usage tracking then fails, and
 # every request slows down). Keep this well under that pool's capacity.
 MAX_CONCURRENCY = 5
+DEFAULT_BASE_URL = "https://qfa-dev-backend.azurewebsites.net"
+REQUEST_TIMEOUT_SECONDS = 180.0
 
 
 def _parse_args() -> argparse.Namespace:
@@ -27,7 +30,7 @@ def _parse_args() -> argparse.Namespace:
         epilog=(
             "Examples:\n"
             "  uv run python eval/evaluate_sensitivity.py "
-            "--dataset sensitivity/SubsetIFRCBorderlineSensitiveRecords --limit 5\n"
+            "--dataset sensitivity/SubsetIFRCBorderlineSensitiveRecords --smoke-limit 5\n"
             "\n"
             "  uv run python eval/evaluate_sensitivity.py "
             "--dataset sensitivity/SubsetIFRCBorderlineSensitiveRecords"
@@ -41,10 +44,10 @@ def _parse_args() -> argparse.Namespace:
         help="Name of the Langfuse dataset to evaluate.",
     )
     parser.add_argument(
-        "--limit",
+        "--smoke-limit",
         type=int,
         default=None,
-        help="Only evaluate the first N records. Default: all records.",
+        help="Run only the first N records for local smoke testing. Default: full dataset.",
     )
     parser.add_argument(
         "--run-name",
@@ -103,16 +106,8 @@ def _resolve_api_key() -> str:
 
 
 def _resolve_config() -> tuple[str, str]:
-    """The backend base URL and bearer token for this run.
-
-    Exits with a clear message when either is missing, instead of letting
-    every dataset item fail separately after the run has started.
-    """
-    base_url = os.environ.get("QFA_API_BASE_URL")
-    if not base_url:
-        raise SystemExit(
-            "QFA_API_BASE_URL is not set. See eval/README.md for prerequisites."
-        )
+    """Resolve the backend URL and API key."""
+    base_url = os.environ.get("QFA_API_BASE_URL") or DEFAULT_BASE_URL
     return base_url.rstrip("/"), _resolve_api_key()
 
 
@@ -154,6 +149,56 @@ def _make_detect_sensitive(
         }
 
     return detect_sensitive
+
+
+def _git_output(*args: str) -> str:
+    """Run a git command in the repo; empty string on failure."""
+    result = subprocess.run(  # noqa: S603
+        ["git", *args],  # noqa: S607
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def _git_metadata() -> dict[str, str]:
+    """Commit and branch of the evaluation script."""
+    sha = os.environ.get("GIT_SHA") or _git_output("rev-parse", "HEAD") or "unknown"
+    branch = (
+        os.environ.get("GIT_REF_NAME")
+        or _git_output("rev-parse", "--abbrev-ref", "HEAD")
+        or "unknown"
+    )
+
+    return {
+        "eval_script_sha": sha,
+        "git_branch": branch,
+    }
+
+
+def _deployed_info(base_url: str) -> dict[str, str]:
+    """Get the version and commit currently deployed on the backend."""
+    try:
+        response = httpx.get(
+            f"{base_url}/v1/health",
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        return {
+            "deployed_version": str(data["version"]),
+            "deployed_commit": str(data["commit"]),
+        }
+
+    except (httpx.HTTPError, KeyError) as e:
+        print(f"warning: could not read {base_url}/v1/health ({e})")
+        return {
+            "deployed_version": "unknown",
+            "deployed_commit": "unknown",
+        }
 
 
 def correctness_evaluator(
@@ -349,13 +394,16 @@ def main() -> None:
     load_dotenv(REPO_ROOT / ".env")
     base_url, api_key = _resolve_config()
 
+    deployed = _deployed_info(base_url)
+    git_meta = _git_metadata()
+
     langfuse = get_client()
     dataset = langfuse.get_dataset(args.dataset)
 
-    if args.limit is not None:
-        if args.limit <= 0:
-            raise SystemExit("--limit must be greater than 0.")
-        items = dataset.items[: args.limit]
+    if args.smoke_limit is not None:
+        if args.smoke_limit <= 0:
+            raise SystemExit("--smoke-limit must be greater than 0.")
+        items = dataset.items[: args.smoke_limit]
     else:
         items = dataset.items
 
@@ -363,15 +411,25 @@ def main() -> None:
 
     if args.run_name:
         run_name = args.run_name
-    elif args.limit:
-        run_name = f"smoke-{args.limit}-{timestamp}"
+    elif args.smoke_limit:
+        run_name = f"smoke-{args.smoke_limit}-{timestamp}"
     else:
         run_name = f"baseline-full-{timestamp}"
 
     print(f"Dataset: {args.dataset}")
+    print(f"Backend: {base_url}")
     print(f"Records: {len(items)}")
     print(f"Run:     {run_name}")
     print()
+
+    run_metadata = {
+        "dataset": args.dataset,
+        "endpoint": "/v1/detect-sensitive",
+        "evaluation": "baseline",
+        "smoke_limit": args.smoke_limit,
+        **git_meta,
+        **deployed,
+    }
 
     result = langfuse.run_experiment(
         name=EXPERIMENT_NAME,
@@ -387,12 +445,7 @@ def main() -> None:
             sensitivity_type_distribution_evaluator,
         ],
         max_concurrency=MAX_CONCURRENCY,
-        metadata={
-            "dataset": args.dataset,
-            "endpoint": "/v1/detect-sensitive",
-            "evaluation": "baseline",
-            "limit": args.limit,
-        },
+        metadata=run_metadata,
     )
 
     print(result.format())
