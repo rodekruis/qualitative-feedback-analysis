@@ -947,6 +947,24 @@ class ApiSummarizeCommunityMeetingResponse(BaseModel):
         le=1.0,
         description="Judge score for summary quality in the range 0.0-1.0.",
     )
+    faithfulness: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Judge faithfulness in [0,1]; ``null`` when the judge call failed.",
+    )
+    coverage: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Judge coverage in [0,1]; ``null`` when the judge call failed.",
+    )
+    clarity: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Judge clarity in [0,1]; ``null`` when the judge call failed.",
+    )
 
     @computed_field(description="Human-readable formatted output string.")
     @property

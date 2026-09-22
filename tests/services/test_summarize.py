@@ -323,7 +323,9 @@ class TestNonTransientError:
         fake_llm = FakeLLMPort(
             responses=[
                 _make_llm_response(structured=_make_community_meeting_summary_result()),
-                _make_llm_response(structured="0.8"),
+                _make_llm_response(
+                    structured=_judge_text(faithfulness=0.8, coverage=0.7, clarity=0.6)
+                ),
             ]
         )
         service = _build_service(fake_llm, settings)
@@ -334,7 +336,12 @@ class TestNonTransientError:
 
         assert result.id == "meeting-1"
         assert result.summary == "- Meeting point"
-        assert result.quality_score == 0.8
+        assert result.components.faithfulness == pytest.approx(0.8)
+        assert result.components.coverage == pytest.approx(0.7)
+        assert result.components.clarity == pytest.approx(0.6)
+        assert result.quality_score == pytest.approx(
+            _weighted_quality_score(0.8, 0.7, 0.6)
+        )
         assert (
             "The community requested safer water access."
             in fake_llm.calls[0]["user_message"]
@@ -350,7 +357,9 @@ class TestNonTransientError:
                         summary="- Follow-up for meeting-1"
                     )
                 ),
-                _make_llm_response(structured="0.8"),
+                _make_llm_response(
+                    structured=_judge_text(faithfulness=0.8, coverage=0.7, clarity=0.6)
+                ),
             ]
         )
         service = _build_service(fake_llm, settings)
@@ -366,6 +375,9 @@ class TestNonTransientError:
         assert (
             result.summary
             == "- Follow-up for [meeting-1](https://espo.example.com/meetings/meeting-url-1)"
+        )
+        assert result.quality_score == pytest.approx(
+            _weighted_quality_score(0.8, 0.7, 0.6)
         )
 
     @pytest.mark.asyncio

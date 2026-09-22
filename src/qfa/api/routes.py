@@ -459,6 +459,9 @@ async def summarize_community_meeting(
             title="",
             summary="",
             quality_score=None,
+            faithfulness=None,
+            coverage=None,
+            clarity=None,
         )
 
     domain_request = SingleSummaryCommunityMeetingRequestModel(
@@ -474,12 +477,16 @@ async def summarize_community_meeting(
     result = await summarize_service.summarize_community_meeting(
         domain_request, deadline
     )
+    components = result.components
 
     return ApiSummarizeCommunityMeetingResponse(
         id=result.id,
         title=result.title,
         summary=result.summary,
         quality_score=result.quality_score,
+        faithfulness=None if components is None else components.faithfulness,
+        coverage=None if components is None else components.coverage,
+        clarity=None if components is None else components.clarity,
     )
 
 

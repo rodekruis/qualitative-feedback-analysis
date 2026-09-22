@@ -138,6 +138,28 @@ These explanations are English only, regardless of the language of the feedback.
 
 Empty `content` short-circuits to a 200 with blank `title`/`summary` and every score `null`, without calling the LLM (issue #138).
 
+## POST /v1/summarize-community-meeting — field reference
+
+### Request
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `community_meeting_record` | object | — | A single `{id, meetingNotes, metadata?, url_id?}` record. `meetingNotes` may be empty and may contain HTML — see below. |
+| `espo_feedback_base_url` | string or null | `null` | Base URL for the EspoCRM community-meeting detail view. Mentions of the record id in the summary become markdown links when both this and `url_id` are present. |
+
+### Response (200 OK)
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | string | Echoes the source record's `id`. |
+| `title` | string | LLM-generated short title. |
+| `summary` | string | Generated bullet-point summary. |
+| `quality_score` | float or null | Weighted composite of `faithfulness`, `coverage` and `clarity`, computed in Python. `null` only when `meetingNotes` was empty (no LLM call was made) — a malformed judge reply raises a 502 instead of a `null` score. |
+| `faithfulness` | float or null | How well the summary is supported by the source notes, in [0, 1]. `null` only when `meetingNotes` was empty. |
+| `coverage` | float or null | How thoroughly the summary captures the meeting's key points, in [0, 1]. `null` only when `meetingNotes` was empty. |
+| `clarity` | float or null | How clear and concise the summary is, in [0, 1]. `null` only when `meetingNotes` was empty. |
+| `pretty_output` | string | Human-readable formatted output string, built from `id`/`title`/`summary`/`quality_score`. |
+
 ## Hyperlinking feedback records
 
 `/v1/analyze-bulk` and `/v1/summarize-bulk` accept an optional `espo_feedback_base_url` alongside `feedback_records`. When it's set, any mention of a feedback record's `id` in the output text (e.g. an analysis citing `Form-07762` as supporting evidence) is rewritten as a markdown hyperlink:

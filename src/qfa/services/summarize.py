@@ -31,11 +31,8 @@ from qfa.domain.models import (
     AggregateSummaryResultModel,
     CommunityMeetingRecordSummaryModel,
     FeedbackRecordSummaryModel,
-<<<<<<< HEAD
-    SingleSummaryCommunityMeetingRequestModel,
-=======
     JudgeComponents,
->>>>>>> origin/main
+    SingleSummaryCommunityMeetingRequestModel,
     SingleSummaryRequestModel,
     SummaryCommunityMeetingResultModel,
     SummaryRequestModel,
@@ -424,7 +421,8 @@ class SummarizeService:
                 response_model=str,
                 timeout=judge_timeout,
             )
-        quality_score = _parse_judge_quality_score(judge_response.structured)
+        components = _parse_judge_quality_score(judge_response.structured)
+        log_judge_components(logger, components)
 
         return_model_as_string = llm_completion.structured.model_dump_json()
         unanonymized_return_model_as_string = self._executor.deanonymize_json(
@@ -442,6 +440,7 @@ class SummarizeService:
                     (request.community_meeting_record,),
                     request.espo_feedback_base_url,
                 ),
-                "quality_score": quality_score,
+                "quality_score": components.quality_score,
+                "components": components,
             }
         )

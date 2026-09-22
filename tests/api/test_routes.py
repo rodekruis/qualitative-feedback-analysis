@@ -301,6 +301,9 @@ class TestSummarizeSuccess:
         assert data["title"] == "Fake summary title"
         assert data["summary"] == "- Fake summary point"
         assert data["quality_score"] == 0.9
+        assert data["faithfulness"] is None
+        assert data["coverage"] is None
+        assert data["clarity"] is None
         assert "pretty_output" in data
 
     @pytest.mark.asyncio
@@ -317,6 +320,9 @@ class TestSummarizeSuccess:
         assert resp.json()["id"] == "meeting-1"
         assert resp.json()["summary"] == ""
         assert resp.json()["quality_score"] is None
+        assert resp.json()["faithfulness"] is None
+        assert resp.json()["coverage"] is None
+        assert resp.json()["clarity"] is None
 
     @pytest.mark.asyncio
     async def test_community_meeting_summary_accepts_oversized_word_html(
