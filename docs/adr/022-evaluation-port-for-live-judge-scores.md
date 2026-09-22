@@ -52,13 +52,18 @@ trace to join.
    codebase, so this ADR accepts the move #354 already asked for.
 
 4. **`call_id` becomes the real Langfuse trace id.**
-   `qfa.services.call_context.call_scope` now attaches an OpenTelemetry
-   context carrying a placeholder span whose trace id is `call_id.int`.
-   Every real span a call inside that scope opens, generation and judge
-   alike, inherits that trace id as a child. No change is needed at any
-   span-creation call site. A request's generation and judge calls
-   therefore land in one Langfuse trace with several observations, not in
-   several separate traces. This also changes the shape of the existing
+   `qfa.services.call_context.otel_context_for` builds an OpenTelemetry
+   context that carries a placeholder span. That span's trace id is
+   `call_id.int`. `LiteLLMClient.complete`, the one real span-creation
+   call site, passes this context explicitly as `context=`. `call_scope`
+   itself does not attach this context to the ambient OTel context. The
+   ambient context is a single, provider-agnostic global. Application
+   Insights' auto-instrumentation shares it. An attach there reparents
+   every unrelated span opened during the request, for example DB
+   statements and outbound HTTP calls, under `call_id` too. A request's
+   generation and judge calls therefore land in one Langfuse trace with
+   several observations, not in several separate traces, and no other
+   trace changes. This also changes the shape of the existing
    call-tracing feature, not only this ticket's addition.
 
 5. **Failure is handled by the client, not by this adapter.** The

@@ -12,6 +12,7 @@ from qfa.services.call_context import (
     current_call_context,
     current_call_role,
     judge_call,
+    otel_context_for,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -19,15 +20,27 @@ pytestmark = pytest.mark.asyncio
 _tracer = TracerProvider().get_tracer("test_call_context")
 
 
-def _current_span_trace_id_hex() -> str:
+def _ambient_span_trace_id_hex() -> str:
     """Open a throwaway span with no explicit context and read its trace id.
 
-    Mirrors exactly how ``LiteLLMClient.complete`` opens its span
-    (``self._tracer.start_as_current_span(span_name)``, no ``context=``),
-    so this is what a real LLM-call span's trace id would be at this
-    point in the ambient OTel context.
+    Mirrors any *other* instrumented span opened during a request with no
+    explicit ``context=`` (DB statements, outbound HTTP calls) — the ones
+    ``call_scope`` must leave alone.
     """
     with _tracer.start_as_current_span("probe") as span:
+        return format(span.get_span_context().trace_id, "032x")
+
+
+def _explicit_span_trace_id_hex(call_id) -> str:
+    """Open a span parented via ``otel_context_for``, as ``LiteLLMClient.complete`` does.
+
+    Mirrors exactly how ``LiteLLMClient.complete`` opens its span
+    (``self._tracer.start_as_current_span(span_name, context=otel_context_for(ctx.call_id))``),
+    so this is what a real LLM-call span's trace id actually is.
+    """
+    with _tracer.start_as_current_span(
+        "probe", context=otel_context_for(call_id)
+    ) as span:
         return format(span.get_span_context().trace_id, "032x")
 
 
@@ -169,8 +182,8 @@ async def test_separate_call_scopes_produce_distinct_call_ids():
     assert first != second
 
 
-async def test_call_scope_makes_call_id_the_otel_trace_id():
-    """A span opened inside ``call_scope`` inherits ``call_id`` as its trace id.
+async def test_otel_context_for_makes_call_id_the_otel_trace_id():
+    """A span opened with ``context=otel_context_for(ctx.call_id)`` inherits it as its trace id.
 
     This is the #354 mechanism: it lets a live judge score sent against
     ``call_id.hex`` land in the same Langfuse trace as the LLM-call spans
@@ -179,12 +192,12 @@ async def test_call_scope_makes_call_id_the_otel_trace_id():
     request_id = uuid4()
     async with call_scope(
         tenant_id="t1", operation=Operation.ANALYZE, request_id=request_id
-    ):
-        assert _current_span_trace_id_hex() == request_id.hex
+    ) as ctx:
+        assert _explicit_span_trace_id_hex(ctx.call_id) == request_id.hex
 
 
-async def test_call_scope_shares_one_trace_id_across_multiple_spans():
-    """Every span opened inside one ``call_scope`` shares one trace id.
+async def test_otel_context_for_shares_one_trace_id_across_multiple_spans():
+    """Every span opened with ``otel_context_for(ctx.call_id)`` shares one trace id.
 
     A request's generation call and its judge call open separate spans;
     both must land in the same Langfuse trace rather than two.
@@ -192,9 +205,9 @@ async def test_call_scope_shares_one_trace_id_across_multiple_spans():
     request_id = uuid4()
     async with call_scope(
         tenant_id="t1", operation=Operation.ANALYZE, request_id=request_id
-    ):
-        first = _current_span_trace_id_hex()
-        second = _current_span_trace_id_hex()
+    ) as ctx:
+        first = _explicit_span_trace_id_hex(ctx.call_id)
+        second = _explicit_span_trace_id_hex(ctx.call_id)
     assert first == second == request_id.hex
 
 
@@ -202,25 +215,27 @@ async def test_separate_call_scopes_produce_distinct_otel_trace_ids():
     """Two API invocations must not collide on the Langfuse trace id either."""
     async with call_scope(
         tenant_id="t1", operation=Operation.ANALYZE, request_id=uuid4()
-    ):
-        first = _current_span_trace_id_hex()
+    ) as ctx1:
+        first = _explicit_span_trace_id_hex(ctx1.call_id)
     async with call_scope(
         tenant_id="t1", operation=Operation.ANALYZE, request_id=uuid4()
-    ):
-        second = _current_span_trace_id_hex()
+    ) as ctx2:
+        second = _explicit_span_trace_id_hex(ctx2.call_id)
     assert first != second
 
 
-async def test_otel_trace_id_not_leaked_after_call_scope_exit():
-    """A span opened after ``call_scope`` exits gets a fresh, unrelated trace id.
+async def test_call_scope_does_not_leak_into_the_ambient_otel_context():
+    """A span opened inside ``call_scope`` with no explicit ``context=`` is unaffected.
 
-    Guards against the OTel context attach leaking past the block — the
-    same concern ``test_call_scope_sets_and_resets`` covers for
-    ``current_call_context``.
+    ``opentelemetry.context`` is a single, provider-agnostic ambient
+    context shared by every tracer in the process, including Application
+    Insights' auto-instrumentation (DB statements, outbound HTTP calls).
+    ``call_scope`` must not attach its synthetic ``call_id`` trace to it,
+    or every such unrelated span opened during the request would be
+    reparented under ``call_id`` instead of the real request span.
     """
     request_id = uuid4()
     async with call_scope(
         tenant_id="t1", operation=Operation.ANALYZE, request_id=request_id
     ):
-        pass
-    assert _current_span_trace_id_hex() != request_id.hex
+        assert _ambient_span_trace_id_hex() != request_id.hex

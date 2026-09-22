@@ -15,6 +15,7 @@ Two implementations:
 import logging
 
 from langfuse import Langfuse
+from opentelemetry.sdk.trace import TracerProvider
 
 from qfa.domain.ports import EvaluationPort
 from qfa.settings import LangfuseSettings
@@ -35,6 +36,16 @@ class LangfuseEvaluationAdapter(EvaluationPort):
     for ``PresidioAnonymizer``'s thread pool in
     :func:`qfa.api.composition.build_services` — no explicit teardown is
     wired into the FastAPI lifespan.
+
+    Passes its own, independent ``TracerProvider`` — never the
+    process-global one :func:`qfa.telemetry.configure_telemetry` may
+    install for Application Insights. Left unset, the ``langfuse`` client
+    attaches its span processor to whatever ``TracerProvider`` is already
+    registered globally; with Application Insights configured, that is the
+    Azure Monitor provider, so every App Insights span (DB statements,
+    outbound HTTP calls) would also be exported to Langfuse. Mirrors
+    :func:`qfa.api.composition.build_langfuse_tracer`'s own isolated
+    provider, built for the same reason.
     """
 
     def __init__(self, settings: LangfuseSettings) -> None:
@@ -46,6 +57,7 @@ class LangfuseEvaluationAdapter(EvaluationPort):
                 else None
             ),
             host=settings.host,
+            tracer_provider=TracerProvider(),
         )
 
     def record_score(self, *, trace_id: str, name: str, value: float) -> None:

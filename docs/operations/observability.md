@@ -173,7 +173,11 @@ composition root (`qfa.api.composition.build_evaluator`) picks the no-op
 adapter — the same condition that disables the call tracer below. A
 Langfuse outage never affects an analysis: `Langfuse.create_score` queues
 the score locally for later delivery and never raises an error, so this
-adapter needs no timeout or retry logic of its own.
+adapter needs no timeout or retry logic of its own. The client gets its own
+`TracerProvider`, passed explicitly. This is the same isolation the call
+tracer below uses. Left unset, the `langfuse` client attaches to whatever
+`TracerProvider` Application Insights already installed. Every App
+Insights span then also exports to Langfuse.
 
 These scores never reach the API response body. They stay a Langfuse-only
 channel. The response fields `qfa.services.judge_scoring.parse_judge_components`

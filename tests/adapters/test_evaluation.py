@@ -2,6 +2,7 @@
 
 from unittest.mock import patch
 
+from opentelemetry.sdk.trace import TracerProvider
 from pydantic import SecretStr
 
 from qfa.adapters.evaluation import LangfuseEvaluationAdapter, NoOpEvaluationAdapter
@@ -48,11 +49,38 @@ class TestLangfuseEvaluationAdapter:
         with patch("qfa.adapters.evaluation.Langfuse") as mock_langfuse:
             LangfuseEvaluationAdapter(settings)
 
-        mock_langfuse.assert_called_once_with(
+        mock_langfuse.assert_called_once()
+        kwargs = mock_langfuse.call_args.kwargs
+        assert kwargs["public_key"] == "pk-test"
+        assert kwargs["secret_key"] == "sk-test"
+        assert kwargs["host"] == "https://langfuse.internal.example"
+        assert isinstance(kwargs["tracer_provider"], TracerProvider)
+
+    def test_uses_its_own_tracer_provider_not_the_global_one(self) -> None:
+        """Never the process-global provider Application Insights may install.
+
+        Left unset, the ``langfuse`` client attaches to whatever
+        ``TracerProvider`` is already registered globally — here, that
+        would leak every Application Insights span into Langfuse (see the
+        adapter's docstring).
+        """
+        settings = LangfuseSettings(
             public_key="pk-test",
-            secret_key="sk-test",
+            secret_key=SecretStr("sk-test"),
             host="https://langfuse.internal.example",
         )
+        global_provider = TracerProvider()
+
+        with (
+            patch(
+                "opentelemetry.trace.get_tracer_provider",
+                return_value=global_provider,
+            ),
+            patch("qfa.adapters.evaluation.Langfuse") as mock_langfuse,
+        ):
+            LangfuseEvaluationAdapter(settings)
+
+        assert mock_langfuse.call_args.kwargs["tracer_provider"] is not global_provider
 
     def test_record_score_forwards_to_create_score(self) -> None:
         settings = LangfuseSettings(

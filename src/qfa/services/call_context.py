@@ -15,13 +15,24 @@ and ``llm_calls.call_id`` rows always join cleanly. Non-HTTP callers
 
 ``asyncio`` propagates ContextVars across ``create_task`` / ``gather``
 via snapshot-on-spawn, so fan-out from a public orchestrator method
-preserves the context without explicit forwarding. :func:`call_scope`
-also attaches an OpenTelemetry context for the same reason (#354): every
-LLM-call span ``LiteLLMClient.complete`` opens inside the block —
-generation and judge calls alike — inherits ``request_id`` as its trace
-id (see :func:`_otel_context_for`), so they land in Langfuse as one
-trace per request instead of one trace per LLM call, and a live judge
-score sent against ``call_id.hex`` joins that trace.
+preserves the context without explicit forwarding.
+
+For the same reason (#354), every LLM-call span
+``LiteLLMClient.complete`` opens inside the block — generation and
+judge calls alike — inherits ``request_id`` as its trace id, so they
+land in Langfuse as one trace per request instead of one trace per LLM
+call, and a live judge score sent against ``call_id.hex`` joins that
+trace. :func:`call_scope` does **not** attach this OpenTelemetry
+context globally: ``opentelemetry.context`` is a single,
+provider-agnostic ambient context shared by every tracer in the
+process, including Application Insights' auto-instrumentation
+(DB statements, outbound HTTP calls). Mutating it for the whole
+request would reparent those unrelated spans under ``call_id``'s
+synthetic trace too, breaking their correlation with the real ASGI
+request span. Instead, :func:`otel_context_for` is called explicitly
+at the one real call site, ``LiteLLMClient.complete``, and passed as
+that span's ``context=`` — scoping the override to Langfuse's own
+isolated tracer (see :func:`qfa.api.composition.build_langfuse_tracer`).
 """
 
 from collections.abc import AsyncIterator, Iterator
@@ -38,17 +49,19 @@ from qfa.domain.usage_models import CallContext, Operation
 _SPAN_ID_MASK = (1 << 64) - 1
 
 
-def _otel_context_for(call_id: UUID) -> otel_context.Context:
+def otel_context_for(call_id: UUID) -> otel_context.Context:
     """Build an OTel context whose current span's trace id is ``call_id``.
 
-    The span is a :class:`NonRecordingSpan` — a placeholder used only to
-    propagate a trace id via the ambient OTel context, never exported
-    itself. Every real span opened underneath it (``Tracer.start_as_current_span``
-    with no explicit ``context=``, which is how ``LiteLLMClient.complete``
-    calls it) inherits this trace id as a child. ``span_id`` is derived
-    from ``call_id`` rather than randomly generated: it is never recorded
-    or read back, so determinism costs nothing and avoids pulling in an
-    ID generator for a throwaway value.
+    Called by ``LiteLLMClient.complete`` and passed explicitly as that
+    span's ``context=`` — never attached to the ambient OTel context
+    (see the module docstring for why). The span is a
+    :class:`NonRecordingSpan` — a placeholder used only to hand down a
+    trace id, never exported itself. Every real span opened as its
+    child (``Tracer.start_as_current_span(..., context=this)``) inherits
+    that trace id. ``span_id`` is derived from ``call_id`` rather than
+    randomly generated, so that every call inside one :func:`call_scope`
+    deterministically shares one parent id, without pulling in an ID
+    generator for a throwaway value.
     """
     span_context = SpanContext(
         trace_id=call_id.int,
@@ -129,9 +142,7 @@ async def call_scope(
         call_id=request_id,
     )
     token = current_call_context.set(ctx)
-    otel_token = otel_context.attach(_otel_context_for(request_id))
     try:
         yield ctx
     finally:
-        otel_context.detach(otel_token)
         current_call_context.reset(token)

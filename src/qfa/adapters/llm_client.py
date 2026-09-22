@@ -33,7 +33,11 @@ from qfa.domain.errors import (
 )
 from qfa.domain.models import LLMResponse, T_Response
 from qfa.domain.ports import LLMPort
-from qfa.services.call_context import current_call_context, current_call_role
+from qfa.services.call_context import (
+    current_call_context,
+    current_call_role,
+    otel_context_for,
+)
 from qfa.settings import LLM_RETRY_BUDGET_MULTIPLIER
 from qfa.utils import timed
 
@@ -472,10 +476,13 @@ class LiteLLMClient(LLMPort):
         ``version``/``commit`` as trace metadata. Also tagged (and named)
         as a judge call inside an active ``judge_call()`` block (see
         ``qfa.services.call_context``) — every current judge call site
-        wraps itself in one. Every call made inside one ``call_scope``
-        shares one Langfuse trace id, so a judge call's span lands in the
-        same trace as the generation call it graded (#354). Never carries
-        the prompt, completion, or any
+        wraps itself in one. Opened with ``context=otel_context_for(ctx.call_id)``
+        rather than the ambient OTel context, so every call made inside
+        one ``call_scope`` shares one Langfuse trace id — a judge call's
+        span lands in the same trace as the generation call it graded
+        (#354) — without reparenting unrelated spans opened elsewhere
+        during the request (see ``qfa.services.call_context``'s module
+        docstring). Never carries the prompt, completion, or any
         other request/response content — only the same model/tokens/cost
         fields logged at DEBUG below and returned in ``LLMResponse``.
 
@@ -527,7 +534,10 @@ class LiteLLMClient(LLMPort):
         # with two observations, not two separate traces.
         operation = ctx.operation if ctx is not None else "llm_call"
         span_name = f"{operation}:judge" if is_judge else operation
-        with self._tracer.start_as_current_span(span_name) as span:
+        parent_context = otel_context_for(ctx.call_id) if ctx is not None else None
+        with self._tracer.start_as_current_span(
+            span_name, context=parent_context
+        ) as span:
             span.set_attribute("langfuse.observation.type", "generation")
             span.set_attribute("langfuse.user.id", tenant_id)
             if ctx is not None:
