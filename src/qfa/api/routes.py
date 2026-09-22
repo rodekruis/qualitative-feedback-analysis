@@ -216,6 +216,9 @@ async def analyze_bulk(
         return ApiAnalyzeBulkResponse(
             analysis="All records were empty: no analysis was performed.",
             quality_score=None,
+            faithfulness=None,
+            coverage=None,
+            clarity=None,
             uncertainty_explanation=_NO_CONTENT_EXPLANATION,
             feedback_record_count=0,
             request_id=request.state.request_id,
@@ -259,9 +262,13 @@ async def analyze_bulk(
             ],
         )
 
+    components = result.components
     return ApiAnalyzeBulkResponse(
         analysis=result.result,
         quality_score=result.quality_score,
+        faithfulness=None if components is None else components.faithfulness,
+        coverage=None if components is None else components.coverage,
+        clarity=None if components is None else components.clarity,
         uncertainty_explanation=result.uncertainty_explanation,
         feedback_record_count=len(records),
         request_id=request.state.request_id,
@@ -317,6 +324,9 @@ async def summarize_bulk(
             title="",
             summary="All records were empty: no analysis was performed.",
             quality_score=None,
+            faithfulness=None,
+            coverage=None,
+            clarity=None,
         )
 
     feedback_records = tuple(
@@ -337,10 +347,14 @@ async def summarize_bulk(
 
     result = await summarize_service.summarize_bulk(domain_request, deadline)
 
+    components = result.components
     return ApiSummarizeBulkResponse(
         title=result.title,
         summary=result.summary,
         quality_score=result.quality_score,
+        faithfulness=None if components is None else components.faithfulness,
+        coverage=None if components is None else components.coverage,
+        clarity=None if components is None else components.clarity,
         output_language=body.output_language,
     )
 
@@ -391,6 +405,9 @@ async def summarize(
             title="",
             summary="",
             quality_score=None,
+            faithfulness=None,
+            coverage=None,
+            clarity=None,
         )
 
     domain_request = SingleSummaryRequestModel(
@@ -407,11 +424,15 @@ async def summarize(
         deadline,
     )
 
+    components = result.components
     return ApiSummarizeResponse(
         id=result.id,
         title=result.title,
         summary=result.summary,
         quality_score=result.quality_score,
+        faithfulness=None if components is None else components.faithfulness,
+        coverage=None if components is None else components.coverage,
+        clarity=None if components is None else components.clarity,
     )
 
 

@@ -45,21 +45,25 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 |---|---|---|
 | `analysis` | string | Model output. |
 | `title` | string | `"Analysis"` — currently a constant (English only). |
-| `quality_score` | float or null | Judge score in [0, 1]. `null` when the judge call failed (not an error — see `uncertainty_explanation`). |
+| `quality_score` | float or null | Weighted composite of `faithfulness`, `coverage` and `clarity`, computed in Python. `null` when the judge call failed (not an error — see `uncertainty_explanation`) and for `mode=hierarchical`. |
+| `faithfulness` | float or null | How well the analysis is supported by the source records, in [0, 1]. `null` when the judge failed, and for `mode=hierarchical`. |
+| `coverage` | float or null | How thoroughly the analysis answers the analyst question, in [0, 1]. `null` when the judge failed, and for `mode=hierarchical`. |
+| `clarity` | float or null | How clear and well-structured the analysis is, in [0, 1]. `null` when the judge failed, and for `mode=hierarchical`. |
 | `quality_text` | string or null | Quality score as dots and percentage, e.g. `"●●●●● 100%"`. `null` when `quality_score` is `null`. |
 | `pretty_output` | string | Analysis text verbatim — exists for EspoCRM's `modelResponse` mapping so the flowchart needs no change when this backend is deployed. |
 | `uncertainty_explanation` | string | Natural-language judge reasoning, or a constant unavailable message when the judge failed. |
 | `feedback_record_count` | int | Number of records actually analyzed (records with empty `content` are dropped). |
 | `request_id` | string | Canonical UUID matching the `X-Request-ID` response header. |
 | `used_anonymization` | bool | Whether anonymization was applied. |
-| `confidence` | float or null | Coverage-weighted mean of per-chunk faithfulness scores. Populated only for `mode=hierarchical`; `null` for `single_pass`. |
+| `confidence` | float or null | Coverage-weighted mean of per-chunk quality scores (the composite of faithfulness, coverage and clarity). Populated only for `mode=hierarchical`; `null` for `single_pass`. |
 | `coding_trends` | object or null | Deterministic code-by-period frequency table. Populated for **both** modes whenever the configured date + code metadata fields are present (it depends only on metadata, not on the analysis pipeline). `null` when no record carries a parseable date. Bucket-label shape depends on `period`: `YYYY-MM-DD` for day, `YYYY-Www` (ISO week) for week, `YYYY-MM` for month. |
 
-For `mode: "hierarchical"`, the response additionally populates `confidence`
-(a coverage-weighted mean of per-chunk faithfulness). `coding_trends` is
-populated for both modes, so existing single-pass integrations that ignored
-the field are unaffected; clients that want trends can now read them from
-the single-pass response too.
+For `mode: "hierarchical"`, the response populates `confidence` (a
+coverage-weighted mean of per-chunk quality scores). `faithfulness`,
+`coverage` and `clarity` stay `null` until per-chunk aggregation lands.
+`coding_trends` is populated for both modes, so existing single-pass
+integrations that ignored the field are unaffected; clients that want
+trends can now read them from the single-pass response too.
 
 Per-record inference endpoints (`/v1/summarize`, `/v1/summarize-community-meeting`, `/v1/assign-codes`, `/v1/detect-sensitive`) accept a single record and return one result object, unlike bulk endpoints that accept multiple records and return aggregated output.
 
@@ -104,9 +108,35 @@ These explanations are English only, regardless of the language of the feedback.
 |---|---|---|
 | `summary` | string | Generated bullet-point summary. |
 | `title` | string | LLM-generated short title. |
-| `quality_score` | float | Judge score in [0, 1]. Never `null`. |
-| `quality_text` | string | Quality score as dots and percentage, e.g. `"●●●●● 100%"`. Never `null`. |
+| `quality_score` | float or null | Weighted composite of `faithfulness`, `coverage` and `clarity`, computed in Python. `null` only when the batch was empty (no judge call was made) — a malformed judge reply raises a 502 instead of a `null` score. |
+| `faithfulness` | float or null | How well the summary is supported by the source records, in [0, 1]. `null` only when the batch was empty. |
+| `coverage` | float or null | How thoroughly the summary covers the source records' key points, in [0, 1]. `null` only when the batch was empty. |
+| `clarity` | float or null | How clear and concise the summary is, in [0, 1]. `null` only when the batch was empty. |
+| `quality_text` | string or null | Quality score as dots and percentage, e.g. `"●●●●● 100%"`. `null` when `quality_score` is `null`. |
 | `pretty_output` | string | Summary text verbatim — exists for EspoCRM's `modelResponse` mapping. |
+
+## POST /v1/summarize — field reference
+
+### Request
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `feedback_record` | object | — | A single `{id, content, metadata?}` record. `content` may be empty — see below. |
+
+### Response (200 OK)
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | string | Echoes the source record's `id`. |
+| `title` | string | LLM-generated short title. |
+| `summary` | string | Generated bullet-point summary. |
+| `quality_score` | float or null | Weighted composite of `faithfulness`, `coverage` and `clarity`, computed in Python. `null` only when `content` was empty (no LLM call was made) — a malformed judge reply raises a 502 instead of a `null` score. |
+| `faithfulness` | float or null | How well the summary is supported by the source record, in [0, 1]. `null` only when `content` was empty. |
+| `coverage` | float or null | How thoroughly the summary captures the record's own key points, in [0, 1]. `null` only when `content` was empty. |
+| `clarity` | float or null | How clear and concise the summary is, in [0, 1]. `null` only when `content` was empty. |
+| `pretty_output` | string | Human-readable formatted output string, built from `id`/`title`/`summary`/`quality_score`. |
+
+Empty `content` short-circuits to a 200 with blank `title`/`summary` and every score `null`, without calling the LLM (issue #138).
 
 ## Hyperlinking feedback records
 
@@ -157,6 +187,9 @@ Example 200 response:
   "analysis": "The feedback highlights ...",
   "title": "Analysis",
   "quality_score": 0.82,
+  "faithfulness": 0.9,
+  "coverage": 0.8,
+  "clarity": 0.4,
   "quality_text": "●●●●○ 82%",
   "pretty_output": "The feedback highlights ...",
   "uncertainty_explanation": "Coverage is high; all themes supported by at least two records.",

@@ -102,6 +102,64 @@ class TestResponseShape:
         data = resp.json()
         assert "quality_score" in data
         assert data["quality_score"] == 0.85
+        assert data["faithfulness"] == 0.9
+        assert data["coverage"] == 0.8
+        assert data["clarity"] == 0.7
+
+    @pytest.mark.asyncio
+    async def test_component_fields_present_in_response(self, client):
+        """``faithfulness``, ``coverage`` and ``clarity`` are on the happy-path body.
+
+        ``quality_score`` is the weighted composite of the three, computed
+        in Python, so the components must be present for eval to read them.
+        """
+        resp = await client.post(
+            "/v1/analyze-bulk",
+            json=_valid_body(),
+            headers=_auth_header(),
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["faithfulness"] == 0.9
+        assert data["coverage"] == 0.8
+        assert data["clarity"] == 0.7
+        assert data["quality_score"] == pytest.approx(0.85)
+
+    @pytest.mark.asyncio
+    async def test_hierarchical_component_fields_are_null(self, test_app):
+        """Hierarchical responses carry the three components as ``null``.
+
+        Per-chunk aggregation is a follow-up; until then the route must
+        not invent component values from the coverage-weighted confidence.
+        """
+        import httpx
+
+        test_app.state.analyze_service = FakeService(
+            analyze_result=AnalysisResultModel(
+                result="Some analysis.",
+                quality_score=None,
+                confidence=0.8,
+                components=None,
+                uncertainty_explanation="leaf scores aggregated",
+            )
+        )
+
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=test_app),
+            base_url="http://test",
+        ) as c:
+            resp = await c.post(
+                "/v1/analyze-bulk",
+                json=_valid_body(mode="hierarchical"),
+                headers=_auth_header(),
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["confidence"] == pytest.approx(0.8)
+        assert data["faithfulness"] is None
+        assert data["coverage"] is None
+        assert data["clarity"] is None
 
     @pytest.mark.asyncio
     async def test_uncertainty_explanation_present_in_response(self, client):
@@ -153,6 +211,9 @@ class TestResponseShape:
         assert resp.status_code == 200
         data = resp.json()
         assert data["quality_score"] is None
+        assert data["faithfulness"] is None
+        assert data["coverage"] is None
+        assert data["clarity"] is None
         assert data["uncertainty_explanation"] == JUDGE_UNAVAILABLE_EXPLANATION
 
 

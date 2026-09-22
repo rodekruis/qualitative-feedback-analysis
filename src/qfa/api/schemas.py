@@ -658,6 +658,33 @@ class ApiAnalyzeBulkResponse(ApiBulkInferenceResponseBase):
     quality_score: float | None = Field(
         description="Judge model score in [0,1]; ``null`` when the judge call failed.",
     )
+    faithfulness: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Judge faithfulness in [0,1]; ``null`` when the judge call "
+            "failed, and for ``mode=hierarchical``."
+        ),
+    )
+    coverage: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Judge coverage in [0,1]; ``null`` when the judge call "
+            "failed, and for ``mode=hierarchical``."
+        ),
+    )
+    clarity: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Judge clarity in [0,1]; ``null`` when the judge call "
+            "failed, and for ``mode=hierarchical``."
+        ),
+    )
     uncertainty_explanation: str = Field(
         description=(
             "Natural-language explanation from the judge call. A constant"
@@ -673,8 +700,9 @@ class ApiAnalyzeBulkResponse(ApiBulkInferenceResponseBase):
         ge=0.0,
         le=1.0,
         description=(
-            "Coverage-weighted mean of per-chunk faithfulness scores."
-            " Populated only for ``mode=hierarchical``."
+            "Coverage-weighted mean of per-chunk judge quality scores "
+            "(the weighted composite of faithfulness, coverage and "
+            "clarity). Populated only for ``mode=hierarchical``."
         ),
     )
     coding_trends: ApiCodingTrends | None = Field(
@@ -736,6 +764,33 @@ class ApiSummarizeBulkResponse(ApiBulkInferenceResponseBase):
         ge=0.0,
         le=1.0,
         description="Judge score for summary quality in the range 0.0-1.0; ``null`` when the batch was empty (no judge call was made).",
+    )
+    faithfulness: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Judge faithfulness in [0,1]; ``null`` when the judge call "
+            "failed or the batch was empty."
+        ),
+    )
+    coverage: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Judge coverage in [0,1]; ``null`` when the judge call "
+            "failed or the batch was empty."
+        ),
+    )
+    clarity: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Judge clarity in [0,1]; ``null`` when the judge call "
+            "failed or the batch was empty."
+        ),
     )
     output_language: str | None = Field(
         default=None,
@@ -828,6 +883,24 @@ class ApiSummarizeResponse(BaseModel):
         ge=0.0,
         le=1.0,
         description="Judge score for summary quality in the range 0.0-1.0.",
+    )
+    faithfulness: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Judge faithfulness in [0,1]; ``null`` when the judge call failed.",
+    )
+    coverage: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Judge coverage in [0,1]; ``null`` when the judge call failed.",
+    )
+    clarity: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Judge clarity in [0,1]; ``null`` when the judge call failed.",
     )
 
     @computed_field(description="Human-readable formatted output string.")

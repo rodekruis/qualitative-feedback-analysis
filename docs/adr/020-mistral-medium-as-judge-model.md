@@ -61,10 +61,12 @@ not on a discrimination or agreement benchmark. -->
   judge inputs from bad ones as reliably as `azure/gpt-5.4` did. The staged
   rollout and rollback conditions below are the mitigation for shipping
   without that evidence, not a substitute for it.
-- The two free-text judge sites (`summarize_bulk`, `summarize`) parse a bare
-  float and raise `AnalysisError` on anything else — a weaker or
-  differently-tuned model is more likely to break that contract than the
-  two structured sites. See the follow-up issue below.
+- All five judge call sites parse free text via regex (`parse_judge_components`
+  for `analyze`/`summarize`, a separate `SCORE:`/`EXPLANATION:` parser for
+  `assign_codes`) and raise `AnalysisError` on anything unparseable or out of
+  range — a weaker or differently-tuned model is more likely to break that
+  contract than a schema-enforced response would be. See the follow-up issue
+  below.
 - The `assign_codes` per-level judge has **no degradation path**: an
   out-of-range score raises `AnalysisError` and an unparseable structured
   response raises `LLMResponseParseError`, either of which fails the
@@ -145,6 +147,25 @@ Stated as observables, not feelings:
   `AggregateSummaryResultModel`) still do, and those are unaffected since
   they run on a different model. This closes the incompatibility this ADR's
   rollback conditions 3 and 4 both trace back to.
+- **Analyze judge returns three components, 2026-09-18** (#351): the analyze
+  judge prompt now asks for four lines —
+  `FAITHFULNESS:` / `COVERAGE:` / `CLARITY:` / `UNCERTAINTY_EXPLANATION:`
+  (explanation last, so the greedy explanation group cannot swallow a
+  component). Python parses the three floats and computes `quality_score`
+  from `QUALITY_SCORE_WEIGHTS`. The reply is still free text, still
+  regex-parsed — this widens the same decision as #314 rather than reversing
+  it. Hierarchical leaf judges share the parser; the hierarchical response
+  still returns the three components as `null`.
+- **Summarize judges return three components too, 2026-09-18** (#352): both
+  `summarize_bulk` and `summarize` now ask their judge for the same
+  `FAITHFULNESS:` / `COVERAGE:` / `CLARITY:` / `UNCERTAINTY_EXPLANATION:`
+  reply and reuse `parse_judge_components`/`QUALITY_SCORE_WEIGHTS` from #351
+  — no bare float and no second weights copy. The explanation line is parsed
+  but discarded: unlike `AnalysisResultModel`, the summarize result models
+  carry no `uncertainty_explanation` field. Out-of-range or unparseable
+  replies still raise `AnalysisError` → 502, unchanged from before this
+  ticket; the two summarise judges have no `null`-degradation path (the risk
+  the first Limitations bullet above describes).
 
 ## Follow-up
 

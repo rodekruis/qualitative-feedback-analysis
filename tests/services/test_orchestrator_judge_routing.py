@@ -62,10 +62,15 @@ TENANT_ID = "tenant-42"
 LLM_TIMEOUT = 30.0
 MAX_TOKENS = 100_000
 
-# A bare float on the first line is the contract the two summary judges parse
-# with ``_parse_judge_quality_score``; the rest of the string is ignored. It
-# doubles as generic free text for the map/reduce/analysis calls.
-JUDGE_PARSEABLE_TEXT = "0.75\nThe summary is faithful to the source."
+# The two summary judges parse FAITHFULNESS:/COVERAGE:/CLARITY: lines via
+# ``_parse_judge_quality_score`` (the same ``parse_judge_components`` the
+# analyse judge below uses). Weights are equal so the weighted total stays
+# 0.75, matching what the pre-#352 bare-float fixture asserted. It doubles as
+# generic free text for the map/reduce/analysis calls.
+JUDGE_PARSEABLE_TEXT = (
+    "FAITHFULNESS: 0.75\nCOVERAGE: 0.75\nCLARITY: 0.75\n"
+    "UNCERTAINTY_EXPLANATION: The summary is faithful to the source."
+)
 
 # The coding per-level judge parses ``SCORE:``/``EXPLANATION:`` lines instead
 # (``coding._parse_judge_response``) — a different provider-compatibility
@@ -75,10 +80,12 @@ JUDGE_PARSEABLE_TEXT = "0.75\nThe summary is faithful to the source."
 CODING_JUDGE_PARSEABLE_TEXT = "SCORE: 0.9\nEXPLANATION: clearly relevant"
 
 # The analyse judge (analyze_bulk and the hierarchical leaf judge) parses
-# QUALITY_SCORE:/UNCERTAINTY_EXPLANATION: lines instead
+# FAITHFULNESS:/COVERAGE:/CLARITY:/UNCERTAINTY_EXPLANATION: lines instead
 # (``analyze._parse_analyze_judge_response``) — same provider-compatibility
 # constraint as the coding judge above, different field names.
-ANALYZE_JUDGE_PARSEABLE_TEXT = "QUALITY_SCORE: 0.8\nUNCERTAINTY_EXPLANATION: ok"
+ANALYZE_JUDGE_PARSEABLE_TEXT = (
+    "FAITHFULNESS: 0.8\nCOVERAGE: 0.8\nCLARITY: 0.8\nUNCERTAINTY_EXPLANATION: ok"
+)
 
 
 class RoutingLLM(LLMPort):
@@ -94,8 +101,8 @@ class RoutingLLM(LLMPort):
     the one-shot coding pick, the concrete summary models for generation,
     and ``str`` for everything free-text — including the analyse/leaf and
     coding judges, both of which parse their own free-text format
-    (``QUALITY_SCORE:``/``UNCERTAINTY_EXPLANATION:`` and
-    ``SCORE:``/``EXPLANATION:`` respectively) out of that same ``str``
+    (``FAITHFULNESS:``/``COVERAGE:``/``CLARITY:``/``UNCERTAINTY_EXPLANATION:``
+    and ``SCORE:``/``EXPLANATION:`` respectively) out of that same ``str``
     contract, since some judge deployments reject any response schema
     outright — see ``JudgeResponse``'s docstring). ``text_payload``
     overrides the ``str`` case for callers whose free-text contract differs
@@ -470,8 +477,9 @@ class TestJudgeCallsRouteToTheJudgeClient:
     async def test_aggregate_summary_judge_call(self) -> None:
         """``summarize_bulk`` judges on the judge client, generates on the primary.
 
-        Its judge uses the free-text contract (a bare float parsed off the
-        first line), which the switch of client must not disturb.
+        Its judge uses the same FAITHFULNESS:/COVERAGE:/CLARITY: free-text
+        contract as the analyse judge, which the switch of client must not
+        disturb.
         """
         primary = RoutingLLM("primary")
         judge = RoutingLLM("judge")
