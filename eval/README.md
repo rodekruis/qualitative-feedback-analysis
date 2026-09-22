@@ -23,7 +23,8 @@ Call `run_metadata()` in `_common.py`. That is the single source.
 | `eval_script_sha`  | Commit of the script that sent the requests. |
 | `git_branch`       | Branch of that script. |
 
-CI sets `GIT_SHA` / `GIT_REF_NAME`. A local run reads `git`.
+CI sets `GIT_SHA` / `GIT_REF_NAME` because a CI checkout is detached.
+A local run reads `git`.
 Start a new script from `_common` (`uv run python eval/x.py`):
 
 ```python
@@ -111,13 +112,6 @@ The script never fails on a low score. It only reports results, and does
 not gate anything. A summary prints to the console along with a link to
 the run, and the full results land in Langfuse as a Dataset Run under the
 experiment `sensitivity-baseline`.
-
-Each run records what produced it. `deployed_version` and
-`deployed_commit` come from the backend's `/v1/health` endpoint and name
-the code that answered the requests; `eval_script_sha` and `git_branch`
-name the checkout the script ran from. In CI the workflow supplies the
-latter two, because a CI checkout is detached and `git` alone reports no
-useful branch.
 
 Every record there carries two scores. `correct` is 1 when the label
 matched the human's and 0 when it did not. `classification_case` says
