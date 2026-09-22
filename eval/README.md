@@ -109,6 +109,13 @@ not gate anything. A summary prints to the console along with a link to
 the run, and the full results land in Langfuse as a Dataset Run under the
 experiment `sensitivity-baseline`.
 
+Each run records what produced it. `deployed_version` and
+`deployed_commit` come from the backend's `/v1/health` endpoint and name
+the code that answered the requests; `eval_script_sha` and `git_branch`
+name the checkout the script ran from. In CI the workflow supplies the
+latter two, because a CI checkout is detached and `git` alone reports no
+useful branch.
+
 Every record there carries two scores. `correct` is 1 when the label
 matched the human's and 0 when it did not. `classification_case` says
 which kind of outcome it was: `TP` and `TN` are the correct ones, `FP` is
