@@ -16,7 +16,7 @@ labelled at that level, not that no code should apply.
 Each run records the backend's deployed ``version`` and ``commit`` (both
 read from ``GET /v1/health``), plus the eval script's own commit and
 branch, as separate run-metadata fields, since a ``dev`` deploy can run
-code the script was never checked out at (see ``_deployed_info``).
+code the script was never checked out at (see ``deployed_info``).
 
 Prerequisites
 -------------
@@ -32,21 +32,15 @@ Run::
 
 from __future__ import annotations
 
-import os
-import subprocess
 from collections.abc import Awaitable, Callable
-from pathlib import Path
 from typing import Any
 
-import dotenv
 import httpx
 from langfuse import Evaluation, get_client
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-dotenv.load_dotenv(REPO_ROOT / ".env")
+from _common import MAX_CONCURRENCY, load_env, resolve_config, run_metadata
 
 DATASET_NAME = "assign-codes/ukrain"
-DEFAULT_BASE_URL = "https://qfa-dev-backend.azurewebsites.net"
 MAX_CODES = 10
 # Sent explicitly, rather than left out of the request, so a future change
 # to the server's default cannot silently change what an eval run measures.
@@ -54,50 +48,6 @@ MAX_CODES = 10
 # confidence.
 CONFIDENCE_THRESHOLD: float | None = None
 REQUEST_TIMEOUT_SECONDS = 180.0
-# run_experiment defaults to 50 concurrent items, which exhausts the dev
-# backend's small Postgres connection pool (usage tracking then fails, and
-# every request slows down). Keep this well under that pool's capacity.
-MAX_CONCURRENCY = 5
-
-
-def _resolve_config() -> tuple[str, str]:
-    """The backend base URL and bearer token for this run.
-
-    Exits with a clear message when ``QFA_DEV_API_KEY`` is missing, instead
-    of letting every dataset item fail separately after the run has started.
-    """
-    base_url = os.environ.get("QFA_API_BASE_URL", DEFAULT_BASE_URL)
-    api_key = os.environ.get("QFA_DEV_API_KEY")
-    if not api_key:
-        raise SystemExit(
-            "QFA_DEV_API_KEY is not set. See eval/README.md for prerequisites."
-        )
-    return base_url, api_key
-
-
-def _deployed_info(base_url: str) -> dict[str, str]:
-    """The package version and git commit that ``base_url`` reports at ``/v1/health``.
-
-    Both default to ``"unknown"`` when the health check fails, so a run
-    still proceeds against a backend that is reachable for
-    ``/v1/assign-codes`` but does not answer ``/v1/health`` for some other
-    reason. ``commit`` is the field that actually identifies the deployed
-    code: ``version`` only changes on a semantic-release bump, so an
-    ephemeral ``dev`` deploy (``build-from-commit.yaml``) can carry no
-    version bump at all and would otherwise be indistinguishable from
-    whatever was deployed before it.
-    """
-    try:
-        response = httpx.get(f"{base_url}/v1/health", timeout=REQUEST_TIMEOUT_SECONDS)
-        response.raise_for_status()
-        data = response.json()
-        return {
-            "deployed_version": str(data["version"]),
-            "deployed_commit": str(data["commit"]),
-        }
-    except (httpx.HTTPError, KeyError) as e:
-        print(f"warning: could not read {base_url}/v1/health ({e})")
-        return {"deployed_version": "unknown", "deployed_commit": "unknown"}
 
 
 def _make_run_assign_codes(
@@ -194,62 +144,27 @@ def level_3_correct(
     return _level_evaluation(3, output, expected_output)
 
 
-def _git_output(*args: str) -> str:
-    """Run a git command in the repo; empty string on any failure."""
-    # Fixed executable, fixed-shape args from this file only — not user input.
-    result = subprocess.run(  # noqa: S603
-        ["git", *args],  # noqa: S607
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    return result.stdout.strip() if result.returncode == 0 else ""
-
-
-def _git_metadata() -> dict[str, str]:
-    """The commit SHA and branch that this eval *script* was checked out at.
-
-    This names the code that sent the requests, not the code that answered
-    them — the backend under test may be running something else entirely
-    (see ``_deployed_info``). CI sets ``GIT_SHA``/``GIT_REF_NAME`` (from
-    the GitHub Actions context, which knows the ref even in a detached-HEAD
-    checkout); a local run falls back to asking git directly.
-    """
-    sha = os.environ.get("GIT_SHA") or _git_output("rev-parse", "HEAD") or "unknown"
-    branch = (
-        os.environ.get("GIT_REF_NAME")
-        or _git_output("rev-parse", "--abbrev-ref", "HEAD")
-        or "unknown"
-    )
-    return {"eval_script_sha": sha, "git_branch": branch}
-
-
 def main() -> None:
     """Run the experiment against the full dataset and print a summary."""
-    base_url, api_key = _resolve_config()
-    deployed = _deployed_info(base_url)
-    git_meta = _git_metadata()
-    run_metadata = {
-        **git_meta,
-        **deployed,
-        "confidence_threshold": CONFIDENCE_THRESHOLD,
-    }
+    load_env()
+    base_url, api_key = resolve_config()
+    print(f"Backend: {base_url}")
+    metadata = run_metadata(base_url, confidence_threshold=CONFIDENCE_THRESHOLD)
 
     langfuse = get_client()
     dataset = langfuse.get_dataset(DATASET_NAME)
     result = dataset.run_experiment(
         name="assign-codes eval",
         run_name=(
-            f"assign-codes eval (deployed {deployed['deployed_version']} @ "
-            f"{deployed['deployed_commit'][:7]}, script {git_meta['git_branch']} @ "
-            f"{git_meta['eval_script_sha'][:7]})"
+            f"assign-codes eval (deployed {metadata['deployed_version']} @ "
+            f"{metadata['deployed_commit'][:7]}, script {metadata['git_branch']} @ "
+            f"{metadata['eval_script_sha'][:7]})"
         ),
         description="Per-level accuracy of POST /v1/assign-codes against ground truth.",
         task=_make_run_assign_codes(base_url, api_key),
         evaluators=[level_1_correct, level_2_correct, level_3_correct],
         max_concurrency=MAX_CONCURRENCY,
-        metadata=run_metadata,
+        metadata=metadata,
     )
     print(result.format())
 
