@@ -5,15 +5,20 @@
 # environments).
 #
 # Flow:
-#   1. Read the GitHub Release body for the given tag.
-#   2. Extract the image digest (the first `sha256:<64 hex>` in the body).
-#      The digest is written into the release body by release.yaml when the
-#      draft is created, and is never mutated afterward.
-#   3. Update the target App Service to run that digest.
+#   1. Resolve the image digest for `qfa-backend:<tag>` from Azure Container
+#      Registry (ACR) — the registry, not the release body, decides which
+#      bytes a tag names.
+#   2. Verify that the release body names the same digest
+#      (.github/scripts/verify_release_digest.py). The release body is
+#      editable Markdown, so a disagreement aborts the deploy: forging one
+#      now needs both GitHub release-edit access and ACR push access, not
+#      either alone. See ADR-023.
+#   3. Update the target App Service to run the verified digest.
 #
-# The release is the source of truth for "which digest corresponds to which
-# version"; the App Service config is the source of truth for "what's running
-# right now". Deployment is a pointer change, not a copy or rebuild.
+# The registry is the source of truth for "which bytes does this tag name";
+# the release body is a mandatory, independently-editable witness that must
+# agree with it. The App Service config is the source of truth for "what's
+# running right now". Deployment is a pointer change, not a copy or rebuild.
 #
 # Permissions note: `contents: write` is required (not just read) because
 # draft releases are only visible to GITHUB_TOKEN with push access, and the
@@ -43,23 +48,13 @@ jobs:
     outputs:
       digest: ${{ steps.resolve.outputs.digest }}
     steps:
-      - name: Resolve image digest from release body
-        id: resolve
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          BODY=$(gh release view "${{ inputs.release_tag }}" \
-            --repo "$GITHUB_REPOSITORY" \
-            --json body --jq .body)
-          DIGEST=$(printf '%s\n' "$BODY" | grep -oE 'sha256:[a-f0-9]{64}' | head -n 1 || true)
-          if [ -z "$DIGEST" ]; then
-            echo "::error::Release '${{ inputs.release_tag }}' has no image digest in its body."
-            echo "::error::Was it ever built? release.yaml writes the digest into the release body when the draft is created."
-            exit 1
-          fi
-          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
-          echo "Deploying ${{ inputs.release_tag }} ($DIGEST) to ${{ inputs.environment }}"
+      # A release event checks out the tag's commit by default, and an older
+      # draft's commit predates this verification script. Read it from the
+      # default branch instead, same rationale as _is-latest-release.yaml.
+      - name: Check out the verification script from the default branch
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.repository.default_branch }}
 
       - name: Login to Azure
         uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
@@ -67,6 +62,46 @@ jobs:
           client-id: ${{ vars.AZ_CLIENT_ID }}
           tenant-id: ${{ vars.AZ_TENANT_ID }}
           subscription-id: ${{ vars.AZ_SUBSCRIPTION_ID }}
+
+      - name: Resolve image digest from ACR
+        id: registry
+        env:
+          # Bind inputs to env vars rather than interpolating ${{ }} straight
+          # into the run script: a release tag is externally influenced (the
+          # auto-staging path feeds it github.event.release.tag_name), and
+          # splicing it into shell would be a script-injection vector.
+          TAG: ${{ inputs.release_tag }}
+          ACR_NAME: ${{ vars.AZ_ACR_NAME }}
+        run: |
+          set -euo pipefail
+          if ! DIGEST=$(az acr repository show \
+              --name "$ACR_NAME" \
+              --image "qfa-backend:$TAG" \
+              --query 'digest' -o tsv); then
+            echo "::error::No image tagged qfa-backend:$TAG found in ACR."
+            echo "::error::Was it ever built? release.yaml pushes qfa-backend:<tag> when the draft release is created."
+            exit 1
+          fi
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "Resolved qfa-backend:$TAG -> $DIGEST from the registry"
+
+      - name: Verify the release body agrees with the registry
+        id: resolve
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.release_tag }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          REGISTRY_DIGEST: ${{ steps.registry.outputs.digest }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json body --jq .body \
+            | python3 .github/scripts/verify_release_digest.py \
+                --tag "$TAG" \
+                --registry-digest "$REGISTRY_DIGEST" \
+              >> "$GITHUB_OUTPUT"
+          echo "Deploying $TAG ($REGISTRY_DIGEST) to $ENVIRONMENT"
 
       - name: Deploy image to App Service
         env:

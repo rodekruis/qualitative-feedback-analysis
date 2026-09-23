@@ -43,8 +43,34 @@ jobs:
     permissions:
       contents: write
 
+  # Re-reads the release from the API and rejects a draft. The release event
+  # payload is a snapshot at publish time, not the authority on current state.
+  # This should be unreachable in practice — the event only fires once a
+  # release is published — so it exists for gate uniformity across all three
+  # staging/prd entry points, not as the substantive integrity check for this
+  # path. That check is the ACR/release-body digest cross-check inside
+  # _deploy-release.yaml (ADR-023), which this path inherits regardless.
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject drafts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          IS_DRAFT=$(gh release view "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json isDraft --jq .isDraft)
+          if [ "$IS_DRAFT" = "true" ]; then
+            echo "::error::Release $TAG re-reads as a draft on a release:published event."
+            echo "::error::This should be unreachable — investigate before retrying."
+            exit 1
+          fi
+          echo "$TAG is a published release — OK to auto-deploy to staging."
+
   terraform:
-    needs: guard
+    needs: [guard, verify]
     if: needs.guard.outputs.is_greatest == 'true'
     uses: ./.github/workflows/terraform.yaml
     with:
@@ -56,7 +82,7 @@ jobs:
     secrets: inherit
 
   deploy:
-    needs: [guard, terraform]
+    needs: [guard, terraform, verify]
     if: needs.guard.outputs.is_greatest == 'true'
     uses: ./.github/workflows/_deploy-release.yaml
     with:
