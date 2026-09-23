@@ -96,9 +96,11 @@ principals would share a display name.
   and manual.
 - `terraform destroy` on an environment now stops on the identity's
   `prevent_destroy`, as it already does on the server and the DNS zone.
-- The app reads one new setting, `DB_AAD_CLIENT_ID`. It and the Terraform change
-  must ship together: between them the app would authenticate as the
-  system-assigned identity while `DB_USER` names the user-assigned one.
+- The app reads one new setting, `DB_AAD_CLIENT_ID`. Terraform must not get
+  ahead of the image: it would set `DB_USER` to the user-assigned identity while
+  an older image still authenticates as the system-assigned one. The other order
+  is inert, because the setting is unset until Terraform writes it, which is what
+  makes step 1 of the cutover safe.
 
 ## When to revisit
 
