@@ -11,6 +11,7 @@ real money.
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `assign_codes_eval.py`    | Scores `POST /v1/assign-codes` against the Langfuse `assign-codes/ukrain` dataset, per coding level.                |
 | `evaluate_sensitivity.py` | Scores `POST /v1/detect-sensitive` against any Langfuse dataset of labelled records, named on the command line.     |
+| `upload_prompts.py`       | Checks and uploads the analyze prompts to a Langfuse dataset, e.g. `analyze/prompts-v1`. Makes no LLM call.         |
 
 ## Shared helpers
 
@@ -152,3 +153,45 @@ It reuses the secrets and variables listed above for
 `assign_codes_eval.py` and needs nothing of its own. The backend URL is
 not among them: CI measures the dev backend, which is the script's
 default.
+
+## Running `upload_prompts.py`
+
+This script checks and uploads the working YAML file behind the analyze
+prompts dataset. It calls no endpoint, so it makes no LLM call and costs
+nothing.
+
+Set `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` for a Langfuse project
+at `LANGFUSE_HOST`, then:
+
+```bash
+uv run python eval/upload_prompts.py --dataset analyze/prompts-v1 \
+  --input .corpus_work/analyze-pool/prompts-v1.yaml --dry-run
+
+uv run python eval/upload_prompts.py --dataset analyze/prompts-v1 \
+  --input .corpus_work/analyze-pool/prompts-v1.yaml
+```
+
+`--dry-run` runs every check and reports what would change, but writes
+nothing. `--allow-overwrite` is needed to replace a dataset that already
+holds runs, or an item whose content changed since the last upload; without
+it, either case stops the script (`upload_items()` in `_common.py`).
+
+Each record in the input file is one prompt:
+
+```yaml
+- id: P01-en # <prompt_id>-<language>
+  prompt: Summarise the main themes and topics raised across these feedback entries, grouped by frequency
+  metadata:
+    prompt_id: P01
+    language: en
+    twin_id: null # links to the id of a translation, e.g. P01-es
+    family: themes # a known family, or "unplanted"
+    use_case: analyze-bulk
+    source: QFA training slides v1
+    supplied_by: Daan
+    supplied_on: "09-09-2026"
+```
+
+The script stops before uploading anything if two records share an `id`, if
+a `family` is neither a known one nor `unplanted`, or if a record is
+missing one of the metadata fields above.
