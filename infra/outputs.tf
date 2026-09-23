@@ -27,3 +27,13 @@ output "postgres_database_name" {
   description = "Application PostgreSQL database name"
   value       = azurerm_postgresql_flexible_server_database.app.name
 }
+
+output "postgres_admin_identity_name" {
+  description = "Name of the dedicated identity that is the PostgreSQL Entra admin — also the in-database role name"
+  value       = azurerm_user_assigned_identity.db_admin.name
+}
+
+output "postgres_admin_identity_principal_id" {
+  description = "Object ID of the PostgreSQL Entra admin identity — the OID `pgaadauth_create_principal_with_oid` needs"
+  value       = azurerm_user_assigned_identity.db_admin.principal_id
+}

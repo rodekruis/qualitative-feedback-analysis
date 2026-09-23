@@ -6,7 +6,11 @@ locals {
   keyvault_name         = "qfa-${local.env}-keyvault"
   managed_identity_name = "qfa-${local.env}-github"
   github_environment    = local.env
-  db_aad_principal_name = local.app_name # system-assigned MI name matches the App Service name
+  db_identity_name      = "qfa-${local.env}-db-admin"
+  # Postgres role name == the user-assigned identity's name. Deliberately not
+  # the App Service identity: a rebuilt App Service gets a new principal ID and
+  # loses the in-database grant (ADR-023).
+  db_aad_principal_name = local.db_identity_name
 
   # Premium (Pv3) only where user load justifies it — ADR-019.
   app_service_plan_sku = lookup(var.app_service_plan_sku_by_env, local.env, "B2")

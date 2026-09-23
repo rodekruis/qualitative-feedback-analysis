@@ -62,11 +62,27 @@ resource "azurerm_postgresql_flexible_server" "db" {
   }
 }
 
+# Dedicated Entra identity for the database admin role (ADR-023). Its principal
+# ID survives an App Service rebuild, which the App Service system-assigned
+# identity's does not — that mismatch is what locked the app out of its own DB
+# (#177). `prevent_destroy` for the same reason as the server itself: the
+# in-database role is bound to this principal ID, and re-creating the identity
+# means re-granting by hand.
+resource "azurerm_user_assigned_identity" "db_admin" {
+  name                = local.db_identity_name
+  resource_group_name = data.azurerm_resource_group.main.name
+  location            = data.azurerm_resource_group.main.location
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
 resource "azurerm_postgresql_flexible_server_active_directory_administrator" "db" {
   server_name         = azurerm_postgresql_flexible_server.db.name
   resource_group_name = data.azurerm_resource_group.main.name
   tenant_id           = var.tenant_id
-  object_id           = azurerm_linux_web_app.backend.identity[0].principal_id
+  object_id           = azurerm_user_assigned_identity.db_admin.principal_id
   principal_name      = local.db_aad_principal_name
   principal_type      = "ServicePrincipal"
 }

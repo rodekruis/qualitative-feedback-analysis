@@ -34,8 +34,13 @@ resource "azurerm_linux_web_app" "backend" {
   webdeploy_publish_basic_authentication_enabled = false
   virtual_network_subnet_id                      = azurerm_subnet.qfa_backend_snet.id
 
+  # The system-assigned identity still serves Key Vault references and the ACR
+  # pull (both read `identity[0].principal_id` below, which resolves to the
+  # system-assigned principal while the type includes it). The user-assigned one
+  # exists only for Postgres — see ADR-023.
   identity {
-    type = "SystemAssigned"
+    type         = "SystemAssigned, UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.db_admin.id]
   }
 
   site_config {
@@ -65,13 +70,14 @@ resource "azurerm_linux_web_app" "backend" {
       LLM_API_KEY   = "@Microsoft.KeyVault(SecretUri=https://${local.keyvault_name}.vault.azure.net/secrets/llm-api-key)"
       AUTH_API_KEYS = "@Microsoft.KeyVault(SecretUri=https://${local.keyvault_name}.vault.azure.net/secrets/auth-api-keys)"
 
-      DB_URL         = ""
-      DB_HOST        = azurerm_postgresql_flexible_server.db.fqdn
-      DB_PORT        = "5432"
-      DB_NAME        = var.postgres_db_name
-      DB_AUTH_MODE   = "entra"
-      DB_AAD_SCOPE   = var.db_aad_scope
-      DB_USER        = local.db_aad_principal_name
+      DB_URL           = ""
+      DB_HOST          = azurerm_postgresql_flexible_server.db.fqdn
+      DB_PORT          = "5432"
+      DB_NAME          = var.postgres_db_name
+      DB_AUTH_MODE     = "entra"
+      DB_AAD_SCOPE     = var.db_aad_scope
+      DB_AAD_CLIENT_ID = azurerm_user_assigned_identity.db_admin.client_id
+      DB_USER          = local.db_aad_principal_name
 
       WEBSITES_ENABLE_APP_SERVICE_STORAGE  = "false"
       WEBSITES_PORT                        = "8000"
@@ -115,19 +121,48 @@ resource "azurerm_linux_web_app" "backend" {
       tags["deployed_by"],
     ]
   }
+
+  # The container runs `python -m qfa.cli.migrate` before uvicorn binds the
+  # port (entrypoint.sh), so on a fresh environment the Entra admin must exist
+  # before the app does or the first boot crash-loops on an unauthorised DB.
+  # This edge was impossible while the admin pointed at this app's identity;
+  # ADR-023 reversed it.
+  depends_on = [azurerm_postgresql_flexible_server_active_directory_administrator.db]
 }
 
-# App Service identity: read secrets from Key Vault
+# App Service identity: read secrets from Key Vault.
+#
+# Both assignments below hang off the *system-assigned* principal, so both are
+# replaced whenever the App Service is recreated. `create_before_destroy` keeps
+# the old assignment alive until the new one exists — without it Terraform
+# destroys first, leaving a window in which the rebuilt app can resolve no Key
+# Vault reference and pull no image. Assignment names are provider-generated
+# GUIDs, so the overlap cannot collide.
+#
+# `skip_service_principal_aad_check` suppresses the provider's up-front
+# principal lookup: on a first apply the identity is minutes old and Entra
+# replication lag makes that check fail with PrincipalNotFound even though the
+# principal is valid.
 resource "azurerm_role_assignment" "app_keyvault_secrets" {
-  scope                = azurerm_key_vault.main.id
-  role_definition_name = "Key Vault Secrets User"
-  principal_id         = azurerm_linux_web_app.backend.identity[0].principal_id
+  scope                            = azurerm_key_vault.main.id
+  role_definition_name             = "Key Vault Secrets User"
+  principal_id                     = azurerm_linux_web_app.backend.identity[0].principal_id
+  skip_service_principal_aad_check = true
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 
 # Grant the App Service pull access to ACR
 resource "azurerm_role_assignment" "app_acr_repository_reader" {
-  scope                = local.acr_id
-  role_definition_name = "Container Registry Repository Reader"
-  principal_id         = azurerm_linux_web_app.backend.identity[0].principal_id
+  scope                            = local.acr_id
+  role_definition_name             = "Container Registry Repository Reader"
+  principal_id                     = azurerm_linux_web_app.backend.identity[0].principal_id
+  skip_service_principal_aad_check = true
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
