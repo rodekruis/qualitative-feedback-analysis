@@ -133,13 +133,35 @@ longer outage and a separate PR.
 
 One-time, per environment, for every environment that existed before
 [ADR-023](../adr/023-dedicated-identity-as-postgres-admin.md). **Run the
-re-grant before the full apply** — while the old admin still works. Doing the
-apply first swaps the server's Entra admin to a principal that has no role in
-the database, and nothing can then log in to create one.
+re-grant before the full apply**, while the old admin still works. The apply
+hands the server's Entra admin to `qfa-<env>-db-admin`. The tables stay owned by
+`qfa-<env>-backend`. An app that connects before the re-grant therefore gets
+`permission denied for table ...`.
 
 Do one environment at a time and verify before moving on.
 
-**1. Create the identity only.** Nothing else moves yet.
+> **Freeze releases for the environment you are cutting over.** Every path that
+> puts a release into an environment applies Terraform for that environment
+> first (see [Release flow](release-flow.md#infrastructure-changes)). Between
+> merging ADR-023 and finishing the cutover, a `Release` run applies the admin
+> swap to `dev`, and publishing that release applies it to `staging`. Neither
+> waits for step 4.
+
+**1. Put `db_grant` in the environment.** The module ships with ADR-023, so the
+image running in the environment does not have it yet. Nothing below deploys it
+for you, because every deploy path applies Terraform first.
+
+For `dev`, run the **Build from commit** workflow with `deploy_to_dev: true`.
+It pushes an image and repoints the App Service. It does not run Terraform,
+which is what makes it safe here.
+
+For `staging` and `prd` there is no non-release image path, by design. Skip this
+step and run the statements directly in step 4 instead.
+
+The Python change is inert until Terraform sets `DB_AAD_CLIENT_ID`, so deploying
+it on its own changes no behavior.
+
+**2. Create the identity only.** Nothing else moves yet.
 
 ```bash
 cd infra
@@ -147,17 +169,22 @@ terraform workspace select "$ENV"
 terraform apply -target=azurerm_user_assigned_identity.db_admin
 ```
 
-**2. Read its name and object ID.**
+**3. Read its name and object ID.** Copy both values somewhere you can read
+later. Step 4 runs in a shell inside the container, which inherits nothing from
+the shell you are in now.
 
 ```bash
-DB_ADMIN_NAME=$(terraform output -raw postgres_admin_identity_name)
-DB_ADMIN_OID=$(terraform output -raw postgres_admin_identity_principal_id)
+terraform output -raw postgres_admin_identity_name
+terraform output -raw postgres_admin_identity_principal_id
 ```
 
-**3. Re-grant from inside the still-working app.** `db_grant` connects as the
-current admin (the App Service system-assigned identity), creates the new
-principal bound to `$DB_ADMIN_OID`, grants it the old role, and reassigns
-everything the old role owns. It is idempotent, so a re-run is safe.
+**4. Re-grant from inside the still-working app.** `db_grant` connects as the
+current admin, which is the App Service system-assigned identity. It creates the
+new principal bound to the object ID from step 3. It then makes the old role a
+member of the new one and reassigns everything the old role owns. It is
+idempotent, so a re-run is safe. It also runs in one transaction and fails
+closed. A `permission denied` therefore leaves the old admin intact, and you can
+stop here.
 
 ```bash
 az webapp ssh --name "qfa-${ENV}-backend" --resource-group "$TF_VAR_resource_group_name"
@@ -165,11 +192,54 @@ az webapp ssh --name "qfa-${ENV}-backend" --resource-group "$TF_VAR_resource_gro
 # inside the container:
 .venv/bin/python -m qfa.cli.db_grant \
   --principal-name qfa-<env>-db-admin \
-  --object-id <the DB_ADMIN_OID from step 2> \
+  --object-id <the object ID from step 3> \
   --from-role qfa-<env>-backend
 ```
 
-**4. Apply in full.**
+On `staging` and `prd`, where step 1 was skipped, run the same statements through
+the engine the deployed image already has:
+
+```bash
+az webapp ssh --name "qfa-${ENV}-backend" --resource-group "$TF_VAR_resource_group_name"
+
+# inside the container:
+.venv/bin/python - <<'PY'
+import asyncio
+from sqlalchemy import text
+from qfa.adapters.db import create_async_engine_from_settings
+from qfa.settings import DatabaseSettings
+
+NEW = "qfa-<env>-db-admin"
+OLD = "qfa-<env>-backend"
+OID = "<the object ID from step 3>"
+
+async def main():
+    engine = create_async_engine_from_settings(DatabaseSettings())
+    async with engine.begin() as conn:
+        await conn.execute(
+            text("SELECT pgaadauth_create_principal_with_oid(:n, :o, 'service', true, false)"),
+            {"n": NEW, "o": OID},
+        )
+        await conn.execute(text(f'GRANT "{NEW}" TO "{OLD}"'))
+        await conn.execute(text(f'REASSIGN OWNED BY "{OLD}" TO "{NEW}"'))
+        await conn.execute(text(f'GRANT ALL ON SCHEMA public TO "{NEW}"'))
+    await engine.dispose()
+
+asyncio.run(main())
+PY
+```
+
+This snippet is not idempotent. On a re-run, delete the
+`pgaadauth_create_principal_with_oid` call first, because the role already
+exists. The transaction fails closed either way.
+
+`GRANT "<new>" TO "<old>"` runs in that direction on purpose. It gives the
+executing role the privileges of both roles that `REASSIGN OWNED` requires. It
+also leaves the old role able to reach the reassigned tables, which is what makes
+the rollback below work. Granting both ways is not possible, because PostgreSQL
+rejects circular role membership.
+
+**5. Apply in full.**
 
 ```bash
 terraform apply
@@ -177,11 +247,11 @@ terraform apply
 
 Read the plan first. Expected: the Entra administrator **replaced**, the web app
 **updated in place** (identity type plus the `DB_AAD_CLIENT_ID` / `DB_USER`
-settings), the identity already created in step 1, and no change to the two role
+settings), the identity already created in step 2, and no change to the two role
 assignments. If the web app is **replaced** (`-/+`), stop — that regenerates the
 system-assigned principal and breaks Key Vault references and the ACR pull.
 
-**5. Verify.** The container restarts and re-runs migrations under the new
+**6. Verify.** The container restarts and re-runs migrations under the new
 principal:
 
 ```bash
@@ -195,13 +265,14 @@ error.
 **Rollback.** Point `object_id` on
 `azurerm_postgresql_flexible_server_active_directory_administrator.db` back at
 `azurerm_linux_web_app.backend.identity[0].principal_id`, drop the
-`DB_AAD_CLIENT_ID` setting, and re-apply. Step 3 granted and reassigned but
-revoked nothing, so the old role still logs in.
+`DB_AAD_CLIENT_ID` setting, and re-apply. The old role still logs in, and
+nothing was revoked. It also still reaches the tables it no longer owns, because
+step 4 made it a member of the new role.
 
 **Optional, afterwards.** The old `qfa-<env>-backend` role owns nothing once
-step 3 has run and can be dropped with `DROP ROLE "qfa-<env>-backend"`. That is
-irreversible and closes the rollback above — leave it until the environment has
-been stable for a while.
+step 4 has run. You can drop it with `DROP ROLE "qfa-<env>-backend"`. That is
+irreversible and closes the rollback above, so leave it until the environment
+has been stable for a while.
 
 ## The DB admin identity was recreated
 

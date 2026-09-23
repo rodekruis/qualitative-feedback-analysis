@@ -139,6 +139,14 @@ resource "azurerm_linux_web_app" "backend" {
 # Vault reference and pull no image. Assignment names are provider-generated
 # GUIDs, so the overlap cannot collide.
 #
+# The flag propagates to what these assignments depend on, the web app
+# included, so a future plan that *replaces* the web app would have to create
+# the replacement before destroying the original. That is impossible for a
+# globally unique azurewebsites.net name, and the apply errors rather than
+# churning. Accepted deliberately: a web app replacement is already a
+# stop-and-think event (see the cutover runbook), while a rebuild leaving the
+# app with no Key Vault or ACR access is the failure this closes.
+#
 # `skip_service_principal_aad_check` suppresses the provider's up-front
 # principal lookup: on a first apply the identity is minutes old and Entra
 # replication lag makes that check fail with PrincipalNotFound even though the

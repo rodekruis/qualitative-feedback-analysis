@@ -73,9 +73,10 @@ identity gives the stable principal ID this ADR needs without any of that.
   database.
 - **Pro**: the admin no longer depends on the app, which frees the app to depend
   on the admin — the ordering migrations actually need.
-- **Con**: the role is not auto-provisioned on first connect for a *new*
-  environment the way an admin's own role is; existing environments need a
-  one-time re-grant.
+- **Con**: an existing environment's tables stay owned by `qfa-<env>-backend`.
+  Azure auto-provisions the new admin's own role on first connect, so it can log
+  in. It owns nothing until the one-time transfer has run, and reads
+  `permission denied for table ...` before then. A new environment needs nothing.
 - **Con**: one more Entra principal per environment, and one more app setting.
 
 ### Option D: Reuse the name `qfa-<env>-backend` for the new identity
@@ -110,4 +111,4 @@ principals would share a display name.
 
 ## Participants
 
-teeuwski, mariushelf
+Olaf
