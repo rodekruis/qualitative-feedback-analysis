@@ -41,6 +41,10 @@ Three human actions drive the whole flow: run the Release workflow, click Publis
 > [!NOTE]
 > The manual `Promote to dev` and `Promote to staging` workflows exist as **secondary** paths — used to restore an environment to a specific released tag outside the normal forward flow. Typical uses: re-point dev back to a release after an ephemeral feature-branch build (see below), roll staging back to a prior release, or re-stage an older release for re-validation. They are not part of the normal forward flow.
 
+### Release notes
+
+The draft release body lists the merged pull requests since the previous release, grouped by label. A Deployment section with the image and digest follows the list. The `Generate release notes` step in `release.yaml` builds the list. This step calls GitHub's Release Notes API, `gh api repos/OWNER/REPO/releases/generate-notes`. The API reads `.github/release.yml` for the label categories. A pull request without a matching label falls into "Other Changes". It still appears in the list, grouped by pull request instead of by commit. [Issue #225](https://github.com/rodekruis/qualitative-feedback-analysis/issues/225) explains why the team chose pull-request grouping over a commit-level changelog.
+
 ### Rollback (e.g. v0.4.0 → v0.3.7)
 
 1. Human runs **Promote to prd** with input `v0.3.7`. Verify passes (v0.3.7 is published and final). App Service is repointed to v0.3.7's digest, which is still sitting in ACR. Done. Manual promotion is deliberately **version-unguarded** — deploying an *older* version is the whole point of a rollback, so the latest-release guard (which only governs the automatic publish path) does not apply here.

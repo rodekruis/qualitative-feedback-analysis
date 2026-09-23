@@ -129,19 +129,17 @@ jobs:
         run: |
           echo "::notice::No release — no conventional commits since last tag, or the forced bump level produced no change."
 
+      # Grouped by merged PR (via GitHub's Release Notes API), not by raw
+      # commit — see .github/release.yml for the label categories and
+      # docs/operations/release-flow.md for why (#225).
       - name: Generate release notes
         if: steps.semrel.outputs.released == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Pin to the same version as the step above, and inject the same
-          # GitPython pin — see #303 for why.
-          pipx install python-semantic-release==10.5.3
-          # --force: gitpython is already present as a transitive dependency
-          # (at the broken 3.1.60+), and `pipx inject` no-ops instead of
-          # downgrading it unless forced.
-          pipx inject --force python-semantic-release "gitpython==3.1.59"
-          semantic-release changelog
-          # Extract only the latest version's section from CHANGELOG.md
-          awk '/^## v/{if(found) exit; found=1} found' CHANGELOG.md > release_notes.md
+          gh api "repos/${{ github.repository }}/releases/generate-notes" \
+            -f tag_name="${{ steps.semrel.outputs.tag }}" \
+            --jq .body > release_notes.md
 
       - name: Login to Azure
         if: steps.semrel.outputs.released == 'true'

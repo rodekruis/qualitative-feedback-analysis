@@ -1,0 +1,25 @@
+# Configures GitHub's auto-generated release notes (used by the "Generate
+# release notes" step in .github/workflows/release.yaml). Groups merged PRs
+# since the last release by label. Most PRs today carry no label and land in
+# "Other Changes" — labeling is optional, and unlabeled PRs still show up,
+# grouped by PR rather than by commit. See docs/operations/release-flow.md.
+changelog:
+  categories:
+    - title: Security
+      labels:
+        - security
+    - title: Features
+      labels:
+        - enhancement
+    - title: Fixes
+      labels:
+        - bug
+    - title: Documentation
+      labels:
+        - documentation
+    - title: Dependencies
+      labels:
+        - dependencies
+    - title: Other Changes
+      labels:
+        - "*"
