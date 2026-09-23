@@ -185,11 +185,25 @@ class _FakeItem:
     metadata: Any = None
 
 
+class _FakeExperiments:
+    """Stands in for ``langfuse.api.experiments``, the v4 "has runs" read path."""
+
+    def __init__(self, client: "FakeLangfuseClient") -> None:
+        self._client = client
+
+    def list(
+        self, *, from_start_time: Any, dataset_id: str, limit: int, **_kwargs: Any
+    ) -> SimpleNamespace:
+        run_count = self._client._runs.get(dataset_id, 0)
+        return SimpleNamespace(data=list(range(min(run_count, limit))))
+
+
 class FakeLangfuseClient:
     """A duck-typed double for the Langfuse SDK client, for :func:`upload_items`.
 
-    ``datasets`` seeds existing dataset items, keyed by dataset name.
-    ``runs`` seeds each dataset's run count (0 when omitted).
+    ``datasets`` seeds existing dataset items, keyed by dataset name (used
+    here as the fake's dataset id too). ``runs`` seeds each dataset's run
+    count (0 when omitted).
     """
 
     def __init__(
@@ -201,18 +215,12 @@ class FakeLangfuseClient:
         self._runs = runs or {}
         self.created_datasets: list[str] = []
         self.written_items: list[dict[str, Any]] = []
+        self.api = SimpleNamespace(experiments=_FakeExperiments(self))
 
     def get_dataset(self, name: str) -> SimpleNamespace:
         if name not in self._datasets:
             raise NotFoundError(body={"message": "not found"})
-        return SimpleNamespace(items=self._datasets[name])
-
-    def get_dataset_runs(
-        self, *, dataset_name: str, page: int, limit: int
-    ) -> SimpleNamespace:
-        return SimpleNamespace(
-            meta=SimpleNamespace(total_items=self._runs.get(dataset_name, 0))
-        )
+        return SimpleNamespace(id=name, items=self._datasets[name])
 
     def create_dataset(self, *, name: str, **_kwargs: Any) -> None:
         self.created_datasets.append(name)

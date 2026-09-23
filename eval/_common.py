@@ -12,6 +12,7 @@ import os
 import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -147,6 +148,11 @@ def run_metadata(base_url: str, **extra: Any) -> dict[str, Any]:
     return {**git_metadata(), **deployed_info(base_url), **extra}
 
 
+# Old enough to predate any Langfuse deployment: the Experiments API requires
+# a lower bound, and this check only cares whether any experiment exists at all.
+_RUNS_CHECK_EPOCH = datetime(2020, 1, 1, tzinfo=UTC)
+
+
 @dataclass
 class UploadReport:
     """Full item ids (``<dataset>:<bare id>``) from one :func:`upload_items` call."""
@@ -190,8 +196,13 @@ def upload_items(
         is_new_dataset = True
 
     if not is_new_dataset:
-        runs = langfuse.get_dataset_runs(dataset_name=dataset_name, page=1, limit=1)
-        if runs.meta.total_items > 0 and not allow_overwrite:
+        # get_dataset_runs() hits a legacy v3 endpoint that 404s unconditionally
+        # on a Langfuse v4 "events_only" deployment; the Experiments API is the
+        # v4 read path for "does this dataset have any runs".
+        experiments = langfuse.api.experiments.list(
+            from_start_time=_RUNS_CHECK_EPOCH, dataset_id=dataset.id, limit=1
+        )
+        if experiments.data and not allow_overwrite:
             raise SystemExit(
                 f"{dataset_name} already holds runs. Re-run with "
                 "--allow-overwrite to replace its items."
