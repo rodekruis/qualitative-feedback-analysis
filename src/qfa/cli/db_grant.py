@@ -10,10 +10,15 @@ why this is a CLI module and not a ``.sql`` file under ``scripts/``::
         --object-id <uuid> --from-role qfa-dev-backend
 
 Idempotent: an existing role is left alone and only the grants are re-run.
-With ``--from-role`` the new principal is granted the old role *and* takes
-ownership of everything it owns, so nothing is revoked and a rollback to the
-old admin still works. The cutover runbook is
-``docs/operations/how-to.md``; the reasoning is ADR-023.
+With ``--from-role`` the old role becomes a member of the new principal, and
+the new principal takes ownership of everything the old role owns. The
+membership runs in that direction and not the reverse: it supplies the
+privileges of *both* roles that ``REASSIGN OWNED`` requires of the executing
+(old) role, and it leaves the old role able to reach the reassigned tables, so
+a rollback to the old admin still works. Only one direction is available —
+PostgreSQL rejects circular role membership.
+
+The cutover runbook is ``docs/operations/how-to.md``; the reasoning is ADR-023.
 """
 
 from __future__ import annotations
@@ -64,8 +69,8 @@ async def grant_admin(
     """Make ``principal_name`` a Postgres admin bound to ``object_id``.
 
     ``conn`` must already be authenticated as the server's current Entra
-    administrator. When ``from_role`` is given, its privileges are granted and
-    its owned objects are reassigned to the new principal.
+    administrator. When ``from_role`` is given, it is made a member of
+    ``principal_name`` and its owned objects are reassigned to it.
 
     Raises
     ------
@@ -101,8 +106,8 @@ async def grant_admin(
         )
 
     if quoted_from is not None:
-        logger.info("Granting %s to %s", from_role, principal_name)
-        await conn.execute(text(f"GRANT {quoted_from} TO {quoted_name}"))
+        logger.info("Granting %s to %s", principal_name, from_role)
+        await conn.execute(text(f"GRANT {quoted_name} TO {quoted_from}"))
         logger.info("Reassigning objects owned by %s to %s", from_role, principal_name)
         await conn.execute(text(f"REASSIGN OWNED BY {quoted_from} TO {quoted_name}"))
 

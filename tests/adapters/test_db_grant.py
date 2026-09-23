@@ -60,11 +60,32 @@ async def test_creates_principal_and_transfers_the_old_role():
     assert conn.statements == [
         "SELECT 1 FROM pg_roles WHERE rolname = :name",
         "SELECT pgaadauth_create_principal_with_oid(:name, :oid, 'service', true, false)",
-        'GRANT "qfa-dev-backend" TO "qfa-dev-db-admin"',
+        'GRANT "qfa-dev-db-admin" TO "qfa-dev-backend"',
         'REASSIGN OWNED BY "qfa-dev-backend" TO "qfa-dev-db-admin"',
         'GRANT ALL ON SCHEMA public TO "qfa-dev-db-admin"',
     ]
     assert conn.params[1] == {"name": "qfa-dev-db-admin", "oid": OID}
+
+
+async def test_membership_is_granted_to_the_old_role_not_from_it():
+    """The direction carries the rollback and the REASSIGN privilege check.
+
+    Reversing it would leave the old role owning nothing and unable to reach
+    the reassigned tables. Granting both ways is not an option: PostgreSQL
+    rejects circular role membership.
+    """
+    conn = _FakeConnection(role_exists=True)
+
+    await _grant(
+        conn,
+        principal_name="qfa-dev-db-admin",
+        object_id=OID,
+        from_role="qfa-dev-backend",
+    )
+
+    grants = [s for s in conn.statements if s.startswith("GRANT ")]
+    assert 'GRANT "qfa-dev-db-admin" TO "qfa-dev-backend"' in grants
+    assert 'GRANT "qfa-dev-backend" TO "qfa-dev-db-admin"' not in grants
 
 
 async def test_existing_principal_skips_creation_but_still_grants():
