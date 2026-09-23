@@ -155,12 +155,24 @@ _RUNS_CHECK_EPOCH = datetime(2020, 1, 1, tzinfo=UTC)
 
 @dataclass
 class UploadReport:
-    """Full item ids (``<dataset>:<bare id>``) from one :func:`upload_items` call."""
+    """Full item ids, as :func:`_item_id` builds them, from one :func:`upload_items` call."""
 
     created: list[str] = field(default_factory=list)
     updated: list[str] = field(default_factory=list)
     unchanged: list[str] = field(default_factory=list)
     extra: list[str] = field(default_factory=list)
+
+
+def _item_id(dataset_name: str, bare_id: str) -> str:
+    """The Langfuse item id for ``bare_id`` in ``dataset_name``: unique across datasets.
+
+    Langfuse's dataset-item page builds its URL by interpolating this id
+    unencoded, so a literal ``/`` or ``-`` splits it into path segments the
+    router does not expect and 404s (langfuse/langfuse#17259). ``dataset_name``
+    itself keeps its ``/`` — that is Langfuse's own folder-style grouping for
+    dataset names, not part of this id.
+    """
+    return f"{dataset_name}:{bare_id}".replace("/", "_").replace("-", "_")
 
 
 def upload_items(
@@ -175,7 +187,7 @@ def upload_items(
 
     Creates the dataset first if it does not exist yet. Each item is a
     mapping with a bare ``id``, ``input``, ``expected_output`` and
-    ``metadata``; the remote item id is ``f"{dataset_name}:{id}"``. An item
+    ``metadata``; the remote item id is built by :func:`_item_id`. An item
     whose remote content is unchanged is skipped, never re-sent. An id that
     exists in the dataset but not in ``items`` is printed, never deleted.
     ``dry_run`` runs every check below but calls no Langfuse write.
@@ -213,7 +225,7 @@ def upload_items(
     to_write: list[tuple[str, Mapping[str, Any]]] = []
 
     for item in items:
-        full_id = f"{dataset_name}:{item['id']}"
+        full_id = _item_id(dataset_name, item["id"])
         current = existing.get(full_id)
         if current is None:
             report.created.append(full_id)
@@ -236,7 +248,7 @@ def upload_items(
         )
     report.updated = sorted(changed)
 
-    local_ids = {f"{dataset_name}:{item['id']}" for item in items}
+    local_ids = {_item_id(dataset_name, item["id"]) for item in items}
     for full_id in sorted(existing.keys() - local_ids):
         print(f"in {dataset_name} but not in the file: {full_id}")
         report.extra.append(full_id)

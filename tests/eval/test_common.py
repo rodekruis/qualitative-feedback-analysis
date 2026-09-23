@@ -33,6 +33,7 @@ resolve_api_key = _common.resolve_api_key
 resolve_config = _common.resolve_config
 run_metadata = _common.run_metadata
 upload_items = _common.upload_items
+item_id = _common._item_id
 
 _EVAL_ENV = (
     "QFA_DEV_API_KEY",
@@ -278,16 +279,23 @@ def test_upload_items_allow_overwrite_bypasses_the_runs_freeze() -> None:
         allow_overwrite=True,
     )
 
-    assert report.created == ["feedback/records-en-v1:en-0001"]
+    full_id = item_id("feedback/records-en-v1", "en-0001")
+    assert report.created == [full_id]
     assert client.written_items == [
-        {
-            "dataset_name": "feedback/records-en-v1",
-            "id": "feedback/records-en-v1:en-0001",
-        }
+        {"dataset_name": "feedback/records-en-v1", "id": full_id}
     ]
 
 
-def test_upload_items_creates_a_new_item_with_the_dataset_prefixed_id() -> None:
+def test_upload_items_builds_an_id_with_no_slash_or_hyphen() -> None:
+    """Langfuse's item page 404s on a raw "/" or "-" in the id (langfuse/langfuse#17259)."""
+    full_id = item_id("feedback/records-en-v1", "en-0001")
+
+    assert full_id == "feedback_records_en_v1:en_0001"
+    assert "/" not in full_id
+    assert "-" not in full_id
+
+
+def test_upload_items_creates_a_new_item_with_a_url_safe_id() -> None:
     client = FakeLangfuseClient(datasets={"analyze/prompts-v1": []})
 
     report = upload_items(
@@ -296,15 +304,17 @@ def test_upload_items_creates_a_new_item_with_the_dataset_prefixed_id() -> None:
         [{"id": "P01-en", "input": "hi", "metadata": {"family": "themes"}}],
     )
 
-    assert report.created == ["analyze/prompts-v1:P01-en"]
+    full_id = item_id("analyze/prompts-v1", "P01-en")
+    assert report.created == [full_id]
     assert client.written_items == [
-        {"dataset_name": "analyze/prompts-v1", "id": "analyze/prompts-v1:P01-en"}
+        {"dataset_name": "analyze/prompts-v1", "id": full_id}
     ]
 
 
 def test_upload_items_skips_an_item_with_unchanged_content() -> None:
+    full_id = item_id("analyze/prompts-v1", "P01-en")
     existing = _FakeItem(
-        id="analyze/prompts-v1:P01-en",
+        id=full_id,
         input="hi",
         expected_output=None,
         metadata={"family": "themes"},
@@ -317,16 +327,17 @@ def test_upload_items_skips_an_item_with_unchanged_content() -> None:
         [{"id": "P01-en", "input": "hi", "metadata": {"family": "themes"}}],
     )
 
-    assert report.unchanged == ["analyze/prompts-v1:P01-en"]
+    assert report.unchanged == [full_id]
     assert report.created == []
     assert client.written_items == []
 
 
 def test_upload_items_stops_and_lists_ids_when_content_changed() -> None:
-    existing = _FakeItem(id="analyze/prompts-v1:P01-en", input="old text")
+    full_id = item_id("analyze/prompts-v1", "P01-en")
+    existing = _FakeItem(id=full_id, input="old text")
     client = FakeLangfuseClient(datasets={"analyze/prompts-v1": [existing]})
 
-    with pytest.raises(SystemExit, match="analyze/prompts-v1:P01-en"):
+    with pytest.raises(SystemExit, match=full_id):
         upload_items(
             client, "analyze/prompts-v1", [{"id": "P01-en", "input": "new text"}]
         )
@@ -335,7 +346,8 @@ def test_upload_items_stops_and_lists_ids_when_content_changed() -> None:
 
 
 def test_upload_items_allow_overwrite_replaces_changed_content() -> None:
-    existing = _FakeItem(id="analyze/prompts-v1:P01-en", input="old text")
+    full_id = item_id("analyze/prompts-v1", "P01-en")
+    existing = _FakeItem(id=full_id, input="old text")
     client = FakeLangfuseClient(datasets={"analyze/prompts-v1": [existing]})
 
     report = upload_items(
@@ -345,29 +357,27 @@ def test_upload_items_allow_overwrite_replaces_changed_content() -> None:
         allow_overwrite=True,
     )
 
-    assert report.updated == ["analyze/prompts-v1:P01-en"]
+    assert report.updated == [full_id]
     assert client.written_items == [
-        {"dataset_name": "analyze/prompts-v1", "id": "analyze/prompts-v1:P01-en"}
+        {"dataset_name": "analyze/prompts-v1", "id": full_id}
     ]
 
 
 def test_upload_items_prints_and_reports_an_id_missing_from_the_file(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    stale = _FakeItem(id="analyze/prompts-v1:P99-en", input="orphaned")
+    stale_id = item_id("analyze/prompts-v1", "P99-en")
+    stale = _FakeItem(id=stale_id, input="orphaned")
     client = FakeLangfuseClient(datasets={"analyze/prompts-v1": [stale]})
 
     report = upload_items(
         client, "analyze/prompts-v1", [{"id": "P01-en", "input": "hi"}]
     )
 
-    assert report.extra == ["analyze/prompts-v1:P99-en"]
-    assert "analyze/prompts-v1:P99-en" in capsys.readouterr().out
+    assert report.extra == [stale_id]
+    assert stale_id in capsys.readouterr().out
     # Deletes nothing: the stale item is still in the fake store.
-    assert any(
-        i.id == "analyze/prompts-v1:P99-en"
-        for i in client._datasets["analyze/prompts-v1"]
-    )
+    assert any(i.id == stale_id for i in client._datasets["analyze/prompts-v1"])
 
 
 def test_upload_items_dry_run_writes_nothing() -> None:
@@ -377,6 +387,6 @@ def test_upload_items_dry_run_writes_nothing() -> None:
         client, "analyze/prompts-v1", [{"id": "P01-en", "input": "hi"}], dry_run=True
     )
 
-    assert report.created == ["analyze/prompts-v1:P01-en"]
+    assert report.created == [item_id("analyze/prompts-v1", "P01-en")]
     assert client.created_datasets == []
     assert client.written_items == []
