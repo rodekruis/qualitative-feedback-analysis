@@ -228,7 +228,7 @@ signature.
     "/v1/classify",
     response_model=ApiClassifyResponse,
     status_code=200,
-    tags=["Inference"],
+    tags=["Single Inference"],
 )
 async def classify(
     body: ApiClassifyRequest,

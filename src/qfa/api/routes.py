@@ -363,7 +363,7 @@ async def summarize_bulk(
     "/v1/summarize",
     response_model=ApiSummarizeResponse,
     status_code=200,
-    tags=["Inference"],
+    tags=["Single Inference"],
 )
 async def summarize(
     body: ApiSummarizeRequest,
@@ -440,7 +440,7 @@ async def summarize(
     "/v1/summarize-community-meeting",
     response_model=ApiSummarizeCommunityMeetingResponse,
     status_code=200,
-    tags=["Inference"],
+    tags=["Single Inference"],
 )
 async def summarize_community_meeting(
     body: ApiSummarizeCommunityMeetingRequest,
@@ -494,7 +494,7 @@ async def summarize_community_meeting(
     "/v1/assign-codes",
     response_model=ApiAssignCodesResponse,
     status_code=200,
-    tags=["Inference"],
+    tags=["Single Inference"],
 )
 async def assign_codes(
     body: ApiAssignCodesRequest,
@@ -582,7 +582,7 @@ async def assign_codes(
     "/v1/detect-sensitive",
     response_model=ApiDetectSensitiveResponse,
     status_code=200,
-    tags=["Inference"],
+    tags=["Single Inference"],
 )
 async def detect_sensitive(
     body: ApiDetectSensitiveRequest,
