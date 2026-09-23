@@ -143,11 +143,19 @@ keys = sa.Table(
 
 
 class _AadTokenProvider:
-    """Cache AAD access tokens and refresh before expiry."""
+    """Cache AAD access tokens and refresh before expiry.
 
-    def __init__(self, scope: str) -> None:
+    ``client_id`` selects a user-assigned managed identity; ``None`` leaves
+    the choice to :class:`DefaultAzureCredential`'s own chain.
+    """
+
+    def __init__(self, scope: str, client_id: str | None = None) -> None:
         self._scope = scope
-        self._credential = DefaultAzureCredential()
+        self._credential = (
+            DefaultAzureCredential(managed_identity_client_id=client_id)
+            if client_id
+            else DefaultAzureCredential()
+        )
         self._token: str | None = None
         self._expires_on: float = 0
 
@@ -203,7 +211,9 @@ def create_async_engine_from_settings(settings: DatabaseSettings) -> AsyncEngine
     if settings.auth_mode != "entra":
         return engine
 
-    token_provider = _AadTokenProvider(settings.aad_scope)
+    token_provider = _AadTokenProvider(
+        settings.aad_scope, settings.aad_client_id or None
+    )
 
     @sa.event.listens_for(engine.sync_engine, "do_connect")
     def _inject_aad_token(_dialect, _conn_rec, _cargs, cparams) -> None:  # noqa: ANN001

@@ -356,6 +356,12 @@ class DatabaseSettings(BaseSettings):
     password: SecretStr | None = None
     auth_mode: Literal["password", "entra"] = "password"
     aad_scope: str = "https://ossrdbms-aad.database.windows.net/.default"
+    aad_client_id: str = ""
+    """Client ID of the user-assigned managed identity to authenticate as.
+
+    Empty leaves the choice to ``DefaultAzureCredential`` (the system-assigned
+    identity in Azure, ``az login`` locally). Ignored outside ``entra`` mode.
+    """
 
     @model_validator(mode="after")
     def _require_url_or_parts(self) -> "DatabaseSettings":

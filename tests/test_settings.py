@@ -260,6 +260,18 @@ class TestDatabaseSettings:
         settings = DatabaseSettings()
         assert settings.auth_mode == "entra"
 
+    def test_aad_client_id_defaults_to_empty(self, monkeypatch):
+        monkeypatch.delenv("DB_AAD_CLIENT_ID", raising=False)
+        monkeypatch.setenv("DB_URL", "postgresql+asyncpg://user:pass@host/db")
+        assert DatabaseSettings().aad_client_id == ""
+
+    def test_reads_aad_client_id_from_env(self, monkeypatch):
+        monkeypatch.setenv("DB_URL", "postgresql+asyncpg://user:pass@host/db")
+        monkeypatch.setenv("DB_AAD_CLIENT_ID", "11111111-2222-3333-4444-555555555555")
+        assert (
+            DatabaseSettings().aad_client_id == "11111111-2222-3333-4444-555555555555"
+        )
+
     def test_requires_parts_when_url_missing(self, monkeypatch):
         monkeypatch.delenv("DB_URL", raising=False)
         monkeypatch.delenv("DB_HOST", raising=False)

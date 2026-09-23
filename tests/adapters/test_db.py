@@ -8,6 +8,7 @@ here.
 
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import ClassVar
 from uuid import UUID, uuid4
 
 import pytest
@@ -16,6 +17,7 @@ import sqlalchemy as sa
 from pydantic import SecretStr
 
 from qfa.adapters.db import (
+    create_async_engine_from_settings,
     create_session_factory,
     llm_calls,
     metadata,
@@ -280,3 +282,53 @@ async def test_resolve_database_url_from_entra_parts():
         resolve_database_url(settings)
         == "postgresql+asyncpg://app-msi@db.internal:5432/qfa?ssl=require"
     )
+
+
+class _CredentialRecorder:
+    """Stand-in for ``DefaultAzureCredential`` that records its kwargs."""
+
+    last: ClassVar["_CredentialRecorder"]
+
+    def __init__(self, **kwargs) -> None:
+        self.kwargs = kwargs
+        _CredentialRecorder.last = self
+
+    def get_token(self, _scope):  # pragma: no cover - never called in these tests
+        raise AssertionError("no token should be requested at engine-build time")
+
+
+async def test_entra_engine_selects_user_assigned_identity(monkeypatch):
+    monkeypatch.setattr("qfa.adapters.db.DefaultAzureCredential", _CredentialRecorder)
+    settings = DatabaseSettings(
+        auth_mode="entra",
+        host="db.internal",
+        name="qfa",
+        user="qfa-dev-db-admin",
+        aad_client_id="11111111-2222-3333-4444-555555555555",
+    )
+
+    create_async_engine_from_settings(settings)
+
+    assert _CredentialRecorder.last.kwargs == {
+        "managed_identity_client_id": "11111111-2222-3333-4444-555555555555"
+    }
+
+
+async def test_entra_engine_without_client_id_uses_default_chain(monkeypatch):
+    """Empty DB_AAD_CLIENT_ID must not pin the credential to a client ID.
+
+    Passing ``managed_identity_client_id=None`` explicitly is not the same as
+    omitting it for every credential in the chain, and the omitted form is what
+    local dev (``az login``) and a system-assigned identity both rely on.
+    """
+    monkeypatch.setattr("qfa.adapters.db.DefaultAzureCredential", _CredentialRecorder)
+    settings = DatabaseSettings(
+        auth_mode="entra",
+        host="db.internal",
+        name="qfa",
+        user="qfa-dev-db-admin",
+    )
+
+    create_async_engine_from_settings(settings)
+
+    assert _CredentialRecorder.last.kwargs == {}
