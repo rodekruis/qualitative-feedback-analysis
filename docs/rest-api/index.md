@@ -34,7 +34,6 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 | `feedback_records` | list | — | Non-empty list of `{id, content, metadata?, url_id?}` records. Individual records may have empty `content` (e.g. a blank EspoCRM description) — those are dropped before analysis rather than failing the request. |
 | `prompt` | string | — | Analyst question (1–4000 chars). |
 | `output_language` | string or null | `null` | Free-text target language for the analysis output (e.g. `"Dutch"`, `"Brazilian Portuguese"`) — any language the model can produce. Prefer an ISO 639-1 code (`"nl"`) or English language name (`"Dutch"`) for the most predictable results. The value is sanitized and never rejected. Omit (or `null`) to let the model answer in the language of the input records. |
-| `anonymize` | bool | `true` | Anonymize record text before the LLM call. |
 | `mode` | `"single_pass"` \| `"hierarchical"` | `"single_pass"` | `single_pass` runs one LLM call under the token cap (input over the cap → 413). `hierarchical` runs embed → cluster → map → reduce over large corpora and additionally returns `confidence`. |
 | `period` | `"day"` \| `"week"` \| `"month"` \| null | `null` → server default (`week`) | Granularity for the deterministic `coding_trends` table. `day` for short-window deep-dives, `week` for the typical 1-3 month operational corpus, `month` for multi-year corpora. Omit to use the server-side default (`ANALYZE_DEFAULT_CODING_TREND_PERIOD`). |
 | `espo_feedback_base_url` | string or null | `null` | Base URL for the EspoCRM feedback record detail view. See [Hyperlinking feedback records](#hyperlinking-feedback-records) below. |
@@ -54,7 +53,6 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 | `uncertainty_explanation` | string | Natural-language judge reasoning, or a constant unavailable message when the judge failed. |
 | `feedback_record_count` | int | Number of records actually analyzed (records with empty `content` are dropped). |
 | `request_id` | string | Canonical UUID matching the `X-Request-ID` response header. |
-| `used_anonymization` | bool | Whether anonymization was applied. |
 | `confidence` | float or null | Coverage-weighted mean of per-chunk quality scores (the composite of faithfulness, coverage and clarity). Populated only for `mode=hierarchical`; `null` for `single_pass`. |
 | `coding_trends` | object or null | Deterministic code-by-period frequency table. Populated for **both** modes whenever the configured date + code metadata fields are present (it depends only on metadata, not on the analysis pipeline). `null` when no record carries a parseable date. Bucket-label shape depends on `period`: `YYYY-MM-DD` for day, `YYYY-Www` (ISO week) for week, `YYYY-MM` for month. |
 
@@ -68,6 +66,8 @@ trends can now read them from the single-pass response too.
 Per-record inference endpoints (`/v1/summarize`, `/v1/summarize-community-meeting`, `/v1/assign-codes`, `/v1/detect-sensitive`) accept a single record and return one result object, unlike bulk endpoints that accept multiple records and return aggregated output.
 
 `POST /v1/summarize` takes no language parameter: the generated title and summary follow the record's own language, detected server-side from its content. Records too short to detect fall back to instructing the model to mirror the input language.
+
+Anonymisation is unconditional on every inference endpoint: record text (plus the analyst prompt on `/v1/analyze-bulk`) is redacted before the LLM call, and placeholders are restored in the response — except person-name placeholders on `/v1/analyze-bulk`, which stay redacted by design. There is no request field to switch it off and no response field reporting it — see [crosscutting concerns](../architecture/04-crosscutting.md).
 
 `POST /v1/summarize-community-meeting` accepts HTML in `meetingNotes`. EspoCRM's rich-text editor stores whatever is pasted into it, and notes pasted from Word arrive as tens of thousands of characters of inline CSS wrapping a few kilobytes of prose. The markup is reduced to plain text — block boundaries become newlines, table cells are tab-separated, `<style>`/`<script>` content is dropped — *before* the 100 000-character limit is checked, so the limit bounds the prose rather than the markup. Notes containing no tag at all are passed through unchanged.
 
