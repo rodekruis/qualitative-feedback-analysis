@@ -22,7 +22,7 @@ cd infra
 ### 2. Export the environment's resource group
 
 `TF_VAR_resource_group_name` and `TF_VAR_teams_webhook_url` are the per-environment Terraform variables set via the shell (or a gitignored `.env` you `source`). Re-export them each time you switch environments.
-PostgreSQL Entra admin is configured automatically from the App Service system-assigned managed identity.
+The PostgreSQL Entra admin is a dedicated user-assigned identity, `qfa-${ENV}-db-admin`, created by Terraform ([ADR-023](../adr/023-dedicated-identity-as-postgres-admin.md)).
 
 ```bash
 export ENV=dev  # or staging, prd, ...
@@ -124,21 +124,35 @@ Without the first three secrets, the App Service starts and passes health checks
 
 ## Re-running after `terraform destroy`
 
-If the managed identity is ever recreated (e.g. after `terraform destroy`), re-run steps 4 and 5 for the affected environment to update `AZ_CLIENT_ID` in its GitHub environment.
+If the GitHub Actions managed identity is recreated, re-run steps 4 and 5 for the affected environment to update `AZ_CLIENT_ID` in its GitHub environment.
+
+Recreating the **App Service** no longer affects database access: the Entra admin is the separate `qfa-${ENV}-db-admin` identity, which Terraform protects with `prevent_destroy`. If that identity is nonetheless recreated, the in-database role still points at the old principal ID and must be re-granted — see [How-to § The DB admin identity was recreated](how-to.md#the-db-admin-identity-was-recreated).
 
 ## Debugging database connectivity
 
-The database has no public network access and no password-based authentication. To reach it from a running container:
+The database has no public network access and no password-based authentication, so the only route in is a shell in the running container. The image ships neither `psql` nor the `az` CLI — use the app's own engine, which already knows how to acquire an Entra token for the right identity:
 
 ```bash
 # 1. Open a shell in the App Service container for the target environment
 az webapp ssh --name "qfa-${ENV}-backend" --resource-group "$TF_VAR_resource_group_name"
 
-# 2. Inside the container, obtain an Entra access token and connect via psql
-PGPASSWORD=$(az account get-access-token \
-  --resource https://ossrdbms-aad.database.windows.net \
-  --query accessToken -o tsv) \
-psql "host=$DB_HOST user=$DB_USER sslmode=require dbname=$DB_NAME"
+# 2. Inside the container, connect with the app's own DB settings
+.venv/bin/python - <<'EOF'
+import asyncio
+import sqlalchemy as sa
+from qfa.adapters.db import create_async_engine_from_settings
+from qfa.settings import DatabaseSettings
+
+async def main():
+    engine = create_async_engine_from_settings(DatabaseSettings())
+    async with engine.connect() as conn:
+        print((await conn.execute(sa.text("SELECT current_user, version()"))).first())
+    await engine.dispose()
+
+asyncio.run(main())
+EOF
 ```
 
-The `DB_HOST`, `DB_USER`, and `DB_NAME` environment variables are set by the App Service and match the values in `app_service.tf`. The token is short-lived; if the session times out, repeat step 2.
+`DB_HOST`, `DB_USER`, `DB_NAME`, and `DB_AAD_CLIENT_ID` are set by the App Service and match the values in `app_service.tf`; `current_user` should print the DB admin identity's name. An authentication error here means the in-database role and the identity's principal ID have diverged — see [How-to § The DB admin identity was recreated](how-to.md#the-db-admin-identity-was-recreated).
+
+To use `psql` instead, install a client in the session first; it is not in the image.

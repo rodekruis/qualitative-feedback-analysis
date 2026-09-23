@@ -75,8 +75,8 @@ export TF_VAR_acr_name=<globally-unique-acr-name>
 # Optional — Azure region for the bootstrapped resources. Defaults to westeurope.
 export LOCATION=westeurope
 
-# PostgreSQL Entra admin is configured automatically by Terraform to the
-# App Service system-assigned managed identity for each environment.
+# PostgreSQL Entra admin is configured automatically by Terraform to a
+# dedicated per-environment identity, qfa-<env>-db-admin (ADR-023).
 ```
 
 ### 3. Create the chicken-and-egg resources

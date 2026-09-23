@@ -38,7 +38,7 @@ Putting migrations before the server means the App Service health probe doesn't 
 Two modes, selected by `DB_AUTH_MODE`:
 
 - **`password`** — `DB_PASSWORD` is read from settings. Simple; suitable for local dev.
-- **`entra`** — the SQLAlchemy connection acquires an AAD access token via `_AadTokenProvider`, caching it and refreshing 120s before expiry. The App Service system-assigned managed identity must be granted the PostgreSQL role (configured by Terraform). This is the production default.
+- **`entra`** — the SQLAlchemy connection acquires an AAD access token via `_AadTokenProvider`, caching it and refreshing 120s before expiry. The token is acquired as the dedicated `qfa-<env>-db-admin` user-assigned identity (selected via `DB_AAD_CLIENT_ID`), which is the server's Entra admin and the in-database role — see [ADR-023](../adr/023-dedicated-identity-as-postgres-admin.md). This is the production default.
 
 ## Secrets
 
@@ -66,5 +66,5 @@ Application changes:
 ## Recovering from common situations
 
 - **Migration is stuck.** Check `pg_locks` for the advisory lock; if it's held by a dead session, the lock will release on connection close (a few seconds at most). If it doesn't, manually kill the holding backend with `pg_terminate_backend(pid)`.
-- **Managed identity recreated** (after `terraform destroy`/rebuild) — re-run steps 4 and 5 of [Set up a new environment](setup-new-env.md) for the affected environment to refresh `AZ_CLIENT_ID`.
+- **Managed identity recreated** (after `terraform destroy`/rebuild) — re-run steps 4 and 5 of [Set up a new environment](setup-new-env.md) for the affected environment to refresh `AZ_CLIENT_ID`. Rebuilding the App Service no longer affects database access; if the *DB admin* identity was recreated, follow [How-to § The DB admin identity was recreated](how-to.md#the-db-admin-identity-was-recreated).
 - **Usage tracking is broken but app must keep serving requests.** No action is needed to keep core operations running: {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter` logs recording failures but never raises, so analysis continues even when the database is unreachable — the only impact is dropped usage records and `503`s from the `/v1/usage*` endpoints. Note there is no switch to disable the database: a connection is required for the app to boot (see [settings reference](settings-reference.md)), so a *totally* misconfigured DB blocks startup rather than degrading gracefully.

@@ -172,10 +172,11 @@ provided (see {py:class}`~qfa.settings.DatabaseSettings`).
 | `DB_HOST` | only if `DB_URL` not set | `""` | |
 | `DB_PORT` | no | `5432` | |
 | `DB_NAME` | only if `DB_URL` not set | `""` | |
-| `DB_USER` | only if `DB_URL` not set | `""` | For `entra` mode, the managed-identity principal name. |
+| `DB_USER` | only if `DB_URL` not set | `""` | For `entra` mode, the name of the database admin identity (`qfa-<env>-db-admin`), which is also the in-database role name. |
 | `DB_PASSWORD` | only when `DB_AUTH_MODE=password` | — | Stored as `SecretStr`. |
 | `DB_AUTH_MODE` | no | `password` | `password` or `entra`. |
 | `DB_AAD_SCOPE` | no | `https://ossrdbms-aad.database.windows.net/.default` | AAD scope for the access token (Entra mode only). |
+| `DB_AAD_CLIENT_ID` | no | `""` | Client ID of the user-assigned managed identity to authenticate as (Entra mode only). Empty leaves the choice to the default credential chain — the system-assigned identity in Azure, `az login` locally. |
 
 ## Logging (`LOG_*`)
 

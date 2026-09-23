@@ -20,7 +20,7 @@ to them, the options considered, and the reasoning behind the chosen approach.
 | [009](009-dedicated-state-storage-rg.md) | Dedicated resource group for Terraform state storage | Accepted |
 | [010](010-shared-container-registry.md) | Shared container registry across environments | Accepted |
 | [011](011-drop-orchestrator-port.md) | Drop swappable-orchestrator requirement and remove OrchestratorPort | Accepted (supersedes [008](obsolete/008-keep-orchestrator-port.md); decision 3 superseded by [017](017-orchestrator-composition-only.md)) |
-| [012](012-postgres-mi-as-admin.md) | App Service managed identity as PostgreSQL Entra admin | Accepted |
+| [012](012-postgres-mi-as-admin.md) | App Service managed identity as PostgreSQL Entra admin | Accepted (amended 2026-09-23 — dedicated user-assigned identity, see [023](023-dedicated-identity-as-postgres-admin.md)) |
 | [013](013-keys-in-db-and-environment-vars.md) | Store API keys in both the database and environment variables | Accepted |
 | [014](014-embedding-port-and-self-hosted-model.md) | EmbeddingPort and self-hosted BGE-M3 ONNX embedding model | Accepted |
 | [015](015-hdbscan-clustering.md) | Cluster feedback records with HDBSCAN | Accepted |
@@ -31,6 +31,7 @@ to them, the options considered, and the reasoning behind the chosen approach.
 | [020](020-mistral-medium-as-judge-model.md) | `mistral-medium-3-5` as the judge model | Accepted |
 | [021](021-two-model-person-union.md) | Two-model NER union for person-name recall | Accepted |
 | [022](022-evaluation-port-for-live-judge-scores.md) | `EvaluationPort` for live judge scores in Langfuse | Accepted |
+| [023](023-dedicated-identity-as-postgres-admin.md) | Dedicated user-assigned identity as PostgreSQL Entra admin | Accepted (supersedes the identity choice in [012](012-postgres-mi-as-admin.md)) |
 
 ## Obsolete
 
@@ -62,5 +63,6 @@ to them, the options considered, and the reasoning behind the chosen approach.
 020-mistral-medium-as-judge-model
 021-two-model-person-union
 022-evaluation-port-for-live-judge-scores
+023-dedicated-identity-as-postgres-admin
 obsolete/008-keep-orchestrator-port
 ```

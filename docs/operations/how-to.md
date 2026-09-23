@@ -128,3 +128,119 @@ real Azure constraint: an existing plan can only be scaled to a tier its scale
 unit supports. The remedy is a **new** `azurerm_service_plan` in a Pv3-capable
 scale unit plus repointing `azurerm_linux_web_app.backend.service_plan_id` — a
 longer outage and a separate PR.
+
+## Cut over an existing environment to the dedicated DB identity
+
+One-time, per environment, for every environment that existed before
+[ADR-023](../adr/023-dedicated-identity-as-postgres-admin.md). **Run the
+re-grant before the full apply** — while the old admin still works. Doing the
+apply first swaps the server's Entra admin to a principal that has no role in
+the database, and nothing can then log in to create one.
+
+Do one environment at a time and verify before moving on.
+
+**1. Create the identity only.** Nothing else moves yet.
+
+```bash
+cd infra
+terraform workspace select "$ENV"
+terraform apply -target=azurerm_user_assigned_identity.db_admin
+```
+
+**2. Read its name and object ID.**
+
+```bash
+DB_ADMIN_NAME=$(terraform output -raw postgres_admin_identity_name)
+DB_ADMIN_OID=$(terraform output -raw postgres_admin_identity_principal_id)
+```
+
+**3. Re-grant from inside the still-working app.** `db_grant` connects as the
+current admin (the App Service system-assigned identity), creates the new
+principal bound to `$DB_ADMIN_OID`, grants it the old role, and reassigns
+everything the old role owns. It is idempotent, so a re-run is safe.
+
+```bash
+az webapp ssh --name "qfa-${ENV}-backend" --resource-group "$TF_VAR_resource_group_name"
+
+# inside the container:
+.venv/bin/python -m qfa.cli.db_grant \
+  --principal-name qfa-<env>-db-admin \
+  --object-id <the DB_ADMIN_OID from step 2> \
+  --from-role qfa-<env>-backend
+```
+
+**4. Apply in full.**
+
+```bash
+terraform apply
+```
+
+Read the plan first. Expected: the Entra administrator **replaced**, the web app
+**updated in place** (identity type plus the `DB_AAD_CLIENT_ID` / `DB_USER`
+settings), the identity already created in step 1, and no change to the two role
+assignments. If the web app is **replaced** (`-/+`), stop — that regenerates the
+system-assigned principal and breaks Key Vault references and the ACR pull.
+
+**5. Verify.** The container restarts and re-runs migrations under the new
+principal:
+
+```bash
+curl -sf "https://qfa-${ENV}-backend.azurewebsites.net/v1/health"
+az webapp log tail --name "qfa-${ENV}-backend" --resource-group "$TF_VAR_resource_group_name"
+```
+
+The log should show `alembic upgrade head` completing, not an authentication
+error.
+
+**Rollback.** Point `object_id` on
+`azurerm_postgresql_flexible_server_active_directory_administrator.db` back at
+`azurerm_linux_web_app.backend.identity[0].principal_id`, drop the
+`DB_AAD_CLIENT_ID` setting, and re-apply. Step 3 granted and reassigned but
+revoked nothing, so the old role still logs in.
+
+**Optional, afterwards.** The old `qfa-<env>-backend` role owns nothing once
+step 3 has run and can be dropped with `DROP ROLE "qfa-<env>-backend"`. That is
+irreversible and closes the rollback above — leave it until the environment has
+been stable for a while.
+
+## The DB admin identity was recreated
+
+If `qfa-<env>-db-admin` is recreated, its principal ID changes and the
+in-database role of the same name still points at the old one. No principal can
+log in, so there is no working admin to re-grant from. Borrow one:
+
+**1. Make yourself a temporary Entra admin on the server.**
+
+```bash
+az postgres flexible-server ad-admin create \
+  --resource-group "$TF_VAR_resource_group_name" \
+  --server-name "qfa-${ENV}-db" \
+  --display-name "$(az ad signed-in-user show --query userPrincipalName -o tsv)" \
+  --object-id "$(az ad signed-in-user show --query id -o tsv)" \
+  --type User
+```
+
+**2. Drop the stale role and re-grant with the new object ID**, from a session
+inside the VNet — the server has no public access. `DROP ROLE` fails while the
+role still owns objects, so hand them over first and hand them back after:
+
+```sql
+REASSIGN OWNED BY "qfa-<env>-db-admin" TO "<your own role>";
+DROP ROLE "qfa-<env>-db-admin";
+SELECT pgaadauth_create_principal_with_oid(
+  'qfa-<env>-db-admin', '<new object id>', 'service', true, false);
+REASSIGN OWNED BY "<your own role>" TO "qfa-<env>-db-admin";
+GRANT ALL ON SCHEMA public TO "qfa-<env>-db-admin";
+```
+
+**3. Remove the temporary admin.**
+
+```bash
+az postgres flexible-server ad-admin delete \
+  --resource-group "$TF_VAR_resource_group_name" \
+  --server-name "qfa-${ENV}-db" \
+  --object-id "$(az ad signed-in-user show --query id -o tsv)"
+```
+
+This is the recovery Terraform's `prevent_destroy` on the identity exists to
+keep you out of.

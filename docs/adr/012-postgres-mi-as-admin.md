@@ -2,7 +2,13 @@
 
 ## Status
 
-Accepted
+Accepted (amended 2026-09-23 — the admin is a dedicated user-assigned
+identity, see [ADR-023](023-dedicated-identity-as-postgres-admin.md))
+
+The group-versus-managed-identity reasoning below still holds; only the
+choice of *which* managed identity changed. Binding the admin to the App
+Service's system-assigned principal meant a rebuilt App Service lost its own
+database access (#177).
 
 ## Context
 
