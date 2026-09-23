@@ -1004,7 +1004,7 @@ def create_app(*, llm_factory: LLMFactory | None = None) -> FastAPI:
             "description": "Batch inference endpoints that return one aggregate result",
         },
         {
-            "name": "Inference",
+            "name": "Single Inference",
             "description": "Non-bulk inference endpoints intended for per-feedback-record outputs",
         },
         {
