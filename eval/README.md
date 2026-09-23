@@ -12,6 +12,33 @@ real money.
 | `assign_codes_eval.py`    | Scores `POST /v1/assign-codes` against the Langfuse `assign-codes/ukrain` dataset, per coding level.                |
 | `evaluate_sensitivity.py` | Scores `POST /v1/detect-sensitive` against any Langfuse dataset of labelled records, named on the command line.     |
 
+## Shared helpers
+
+Call `run_metadata()` in `_common.py`. That is the single source.
+
+| Key                | What it names |
+| ------------------ | ------------- |
+| `deployed_version` | Package version from `GET /v1/health`. |
+| `deployed_commit`  | Git commit the backend reports. Tells two `dev` deploys apart when there is no version bump. |
+| `eval_script_sha`  | Commit of the script that sent the requests. |
+| `git_branch`       | Branch of that script. |
+
+CI sets `GIT_SHA` / `GIT_REF_NAME` because a CI checkout is detached.
+A local run reads `git`.
+Start a new script from `_common` (`uv run python eval/x.py`):
+
+```python
+from _common import MAX_CONCURRENCY, load_env, resolve_config, run_metadata
+```
+
+Local server: set `QFA_API_BASE_URL=http://localhost:8000`, reuse
+`AUTH_API_KEYS`, and cap the run with `--smoke-limit`:
+
+```bash
+QFA_API_BASE_URL=http://localhost:8000 uv run python eval/evaluate_sensitivity.py \
+  --dataset sensitivity/SubsetIFRCBorderlineSensitiveRecords --smoke-limit 2
+```
+
 ## Running `assign_codes_eval.py`
 
 Set these before you run the script:
@@ -38,23 +65,6 @@ not gate CI. A summary prints to the console. The full per-item and
 aggregate results land in Langfuse, as a new Dataset Run under
 `assign-codes/ukrain`.
 
-Each run queries the backend's `/v1/health` endpoint for the deployed
-package version and git commit. The script records both, as
-`deployed_version` and `deployed_commit`, in the run metadata and in the
-run name. These values name the code that answered the requests.
-`deployed_commit` is the one that actually tells two deploys apart:
-`build-from-commit.yaml` can push a commit to `dev` with no version bump
-at all, so `deployed_version` alone cannot tell such deploys apart.
-
-The script also records its own commit SHA and branch, as
-`eval_script_sha` and `git_branch`. This value names the code that sent
-the requests. When the backend does not yet run the latest merge, the two
-values can differ.
-
-In CI, `eval_script_sha` and `git_branch` come from the GitHub Actions
-context (`GIT_SHA`, `GIT_REF_NAME`). A local run reads them from `git`
-directly, so they show up even without those two variables set.
-
 ### Running it in CI
 
 The **evaluate-assign-codes** GitHub Actions workflow, in
@@ -72,14 +82,10 @@ This script scores `POST /v1/detect-sensitive` against a Langfuse dataset
 you name on the command line, so the same script works for any
 sensitivity dataset.
 
-Set these before you run it. The script reads `.env` from the repo root,
-so they can live there rather than in your shell.
+Set these before you run it. They can live in the repo-root `.env`.
+See Shared helpers for a local server.
 
-- Set `QFA_API_BASE_URL` to the backend you want to measure. It defaults
-  to the dev backend, so a local run against `http://localhost:8000` has
-  to name it.
-- Set `QFA_DEV_API_KEY` to a bearer token for that backend, or, locally,
-  set `AUTH_API_KEYS` to the same JSON the server reads.
+- Set `QFA_DEV_API_KEY`, or locally `AUTH_API_KEYS`.
 - Set `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` for a Langfuse
   project at `LANGFUSE_HOST` that holds the dataset.
 
@@ -93,10 +99,8 @@ uv run python eval/evaluate_sensitivity.py \
   --dataset sensitivity/SubsetIFRCBorderlineSensitiveRecords
 ```
 
-`--dataset` is the only required flag. `--smoke-limit N` runs just the first N
-records, which is how you check a change before paying for a full run,
-and `--run-name` replaces the name the script generates itself, either
-`smoke-<N>-<timestamp>` or `baseline-full-<timestamp>`.
+`--dataset` is required. `--smoke-limit N` runs the first N records.
+`--run-name` replaces `smoke-<N>-<timestamp>` or `baseline-full-<timestamp>`.
 
 Each dataset item's `input` field is the feedback text, and it is sent to
 the backend exactly as written, so choose a dataset that was anonymised
@@ -108,13 +112,6 @@ The script never fails on a low score. It only reports results, and does
 not gate anything. A summary prints to the console along with a link to
 the run, and the full results land in Langfuse as a Dataset Run under the
 experiment `sensitivity-baseline`.
-
-Each run records what produced it. `deployed_version` and
-`deployed_commit` come from the backend's `/v1/health` endpoint and name
-the code that answered the requests; `eval_script_sha` and `git_branch`
-name the checkout the script ran from. In CI the workflow supplies the
-latter two, because a CI checkout is detached and `git` alone reports no
-useful branch.
 
 Every record there carries two scores. `correct` is 1 when the label
 matched the human's and 0 when it did not. `classification_case` says

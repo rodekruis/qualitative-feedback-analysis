@@ -1,27 +1,17 @@
 """Baseline evaluation for the sensitivity endpoint."""
 
 import argparse
-import json
-import os
-import subprocess
 from collections import Counter
 from collections.abc import Callable
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 import httpx
-from dotenv import load_dotenv
 from langfuse import Evaluation, get_client
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from _common import MAX_CONCURRENCY, load_env, resolve_config, run_metadata
+
 EXPERIMENT_NAME = "sensitivity-baseline"
-# run_experiment defaults to 50 concurrent items, which exhausts the dev
-# backend's small Postgres connection pool (usage tracking then fails, and
-# every request slows down). Keep this well under that pool's capacity.
-MAX_CONCURRENCY = 5
-DEFAULT_BASE_URL = "https://qfa-dev-backend.azurewebsites.net"
-REQUEST_TIMEOUT_SECONDS = 180.0
 
 
 def _parse_args() -> argparse.Namespace:
@@ -73,44 +63,6 @@ def _label_to_bool(label: object) -> bool:
     raise ValueError(f"Unknown expected label: {label!r}")
 
 
-def _resolve_api_key() -> str:
-    """The API key to call the QFA service with.
-
-    ``QFA_DEV_API_KEY`` first — the convention ``assign_codes_eval.py`` and the
-    **evaluate** CI workflow use, so this script works unchanged wherever that
-    one does. Falling back to ``AUTH_API_KEYS`` means a local run needs nothing
-    beyond the keys the local server is already configured with.
-
-    The fallback parses that JSON by hand rather than going through
-    ``AuthSettings``: :class:`~qfa.domain.models.TenantApiKey` blanks the
-    plaintext ``key`` as soon as it has hashed it, so the settings object can
-    only ever answer with ``None``. Any entry authenticates — this endpoint
-    needs no superuser flag.
-    """
-    if key := os.environ.get("QFA_DEV_API_KEY"):
-        return key
-    raw = os.environ.get("AUTH_API_KEYS")
-    if not raw:
-        raise SystemExit(
-            "No API key: set QFA_DEV_API_KEY, or AUTH_API_KEYS to the same "
-            "JSON the server consumes."
-        )
-    for entry in json.loads(raw):
-        if key := entry.get("key"):
-            return str(key)
-    raise SystemExit(
-        "No usable API key in AUTH_API_KEYS: every entry stores only a "
-        "'hashed_key'. Set QFA_DEV_API_KEY instead, or give one entry a "
-        "plaintext 'key'."
-    )
-
-
-def _resolve_config() -> tuple[str, str]:
-    """Resolve the backend URL and API key."""
-    base_url = os.environ.get("QFA_API_BASE_URL") or DEFAULT_BASE_URL
-    return base_url.rstrip("/"), _resolve_api_key()
-
-
 def _make_detect_sensitive(
     base_url: str, api_key: str
 ) -> Callable[..., dict[str, Any]]:
@@ -149,56 +101,6 @@ def _make_detect_sensitive(
         }
 
     return detect_sensitive
-
-
-def _git_output(*args: str) -> str:
-    """Run a git command in the repo; empty string on failure."""
-    result = subprocess.run(  # noqa: S603
-        ["git", *args],  # noqa: S607
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    return result.stdout.strip() if result.returncode == 0 else ""
-
-
-def _git_metadata() -> dict[str, str]:
-    """Commit and branch of the evaluation script."""
-    sha = os.environ.get("GIT_SHA") or _git_output("rev-parse", "HEAD") or "unknown"
-    branch = (
-        os.environ.get("GIT_REF_NAME")
-        or _git_output("rev-parse", "--abbrev-ref", "HEAD")
-        or "unknown"
-    )
-
-    return {
-        "eval_script_sha": sha,
-        "git_branch": branch,
-    }
-
-
-def _deployed_info(base_url: str) -> dict[str, str]:
-    """Get the version and commit currently deployed on the backend."""
-    try:
-        response = httpx.get(
-            f"{base_url}/v1/health",
-            timeout=REQUEST_TIMEOUT_SECONDS,
-        )
-        response.raise_for_status()
-        data = response.json()
-
-        return {
-            "deployed_version": str(data["version"]),
-            "deployed_commit": str(data["commit"]),
-        }
-
-    except (httpx.HTTPError, KeyError) as e:
-        print(f"warning: could not read {base_url}/v1/health ({e})")
-        return {
-            "deployed_version": "unknown",
-            "deployed_commit": "unknown",
-        }
 
 
 def correctness_evaluator(
@@ -391,11 +293,8 @@ def main() -> None:
     """Run the experiment against a Langfuse dataset."""
     args = _parse_args()
 
-    load_dotenv(REPO_ROOT / ".env")
-    base_url, api_key = _resolve_config()
-
-    deployed = _deployed_info(base_url)
-    git_meta = _git_metadata()
+    load_env()
+    base_url, api_key = resolve_config()
 
     langfuse = get_client()
     dataset = langfuse.get_dataset(args.dataset)
@@ -422,15 +321,6 @@ def main() -> None:
     print(f"Run:     {run_name}")
     print()
 
-    run_metadata = {
-        "dataset": args.dataset,
-        "endpoint": "/v1/detect-sensitive",
-        "evaluation": "baseline",
-        "smoke_limit": args.smoke_limit,
-        **git_meta,
-        **deployed,
-    }
-
     result = langfuse.run_experiment(
         name=EXPERIMENT_NAME,
         run_name=run_name,
@@ -445,7 +335,13 @@ def main() -> None:
             sensitivity_type_distribution_evaluator,
         ],
         max_concurrency=MAX_CONCURRENCY,
-        metadata=run_metadata,
+        metadata=run_metadata(
+            base_url,
+            dataset=args.dataset,
+            endpoint="/v1/detect-sensitive",
+            evaluation="baseline",
+            smoke_limit=args.smoke_limit,
+        ),
     )
 
     print(result.format())
