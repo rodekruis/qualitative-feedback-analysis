@@ -21,7 +21,7 @@ when the judge LLM call fails.
 from xml.sax.saxutils import escape as _xml_escape
 from xml.sax.saxutils import quoteattr as _xml_quoteattr
 
-from qfa.domain.models import FeedbackRecordModel
+from qfa.domain.models import CommunityMeetingRecordModel, FeedbackRecordModel
 
 _ENVELOPE_QUOTE_ENTITIES = {'"': "&quot;", "'": "&apos;"}
 
@@ -248,6 +248,37 @@ def build_feedback_record_envelope(
         f"    <text>{rec_content}</text>\n"
         f"{metadata_block}"
         f"  </feedback_record>"
+    )
+
+
+def build_community_meeting_record_envelope(
+    community_meeting_record: CommunityMeetingRecordModel,
+    *,
+    include_metadata: bool = True,
+    include_id: bool = True,
+) -> str:
+    """Build a single ``<community_meeting_record>`` envelope."""
+    record_content = escape_for_tag_envelope(community_meeting_record.meetingNotes)
+    id_attr = f" id={_xml_quoteattr(community_meeting_record.id)}" if include_id else ""
+    metadata_block = ""
+    if include_metadata:
+        metadata_lines = "\n".join(
+            f"      {escape_for_tag_envelope(str(key))}="
+            f"{escape_for_tag_envelope(str(value))}"
+            for key, value in community_meeting_record.metadata.model_dump(
+                exclude_defaults=True
+            ).items()
+        )
+        metadata_block = (
+            f"    <metadata>\n{metadata_lines}\n    </metadata>\n"
+            if metadata_lines
+            else ""
+        )
+    return (
+        f"  <community_meeting_record{id_attr}>\n"
+        f"    <text>{record_content}</text>\n"
+        f"{metadata_block}"
+        f"  </community_meeting_record>"
     )
 
 

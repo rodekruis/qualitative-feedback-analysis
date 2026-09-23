@@ -20,11 +20,15 @@ from qfa.domain.errors import AnalysisError, LLMError
 from qfa.domain.models import (
     QUALITY_SCORE_WEIGHTS,
     AggregateSummaryResultModel,
+    CommunityMeetingRecordModel,
+    CommunityMeetingRecordSummaryModel,
     FeedbackRecordMetadataModel,
     FeedbackRecordModel,
     FeedbackRecordSummaryModel,
     LLMResponse,
+    SingleSummaryCommunityMeetingRequestModel,
     SingleSummaryRequestModel,
+    SummaryCommunityMeetingResultModel,
     SummaryRequestModel,
     SummaryResultModel,
 )
@@ -82,6 +86,38 @@ def _make_summary_result(
     )
 
 
+def _make_community_meeting_summary_result(
+    item_id="meeting-1",
+    title="Meeting title",
+    summary="- Meeting point",
+    quality_score=0.82,
+):
+    return SummaryCommunityMeetingResultModel(
+        community_meeting_record_summaries=(
+            CommunityMeetingRecordSummaryModel(
+                id=item_id,
+                title=title,
+                summary=summary,
+                quality_score=quality_score,
+            ),
+        )
+    )
+
+
+def _make_community_meeting_request(
+    tenant_id=TENANT_ID, url_id="", espo_feedback_base_url=None
+):
+    return SingleSummaryCommunityMeetingRequestModel(
+        community_meeting_record=CommunityMeetingRecordModel(
+            id="meeting-1",
+            meetingNotes="The community requested safer water access.",
+            url_id=url_id,
+        ),
+        tenant_id=tenant_id,
+        espo_feedback_base_url=espo_feedback_base_url,
+    )
+
+
 def _make_aggregate_summary_result(title="Title", summary="- Point", quality_score=0.0):
     return AggregateSummaryResultModel(
         title=title,
@@ -113,7 +149,7 @@ def _weighted_quality_score(faithfulness, coverage, clarity):
         QUALITY_SCORE_WEIGHTS.faithfulness * faithfulness
         + QUALITY_SCORE_WEIGHTS.coverage * coverage
         + QUALITY_SCORE_WEIGHTS.clarity * clarity,
-        4,
+        2,
     )
 
 
@@ -281,6 +317,68 @@ class TestNonTransientError:
             _weighted_quality_score(0.9, 0.8, 0.5)
         )
         assert fake_llm.calls[0]["response_model"] is SummaryResultModel
+
+    @pytest.mark.asyncio
+    async def test_community_meeting_summary_returns_structured_result(self, settings):
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=_make_community_meeting_summary_result()),
+                _make_llm_response(
+                    structured=_judge_text(faithfulness=0.8, coverage=0.7, clarity=0.6)
+                ),
+            ]
+        )
+        service = _build_service(fake_llm, settings)
+
+        result = await service.summarize_community_meeting(
+            _make_community_meeting_request(), _future_deadline()
+        )
+
+        assert result.id == "meeting-1"
+        assert result.summary == "- Meeting point"
+        assert result.components.faithfulness == pytest.approx(0.8)
+        assert result.components.coverage == pytest.approx(0.7)
+        assert result.components.clarity == pytest.approx(0.6)
+        assert result.quality_score == pytest.approx(
+            _weighted_quality_score(0.8, 0.7, 0.6)
+        )
+        assert (
+            "The community requested safer water access."
+            in fake_llm.calls[0]["user_message"]
+        )
+        assert fake_llm.calls[0]["response_model"] is SummaryCommunityMeetingResultModel
+
+    @pytest.mark.asyncio
+    async def test_community_meeting_summary_hyperlinks_record_id(self, settings):
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(
+                    structured=_make_community_meeting_summary_result(
+                        summary="- Follow-up for meeting-1"
+                    )
+                ),
+                _make_llm_response(
+                    structured=_judge_text(faithfulness=0.8, coverage=0.7, clarity=0.6)
+                ),
+            ]
+        )
+        service = _build_service(fake_llm, settings)
+
+        result = await service.summarize_community_meeting(
+            _make_community_meeting_request(
+                url_id="meeting-url-1",
+                espo_feedback_base_url="https://espo.example.com/meetings/",
+            ),
+            _future_deadline(),
+        )
+
+        assert (
+            result.summary
+            == "- Follow-up for [meeting-1](https://espo.example.com/meetings/meeting-url-1)"
+        )
+        assert result.quality_score == pytest.approx(
+            _weighted_quality_score(0.8, 0.7, 0.6)
+        )
 
     @pytest.mark.asyncio
     async def test_summary_llm_error_bubbles_up(self, settings):

@@ -14,6 +14,7 @@ from typing import Any, Literal, override
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
+from qfa.api.html_text import html_to_text
 from qfa.domain.clustering_models import TrendPeriod
 
 logger = logging.getLogger(__name__)
@@ -415,6 +416,59 @@ class ApiFeedbackRecordInput(BaseModel):
             " isn't needed."
         ),
     )
+
+
+class ApiCommunityMeetingRecordMetadata(BaseModel):
+    """Metadata associated with a community meeting record."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    created: str = ""
+    dateOfMeeting: str | None = None
+    methodOfCollection: str | None = None
+    format: str | None = None
+    project: str | None = None
+    location: str | None = None
+    ageGroup: str | None = None
+    gender: str | None = None
+    groupSize: str | None = None
+
+
+class ApiCommunityMeetingRecordInput(BaseModel):
+    """A single community meeting record in an inference request."""
+
+    id: str = Field(description="Unique identifier for the community meeting record.")
+    meetingNotes: str = Field(
+        min_length=0,
+        max_length=100_000,
+        description=(
+            "Community meeting notes. May be empty and are handled without an"
+            " LLM call. HTML is accepted — EspoCRM's rich-text editor stores"
+            " whatever is pasted into it — and reduced to plain text before"
+            " the length limit is applied, so the limit bounds the prose"
+            " rather than the markup around it."
+        ),
+    )
+    metadata: ApiCommunityMeetingRecordMetadata = Field(
+        default_factory=ApiCommunityMeetingRecordMetadata,
+        description="Metadata associated with the community meeting record.",
+    )
+    url_id: str = Field(
+        default="",
+        description=(
+            "EspoCRM URL path segment for this record. When the request"
+            " also sets `espo_feedback_base_url`, mentions of this"
+            " record's `id` in the output are hyperlinked to"
+            " `{espo_feedback_base_url}/{url_id}`. Omit if hyperlinking"
+            " isn't needed."
+        ),
+    )
+
+    @field_validator("meetingNotes", mode="before")
+    @classmethod
+    def _strip_markup(cls, value: Any) -> Any:
+        """Runs before ``max_length``, so the cap bounds prose and not markup."""
+        return html_to_text(value) if isinstance(value, str) else value
 
 
 ##### Bulk requests Base Model #####
@@ -823,6 +877,69 @@ class ApiSummarizeResponse(BaseModel):
     title: str = Field(description="Generated short title for the feedback record.")
     summary: str = Field(
         description="Generated bullet-point summary for the feedback record."
+    )
+    quality_score: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Judge score for summary quality in the range 0.0-1.0.",
+    )
+    faithfulness: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Judge faithfulness in [0,1]; ``null`` when the judge call failed.",
+    )
+    coverage: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Judge coverage in [0,1]; ``null`` when the judge call failed.",
+    )
+    clarity: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Judge clarity in [0,1]; ``null`` when the judge call failed.",
+    )
+
+    @computed_field(description="Human-readable formatted output string.")
+    @property
+    def pretty_output(self) -> str:
+        """Human-readable formatted output string."""
+        return _create_pretty_output(
+            id=self.id,
+            quality_score=self.quality_score,
+            title=self.title,
+            summary=self.summary,
+        )
+
+
+class ApiSummarizeCommunityMeetingRequest(BaseModel):
+    """Request body for the ``POST /v1/summarize-community-meeting`` endpoint."""
+
+    community_meeting_record: ApiCommunityMeetingRecordInput = Field(
+        description="Community meeting record to summarize."
+    )
+    espo_feedback_base_url: str | None = Field(
+        default=None,
+        description=(
+            "Base URL for the community meeting record detail view. When set,"
+            " mentions of the record id in the summary are rewritten as a"
+            " markdown hyperlink using the record's `url_id`."
+        ),
+    )
+
+
+class ApiSummarizeCommunityMeetingResponse(BaseModel):
+    """Community meeting summary response."""
+
+    id: str = Field(description="Identifier of the source community meeting record.")
+    title: str = Field(
+        description="Generated short title for the community meeting record."
+    )
+    summary: str = Field(
+        description="Generated bullet-point summary for the community meeting record."
     )
     quality_score: float | None = Field(
         default=None,

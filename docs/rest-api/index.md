@@ -17,6 +17,7 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 |---|---|---|
 | `POST` | `/v1/analyze-bulk` | Bulk free-text analysis over submitted feedback records |
 | `POST` | `/v1/summarize` | Per-record summaries with quality scores |
+| `POST` | `/v1/summarize-community-meeting` | Community meeting note summaries with quality scores |
 | `POST` | `/v1/summarize-bulk` | Single bulk summary with judge score |
 | `POST` | `/v1/assign-codes` | Hierarchical code assignment |
 | `GET` | `/v1/usage` | Aggregate stats for the caller's tenant |
@@ -43,7 +44,7 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 |---|---|---|
 | `analysis` | string | Model output. |
 | `title` | string | `"Analysis"` — currently a constant (English only). |
-| `quality_score` | float or null | Weighted composite of `faithfulness`, `coverage` and `clarity`, computed in Python. `null` when the judge call failed (not an error — see `uncertainty_explanation`) and for `mode=hierarchical`. |
+| `quality_score` | float or null | Weighted composite of `faithfulness`, `coverage` and `clarity`, computed in Python. `null` when the judge call failed (not an error — see `uncertainty_explanation`). |
 | `faithfulness` | float or null | How well the analysis is supported by the source records, in [0, 1]. `null` when the judge failed, and for `mode=hierarchical`. |
 | `coverage` | float or null | How thoroughly the analysis answers the analyst question, in [0, 1]. `null` when the judge failed, and for `mode=hierarchical`. |
 | `clarity` | float or null | How clear and well-structured the analysis is, in [0, 1]. `null` when the judge failed, and for `mode=hierarchical`. |
@@ -62,11 +63,13 @@ coverage-weighted mean of per-chunk quality scores). `faithfulness`,
 integrations that ignored the field are unaffected; clients that want
 trends can now read them from the single-pass response too.
 
-Per-record inference endpoints (`/v1/summarize`, `/v1/assign-codes`, `/v1/detect-sensitive`) accept a single `feedback_record` and return one result object, unlike bulk endpoints that accept multiple records and return aggregated output.
+Per-record inference endpoints (`/v1/summarize`, `/v1/summarize-community-meeting`, `/v1/assign-codes`, `/v1/detect-sensitive`) accept a single record and return one result object, unlike bulk endpoints that accept multiple records and return aggregated output.
 
 `POST /v1/summarize` takes no language parameter: the generated title and summary follow the record's own language, detected server-side from its content. Records too short to detect fall back to instructing the model to mirror the input language.
 
 Anonymisation is unconditional on every inference endpoint: record text (plus the analyst prompt on `/v1/analyze-bulk`) is redacted before the LLM call, and placeholders are restored in the response — except person-name placeholders on `/v1/analyze-bulk`, which stay redacted by design. There is no request field to switch it off and no response field reporting it — see [crosscutting concerns](../architecture/04-crosscutting.md).
+
+`POST /v1/summarize-community-meeting` accepts HTML in `meetingNotes`. EspoCRM's rich-text editor stores whatever is pasted into it, and notes pasted from Word arrive as tens of thousands of characters of inline CSS wrapping a few kilobytes of prose. The markup is reduced to plain text — block boundaries become newlines, table cells are tab-separated, `<style>`/`<script>` content is dropped — *before* the 100 000-character limit is checked, so the limit bounds the prose rather than the markup. Notes containing no tag at all are passed through unchanged.
 
 Empty `content` is accepted on every endpoint and never causes a 422. A record with empty content carries no information, so it is dropped (bulk) or short-circuited to a 200 with no LLM call (per-record) — see each endpoint's reference for the exact result shape. This keeps a single blank EspoCRM description from silently failing a whole request (issue #138).
 
@@ -134,6 +137,28 @@ These explanations are English only, regardless of the language of the feedback.
 | `pretty_output` | string | Human-readable formatted output string, built from `id`/`title`/`summary`/`quality_score`. |
 
 Empty `content` short-circuits to a 200 with blank `title`/`summary` and every score `null`, without calling the LLM (issue #138).
+
+## POST /v1/summarize-community-meeting — field reference
+
+### Request
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `community_meeting_record` | object | — | A single `{id, meetingNotes, metadata?, url_id?}` record. `meetingNotes` may be empty and may contain HTML — see below. |
+| `espo_feedback_base_url` | string or null | `null` | Base URL for the EspoCRM community-meeting detail view. Mentions of the record id in the summary become markdown links when both this and `url_id` are present. |
+
+### Response (200 OK)
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | string | Echoes the source record's `id`. |
+| `title` | string | LLM-generated short title. |
+| `summary` | string | Generated bullet-point summary. |
+| `quality_score` | float or null | Weighted composite of `faithfulness`, `coverage` and `clarity`, computed in Python. `null` only when `meetingNotes` was empty (no LLM call was made) — a malformed judge reply raises a 502 instead of a `null` score. |
+| `faithfulness` | float or null | How well the summary is supported by the source notes, in [0, 1]. `null` only when `meetingNotes` was empty. |
+| `coverage` | float or null | How thoroughly the summary captures the meeting's key points, in [0, 1]. `null` only when `meetingNotes` was empty. |
+| `clarity` | float or null | How clear and concise the summary is, in [0, 1]. `null` only when `meetingNotes` was empty. |
+| `pretty_output` | string | Human-readable formatted output string, built from `id`/`title`/`summary`/`quality_score`. |
 
 ## Hyperlinking feedback records
 

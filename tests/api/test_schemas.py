@@ -16,6 +16,7 @@ from qfa.api.schemas import (
     ApiCodingFramework,
     ApiCodingNode,
     ApiSummarizeBulkResponse,
+    ApiSummarizeCommunityMeetingResponse,
     _assign_codes_request_examples,
     _create_pretty_output,
     _format_quality,
@@ -678,6 +679,13 @@ def test_analyze_bulk_title_defaults_to_analysis():
 def test_analyze_bulk_response_schema_includes_component_fields():
     """OpenAPI schema exposes faithfulness, coverage and clarity."""
     properties = ApiAnalyzeBulkResponse.model_json_schema()["properties"]
+    for name in ("faithfulness", "coverage", "clarity"):
+        assert name in properties
+
+
+def test_summarize_community_meeting_response_schema_includes_component_fields():
+    """The community-meeting summary response matches the other summarize endpoints."""
+    properties = ApiSummarizeCommunityMeetingResponse.model_json_schema()["properties"]
     for name in ("faithfulness", "coverage", "clarity"):
         assert name in properties
 
