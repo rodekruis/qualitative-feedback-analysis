@@ -100,8 +100,10 @@ via `az acr import`, preserving bit-identity.
   the release version. The registry-assigned digest is captured and
   written into the GitHub Release body.
 - Promotion workflows (`promote-to-staging.yaml`, `promote-to-prd.yaml`)
-  read the digest from the release body and update the target App
-  Service's image reference. No image copy or rebuild occurs.
+  resolve the digest from the shared ACR at deploy time and check it
+  against the digest in the release body. They then update the target App
+  Service's image reference. No image copy or rebuild occurs. See
+  [ADR-023](023-registry-derived-deploy-digest.md).
 - Rollback is symmetric with promotion: the same `az webapp config
   container set` command, pointing at a previous release's digest.
 - The App Service's system-assigned managed identity gets
