@@ -10,10 +10,14 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 import httpx
 import pytest
+from langfuse.api import NotFoundError
 
 _SCRIPT_PATH = Path(__file__).resolve().parents[2] / "eval" / "_common.py"
 _spec = importlib.util.spec_from_file_location("_common", _SCRIPT_PATH)
@@ -28,6 +32,7 @@ git_metadata = _common.git_metadata
 resolve_api_key = _common.resolve_api_key
 resolve_config = _common.resolve_config
 run_metadata = _common.run_metadata
+upload_items = _common.upload_items
 
 _EVAL_ENV = (
     "QFA_DEV_API_KEY",
@@ -168,3 +173,202 @@ def test_deployed_info_unknown_when_health_raises(
         "deployed_version": "unknown",
         "deployed_commit": "unknown",
     }
+
+
+@dataclass
+class _FakeItem:
+    """A minimal stand-in for a Langfuse ``DatasetItem``."""
+
+    id: str
+    input: Any
+    expected_output: Any = None
+    metadata: Any = None
+
+
+class FakeLangfuseClient:
+    """A duck-typed double for the Langfuse SDK client, for :func:`upload_items`.
+
+    ``datasets`` seeds existing dataset items, keyed by dataset name.
+    ``runs`` seeds each dataset's run count (0 when omitted).
+    """
+
+    def __init__(
+        self,
+        datasets: dict[str, list[_FakeItem]] | None = None,
+        runs: dict[str, int] | None = None,
+    ) -> None:
+        self._datasets = datasets or {}
+        self._runs = runs or {}
+        self.created_datasets: list[str] = []
+        self.written_items: list[dict[str, Any]] = []
+
+    def get_dataset(self, name: str) -> SimpleNamespace:
+        if name not in self._datasets:
+            raise NotFoundError(body={"message": "not found"})
+        return SimpleNamespace(items=self._datasets[name])
+
+    def get_dataset_runs(
+        self, *, dataset_name: str, page: int, limit: int
+    ) -> SimpleNamespace:
+        return SimpleNamespace(
+            meta=SimpleNamespace(total_items=self._runs.get(dataset_name, 0))
+        )
+
+    def create_dataset(self, *, name: str, **_kwargs: Any) -> None:
+        self.created_datasets.append(name)
+        self._datasets.setdefault(name, [])
+
+    def create_dataset_item(
+        self,
+        *,
+        dataset_name: str,
+        id: str,
+        input: Any,
+        expected_output: Any,
+        metadata: Any,
+    ) -> None:
+        self.written_items.append({"dataset_name": dataset_name, "id": id})
+        items = self._datasets.setdefault(dataset_name, [])
+        items[:] = [i for i in items if i.id != id]
+        items.append(
+            _FakeItem(
+                id=id, input=input, expected_output=expected_output, metadata=metadata
+            )
+        )
+
+
+def test_upload_items_creates_the_dataset_when_it_does_not_exist() -> None:
+    client = FakeLangfuseClient()
+
+    upload_items(client, "analyze/prompts-v1", [{"id": "P01-en", "input": "hi"}])
+
+    assert client.created_datasets == ["analyze/prompts-v1"]
+
+
+def test_upload_items_stops_when_the_dataset_has_runs() -> None:
+    client = FakeLangfuseClient(
+        datasets={"feedback/records-en-v1": []}, runs={"feedback/records-en-v1": 1}
+    )
+
+    with pytest.raises(SystemExit, match="holds runs"):
+        upload_items(
+            client, "feedback/records-en-v1", [{"id": "en-0001", "input": "x"}]
+        )
+
+    assert client.written_items == []
+
+
+def test_upload_items_allow_overwrite_bypasses_the_runs_freeze() -> None:
+    client = FakeLangfuseClient(
+        datasets={"feedback/records-en-v1": []}, runs={"feedback/records-en-v1": 1}
+    )
+
+    report = upload_items(
+        client,
+        "feedback/records-en-v1",
+        [{"id": "en-0001", "input": "x"}],
+        allow_overwrite=True,
+    )
+
+    assert report.created == ["feedback/records-en-v1:en-0001"]
+    assert client.written_items == [
+        {
+            "dataset_name": "feedback/records-en-v1",
+            "id": "feedback/records-en-v1:en-0001",
+        }
+    ]
+
+
+def test_upload_items_creates_a_new_item_with_the_dataset_prefixed_id() -> None:
+    client = FakeLangfuseClient(datasets={"analyze/prompts-v1": []})
+
+    report = upload_items(
+        client,
+        "analyze/prompts-v1",
+        [{"id": "P01-en", "input": "hi", "metadata": {"family": "themes"}}],
+    )
+
+    assert report.created == ["analyze/prompts-v1:P01-en"]
+    assert client.written_items == [
+        {"dataset_name": "analyze/prompts-v1", "id": "analyze/prompts-v1:P01-en"}
+    ]
+
+
+def test_upload_items_skips_an_item_with_unchanged_content() -> None:
+    existing = _FakeItem(
+        id="analyze/prompts-v1:P01-en",
+        input="hi",
+        expected_output=None,
+        metadata={"family": "themes"},
+    )
+    client = FakeLangfuseClient(datasets={"analyze/prompts-v1": [existing]})
+
+    report = upload_items(
+        client,
+        "analyze/prompts-v1",
+        [{"id": "P01-en", "input": "hi", "metadata": {"family": "themes"}}],
+    )
+
+    assert report.unchanged == ["analyze/prompts-v1:P01-en"]
+    assert report.created == []
+    assert client.written_items == []
+
+
+def test_upload_items_stops_and_lists_ids_when_content_changed() -> None:
+    existing = _FakeItem(id="analyze/prompts-v1:P01-en", input="old text")
+    client = FakeLangfuseClient(datasets={"analyze/prompts-v1": [existing]})
+
+    with pytest.raises(SystemExit, match="analyze/prompts-v1:P01-en"):
+        upload_items(
+            client, "analyze/prompts-v1", [{"id": "P01-en", "input": "new text"}]
+        )
+
+    assert client.written_items == []
+
+
+def test_upload_items_allow_overwrite_replaces_changed_content() -> None:
+    existing = _FakeItem(id="analyze/prompts-v1:P01-en", input="old text")
+    client = FakeLangfuseClient(datasets={"analyze/prompts-v1": [existing]})
+
+    report = upload_items(
+        client,
+        "analyze/prompts-v1",
+        [{"id": "P01-en", "input": "new text"}],
+        allow_overwrite=True,
+    )
+
+    assert report.updated == ["analyze/prompts-v1:P01-en"]
+    assert client.written_items == [
+        {"dataset_name": "analyze/prompts-v1", "id": "analyze/prompts-v1:P01-en"}
+    ]
+
+
+def test_upload_items_prints_and_reports_an_id_missing_from_the_file(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    stale = _FakeItem(id="analyze/prompts-v1:P99-en", input="orphaned")
+    client = FakeLangfuseClient(datasets={"analyze/prompts-v1": [stale]})
+
+    report = upload_items(
+        client, "analyze/prompts-v1", [{"id": "P01-en", "input": "hi"}]
+    )
+
+    assert report.extra == ["analyze/prompts-v1:P99-en"]
+    assert "analyze/prompts-v1:P99-en" in capsys.readouterr().out
+    # Deletes nothing: the stale item is still in the fake store.
+    assert any(
+        i.id == "analyze/prompts-v1:P99-en"
+        for i in client._datasets["analyze/prompts-v1"]
+    )
+
+
+def test_upload_items_dry_run_writes_nothing() -> None:
+    client = FakeLangfuseClient()
+
+    report = upload_items(
+        client, "analyze/prompts-v1", [{"id": "P01-en", "input": "hi"}], dry_run=True
+    )
+
+    assert report.created == ["analyze/prompts-v1:P01-en"]
+    assert client.created_datasets == []
+    assert client.written_items == []

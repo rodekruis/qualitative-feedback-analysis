@@ -10,11 +10,14 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import httpx
 from dotenv import load_dotenv
+from langfuse.api import NotFoundError
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -142,3 +145,101 @@ def run_metadata(base_url: str, **extra: Any) -> dict[str, Any]:
     Langfuse views filter, and unifying them would break those views.
     """
     return {**git_metadata(), **deployed_info(base_url), **extra}
+
+
+@dataclass
+class UploadReport:
+    """Full item ids (``<dataset>:<bare id>``) from one :func:`upload_items` call."""
+
+    created: list[str] = field(default_factory=list)
+    updated: list[str] = field(default_factory=list)
+    unchanged: list[str] = field(default_factory=list)
+    extra: list[str] = field(default_factory=list)
+
+
+def upload_items(
+    langfuse: Any,
+    dataset_name: str,
+    items: Sequence[Mapping[str, Any]],
+    *,
+    allow_overwrite: bool = False,
+    dry_run: bool = False,
+) -> UploadReport:
+    """Upsert ``items`` into the Langfuse dataset ``dataset_name``.
+
+    Creates the dataset first if it does not exist yet. Each item is a
+    mapping with a bare ``id``, ``input``, ``expected_output`` and
+    ``metadata``; the remote item id is ``f"{dataset_name}:{id}"``. An item
+    whose remote content is unchanged is skipped, never re-sent. An id that
+    exists in the dataset but not in ``items`` is printed, never deleted.
+    ``dry_run`` runs every check below but calls no Langfuse write.
+
+    Raises
+    ------
+    SystemExit
+        The dataset already holds runs, or an existing item's content
+        changed, and ``allow_overwrite`` is not set. Either way, nothing is
+        written to Langfuse.
+    """
+    try:
+        dataset = langfuse.get_dataset(dataset_name)
+        existing = {item.id: item for item in dataset.items}
+        is_new_dataset = False
+    except NotFoundError:
+        existing = {}
+        is_new_dataset = True
+
+    if not is_new_dataset:
+        runs = langfuse.get_dataset_runs(dataset_name=dataset_name, page=1, limit=1)
+        if runs.meta.total_items > 0 and not allow_overwrite:
+            raise SystemExit(
+                f"{dataset_name} already holds runs. Re-run with "
+                "--allow-overwrite to replace its items."
+            )
+
+    report = UploadReport()
+    changed: list[str] = []
+    to_write: list[tuple[str, Mapping[str, Any]]] = []
+
+    for item in items:
+        full_id = f"{dataset_name}:{item['id']}"
+        current = existing.get(full_id)
+        if current is None:
+            report.created.append(full_id)
+            to_write.append((full_id, item))
+        elif (
+            current.input == item.get("input")
+            and current.expected_output == item.get("expected_output")
+            and current.metadata == item.get("metadata")
+        ):
+            report.unchanged.append(full_id)
+        else:
+            changed.append(full_id)
+            to_write.append((full_id, item))
+
+    if changed and not allow_overwrite:
+        ids = ", ".join(sorted(changed))
+        raise SystemExit(
+            f"{len(changed)} item(s) changed content in {dataset_name}: {ids}. "
+            "Re-run with --allow-overwrite to replace them."
+        )
+    report.updated = sorted(changed)
+
+    local_ids = {f"{dataset_name}:{item['id']}" for item in items}
+    for full_id in sorted(existing.keys() - local_ids):
+        print(f"in {dataset_name} but not in the file: {full_id}")
+        report.extra.append(full_id)
+
+    if not dry_run:
+        if is_new_dataset:
+            langfuse.create_dataset(name=dataset_name)
+        for full_id, item in to_write:
+            langfuse.create_dataset_item(
+                dataset_name=dataset_name,
+                id=full_id,
+                input=item.get("input"),
+                expected_output=item.get("expected_output"),
+                metadata=item.get("metadata"),
+            )
+
+    return report
