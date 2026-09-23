@@ -15,6 +15,7 @@ executor and no fake service.
 
 import logging
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 import pytest
 
@@ -27,6 +28,8 @@ from qfa.domain.models import (
     FeedbackRecordModel,
     LLMResponse,
 )
+from qfa.domain.usage_models import Operation
+from qfa.services.call_context import call_scope
 from qfa.services.coding import (
     NO_CODING_NOTHING_RELEVANT_EXPLANATION,
     CodingService,
@@ -41,7 +44,7 @@ from qfa.settings import OrchestratorSettings
 # Reuse the doubles the summarize suite already ships rather than growing a
 # second, drifting pair (ADR-017: service tests use the real executor over the
 # existing fake driven adapters).
-from .test_summarize import FakeAnonymizer, FakeLLMPort
+from .test_summarize import FakeAnonymizer, FakeEvaluationPort, FakeLLMPort
 
 TENANT_ID = "tenant-42"
 LLM_TIMEOUT = 30.0
@@ -88,7 +91,7 @@ def _judge_text(score, explanation):
     return f"SCORE: {score}\nEXPLANATION: {explanation}"
 
 
-def _make_coding_service(fake_llm, settings):
+def _make_coding_service(fake_llm, settings, evaluator=None):
     """Build the service over the *real* executor, as ADR-017 prescribes."""
     anonymizer = FakeAnonymizer()
     executor = LLMCallExecutor(
@@ -98,7 +101,9 @@ def _make_coding_service(fake_llm, settings):
         llm_timeout_seconds=LLM_TIMEOUT,
         max_total_tokens=MAX_TOKENS,
     )
-    return CodingService(llm=fake_llm, anonymizer=anonymizer, executor=executor)
+    return CodingService(
+        llm=fake_llm, anonymizer=anonymizer, executor=executor, evaluator=evaluator
+    )
 
 
 def _make_coding_request(
@@ -349,6 +354,101 @@ class TestAssignCodesOneShot:
         assert len(fake_llm.calls) == 2
         assigned = result.coded_feedback_records[0].assigned_codes
         assert "Weak fit." in assigned[0].explanation
+
+
+class TestAssignCodesLiveScores:
+    """Each judged level's score also goes to Langfuse via ``EvaluationPort``."""
+
+    @pytest.mark.asyncio
+    async def test_sends_one_named_score_per_judged_level(self, settings):
+        request_id = uuid4()
+        root_codes = [
+            CodingNode(
+                id="type-a",
+                name="Type A",
+                children=[
+                    CodingNode(
+                        id="cat-a1",
+                        name="Cat A1",
+                        children=[CodingNode(id="code-a1-1", name="Code A1.1")],
+                    )
+                ],
+            )
+        ]
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=CodingResponse(selected=[2])),
+                _make_llm_response(structured=_judge_text(0.95, "Level 1 fits.")),
+                _make_llm_response(structured=_judge_text(0.9, "Level 2 fits.")),
+                _make_llm_response(structured=_judge_text(0.8, "Level 3 fits.")),
+            ]
+        )
+        evaluator = FakeEvaluationPort()
+        service = _make_coding_service(fake_llm, settings, evaluator=evaluator)
+
+        async with call_scope(TENANT_ID, Operation.ASSIGN_CODES, request_id):
+            await service.assign_codes(
+                _make_coding_request(root_codes=root_codes), _future_deadline()
+            )
+
+        sent = {call["name"]: call["value"] for call in evaluator.calls}
+        assert sent == {
+            "confidence_level_1": pytest.approx(0.95),
+            "confidence_level_2": pytest.approx(0.9),
+            "confidence_level_3": pytest.approx(0.8),
+        }
+        assert all(call["trace_id"] == request_id.hex for call in evaluator.calls)
+
+    @pytest.mark.asyncio
+    async def test_rejected_level_sends_its_own_score_but_no_further_levels(
+        self, settings
+    ):
+        """Judging stops at the first rejected level, so live scoring does too."""
+        request_id = uuid4()
+        root_codes = [
+            CodingNode(
+                id="type-a",
+                name="Type A",
+                children=[CodingNode(id="cat-a1", name="Cat A1")],
+            )
+        ]
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=CodingResponse(selected=[1])),
+                _make_llm_response(structured=_judge_text(0.05, "Weak fit.")),
+            ]
+        )
+        evaluator = FakeEvaluationPort()
+        service = _make_coding_service(fake_llm, settings, evaluator=evaluator)
+
+        async with call_scope(TENANT_ID, Operation.ASSIGN_CODES, request_id):
+            await service.assign_codes(
+                _make_coding_request(root_codes=root_codes, confidence_threshold=0.5),
+                _future_deadline(),
+            )
+
+        assert [call["name"] for call in evaluator.calls] == ["confidence_level_1"]
+        assert evaluator.calls[0]["value"] == pytest.approx(0.05)
+
+    @pytest.mark.asyncio
+    async def test_no_evaluator_means_no_scores_and_no_error(self, settings):
+        """A service built without an evaluator (the test-double default) just skips it."""
+        root_codes = [CodingNode(id="code-1", name="Code A")]
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=CodingResponse(selected=[0])),
+                _make_llm_response(structured=_judge_text(0.9, "Fits.")),
+            ]
+        )
+        service = _make_coding_service(fake_llm, settings)
+
+        result = await service.assign_codes(
+            _make_coding_request(root_codes=root_codes), _future_deadline()
+        )
+
+        assert result.coded_feedback_records[0].assigned_codes[0].coding_level_1_id == (
+            "code-1"
+        )
 
 
 class TestParseJudgeResponse:

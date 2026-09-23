@@ -38,9 +38,13 @@ from qfa.domain.models import (
     SummaryRequestModel,
     SummaryResultModel,
 )
-from qfa.domain.ports import AnonymizationPort, LLMPort
+from qfa.domain.ports import AnonymizationPort, EvaluationPort, LLMPort
 from qfa.services.call_context import judge_call
-from qfa.services.judge_scoring import log_judge_components, parse_judge_components
+from qfa.services.judge_scoring import (
+    log_judge_components,
+    parse_judge_components,
+    record_judge_scores,
+)
 from qfa.services.language import detect_source_language
 from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.services.prompts import (
@@ -180,6 +184,14 @@ class SummarizeService:
         no ``JUDGE_LLM_MODEL`` is configured. Configured via ``JUDGE_LLM_*``
         and resolved in
         :func:`qfa.api.composition.resolve_judge_llm_settings`.
+    evaluator : EvaluationPort | None
+        Where judge components are sent as live Langfuse scores (#354).
+        ``None`` (the default) means every judge call's scores are simply
+        not sent — the composition root
+        (:func:`qfa.api.composition.build_services`) always injects a
+        real port, a no-op one when Langfuse is unconfigured, so ``None``
+        here is only ever a test/script default, never production
+        behaviour.
     """
 
     def __init__(
@@ -188,6 +200,7 @@ class SummarizeService:
         anonymizer: AnonymizationPort,
         executor: LLMCallExecutor,
         judge_llm: LLMPort | None = None,
+        evaluator: EvaluationPort | None = None,
     ) -> None:
         self._llm = llm
         # Falling back to the primary client keeps the default (no
@@ -197,6 +210,7 @@ class SummarizeService:
         self._judge_llm = judge_llm if judge_llm is not None else llm
         self._anonymizer: AnonymizationPort = anonymizer
         self._executor = executor
+        self._evaluator = evaluator
 
     async def summarize_bulk(
         self,
@@ -256,6 +270,7 @@ class SummarizeService:
             )
         components = _parse_judge_quality_score(judge_response.structured)
         log_judge_components(logger, components)
+        record_judge_scores(self._evaluator, components)
 
         response.structured.quality_score = components.quality_score
         response.structured.components = components
@@ -354,6 +369,7 @@ class SummarizeService:
             )
         components = _parse_judge_quality_score(judge_response.structured)
         log_judge_components(logger, components)
+        record_judge_scores(self._evaluator, components)
 
         return_model_as_string = llm_completion.structured.model_dump_json()
         unanonymized_return_model_as_string = self._executor.deanonymize_json(

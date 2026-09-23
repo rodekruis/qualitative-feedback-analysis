@@ -2271,7 +2271,7 @@ name = "pexpect"
 version = "4.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "ptyprocess" },
+    { name = "ptyprocess", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/42/92/cc564bf6381ff43ce1f4d06852fc19a2f11d180f23dc32d9588bee2f149d/pexpect-4.9.0.tar.gz", hash = "sha256:ee7d41123f3c9911050ea2c2dac107568dc43b2d3b0c7557a33212c398ead30f", size = 166450, upload-time = "2023-11-25T09:07:26.339Z" }
 wheels = [
@@ -2869,6 +2869,7 @@ dependencies = [
     { name = "gunicorn" },
     { name = "hdbscan" },
     { name = "langdetect" },
+    { name = "langfuse" },
     { name = "litellm" },
     { name = "numpy" },
     { name = "onnxruntime" },
@@ -2901,7 +2902,6 @@ dev = [
     { name = "huggingface-hub" },
     { name = "import-linter" },
     { name = "ipykernel" },
-    { name = "langfuse" },
     { name = "matplotlib" },
     { name = "polars" },
     { name = "pre-commit" },
@@ -2933,6 +2933,7 @@ requires-dist = [
     { name = "gunicorn", specifier = "~=25.3" },
     { name = "hdbscan", specifier = ">=0.8.43" },
     { name = "langdetect", specifier = ">=1.0.9" },
+    { name = "langfuse", specifier = ">=4.6" },
     { name = "litellm", specifier = "~=1.84.0" },
     { name = "numpy", specifier = ">=2.4.4" },
     { name = "onnxruntime", specifier = ">=1.26.0" },
@@ -2965,7 +2966,6 @@ dev = [
     { name = "huggingface-hub", specifier = ">=1.10" },
     { name = "import-linter", specifier = ">=2.11" },
     { name = "ipykernel", specifier = ">=7.2.0" },
-    { name = "langfuse", specifier = ">=4.6" },
     { name = "matplotlib", specifier = ">=3.10.9" },
     { name = "polars", specifier = ">=1.41.1" },
     { name = "pre-commit", specifier = ">=4.6.0" },

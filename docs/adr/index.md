@@ -30,6 +30,7 @@ to them, the options considered, and the reasoning behind the chosen approach.
 | [019](019-per-environment-app-service-plan-sizing.md) | Per-environment App Service plan sizing, prd on P0v3 | Accepted |
 | [020](020-mistral-medium-as-judge-model.md) | `mistral-medium-3-5` as the judge model | Accepted |
 | [021](021-two-model-person-union.md) | Two-model NER union for person-name recall | Accepted |
+| [022](022-evaluation-port-for-live-judge-scores.md) | `EvaluationPort` for live judge scores in Langfuse | Accepted |
 
 ## Obsolete
 
@@ -60,5 +61,6 @@ to them, the options considered, and the reasoning behind the chosen approach.
 019-per-environment-app-service-plan-sizing
 020-mistral-medium-as-judge-model
 021-two-model-person-union
+022-evaluation-port-for-live-judge-scores
 obsolete/008-keep-orchestrator-port
 ```
