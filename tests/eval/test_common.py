@@ -27,6 +27,7 @@ sys.modules["_common"] = _common
 _spec.loader.exec_module(_common)
 
 DEFAULT_BASE_URL = _common.DEFAULT_BASE_URL
+contains_term = _common.contains_term
 deployed_info = _common.deployed_info
 git_metadata = _common.git_metadata
 resolve_api_key = _common.resolve_api_key
@@ -160,6 +161,20 @@ def test_run_metadata_carries_contract_keys_and_merges_extras(
     assert meta["deployed_commit"] == "deploy-sha"
     assert meta["dataset"] == "sensitivity/foo"
     assert meta["limit"] == 2
+
+
+@pytest.mark.parametrize(
+    ("text", "term", "expected"),
+    [
+        pytest.param("will", "ill", False, id="ill-not-inside-will"),
+        pytest.param("said", "aid", False, id="aid-not-inside-said"),
+        pytest.param("LGBTQI+", "lgbtqi", True, id="lgbtqi-plus-folds-to-lgbtqi"),
+    ],
+)
+def test_contains_term_matches_whole_words_only(
+    text: str, term: str, expected: bool
+) -> None:
+    assert contains_term(text, term) is expected
 
 
 def test_deployed_info_unknown_when_health_raises(

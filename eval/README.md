@@ -255,3 +255,50 @@ window, or — once a record has text — its length is outside 60–1,200
 characters, it has no `facts`, its text uses a banned word (`PSEA`,
 `safeguarding`, `exploitation`, `referral`), or an urgent/decoy record
 has fewer than 3 `keywords`.
+
+### The vocabulary (`--vocab`)
+
+Add `--vocab <file>` to also check and upload the keyword vocabulary, to
+`feedback/vocab-v1`, after the records:
+
+```bash
+uv run python eval/upload_pool.py \
+  --input .corpus_work/analyze-pool/records-en-v1.yaml \
+  --vocab .corpus_work/analyze-pool/vocab-v1.yaml --dry-run
+```
+
+A fact counts as reported when one of these keywords appears in a model's
+answer, matched by `_common.contains_term` — a whole-word match on text
+that `_common.normalize` has lowercased, accent-stripped, and folded
+`LGBTQI+` to `lgbtqi`, so `"ill"` never matches inside `"will"`.
+
+Each entry in the vocabulary file is one label value:
+
+```yaml
+- kind: theme # or need, complaint_about, rumour, suggestion, praise_about,
+  # info_request, promise_gap, access_barrier, or group
+  name: food # the label value; "<kind>:<name>" is the bare id, e.g. group:older_people
+  keywords:
+    en: [food shortage, not enough food, hunger] # 3 or more
+
+- kind: group
+  name: older_people
+  keywords:
+    en: [older person, elderly, older resident]
+  issue_keywords: # group entries only, 3 or more
+    en: [mobility difficulty, long walk difficult, needs assistance carrying]
+```
+
+There is no entry for `urgent_kind` or `decoy`: those keywords stay on the
+6 urgent and 4 decoy records themselves (see `upload_pool.py` above), so
+the check below can confirm an urgent record's keyword is never found in
+a decoy's text.
+
+The script stops before uploading anything if a label value used in the
+records has no matching entry, or an entry's value matches no record; an
+entry has fewer than 3 `keywords.en`, or a group entry fewer than 3
+`issue_keywords.en`; a keyword — in the vocabulary or on a record —
+contains a word from `STOPLIST` in `pool_spec.py` (for example `minor`,
+which would credit the unaccompanied-minors group for "a minor theme");
+two group entries share a keyword; two urgent records share a keyword; or
+an urgent record's keyword appears in a decoy's text.

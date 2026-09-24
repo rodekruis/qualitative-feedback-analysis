@@ -17,6 +17,8 @@ import upload_pool
 
 validate_pool = upload_pool.validate_pool
 build_items = upload_pool.build_items
+validate_vocab = upload_pool.validate_vocab
+build_vocab_items = upload_pool.build_vocab_items
 
 _TEXT = "x" * 80
 
@@ -57,6 +59,22 @@ def _missing_facts() -> dict[str, Any]:
     record = _record("en-0001")
     del record["metadata"]["facts"]
     return record
+
+
+def _vocab_entry(
+    kind: str = "theme",
+    name: str = "food",
+    keywords: list[str] | None = None,
+    issue_keywords: list[str] | None = None,
+) -> dict[str, Any]:
+    entry: dict[str, Any] = {
+        "kind": kind,
+        "name": name,
+        "keywords": {"en": ["a", "b", "c"] if keywords is None else keywords},
+    }
+    if issue_keywords is not None:
+        entry["issue_keywords"] = {"en": issue_keywords}
+    return entry
 
 
 @pytest.mark.parametrize(
@@ -269,6 +287,164 @@ def test_validate_pool_final_accepts_a_reviewed_urgent_record() -> None:
         decoys=0,
         final=True,
     )
+
+
+@pytest.mark.parametrize(
+    ("entries", "records", "vocab_labels", "match"),
+    [
+        pytest.param(
+            [],
+            [_record("en-0001", theme="food")],
+            {"theme": "theme"},
+            "no vocabulary entry for food",
+            id="missing-entry-for-a-record-value",
+        ),
+        pytest.param(
+            [
+                _vocab_entry(kind="theme", name="food"),
+                _vocab_entry(kind="theme", name="shelter"),
+            ],
+            [_record("en-0001", theme="food")],
+            {"theme": "theme"},
+            "shelter",
+            id="orphan-entry-matches-no-record",
+        ),
+        pytest.param(
+            [_vocab_entry(kind="theme", name="food", keywords=["a", "b"])],
+            [_record("en-0001", theme="food")],
+            {"theme": "theme"},
+            "fewer than 3 keywords",
+            id="entry-lacks-keywords",
+        ),
+        pytest.param(
+            [_vocab_entry(kind="group", name="children", issue_keywords=["x"])],
+            [_record("en-0001", groups=["children"])],
+            {"groups": "group"},
+            "fewer than 3 issue_keywords",
+            id="group-entry-lacks-issue-keywords",
+        ),
+        pytest.param(
+            [
+                _vocab_entry(
+                    kind="group",
+                    name="unaccompanied_minors",
+                    keywords=["minor", "separated", "unaccompanied"],
+                    issue_keywords=["a", "b", "c"],
+                )
+            ],
+            [_record("en-0001", groups=["unaccompanied_minors"])],
+            {"groups": "group"},
+            "stoplisted word 'minor'",
+            id="minor-theme-keyword-on-stoplist",
+        ),
+        pytest.param(
+            [
+                _vocab_entry(
+                    kind="group",
+                    name="children",
+                    keywords=["kid", "x", "y"],
+                    issue_keywords=["p", "q", "r"],
+                ),
+                _vocab_entry(
+                    kind="group",
+                    name="women",
+                    keywords=["kid", "z", "w"],
+                    issue_keywords=["p", "q", "r"],
+                ),
+            ],
+            [
+                _record("en-0001", groups=["children"]),
+                _record("en-0002", groups=["women"]),
+            ],
+            {"groups": "group"},
+            "shared by children and women",
+            id="two-group-entries-share-a-keyword",
+        ),
+        pytest.param(
+            [],
+            [
+                _record(
+                    "en-0001",
+                    theme="protection",
+                    urgent_kind="sex_for_aid",
+                    keywords=["a", "b", "c"],
+                ),
+                _record(
+                    "en-0002",
+                    theme="protection",
+                    urgent_kind="trafficking_risk",
+                    keywords=["a", "d", "e"],
+                ),
+            ],
+            {},
+            "urgent keyword 'a' shared by en-0001 and en-0002",
+            id="two-urgent-records-share-a-keyword",
+        ),
+        pytest.param(
+            [],
+            [
+                _record(
+                    "en-0001",
+                    theme="protection",
+                    urgent_kind="sex_for_aid",
+                    content=_TEXT,
+                    facts=["f"],
+                    keywords=["a distinctive phrase", "b", "c"],
+                ),
+                _record(
+                    "en-0002",
+                    theme="protection",
+                    decoy=True,
+                    content="This decoy text contains a distinctive phrase in passing.",
+                    facts=["f"],
+                ),
+            ],
+            {},
+            "urgent keyword 'a distinctive phrase' appears in decoy en-0002",
+            id="urgent-keyword-appears-in-decoy-text",
+        ),
+    ],
+)
+def test_validate_vocab_rejects(
+    entries: list[dict[str, Any]],
+    records: list[dict[str, Any]],
+    vocab_labels: dict[str, str],
+    match: str,
+) -> None:
+    with pytest.raises(SystemExit, match=match):
+        validate_vocab(entries, records, vocab_labels=vocab_labels)
+
+
+def test_validate_vocab_passes_for_a_well_formed_minimal_vocabulary() -> None:
+    entries = [
+        _vocab_entry(kind="theme", name="food"),
+        _vocab_entry(kind="group", name="children", issue_keywords=["x", "y", "z"]),
+    ]
+    records = [
+        _record("en-0001", theme="food"),
+        _record("en-0002", groups=["children"]),
+    ]
+
+    validate_vocab(entries, records, vocab_labels={"theme": "theme", "groups": "group"})
+
+
+def test_build_vocab_items_splits_keywords_into_input_and_tags_into_metadata() -> None:
+    entry = _vocab_entry(
+        kind="group",
+        name="children",
+        keywords=["a", "b", "c"],
+        issue_keywords=["d", "e", "f"],
+    )
+
+    [item] = build_vocab_items([entry])
+
+    assert item["id"] == "group:children"
+    assert item["input"] == {
+        "keywords": {"en": ["a", "b", "c"]},
+        "issue_keywords": {"en": ["d", "e", "f"]},
+    }
+    assert item["expected_output"] is None
+    assert item["metadata"] == {"kind": "group", "name": "children"}
 
 
 def test_build_items_moves_created_into_input_metadata_and_keeps_the_rest() -> None:

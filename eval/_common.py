@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
+import unicodedata
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -145,6 +147,27 @@ def run_metadata(base_url: str, **extra: Any) -> dict[str, Any]:
     Langfuse views filter, and unifying them would break those views.
     """
     return {**git_metadata(), **deployed_info(base_url), **extra}
+
+
+def normalize(text: str) -> str:
+    """Lowercase ``text``, fold ``LGBTQI+`` to ``lgbtqi``, and strip accents.
+
+    The one text transform every keyword match against free text should go
+    through, so a keyword written either way still matches.
+    """
+    folded = text.lower().replace("lgbtqi+", "lgbtqi")
+    decomposed = unicodedata.normalize("NFKD", folded)
+    return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+
+
+def contains_term(text: str, term: str) -> bool:
+    """Whether ``term`` appears in ``text`` as a whole word or phrase.
+
+    Both go through :func:`normalize` first. Matches on word boundaries
+    only, so ``"ill"`` does not match inside ``"will"``.
+    """
+    pattern = rf"\b{re.escape(normalize(term))}\b"
+    return re.search(pattern, normalize(text)) is not None
 
 
 @dataclass

@@ -9,6 +9,11 @@ records one known fact about the record — its theme, an unmet need it
 reports, a vulnerable group it is about, and so on — set by whoever wrote
 the record's text, never inferred later.
 
+With ``--vocab``, it also checks a working YAML file of vocabulary entries
+against the records and uploads it to ``feedback/vocab-v1``, after the
+records. A downstream scorer counts a fact as reported when one of these
+keywords appears in a model's answer, matched by ``_common.contains_term``.
+
 Prerequisites
 -------------
 - ``LANGFUSE_PUBLIC_KEY``, ``LANGFUSE_SECRET_KEY``, ``LANGFUSE_HOST`` — the
@@ -18,6 +23,10 @@ Run::
 
     uv run python eval/upload_pool.py \\
       --input .corpus_work/analyze-pool/records-en-v1.yaml --dry-run
+
+    uv run python eval/upload_pool.py \\
+      --input .corpus_work/analyze-pool/records-en-v1.yaml \\
+      --vocab .corpus_work/analyze-pool/vocab-v1.yaml --dry-run
 """
 
 from __future__ import annotations
@@ -25,7 +34,7 @@ from __future__ import annotations
 import argparse
 import re
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -33,13 +42,16 @@ from typing import Any
 import yaml
 from langfuse import get_client
 
-from _common import load_env, upload_items
+from _common import contains_term, load_env, upload_items
 from pool_spec import (
     BANNED_WORDS,
     CREATED_FORMAT,
     DECOYS,
     PLANTED,
     RECORDS_DATASET,
+    STOPLIST,
+    VOCAB_DATASET,
+    VOCAB_LABELS,
     WINDOW_END,
     WINDOW_START,
 )
@@ -84,6 +96,15 @@ def _parse_args() -> argparse.Namespace:
         required=True,
         type=Path,
         help="YAML file of pool records.",
+    )
+    parser.add_argument(
+        "--vocab",
+        type=Path,
+        help=(
+            "YAML file of vocabulary entries. When given, checks it against "
+            "the records and uploads it to feedback/vocab-v1, after the "
+            "records."
+        ),
     )
     parser.add_argument(
         "--dry-run",
@@ -273,8 +294,177 @@ def build_items(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return items
 
 
+def load_vocab(path: Path) -> list[dict[str, Any]]:
+    """Read the working YAML file of vocabulary entries."""
+    entries = yaml.safe_load(path.read_text())
+    return entries or []
+
+
+def _vocab_id(entry: Mapping[str, Any]) -> str:
+    """The bare id of a vocabulary entry: ``<kind>:<name>``, e.g. ``group:older_people``."""
+    return f"{entry['kind']}:{entry['name']}"
+
+
+def _shared_keyword(
+    owners: list[tuple[str, list[str]]],
+) -> tuple[str, str, str] | None:
+    """The first keyword two owners share, as ``(keyword, first owner, second owner)``."""
+    seen: dict[str, str] = {}
+    for name, keywords in owners:
+        for keyword in keywords:
+            if keyword in seen and seen[keyword] != name:
+                return keyword, seen[keyword], name
+            seen[keyword] = name
+    return None
+
+
+def validate_vocab(
+    entries: list[dict[str, Any]],
+    records: list[dict[str, Any]],
+    *,
+    vocab_labels: Mapping[str, str] = VOCAB_LABELS,
+    stoplist: Sequence[str] = STOPLIST,
+) -> None:
+    """Check the vocabulary entries against the pool records, before any upload.
+
+    ``vocab_labels`` and ``stoplist`` default to the real ones; tests pass
+    smaller values.
+
+    Raises
+    ------
+    SystemExit
+        A value of a ``vocab_labels`` label used in the records has no
+        matching entry, or an entry's value matches no record; an entry
+        has fewer than 3 ``keywords.en``, or a group entry fewer than 3
+        ``issue_keywords.en``; a keyword, in the vocabulary or on a
+        record, contains a ``stoplist`` word; two group entries, or two
+        urgent records, share a keyword; or an urgent record's keyword
+        appears in a decoy's text.
+    """
+    entry_names_by_kind: dict[str, set[str]] = {}
+    for entry in entries:
+        entry_names_by_kind.setdefault(entry["kind"], set()).add(entry["name"])
+
+    for field_name, kind in vocab_labels.items():
+        if field_name == "groups":
+            record_values = {
+                g for r in records for g in r["metadata"].get("groups") or []
+            }
+        else:
+            record_values = {
+                r["metadata"][field_name]
+                for r in records
+                if r["metadata"].get(field_name)
+            }
+        entry_values = entry_names_by_kind.get(kind, set())
+        missing = sorted(record_values - entry_values)
+        if missing:
+            raise SystemExit(f"{kind}: no vocabulary entry for {', '.join(missing)}")
+        orphans = sorted(entry_values - record_values)
+        if orphans:
+            raise SystemExit(
+                f"{kind}: entry for {', '.join(orphans)} matches no record"
+            )
+
+    for entry in entries:
+        entry_id = _vocab_id(entry)
+        if len(entry.get("keywords", {}).get("en") or []) < 3:
+            raise SystemExit(f"{entry_id}: fewer than 3 keywords.en")
+        if entry["kind"] == "group":
+            if len(entry.get("issue_keywords", {}).get("en") or []) < 3:
+                raise SystemExit(f"{entry_id}: fewer than 3 issue_keywords.en")
+
+    vocab_keywords = [
+        (keyword, _vocab_id(entry))
+        for entry in entries
+        for field in ("keywords", "issue_keywords")
+        for keyword in entry.get(field, {}).get("en") or []
+    ]
+    record_keywords = [
+        (keyword, r["id"])
+        for r in records
+        for keyword in r["metadata"].get("keywords") or []
+    ]
+    for keyword, source in vocab_keywords + record_keywords:
+        stoplisted = next(
+            (word for word in stoplist if contains_term(keyword, word)), None
+        )
+        if stoplisted:
+            raise SystemExit(
+                f"{source}: keyword {keyword!r} contains the stoplisted word {stoplisted!r}"
+            )
+
+    group_owners = [
+        (entry["name"], entry.get("keywords", {}).get("en") or [])
+        for entry in entries
+        if entry["kind"] == "group"
+    ]
+    if shared := _shared_keyword(group_owners):
+        keyword, first, second = shared
+        raise SystemExit(f"group keyword {keyword!r} shared by {first} and {second}")
+
+    urgent = [r for r in records if r["metadata"].get("urgent_kind")]
+    urgent_owners = [(r["id"], r["metadata"].get("keywords") or []) for r in urgent]
+    if shared := _shared_keyword(urgent_owners):
+        keyword, first, second = shared
+        raise SystemExit(f"urgent keyword {keyword!r} shared by {first} and {second}")
+
+    decoys = [r for r in records if r["metadata"].get("decoy")]
+    for r in urgent:
+        for keyword in r["metadata"].get("keywords") or []:
+            hit = next(
+                (
+                    d["id"]
+                    for d in decoys
+                    if contains_term(d.get("content") or "", keyword)
+                ),
+                None,
+            )
+            if hit:
+                raise SystemExit(
+                    f"{r['id']}'s urgent keyword {keyword!r} appears in decoy {hit}"
+                )
+
+
+def build_vocab_items(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Map each vocabulary entry to the shape ``upload_items()`` expects.
+
+    ``input`` carries the keyword lists — the payload a model's answer
+    gets matched against. ``kind`` and ``name``, which together make the
+    bare id, stay in the item's own ``metadata`` as plain tags for
+    browsing in the Langfuse UI.
+    """
+    items = []
+    for entry in entries:
+        input_: dict[str, Any] = {"keywords": entry["keywords"]}
+        if "issue_keywords" in entry:
+            input_["issue_keywords"] = entry["issue_keywords"]
+        items.append(
+            {
+                "id": _vocab_id(entry),
+                "input": input_,
+                "expected_output": None,
+                "metadata": {"kind": entry["kind"], "name": entry["name"]},
+            }
+        )
+    return items
+
+
+def _upload(
+    langfuse: Any, dataset: str, items: list[dict[str, Any]], *, dry_run: bool
+) -> None:
+    """Upload ``items`` and print the same three-line report for any dataset."""
+    report = upload_items(langfuse, dataset, items, dry_run=dry_run)
+    print(f"Dataset: {dataset}{' (dry run)' if dry_run else ''}")
+    print(
+        f"{len(report.created)} created, {len(report.unchanged)} unchanged, {len(report.updated)} updated"
+    )
+    if report.extra:
+        print(f"{len(report.extra)} in Langfuse but not in the file (not deleted)")
+
+
 def main() -> None:
-    """Validate and upload the pool named on the command line."""
+    """Validate and upload the pool, and optionally the vocabulary, named on the command line."""
     args = _parse_args()
     load_env()
 
@@ -282,19 +472,14 @@ def main() -> None:
     validate_pool(records, final=not args.dry_run)
     items = build_items(records)
     langfuse = get_client()
-    report = upload_items(
-        langfuse,
-        RECORDS_DATASET,
-        items,
-        dry_run=args.dry_run,
-    )
+    _upload(langfuse, RECORDS_DATASET, items, dry_run=args.dry_run)
 
-    print(f"Dataset: {RECORDS_DATASET}{' (dry run)' if args.dry_run else ''}")
-    print(
-        f"{len(report.created)} created, {len(report.unchanged)} unchanged, {len(report.updated)} updated"
-    )
-    if report.extra:
-        print(f"{len(report.extra)} in Langfuse but not in the file (not deleted)")
+    if args.vocab:
+        vocab_entries = load_vocab(args.vocab)
+        validate_vocab(vocab_entries, records)
+        vocab_items = build_vocab_items(vocab_entries)
+        print()
+        _upload(langfuse, VOCAB_DATASET, vocab_items, dry_run=args.dry_run)
 
 
 if __name__ == "__main__":
