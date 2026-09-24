@@ -188,6 +188,9 @@ class TestRequestIdEqualsCallId:
         assert resp.status_code == 200
 
         header_uuid = UUID(resp.headers["x-request-id"])
+        body_request_id = UUID(resp.json()["request_id"])
+        assert header_uuid == body_request_id
+
         rows = await _fetch_rows(e2e_engine)
         assert len(rows) >= 2, "expected >=2 LLM calls for summarize-bulk"
         assert {r.call_id for r in rows} == {header_uuid}

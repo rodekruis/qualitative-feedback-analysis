@@ -800,6 +800,7 @@ class ApiSummarizeBulkResponse(ApiBulkInferenceResponseBase):
             " used to localize the pretty_output headers."
         ),
     )
+    request_id: str = Field(description="Unique identifier for this request.")
 
     @override
     @computed_field(description="Human-readable formatted output string.")

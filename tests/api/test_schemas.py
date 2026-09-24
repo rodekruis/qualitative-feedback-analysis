@@ -555,16 +555,21 @@ def test_summarize_bulk_pretty_output_is_summary_text_only():
         title="Any Title",
         summary=summary,
         quality_score=0.94,
+        request_id="req-1",
     )
     assert response.pretty_output == summary
 
 
 def test_summarize_bulk_quality_text_renders_dots_and_percent():
     """quality_text formats quality_score as dot-chars and a percentage."""
-    response = ApiSummarizeBulkResponse(title="T", summary="S", quality_score=0.94)
+    response = ApiSummarizeBulkResponse(
+        title="T", summary="S", quality_score=0.94, request_id="req-1"
+    )
     assert response.quality_text == "●●●●● 94%"
 
-    response_85 = ApiSummarizeBulkResponse(title="T", summary="S", quality_score=0.85)
+    response_85 = ApiSummarizeBulkResponse(
+        title="T", summary="S", quality_score=0.85, request_id="req-1"
+    )
     assert response_85.quality_text == "●●●●○ 85%"
 
 
@@ -574,7 +579,9 @@ def test_summarize_bulk_quality_text_empty_batch_is_none():
     An empty batch means no judge call was made; returning 0 would signal
     poor quality rather than "nothing to judge".
     """
-    response = ApiSummarizeBulkResponse(title="", summary="", quality_score=None)
+    response = ApiSummarizeBulkResponse(
+        title="", summary="", quality_score=None, request_id="req-1"
+    )
     assert response.quality_text is None
 
 
@@ -589,6 +596,7 @@ def test_summarize_bulk_response_output_language_excluded_from_serialization():
         summary="s",
         quality_score=0.5,
         output_language="French",
+        request_id="req-1",
     )
     assert "output_language" not in response.model_dump()
 

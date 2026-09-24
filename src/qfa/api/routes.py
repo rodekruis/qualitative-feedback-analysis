@@ -312,7 +312,8 @@ async def summarize_bulk(
     Returns
     -------
     ApiSummarizeBulkResponse
-        A single summary with themes ordered by frequency across all feedback records.
+        A single summary with themes ordered by frequency across all
+        feedback records, and request ID.
     """
     deadline = datetime.now(UTC) + timedelta(seconds=240)
 
@@ -327,6 +328,7 @@ async def summarize_bulk(
             faithfulness=None,
             coverage=None,
             clarity=None,
+            request_id=request.state.request_id,
         )
 
     feedback_records = tuple(
@@ -356,6 +358,7 @@ async def summarize_bulk(
         coverage=None if components is None else components.coverage,
         clarity=None if components is None else components.clarity,
         output_language=body.output_language,
+        request_id=request.state.request_id,
     )
 
 

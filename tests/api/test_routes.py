@@ -357,6 +357,105 @@ class TestSummarizeSuccess:
         assert received.startswith("Water point 0 needs repair.")
 
 
+class TestSummarizeBulkSuccess:
+    """``/v1/summarize-bulk`` carries the same request-id contract as ``/v1/analyze-bulk``."""
+
+    @staticmethod
+    def _records():
+        return [
+            {
+                "id": "doc-1",
+                "content": "Great service!",
+                "metadata": _summary_metadata(),
+            }
+        ]
+
+    @pytest.mark.asyncio
+    async def test_200_on_valid_request(self, client):
+        resp = await client.post(
+            "/v1/summarize-bulk",
+            json={"feedback_records": self._records()},
+            headers=_auth_header(),
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "summary" in data
+        assert "request_id" in data
+
+    @pytest.mark.asyncio
+    async def test_request_id_is_canonical_uuid(self, client):
+        """``request_id`` in the response body is a canonical UUID string.
+
+        Mirrors ``TestAnalyzeSuccess.test_request_id_is_canonical_uuid``
+        (#173) so both bulk endpoints expose the same identifier format.
+        """
+        from uuid import UUID
+
+        resp = await client.post(
+            "/v1/summarize-bulk",
+            json={"feedback_records": self._records()},
+            headers=_auth_header(),
+        )
+        # Raises ValueError if the string isn't a valid UUID.
+        UUID(resp.json()["request_id"])
+
+    @pytest.mark.asyncio
+    async def test_x_request_id_header_present(self, client):
+        resp = await client.post(
+            "/v1/summarize-bulk",
+            json={"feedback_records": self._records()},
+            headers=_auth_header(),
+        )
+        assert "x-request-id" in resp.headers
+
+    @pytest.mark.asyncio
+    async def test_x_request_id_matches_body(self, client):
+        resp = await client.post(
+            "/v1/summarize-bulk",
+            json={"feedback_records": self._records()},
+            headers=_auth_header(),
+        )
+        assert resp.headers["x-request-id"] == resp.json()["request_id"]
+
+    @pytest.mark.asyncio
+    async def test_x_request_id_propagates_into_call_scope_as_call_id(self, test_app):
+        """The X-Request-ID UUID is the same value seen as ``ctx.call_id``.
+
+        Mirrors ``TestAnalyzeSuccess`` (#173): unit-level proof of the
+        unification across the full middleware -> dependency -> service
+        chain, this time through ``Depends(call_scope_for(Operation.SUMMARIZE_AGGREGATE))``.
+        """
+        from uuid import UUID
+
+        from qfa.domain.models import AggregateSummaryResultModel
+        from qfa.domain.usage_models import Operation
+        from qfa.services.call_context import current_call_context
+
+        captured: dict = {}
+
+        class CapturingService:
+            async def summarize_bulk(self, request, deadline):
+                ctx = current_call_context.get()
+                assert ctx is not None
+                captured["call_id"] = ctx.call_id
+                captured["operation"] = ctx.operation
+                return AggregateSummaryResultModel(
+                    title="ok", summary="ok", quality_score=0.9
+                )
+
+        test_app.state.summarize_service = CapturingService()
+        async with _make_client(test_app) as c:
+            resp = await c.post(
+                "/v1/summarize-bulk",
+                json={"feedback_records": self._records()},
+                headers=_auth_header(),
+            )
+        assert resp.status_code == 200
+        header_uuid = UUID(resp.headers["x-request-id"])
+        assert captured["call_id"] == header_uuid
+        assert captured["operation"] == Operation.SUMMARIZE_AGGREGATE
+
+
 class TestDetectSensitiveSuccess:
     @pytest.mark.asyncio
     async def test_200_on_valid_request(self, client):

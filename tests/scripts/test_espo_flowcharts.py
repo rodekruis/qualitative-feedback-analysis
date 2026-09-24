@@ -50,14 +50,37 @@ def test_no_json_literals_in_formulas(path):
     )
 
 
+_REPLACE_CALL = re.compile(
+    r"string\\replace\([^,]+,\s*(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*')"
+)
+
+# What json\encode() already escapes correctly: control characters, quotes,
+# and backslashes. A formula stripping one of these targets is redoing the
+# serialiser's job by hand, the exact issue #245 bug. Replacing anything
+# else (e.g. formatting an ID) is an unrelated, legitimate transformation.
+_ESCAPE_SENSITIVE_TARGETS = {"\\n", "\\r", "\\t", "\\f", "\\v", "\\\\", '"', "'"}
+
+
+def _replace_search_targets(formula: str):
+    r"""Unquoted search argument of each ``string\replace()`` call."""
+    return [literal[1:-1] for literal in _REPLACE_CALL.findall(formula)]
+
+
 @pytest.mark.parametrize("path", FLOWCHARTS, ids=lambda p: p.name)
 def test_feedback_text_is_not_rewritten(path):
     """Escaping is the serialiser's job; stripping destroys feedback text."""
-    offenders = [formula for formula in _formulas(path) if "string\\replace" in formula]
+    offenders = [
+        formula
+        for formula in _formulas(path)
+        if any(
+            target in _ESCAPE_SENSITIVE_TARGETS
+            for target in _replace_search_targets(formula)
+        )
+    ]
     assert offenders == [], (
-        f"{path.name}: a formula rewrites field values before sending them. "
-        "json\\encode() escapes control characters, quotes and backslashes "
-        "correctly; stripping them silently mangles what a beneficiary wrote."
+        f"{path.name}: a formula strips a character json\\encode() already "
+        "escapes correctly (a control character, a quote, or a backslash). "
+        "Stripping it by hand silently mangles what a beneficiary wrote."
     )
 
 
