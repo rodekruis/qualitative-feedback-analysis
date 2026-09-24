@@ -12,6 +12,7 @@ real money.
 | `assign_codes_eval.py`    | Scores `POST /v1/assign-codes` against the Langfuse `assign-codes/ukrain` dataset, per coding level.                |
 | `evaluate_sensitivity.py` | Scores `POST /v1/detect-sensitive` against any Langfuse dataset of labelled records, named on the command line.     |
 | `upload_prompts.py`       | Checks and uploads the analyze prompts to a Langfuse dataset, e.g. `analyze/prompts-v1`. Makes no LLM call.         |
+| `upload_pool.py`          | Checks and uploads the analyze feedback pool to a Langfuse dataset, e.g. `feedback/records-en-v1`. Makes no LLM call. |
 
 ## Shared helpers
 
@@ -194,3 +195,63 @@ Each record in the input file is one prompt:
 The script stops before uploading anything if two records share an `id`, if
 a `family` is neither a known one nor `unplanted`, or if a record is
 missing one of the metadata fields above.
+
+## Running `upload_pool.py`
+
+This script checks and uploads the working YAML file behind the analyze
+feedback pool. It calls no endpoint, so it makes no LLM call and costs
+nothing. It always uploads to `feedback/records-en-v1`.
+
+Set `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` for a Langfuse project
+at `LANGFUSE_HOST`, then:
+
+```bash
+uv run python eval/upload_pool.py \
+  --input .corpus_work/analyze-pool/records-en-v1.yaml --dry-run
+
+uv run python eval/upload_pool.py \
+  --input .corpus_work/analyze-pool/records-en-v1.yaml
+```
+
+`--dry-run` runs every check and reports what would change, but writes
+nothing. It also prints how many records have no text yet. A real upload
+stops if any record has no text or no `review_status`, or if an urgent,
+decoy or group record is not `review_status: reviewed`. If an item
+already exists and its content changed, the script updates that item.
+Langfuse keeps the old version.
+
+Each record in the input file is one feedback record:
+
+```yaml
+- id: en-0001 # assigned after a seeded shuffle; carries no label signal
+  content: "" # empty means the text is not written yet
+  metadata:
+    theme: food # the one primary theme; see PLANTED in pool_spec.py
+    need: food # null when this record reports no unmet need
+    complaint_about: null
+    rumour: null
+    suggestion: null
+    praise_about: null
+    info_request: null
+    urgent_kind: null # set only on the 6 urgent protection records
+    decoy: false # true on the 4 protection decoys
+    promise_gap: null
+    access_barrier: null
+    groups: [] # the vulnerable groups this record is about
+    keywords: [] # urgent/decoy records only, filled in alongside the text
+    facts: [] # one sentence per fact; filled in alongside the text
+    language: en
+    created: "2026-07-14T09:23:41Z" # random, seeded, inside 2026-06-01..2026-08-31
+    gen_model: null # set when the text is written
+    gen_date: null
+    review_status: null # "reviewed" or "not_reviewed", set at review time
+```
+
+The script stops before uploading anything if an id is not shaped
+`en-NNNN` or repeats, a record is missing one of the metadata fields
+above, a planted count (`PLANTED` in `pool_spec.py`) is wrong, the decoy
+count or the `urgent_kind`s are wrong, a `created` falls outside the
+window, or — once a record has text — its length is outside 60–1,200
+characters, it has no `facts`, its text uses a banned word (`PSEA`,
+`safeguarding`, `exploitation`, `referral`), or an urgent/decoy record
+has fewer than 3 `keywords`.
