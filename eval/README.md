@@ -202,6 +202,10 @@ This script checks and uploads the working YAML file behind the analyze
 feedback pool. It calls no endpoint, so it makes no LLM call and costs
 nothing. It always uploads to `feedback/records-en-v1`.
 
+Run `scripts/check_pool_masking.py` before uploading, so a planted word
+that the anonymizer masks gets reworded first, not discovered later as an
+unexplained drop in score.
+
 Set `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` for a Langfuse project
 at `LANGFUSE_HOST`, then:
 
