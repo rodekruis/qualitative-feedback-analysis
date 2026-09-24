@@ -114,6 +114,7 @@ These explanations are English only, regardless of the language of the feedback.
 | `clarity` | float or null | How clear and concise the summary is, in [0, 1]. `null` only when the batch was empty. |
 | `quality_text` | string or null | Quality score as dots and percentage, e.g. `"●●●●● 100%"`. `null` when `quality_score` is `null`. |
 | `pretty_output` | string | Summary text verbatim — exists for EspoCRM's `modelResponse` mapping. |
+| `request_id` | string | Canonical UUID matching the `X-Request-ID` response header. |
 
 ## POST /v1/summarize — field reference
 
