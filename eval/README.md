@@ -172,9 +172,8 @@ uv run python eval/upload_prompts.py --dataset analyze/prompts-v1 \
 ```
 
 `--dry-run` runs every check and reports what would change, but writes
-nothing. `--allow-overwrite` is needed to replace a dataset that already
-holds runs, or an item whose content changed since the last upload; without
-it, either case stops the script (`upload_items()` in `_common.py`).
+nothing. If an item already exists and its content changed, the script
+updates that item. Langfuse keeps the old version.
 
 Each record in the input file is one prompt:
 

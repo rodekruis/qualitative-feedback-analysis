@@ -186,37 +186,20 @@ class _FakeItem:
     metadata: Any = None
 
 
-class _FakeExperiments:
-    """Stands in for ``langfuse.api.experiments``, the v4 "has runs" read path."""
-
-    def __init__(self, client: "FakeLangfuseClient") -> None:
-        self._client = client
-
-    def list(
-        self, *, from_start_time: Any, dataset_id: str, limit: int, **_kwargs: Any
-    ) -> SimpleNamespace:
-        run_count = self._client._runs.get(dataset_id, 0)
-        return SimpleNamespace(data=list(range(min(run_count, limit))))
-
-
 class FakeLangfuseClient:
     """A duck-typed double for the Langfuse SDK client, for :func:`upload_items`.
 
     ``datasets`` seeds existing dataset items, keyed by dataset name (used
-    here as the fake's dataset id too). ``runs`` seeds each dataset's run
-    count (0 when omitted).
+    here as the fake's dataset id too).
     """
 
     def __init__(
         self,
         datasets: dict[str, list[_FakeItem]] | None = None,
-        runs: dict[str, int] | None = None,
     ) -> None:
         self._datasets = datasets or {}
-        self._runs = runs or {}
         self.created_datasets: list[str] = []
         self.written_items: list[dict[str, Any]] = []
-        self.api = SimpleNamespace(experiments=_FakeExperiments(self))
 
     def get_dataset(self, name: str) -> SimpleNamespace:
         if name not in self._datasets:
@@ -252,38 +235,6 @@ def test_upload_items_creates_the_dataset_when_it_does_not_exist() -> None:
     upload_items(client, "analyze/prompts-v1", [{"id": "P01-en", "input": "hi"}])
 
     assert client.created_datasets == ["analyze/prompts-v1"]
-
-
-def test_upload_items_stops_when_the_dataset_has_runs() -> None:
-    client = FakeLangfuseClient(
-        datasets={"feedback/records-en-v1": []}, runs={"feedback/records-en-v1": 1}
-    )
-
-    with pytest.raises(SystemExit, match="holds runs"):
-        upload_items(
-            client, "feedback/records-en-v1", [{"id": "en-0001", "input": "x"}]
-        )
-
-    assert client.written_items == []
-
-
-def test_upload_items_allow_overwrite_bypasses_the_runs_freeze() -> None:
-    client = FakeLangfuseClient(
-        datasets={"feedback/records-en-v1": []}, runs={"feedback/records-en-v1": 1}
-    )
-
-    report = upload_items(
-        client,
-        "feedback/records-en-v1",
-        [{"id": "en-0001", "input": "x"}],
-        allow_overwrite=True,
-    )
-
-    full_id = item_id("feedback/records-en-v1", "en-0001")
-    assert report.created == [full_id]
-    assert client.written_items == [
-        {"dataset_name": "feedback/records-en-v1", "id": full_id}
-    ]
 
 
 def test_upload_items_builds_an_id_with_no_slash_or_hyphen() -> None:
@@ -332,20 +283,7 @@ def test_upload_items_skips_an_item_with_unchanged_content() -> None:
     assert client.written_items == []
 
 
-def test_upload_items_stops_and_lists_ids_when_content_changed() -> None:
-    full_id = item_id("analyze/prompts-v1", "P01-en")
-    existing = _FakeItem(id=full_id, input="old text")
-    client = FakeLangfuseClient(datasets={"analyze/prompts-v1": [existing]})
-
-    with pytest.raises(SystemExit, match=full_id):
-        upload_items(
-            client, "analyze/prompts-v1", [{"id": "P01-en", "input": "new text"}]
-        )
-
-    assert client.written_items == []
-
-
-def test_upload_items_allow_overwrite_replaces_changed_content() -> None:
+def test_upload_items_updates_a_changed_item() -> None:
     full_id = item_id("analyze/prompts-v1", "P01-en")
     existing = _FakeItem(id=full_id, input="old text")
     client = FakeLangfuseClient(datasets={"analyze/prompts-v1": [existing]})
@@ -354,7 +292,6 @@ def test_upload_items_allow_overwrite_replaces_changed_content() -> None:
         client,
         "analyze/prompts-v1",
         [{"id": "P01-en", "input": "new text"}],
-        allow_overwrite=True,
     )
 
     assert report.updated == [full_id]

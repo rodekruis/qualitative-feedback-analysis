@@ -28,21 +28,8 @@ import yaml
 from langfuse import get_client
 
 from _common import load_env, upload_items
+from pool_spec import FAMILY_LABEL
 
-KNOWN_FAMILIES = frozenset(
-    {
-        "themes",
-        "needs",
-        "protection",
-        "complaints",
-        "praise",
-        "rumours",
-        "promise_gap",
-        "access_barrier",
-        "suggestions",
-        "information",
-    }
-)
 UNPLANTED_FAMILY = "unplanted"
 
 REQUIRED_METADATA_FIELDS = (
@@ -83,11 +70,6 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Run every check, but write nothing to Langfuse.",
     )
-    parser.add_argument(
-        "--allow-overwrite",
-        action="store_true",
-        help="Replace a dataset that already holds runs, or an item whose content changed.",
-    )
     return parser.parse_args()
 
 
@@ -120,10 +102,10 @@ def validate_prompts(records: list[dict[str, Any]]) -> None:
             )
 
         family = metadata["family"]
-        if family != UNPLANTED_FAMILY and family not in KNOWN_FAMILIES:
+        if family != UNPLANTED_FAMILY and family not in FAMILY_LABEL:
             raise SystemExit(
                 f"{record['id']}: unknown family {family!r}. Use one of "
-                f"{sorted(KNOWN_FAMILIES)} or {UNPLANTED_FAMILY!r}."
+                f"{sorted(FAMILY_LABEL)} or {UNPLANTED_FAMILY!r}."
             )
 
 
@@ -154,7 +136,6 @@ def main() -> None:
         langfuse,
         args.dataset,
         items,
-        allow_overwrite=args.allow_overwrite,
         dry_run=args.dry_run,
     )
 

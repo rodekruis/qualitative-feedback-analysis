@@ -12,7 +12,6 @@ import os
 import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -148,11 +147,6 @@ def run_metadata(base_url: str, **extra: Any) -> dict[str, Any]:
     return {**git_metadata(), **deployed_info(base_url), **extra}
 
 
-# Old enough to predate any Langfuse deployment: the Experiments API requires
-# a lower bound, and this check only cares whether any experiment exists at all.
-_RUNS_CHECK_EPOCH = datetime(2020, 1, 1, tzinfo=UTC)
-
-
 @dataclass
 class UploadReport:
     """Full item ids, as :func:`_item_id` builds them, from one :func:`upload_items` call."""
@@ -180,7 +174,6 @@ def upload_items(
     dataset_name: str,
     items: Sequence[Mapping[str, Any]],
     *,
-    allow_overwrite: bool = False,
     dry_run: bool = False,
 ) -> UploadReport:
     """Upsert ``items`` into the Langfuse dataset ``dataset_name``.
@@ -188,16 +181,11 @@ def upload_items(
     Creates the dataset first if it does not exist yet. Each item is a
     mapping with a bare ``id``, ``input``, ``expected_output`` and
     ``metadata``; the remote item id is built by :func:`_item_id`. An item
-    whose remote content is unchanged is skipped, never re-sent. An id that
-    exists in the dataset but not in ``items`` is printed, never deleted.
-    ``dry_run`` runs every check below but calls no Langfuse write.
-
-    Raises
-    ------
-    SystemExit
-        The dataset already holds runs, or an existing item's content
-        changed, and ``allow_overwrite`` is not set. Either way, nothing is
-        written to Langfuse.
+    whose remote content is unchanged is skipped, never re-sent. An item
+    whose content changed is updated; Langfuse keeps the previous version.
+    An id that exists in the dataset but not in ``items`` is printed,
+    never deleted. ``dry_run`` runs every check below but calls no
+    Langfuse write.
     """
     try:
         dataset = langfuse.get_dataset(dataset_name)
@@ -207,21 +195,7 @@ def upload_items(
         existing = {}
         is_new_dataset = True
 
-    if not is_new_dataset:
-        # get_dataset_runs() hits a legacy v3 endpoint that 404s unconditionally
-        # on a Langfuse v4 "events_only" deployment; the Experiments API is the
-        # v4 read path for "does this dataset have any runs".
-        experiments = langfuse.api.experiments.list(
-            from_start_time=_RUNS_CHECK_EPOCH, dataset_id=dataset.id, limit=1
-        )
-        if experiments.data and not allow_overwrite:
-            raise SystemExit(
-                f"{dataset_name} already holds runs. Re-run with "
-                "--allow-overwrite to replace its items."
-            )
-
     report = UploadReport()
-    changed: list[str] = []
     to_write: list[tuple[str, Mapping[str, Any]]] = []
 
     for item in items:
@@ -237,16 +211,10 @@ def upload_items(
         ):
             report.unchanged.append(full_id)
         else:
-            changed.append(full_id)
+            report.updated.append(full_id)
             to_write.append((full_id, item))
 
-    if changed and not allow_overwrite:
-        ids = ", ".join(sorted(changed))
-        raise SystemExit(
-            f"{len(changed)} item(s) changed content in {dataset_name}: {ids}. "
-            "Re-run with --allow-overwrite to replace them."
-        )
-    report.updated = sorted(changed)
+    report.updated.sort()
 
     local_ids = {_item_id(dataset_name, item["id"]) for item in items}
     for full_id in sorted(existing.keys() - local_ids):
