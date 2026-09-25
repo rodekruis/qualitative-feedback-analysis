@@ -9,7 +9,13 @@ from typing import Any
 import httpx
 from langfuse import Evaluation, get_client
 
-from _common import MAX_CONCURRENCY, load_env, resolve_config, run_metadata
+from _common import (
+    MAX_CONCURRENCY,
+    load_env,
+    prompt_versions,
+    resolve_config,
+    run_metadata,
+)
 from sensitivity_type_analysis import (
     sensitivity_type_fp_share_evaluator,
     sensitivity_type_item_evaluator,
@@ -353,6 +359,9 @@ def main() -> None:
             evaluation="baseline",
             run_kind=run_kind,
             smoke_limit=args.smoke_limit,
+            prompt_version=prompt_versions(base_url).get(
+                "sensitivity-detection-system"
+            ),
         ),
     )
 

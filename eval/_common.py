@@ -102,6 +102,27 @@ def deployed_info(base_url: str) -> dict[str, str]:
         return {"deployed_version": "unknown", "deployed_commit": "unknown"}
 
 
+def prompt_versions(base_url: str) -> dict[str, int]:
+    """Current Langfuse prompt version per name, read from ``base_url``'s ``/v1/health``.
+
+    Empty when the health check fails, or the running backend predates this
+    field, so a run still proceeds without exact prompt versions rather
+    than inventing any (#398).
+    """
+    try:
+        response = httpx.get(f"{base_url}/v1/health", timeout=HEALTH_TIMEOUT_SECONDS)
+        response.raise_for_status()
+        data = response.json()
+        return {
+            str(name): int(version) for name, version in data.get("prompts", {}).items()
+        }
+    except (httpx.HTTPError, KeyError, ValueError) as e:
+        print(
+            f"warning: could not read prompt versions from {base_url}/v1/health ({e})"
+        )
+        return {}
+
+
 def _git_output(*args: str) -> str:
     """Run a git command in the repo; empty string on any failure."""
     # Fixed executable, fixed-shape args from this file only — not user input.

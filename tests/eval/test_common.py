@@ -25,6 +25,7 @@ _spec.loader.exec_module(_common)
 DEFAULT_BASE_URL = _common.DEFAULT_BASE_URL
 deployed_info = _common.deployed_info
 git_metadata = _common.git_metadata
+prompt_versions = _common.prompt_versions
 resolve_api_key = _common.resolve_api_key
 resolve_config = _common.resolve_config
 run_metadata = _common.run_metadata
@@ -168,3 +169,40 @@ def test_deployed_info_unknown_when_health_raises(
         "deployed_version": "unknown",
         "deployed_commit": "unknown",
     }
+
+
+def test_prompt_versions_reads_prompts_field(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _fake_get(url: str, timeout: float) -> httpx.Response:
+        return httpx.Response(
+            200,
+            request=httpx.Request("GET", url),
+            json={"status": "ok", "prompts": {"analyze-single-pass-system": 3}},
+        )
+
+    monkeypatch.setattr(_common.httpx, "get", _fake_get)
+
+    assert prompt_versions("http://localhost:8000") == {"analyze-single-pass-system": 3}
+
+
+def test_prompt_versions_empty_when_health_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _boom(*_args: object, **_kwargs: object) -> object:
+        raise httpx.ConnectError("refused")
+
+    monkeypatch.setattr(_common.httpx, "get", _boom)
+
+    assert prompt_versions("http://localhost:8000") == {}
+
+
+def test_prompt_versions_empty_when_health_predates_the_field(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _fake_get(url: str, timeout: float) -> httpx.Response:
+        return httpx.Response(
+            200, request=httpx.Request("GET", url), json={"status": "ok"}
+        )
+
+    monkeypatch.setattr(_common.httpx, "get", _fake_get)
+
+    assert prompt_versions("http://localhost:8000") == {}
