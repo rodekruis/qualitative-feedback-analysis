@@ -52,6 +52,8 @@ class _RecordingFakeLLM(LLMPort):
         tenant_id,
         response_model=str,
         timeout=20.0,
+        prompt_name=None,
+        prompt_version=None,
     ) -> LLMResponse:
         raise AssertionError("No LLM call should happen during startup")
 
@@ -212,6 +214,19 @@ async def test_every_service_is_published_on_app_state(app_env: None) -> None:
         assert isinstance(summarize, SummarizeService)
         assert summarize._llm is analyze._llm
         assert summarize._executor is analyze._executor
+
+
+@pytest.mark.asyncio
+async def test_prompt_versions_is_published_on_app_state(app_env: None) -> None:
+    """``app.state.prompt_versions`` is set even with Langfuse unconfigured (#398).
+
+    ``app_env`` clears ``LANGFUSE_*``, so this is the no-op-adapter path:
+    the dict is present and empty, never missing.
+    """
+    app = create_app(llm_factory=_RecordingFakeLLM)
+
+    async with app.router.lifespan_context(app):
+        assert app.state.prompt_versions == {}
 
 
 CONNECTION_STRING_ENV = "APPLICATIONINSIGHTS_CONNECTION_STRING"

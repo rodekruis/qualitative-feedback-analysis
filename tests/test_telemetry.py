@@ -72,6 +72,9 @@ def instrumented_app(
     """A real application instance with the ASGI middleware attached."""
     provider, span_exporter = exporter
     app = create_app()
+    # No lifespan runs here, so app.state is otherwise empty; GET /v1/health
+    # reads this one attribute (#398), the rest of app.state stays unset.
+    app.state.prompt_versions = {}
     instrument_app(app, tracer_provider=provider)
     yield app, span_exporter
     FastAPIInstrumentor.uninstrument_app(app)
@@ -180,9 +183,11 @@ async def test_instrumented_app_records_a_server_span_per_request(
 ) -> None:
     """A request through the real ASGI stack produces one ``AppRequests`` span.
 
-    ``/v1/health`` needs nothing from ``app.state``, so this runs without the
-    lifespan — and it is the endpoint the platform health probe hits, which is
-    what makes an idle environment show a non-zero request rate.
+    ``/v1/health`` needs nothing from ``app.state`` beyond ``prompt_versions``
+    (set directly by the ``instrumented_app`` fixture, #398), so this runs
+    without the lifespan — and it is the endpoint the platform health probe
+    hits, which is what makes an idle environment show a non-zero request
+    rate.
     """
     app, span_exporter = instrumented_app
 
