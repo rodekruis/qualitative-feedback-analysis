@@ -199,6 +199,8 @@ class FakeLLMPort(LLMPort):
         tenant_id,
         response_model=str,
         timeout=40.0,
+        prompt_name=None,
+        prompt_version=None,
     ):
         self.calls.append(
             {
@@ -207,6 +209,8 @@ class FakeLLMPort(LLMPort):
                 "tenant_id": tenant_id,
                 "response_model": response_model,
                 "timeout": timeout,
+                "prompt_name": prompt_name,
+                "prompt_version": prompt_version,
             }
         )
         idx = self._call_count

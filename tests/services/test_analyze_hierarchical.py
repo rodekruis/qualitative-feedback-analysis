@@ -121,7 +121,14 @@ class RecordingLLM(LLMPort):
         self.calls = []
 
     async def complete(
-        self, system_message, user_message, tenant_id, response_model=str, timeout=20.0
+        self,
+        system_message,
+        user_message,
+        tenant_id,
+        response_model=str,
+        timeout=20.0,
+        prompt_name=None,
+        prompt_version=None,
     ):
         """Record the call and return a canned response."""
         self.calls.append((system_message, user_message, response_model))
@@ -418,7 +425,14 @@ class LargeOutputLLM(LLMPort):
         self.calls = []
 
     async def complete(
-        self, system_message, user_message, tenant_id, response_model=str, timeout=20.0
+        self,
+        system_message,
+        user_message,
+        tenant_id,
+        response_model=str,
+        timeout=20.0,
+        prompt_name=None,
+        prompt_version=None,
     ):
         """Return moderate output for map calls to trigger multi-level tree-reduce."""
         self.calls.append((system_message, user_message, response_model))
@@ -511,7 +525,14 @@ class ConcurrencyTrackingLLM(LLMPort):
         self.peak_in_flight = 0
 
     async def complete(
-        self, system_message, user_message, tenant_id, response_model=str, timeout=20.0
+        self,
+        system_message,
+        user_message,
+        tenant_id,
+        response_model=str,
+        timeout=20.0,
+        prompt_name=None,
+        prompt_version=None,
     ):
         """Track in-flight depth around a single event-loop yield, then answer."""
         self.calls.append((system_message, user_message, response_model))
@@ -627,7 +648,14 @@ class OverlapTrackingLLM(LLMPort):
         self.judge_reduce_overlap = False
 
     async def complete(
-        self, system_message, user_message, tenant_id, response_model=str, timeout=20.0
+        self,
+        system_message,
+        user_message,
+        tenant_id,
+        response_model=str,
+        timeout=20.0,
+        prompt_name=None,
+        prompt_version=None,
     ):
         """Track which call kinds coexist in flight, then return a canned answer."""
         self.calls.append((system_message, user_message, response_model))
@@ -675,7 +703,14 @@ class OneChunkMapFailsLLM(LLMPort):
         self.calls = []
 
     async def complete(
-        self, system_message, user_message, tenant_id, response_model=str, timeout=20.0
+        self,
+        system_message,
+        user_message,
+        tenant_id,
+        response_model=str,
+        timeout=20.0,
+        prompt_name=None,
+        prompt_version=None,
     ):
         """Raise on the 'health' map chunk; return canned output otherwise."""
         self.calls.append((system_message, user_message, response_model))
@@ -752,7 +787,14 @@ class AllJudgesFailLLM(LLMPort):
         self.calls = []
 
     async def complete(
-        self, system_message, user_message, tenant_id, response_model=str, timeout=20.0
+        self,
+        system_message,
+        user_message,
+        tenant_id,
+        response_model=str,
+        timeout=20.0,
+        prompt_name=None,
+        prompt_version=None,
     ):
         """Raise on judge calls; return canned output for map and reduce."""
         self.calls.append((system_message, user_message, response_model))
@@ -856,6 +898,8 @@ async def test_all_chunks_failing_raises_analysis_error():
             tenant_id,
             response_model=str,
             timeout=20.0,
+            prompt_name=None,
+            prompt_version=None,
         ):
             """Raise on every map call regardless of cluster."""
             self.calls.append((system_message, user_message, response_model))
@@ -975,7 +1019,14 @@ class EchoingLLM(LLMPort):
         self.calls = []
 
     async def complete(
-        self, system_message, user_message, tenant_id, response_model=str, timeout=20.0
+        self,
+        system_message,
+        user_message,
+        tenant_id,
+        response_model=str,
+        timeout=20.0,
+        prompt_name=None,
+        prompt_version=None,
     ):
         """Record the call; echo the user message, or serve a judge score."""
         self.calls.append((system_message, user_message, response_model))

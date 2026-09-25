@@ -50,6 +50,8 @@ class _StubLLM:
         tenant_id,
         response_model=str,
         timeout=20.0,
+        prompt_name=None,
+        prompt_version=None,
     ):
         raise AssertionError("LLM should not be called during construction")
 

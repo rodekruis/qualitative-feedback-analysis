@@ -103,6 +103,8 @@ class LLMPort(Protocol):
         tenant_id: str,
         response_model: type[T_Response],
         timeout: float = 20.0,
+        prompt_name: str | None = None,
+        prompt_version: int | None = None,
     ) -> LLMResponse[T_Response]:
         """Send a completion request to the LLM provider.
 
@@ -118,6 +120,16 @@ class LLMPort(Protocol):
             The Pydantic model to parse the response into.
         timeout : float
             Maximum time in seconds to wait for a response.
+        prompt_name : str | None
+            Langfuse prompt name this call's ``system_message`` was built
+            from (see :mod:`qfa.services.prompt_registry`), for trace
+            linking (#398). ``None`` (the default) tags the call with no
+            prompt name. Never set without ``prompt_version``, and vice
+            versa.
+        prompt_version : int | None
+            Current Langfuse version of that prompt, from
+            ``app.state.prompt_versions``. ``None`` when Langfuse is
+            unconfigured or that name's push failed.
 
         Returns
         -------
