@@ -10,6 +10,10 @@ import httpx
 from langfuse import Evaluation, get_client
 
 from _common import MAX_CONCURRENCY, load_env, resolve_config, run_metadata
+from sensitivity_type_analysis import (
+    sensitivity_type_fp_share_evaluator,
+    sensitivity_type_item_evaluator,
+)
 
 EXPERIMENT_NAME = "sensitivity-baseline"
 
@@ -307,13 +311,18 @@ def main() -> None:
         items = dataset.items
 
     timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    run_kind = "smoke" if args.smoke_limit else "full"
+    # The Langfuse Experiments table lists runs from every dataset together,
+    # so the name has to say which one was scored. The leaf segment keeps it
+    # short; the full name stays in the run metadata.
+    dataset_label = args.dataset.rsplit("/", 1)[-1]
 
     if args.run_name:
         run_name = args.run_name
     elif args.smoke_limit:
-        run_name = f"smoke-{args.smoke_limit}-{timestamp}"
+        run_name = f"{dataset_label}-smoke-{args.smoke_limit}-{timestamp}"
     else:
-        run_name = f"baseline-full-{timestamp}"
+        run_name = f"{dataset_label}-baseline-full-{timestamp}"
 
     print(f"Dataset: {args.dataset}")
     print(f"Backend: {base_url}")
@@ -329,10 +338,12 @@ def main() -> None:
         evaluators=[
             correctness_evaluator,
             classification_case_evaluator,
+            sensitivity_type_item_evaluator,
         ],
         run_evaluators=[
             binary_metrics_evaluator,
             sensitivity_type_distribution_evaluator,
+            sensitivity_type_fp_share_evaluator,
         ],
         max_concurrency=MAX_CONCURRENCY,
         metadata=run_metadata(
@@ -340,6 +351,7 @@ def main() -> None:
             dataset=args.dataset,
             endpoint="/v1/detect-sensitive",
             evaluation="baseline",
+            run_kind=run_kind,
             smoke_limit=args.smoke_limit,
         ),
     )

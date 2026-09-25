@@ -100,7 +100,11 @@ uv run python eval/evaluate_sensitivity.py \
 ```
 
 `--dataset` is required. `--smoke-limit N` runs the first N records.
-`--run-name` replaces `smoke-<N>-<timestamp>` or `baseline-full-<timestamp>`.
+`--run-name` replaces the default `<dataset>-smoke-<N>-<timestamp>` or
+`<dataset>-baseline-full-<timestamp>`, where `<dataset>` is the part after
+the last `/`, so a run is identifiable in the Experiments table without
+opening it. The run metadata adds `run_kind`, `smoke` or `full`, which a
+saved view filters on to hide smoke runs.
 
 Each dataset item's `input` field is the feedback text, and it is sent to
 the backend exactly as written, so choose a dataset that was anonymised
@@ -120,7 +124,14 @@ a record that was flagged when it should not have been, and `FN` is a
 sensitive record that was missed. Filtering a run on `FN` shows you
 everything that slipped through.
 
-The run as a whole carries seven more:
+A flagged record carries one further pair of scores per sensitivity type
+the model returned: `sensitivity_type`, and `sensitivity_type_tp` or
+`sensitivity_type_fp` depending on whether the flag was right. They hold the
+type as a categorical value, so the Experiments table charts them as a
+stacked bar per run. The same counts sit in `n_distinct_sensitivity_types`
+metadata below, where nothing can plot them.
+
+The run as a whole carries seven more, plus one per sensitivity type:
 
 | Score                                       | The question it answers                                                                                                        |
 | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
@@ -131,6 +142,7 @@ The run as a whole carries seven more:
 | `recall_not_sensitive`                      | Of the records that are not sensitive, how many were correctly left alone?                                                     |
 | `n_distinct_sensitivity_types`              | How many different sensitivity types came up. The breakdown per type, split by right and wrong flags, sits in this score's metadata. |
 | `mean_sensitivity_types_per_flagged_record` | How many types were assigned to a flagged record on average.                                                                   |
+| `sensitivity_type_fp_share::<type>`         | Of the records flagged with this type, what share was flagged wrongly? The TP and FP counts behind the share sit in its metadata.   |
 
 The five scores above the two type counts also record the numbers they
 were calculated from, so the raw totals behind a percentage are always
