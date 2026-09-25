@@ -192,6 +192,13 @@ class SummarizeService:
         real port, a no-op one when Langfuse is unconfigured, so ``None``
         here is only ever a test/script default, never production
         behaviour.
+    prompt_versions : dict[str, int] | None
+        Current Langfuse version per name in
+        :data:`~qfa.services.prompt_registry.SYSTEM_PROMPTS` (#398). ``None``
+        (the default) is treated as ``{}``, so every generation and judge
+        call this service makes simply carries no prompt-version span
+        attribute, the same as a name absent because Langfuse is
+        unconfigured or its push failed.
     """
 
     def __init__(
@@ -201,6 +208,7 @@ class SummarizeService:
         executor: LLMCallExecutor,
         judge_llm: LLMPort | None = None,
         evaluator: EvaluationPort | None = None,
+        prompt_versions: dict[str, int] | None = None,
     ) -> None:
         self._llm = llm
         # Falling back to the primary client keeps the default (no
@@ -211,6 +219,7 @@ class SummarizeService:
         self._anonymizer: AnonymizationPort = anonymizer
         self._executor = executor
         self._evaluator = evaluator
+        self._prompt_versions: dict[str, int] = prompt_versions or {}
 
     async def summarize_bulk(
         self,

@@ -7,6 +7,7 @@ port).
 """
 
 import datetime as dt
+from collections.abc import Mapping
 from typing import Protocol, runtime_checkable
 
 from qfa.domain.models import (
@@ -122,6 +123,31 @@ class LLMPort(Protocol):
         -------
         LLMResponse
             The model's response including token usage.
+        """
+        ...
+
+
+class PromptPort(Protocol):
+    """Port for mirroring hardcoded system prompts to Langfuse for versioning.
+
+    The repo's hardcoded prompt text (:mod:`qfa.services.prompt_registry`)
+    is always the ground truth; this port never feeds text back into a call.
+    Async, unlike :class:`EvaluationPort` and :class:`EmbeddingPort`: a real
+    implementation does blocking network I/O (one ``get_prompt``/
+    ``create_prompt`` round trip per name). :meth:`sync` runs once, during
+    app startup before the server accepts traffic — never on the request
+    path.
+    """
+
+    async def sync(self, prompts: Mapping[str, str]) -> dict[str, int]:
+        """Make sure every name in ``prompts`` exists in Langfuse at that exact text.
+
+        For each ``name: text`` pair: when no version exists yet, or the
+        current version's text differs from ``text``, create a new Langfuse
+        version. Returns ``{name: current_version}`` for every key in
+        ``prompts`` whose lookup/create succeeded, whether or not this call
+        created a new version — a name whose call failed is left out (never
+        raised) so one bad name cannot block the others.
         """
         ...
 

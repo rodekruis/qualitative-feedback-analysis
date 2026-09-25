@@ -179,6 +179,13 @@ class AnalyzeService:
         real port, a no-op one when Langfuse is unconfigured, so ``None``
         here is only ever a test/script default, never production
         behaviour.
+    prompt_versions : dict[str, int] | None
+        Current Langfuse version per name in
+        :data:`~qfa.services.prompt_registry.SYSTEM_PROMPTS` (#398). ``None``
+        (the default) is treated as ``{}``, so every generation and judge
+        call this service makes simply carries no prompt-version span
+        attribute — the same as a name absent because Langfuse is
+        unconfigured or its push failed.
     """
 
     # Entity types whose placeholders are NOT restored in `analyze` output.
@@ -202,10 +209,16 @@ class AnalyzeService:
         embedder: EmbeddingPort | None = None,
         judge_llm: LLMPort | None = None,
         evaluator: EvaluationPort | None = None,
+        prompt_versions: dict[str, int] | None = None,
     ) -> None:
         self._executor = executor
         self._llm = llm
         self._evaluator = evaluator
+        # {} (never None) so every call site can .get(name) unconditionally;
+        # a name absent here (Langfuse unconfigured, or its push failed) just
+        # means that flow's LLM call carries no prompt-version span attribute
+        # (#398).
+        self._prompt_versions: dict[str, int] = prompt_versions or {}
         # Judge calls run on their own connection when one is configured, so
         # the generator does not grade its own output. Falling back to the
         # primary client keeps the default (no JUDGE_LLM_MODEL) behaviour

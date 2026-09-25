@@ -211,6 +211,13 @@ class CodingService:
         always injects a real port, a no-op one when Langfuse is
         unconfigured, so ``None`` here is only ever a test/script default,
         never production behaviour.
+    prompt_versions : dict[str, int] | None
+        Current Langfuse version per name in
+        :data:`~qfa.services.prompt_registry.SYSTEM_PROMPTS` (#398). ``None``
+        (the default) is treated as ``{}``, so every pick and judge call this
+        service makes simply carries no prompt-version span attribute, the
+        same as a name absent because Langfuse is unconfigured or its push
+        failed.
     """
 
     def __init__(
@@ -220,6 +227,7 @@ class CodingService:
         executor: LLMCallExecutor,
         judge_llm: LLMPort | None = None,
         evaluator: EvaluationPort | None = None,
+        prompt_versions: dict[str, int] | None = None,
     ) -> None:
         self._llm = llm
         # Same rule as AnalyzeService/SummarizeService: judging runs on its
@@ -230,6 +238,7 @@ class CodingService:
         self._anonymizer: AnonymizationPort = anonymizer
         self._executor = executor
         self._evaluator = evaluator
+        self._prompt_versions: dict[str, int] = prompt_versions or {}
 
     async def assign_codes(
         self,
