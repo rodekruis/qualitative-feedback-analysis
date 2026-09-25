@@ -218,6 +218,7 @@ Each span carries these attributes:
 - `langfuse.trace.tags`, set to the operation, inside an active request (unset for scripts and tests run outside one)
 - `langfuse.trace.metadata`, set to the deployed `version` and `commit` (JSON), inside an active request
 - `langfuse.observation.usage_details` and `langfuse.observation.cost_details` (JSON, holding token counts and cost)
+- `langfuse.observation.prompt.name` and `langfuse.observation.prompt.version`, set only when the call site named a prompt from `qfa.services.prompt_registry.SYSTEM_PROMPTS` and that name has a version in `GET /v1/health`'s `prompts` field (#398)
 
 A judge call is marked apart from the generation call it grades. This covers the leaf judges of hierarchical analysis, and the per-record and per-level judges in `summarize` and `coding`. Its span name gets a `:judge` suffix, for example `summarize:judge`, and its tags gain a `"judge"` entry. `qfa.services.call_context.judge_call` sets this. Every current judge call site wraps itself in it. A generation call's name and tags stay exactly as they were before this marker existed.
 
