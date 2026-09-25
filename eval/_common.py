@@ -9,12 +9,17 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
+import unicodedata
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import httpx
 from dotenv import load_dotenv
+from langfuse.api import NotFoundError
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -142,3 +147,113 @@ def run_metadata(base_url: str, **extra: Any) -> dict[str, Any]:
     Langfuse views filter, and unifying them would break those views.
     """
     return {**git_metadata(), **deployed_info(base_url), **extra}
+
+
+def normalize(text: str) -> str:
+    """Lowercase ``text``, fold ``LGBTQI+`` to ``lgbtqi``, and strip accents.
+
+    The one text transform every keyword match against free text should go
+    through, so a keyword written either way still matches.
+    """
+    folded = text.lower().replace("lgbtqi+", "lgbtqi")
+    decomposed = unicodedata.normalize("NFKD", folded)
+    return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+
+
+def contains_term(text: str, term: str) -> bool:
+    """Whether ``term`` appears in ``text`` as a whole word or phrase.
+
+    Both go through :func:`normalize` first. Matches on word boundaries
+    only, so ``"ill"`` does not match inside ``"will"``.
+    """
+    pattern = rf"\b{re.escape(normalize(term))}\b"
+    return re.search(pattern, normalize(text)) is not None
+
+
+@dataclass
+class UploadReport:
+    """Full item ids, as :func:`_item_id` builds them, from one :func:`upload_items` call."""
+
+    created: list[str] = field(default_factory=list)
+    updated: list[str] = field(default_factory=list)
+    unchanged: list[str] = field(default_factory=list)
+    extra: list[str] = field(default_factory=list)
+
+
+def _item_id(dataset_name: str, bare_id: str) -> str:
+    """The Langfuse item id for ``bare_id`` in ``dataset_name``: unique across datasets.
+
+    Langfuse's dataset-item page builds its URL by interpolating this id
+    unencoded, so a literal ``/`` or ``-`` splits it into path segments the
+    router does not expect and 404s (langfuse/langfuse#17259). ``dataset_name``
+    itself keeps its ``/`` — that is Langfuse's own folder-style grouping for
+    dataset names, not part of this id.
+    """
+    return f"{dataset_name}:{bare_id}".replace("/", "_").replace("-", "_")
+
+
+def upload_items(
+    langfuse: Any,
+    dataset_name: str,
+    items: Sequence[Mapping[str, Any]],
+    *,
+    dry_run: bool = False,
+) -> UploadReport:
+    """Upsert ``items`` into the Langfuse dataset ``dataset_name``.
+
+    Creates the dataset first if it does not exist yet. Each item is a
+    mapping with a bare ``id``, ``input``, ``expected_output`` and
+    ``metadata``; the remote item id is built by :func:`_item_id`. An item
+    whose remote content is unchanged is skipped, never re-sent. An item
+    whose content changed is updated; Langfuse keeps the previous version.
+    An id that exists in the dataset but not in ``items`` is printed,
+    never deleted. ``dry_run`` runs every check below but calls no
+    Langfuse write.
+    """
+    try:
+        dataset = langfuse.get_dataset(dataset_name)
+        existing = {item.id: item for item in dataset.items}
+        is_new_dataset = False
+    except NotFoundError:
+        existing = {}
+        is_new_dataset = True
+
+    report = UploadReport()
+    to_write: list[tuple[str, Mapping[str, Any]]] = []
+
+    for item in items:
+        full_id = _item_id(dataset_name, item["id"])
+        current = existing.get(full_id)
+        if current is None:
+            report.created.append(full_id)
+            to_write.append((full_id, item))
+        elif (
+            current.input == item.get("input")
+            and current.expected_output == item.get("expected_output")
+            and current.metadata == item.get("metadata")
+        ):
+            report.unchanged.append(full_id)
+        else:
+            report.updated.append(full_id)
+            to_write.append((full_id, item))
+
+    report.updated.sort()
+
+    local_ids = {_item_id(dataset_name, item["id"]) for item in items}
+    for full_id in sorted(existing.keys() - local_ids):
+        print(f"in {dataset_name} but not in the file: {full_id}")
+        report.extra.append(full_id)
+
+    if not dry_run:
+        if is_new_dataset:
+            langfuse.create_dataset(name=dataset_name)
+        for full_id, item in to_write:
+            langfuse.create_dataset_item(
+                dataset_name=dataset_name,
+                id=full_id,
+                input=item.get("input"),
+                expected_output=item.get("expected_output"),
+                metadata=item.get("metadata"),
+            )
+
+    return report

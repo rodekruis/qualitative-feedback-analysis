@@ -11,6 +11,8 @@ real money.
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `assign_codes_eval.py`    | Scores `POST /v1/assign-codes` against the Langfuse `assign-codes/ukrain` dataset, per coding level.                |
 | `evaluate_sensitivity.py` | Scores `POST /v1/detect-sensitive` against any Langfuse dataset of labelled records, named on the command line.     |
+| `upload_prompts.py`       | Checks and uploads the analyze prompts to a Langfuse dataset, e.g. `analyze/prompts-v1`. Makes no LLM call.         |
+| `upload_pool.py`          | Checks and uploads the analyze feedback pool to a Langfuse dataset, e.g. `feedback/records-en-v1`. Makes no LLM call. |
 
 ## Shared helpers
 
@@ -164,3 +166,155 @@ It reuses the secrets and variables listed above for
 `assign_codes_eval.py` and needs nothing of its own. The backend URL is
 not among them: CI measures the dev backend, which is the script's
 default.
+
+## Running `upload_prompts.py`
+
+This script checks and uploads the working YAML file behind the analyze
+prompts dataset. It calls no endpoint, so it makes no LLM call and costs
+nothing.
+
+Set `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` for a Langfuse project
+at `LANGFUSE_HOST`, then:
+
+```bash
+uv run python eval/upload_prompts.py --dataset analyze/prompts-v1 \
+  --input .corpus_work/analyze-pool/prompts-v1.yaml --dry-run
+
+uv run python eval/upload_prompts.py --dataset analyze/prompts-v1 \
+  --input .corpus_work/analyze-pool/prompts-v1.yaml
+```
+
+`--dry-run` runs every check and reports what would change, but writes
+nothing. If an item already exists and its content changed, the script
+updates that item. Langfuse keeps the old version.
+
+Each record in the input file is one prompt:
+
+```yaml
+- id: P01-en # <prompt_id>-<language>
+  prompt: Summarise the main themes and topics raised across these feedback entries, grouped by frequency
+  metadata:
+    prompt_id: P01
+    language: en
+    twin_id: null # links to the id of a translation, e.g. P01-es
+    family: themes # a known family, or "unplanted"
+    use_case: analyze-bulk
+    source: QFA training slides v1
+    supplied_by: Daan
+    supplied_on: "09-09-2026"
+```
+
+The script stops before uploading anything if two records share an `id`, if
+a `family` is neither a known one nor `unplanted`, or if a record is
+missing one of the metadata fields above.
+
+## Running `upload_pool.py`
+
+This script checks and uploads the working YAML file behind the analyze
+feedback pool. It calls no endpoint, so it makes no LLM call and costs
+nothing. It always uploads to `feedback/records-en-v1`.
+
+Run `scripts/check_pool_masking.py` before uploading, so a planted word
+that the anonymizer masks gets reworded first, not discovered later as an
+unexplained drop in score.
+
+Set `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` for a Langfuse project
+at `LANGFUSE_HOST`, then:
+
+```bash
+uv run python eval/upload_pool.py \
+  --input .corpus_work/analyze-pool/records-en-v1.yaml --dry-run
+
+uv run python eval/upload_pool.py \
+  --input .corpus_work/analyze-pool/records-en-v1.yaml
+```
+
+`--dry-run` runs every check and reports what would change, but writes
+nothing. It also prints how many records have no text yet. A real upload
+stops if any record has no text or no `review_status`, or if an urgent,
+decoy or group record is not `review_status: reviewed`. If an item
+already exists and its content changed, the script updates that item.
+Langfuse keeps the old version.
+
+Each record in the input file is one feedback record:
+
+```yaml
+- id: en-0001 # assigned after a seeded shuffle; carries no label signal
+  content: "" # empty means the text is not written yet
+  metadata:
+    theme: food # the one primary theme; see PLANTED in pool_spec.py
+    need: food # null when this record reports no unmet need
+    complaint_about: null
+    rumour: null
+    suggestion: null
+    praise_about: null
+    info_request: null
+    urgent_kind: null # set only on the 6 urgent protection records
+    decoy: false # true on the 4 protection decoys
+    promise_gap: null
+    access_barrier: null
+    groups: [] # the vulnerable groups this record is about
+    keywords: [] # urgent/decoy records only, filled in alongside the text
+    facts: [] # one sentence per fact; filled in alongside the text
+    language: en
+    created: "2026-07-14T09:23:41Z" # random, seeded, inside 2026-06-01..2026-08-31
+    gen_model: null # set when the text is written
+    gen_date: null
+    review_status: null # "reviewed" or "not_reviewed", set at review time
+```
+
+The script stops before uploading anything if an id is not shaped
+`en-NNNN` or repeats, a record is missing one of the metadata fields
+above, a planted count (`PLANTED` in `pool_spec.py`) is wrong, the decoy
+count or the `urgent_kind`s are wrong, a `created` falls outside the
+window, or — once a record has text — its length is outside 60–1,200
+characters, it has no `facts`, its text uses a banned word (`PSEA`,
+`safeguarding`, `exploitation`, `referral`), or an urgent/decoy record
+has fewer than 3 `keywords`.
+
+### The vocabulary (`--vocab`)
+
+Add `--vocab <file>` to also check and upload the keyword vocabulary, to
+`feedback/vocab-v1`, after the records:
+
+```bash
+uv run python eval/upload_pool.py \
+  --input .corpus_work/analyze-pool/records-en-v1.yaml \
+  --vocab .corpus_work/analyze-pool/vocab-v1.yaml --dry-run
+```
+
+A fact counts as reported when one of these keywords appears in a model's
+answer, matched by `_common.contains_term` — a whole-word match on text
+that `_common.normalize` has lowercased, accent-stripped, and folded
+`LGBTQI+` to `lgbtqi`, so `"ill"` never matches inside `"will"`.
+
+Each entry in the vocabulary file is one label value:
+
+```yaml
+- kind: theme # or need, complaint_about, rumour, suggestion, praise_about,
+  # info_request, promise_gap, access_barrier, or group
+  name: food # the label value; "<kind>:<name>" is the bare id, e.g. group:older_people
+  keywords:
+    en: [food shortage, not enough food, hunger] # 3 or more
+
+- kind: group
+  name: older_people
+  keywords:
+    en: [older person, elderly, older resident]
+  issue_keywords: # group entries only, 3 or more
+    en: [mobility difficulty, long walk difficult, needs assistance carrying]
+```
+
+There is no entry for `urgent_kind` or `decoy`: those keywords stay on the
+6 urgent and 4 decoy records themselves (see `upload_pool.py` above), so
+the check below can confirm an urgent record's keyword is never found in
+a decoy's text.
+
+The script stops before uploading anything if a label value used in the
+records has no matching entry, or an entry's value matches no record; an
+entry has fewer than 3 `keywords.en`, or a group entry fewer than 3
+`issue_keywords.en`; a keyword — in the vocabulary or on a record —
+contains a word from `STOPLIST` in `pool_spec.py` (for example `minor`,
+which would credit the unaccompanied-minors group for "a minor theme");
+two group entries share a keyword; two urgent records share a keyword; or
+an urgent record's keyword appears in a decoy's text.
