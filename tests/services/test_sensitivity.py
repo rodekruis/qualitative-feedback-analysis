@@ -8,6 +8,7 @@ fake executor and no stub of the service itself.
 """
 
 from datetime import UTC, datetime, timedelta
+from typing import ClassVar
 
 import pytest
 
@@ -84,7 +85,7 @@ def _future_deadline(seconds=300):
     return datetime.now(tz=UTC) + timedelta(seconds=seconds)
 
 
-def _make_service(fake_llm, settings, anonymizer=None):
+def _make_service(fake_llm, settings, anonymizer=None, prompt_versions=None):
     """Build the service over the real executor, as ADR-017 prescribes."""
     return SensitivityService(
         executor=LLMCallExecutor(
@@ -93,7 +94,8 @@ def _make_service(fake_llm, settings, anonymizer=None):
             settings=settings,
             llm_timeout_seconds=LLM_TIMEOUT,
             max_total_tokens=MAX_TOKENS,
-        )
+        ),
+        prompt_versions=prompt_versions,
     )
 
 
@@ -175,3 +177,39 @@ class TestDetectSensitiveContent:
 
         system_msg = fake_llm.calls[0]["system_message"]
         assert "CORRUPTION: Apply when feedback alleges bribery" in system_msg
+
+
+class TestSensitivityPromptVersions:
+    """The one generation call tags its own prompt name and version (#398)."""
+
+    _PROMPT_VERSIONS: ClassVar[dict[str, int]] = {"sensitivity-detection-system": 7}
+
+    @pytest.mark.asyncio
+    async def test_detect_call_tags_its_prompt(self, settings):
+        fake_llm = FakeLLMPort(
+            responses=[_make_llm_response(structured=_make_sensitivity_result())]
+        )
+        service = _make_service(
+            fake_llm, settings, prompt_versions=self._PROMPT_VERSIONS
+        )
+
+        await service.detect_sensitive_content(
+            _make_sensitivity_request(), _future_deadline()
+        )
+
+        assert fake_llm.calls[0]["prompt_name"] == "sensitivity-detection-system"
+        assert fake_llm.calls[0]["prompt_version"] == 7
+
+    @pytest.mark.asyncio
+    async def test_missing_version_leaves_prompt_version_none(self, settings):
+        fake_llm = FakeLLMPort(
+            responses=[_make_llm_response(structured=_make_sensitivity_result())]
+        )
+        service = _make_service(fake_llm, settings)
+
+        await service.detect_sensitive_content(
+            _make_sensitivity_request(), _future_deadline()
+        )
+
+        assert fake_llm.calls[0]["prompt_name"] == "sensitivity-detection-system"
+        assert fake_llm.calls[0]["prompt_version"] is None

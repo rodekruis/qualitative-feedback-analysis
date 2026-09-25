@@ -106,6 +106,8 @@ class SensitivityService:
             tenant_id=request.tenant_id,
             response_model=SensitivityAnalysisResultModelList,
             deadline=deadline,
+            prompt_name="sensitivity-detection-system",
+            prompt_version=self._prompt_versions.get("sensitivity-detection-system"),
         )
 
         return_model_as_string = response.structured.model_dump_json()
