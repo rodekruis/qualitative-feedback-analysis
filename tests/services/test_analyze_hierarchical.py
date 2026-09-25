@@ -119,6 +119,10 @@ class RecordingLLM(LLMPort):
 
     def __init__(self):
         self.calls = []
+        # Parallel to `calls`, same index — kept separate so the many
+        # existing `for a, b, c in llm.calls` unpacks elsewhere in this file
+        # don't have to change shape for a #398-only concern.
+        self.prompt_calls: list[tuple[str | None, int | None]] = []
 
     async def complete(
         self,
@@ -132,6 +136,7 @@ class RecordingLLM(LLMPort):
     ):
         """Record the call and return a canned response."""
         self.calls.append((system_message, user_message, response_model))
+        self.prompt_calls.append((prompt_name, prompt_version))
         if _is_judge_call(system_message):
             return LLMResponse(
                 structured=_judge_text(),
@@ -161,7 +166,13 @@ def _records(n: int, text: str, prefix: str) -> tuple[FeedbackRecordModel, ...]:
 
 
 def _build_analyze_service(
-    llm, anonymizer, embedder, max_total_tokens, analyze_settings=None, evaluator=None
+    llm,
+    anonymizer,
+    embedder,
+    max_total_tokens,
+    analyze_settings=None,
+    evaluator=None,
+    prompt_versions=None,
 ):
     """Build an ``AnalyzeService`` over the *real* ``LLMCallExecutor``.
 
@@ -186,6 +197,7 @@ def _build_analyze_service(
         analyze_settings=analyze_settings or AnalyzeSettings(min_cluster_size=2),
         max_total_tokens=max_total_tokens,
         evaluator=evaluator,
+        prompt_versions=prompt_versions,
     )
 
 
@@ -214,6 +226,53 @@ async def test_hierarchical_covers_all_records_and_returns_confidence():
     assert result.confidence == pytest.approx(0.8)
     assert result.components is None
     assert result.result  # non-empty synthesis
+
+
+@pytest.mark.asyncio
+async def test_hierarchical_calls_carry_their_own_prompt_name_and_version():
+    """Map, leaf-judge, and reduce calls each carry their own prompt name (#398).
+
+    All three phases share one LLM connection in this test, so the only way
+    to tell them apart on the wire is the ``prompt_name``/``prompt_version``
+    this asserts — a regression here would silently tag every hierarchical
+    call with the wrong (or no) Langfuse prompt version.
+    """
+    water = _records(4, "water access was limited " * 5, "w")
+    health = _records(4, "health clinic medicine " * 5, "h")
+    records = water + health
+    request = AnalysisRequestModel(
+        feedback_records=records,
+        prompt="trends?",
+        tenant_id=TENANT_ID,
+        mode="hierarchical",
+    )
+    llm = RecordingLLM()
+    service = _build_analyze_service(
+        llm,
+        RecordingAnonymizer(),
+        FakeEmbeddingPort(),
+        max_total_tokens=100_000,
+        prompt_versions={
+            "analyze-hierarchical-map-system": 2,
+            "analyze-judge": 5,
+            "analyze-hierarchical-reduce-system": 9,
+        },
+    )
+    deadline = datetime.now(UTC) + timedelta(seconds=120)
+
+    await service.analyze_hierarchical(request, deadline, anonymize=True)
+
+    assert llm.calls, "expected at least one LLM call"
+    for (system_message, user_message, _response_model), (
+        name,
+        version,
+    ) in zip(llm.calls, llm.prompt_calls, strict=True):
+        if _is_judge_call(system_message):
+            assert (name, version) == ("analyze-judge", 5)
+        elif "<partial_analyses>" in user_message:
+            assert (name, version) == ("analyze-hierarchical-reduce-system", 9)
+        else:
+            assert (name, version) == ("analyze-hierarchical-map-system", 2)
 
 
 @pytest.mark.asyncio

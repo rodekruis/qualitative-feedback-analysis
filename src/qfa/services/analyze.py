@@ -335,6 +335,8 @@ class AnalyzeService:
             tenant_id=request.tenant_id,
             response_model=str,
             timeout=analyse_timeout,
+            prompt_name="analyze-single-pass-system",
+            prompt_version=self._prompt_versions.get("analyze-single-pass-system"),
         )
         analysis_text: str = analyse_response.structured
 
@@ -370,6 +372,8 @@ class AnalyzeService:
                     tenant_id=request.tenant_id,
                     response_model=str,
                     timeout=judge_timeout,
+                    prompt_name="analyze-judge",
+                    prompt_version=self._prompt_versions.get("analyze-judge"),
                 )
             judged = _parse_analyze_judge_response(judge_response.structured)
             quality_score = judged.quality_score
@@ -795,6 +799,8 @@ class AnalyzeService:
             response_model=str,
             deadline=deadline,
             timing=timing,
+            prompt_name="analyze-hierarchical-map-system",
+            prompt_version=self._prompt_versions.get("analyze-hierarchical-map-system"),
         )
         return response.structured
 
@@ -840,6 +846,8 @@ class AnalyzeService:
                     response_model=str,
                     deadline=deadline,
                     timing=timing,
+                    prompt_name="analyze-judge",
+                    prompt_version=self._prompt_versions.get("analyze-judge"),
                 )
             judged = _parse_analyze_judge_response(judge_response.structured)
             # One score per chunk, not one aggregate for the whole
@@ -916,6 +924,10 @@ class AnalyzeService:
                 tenant_id=tenant_id,
                 response_model=str,
                 deadline=deadline,
+                prompt_name="analyze-hierarchical-reduce-system",
+                prompt_version=self._prompt_versions.get(
+                    "analyze-hierarchical-reduce-system"
+                ),
             )
             return response.structured
 
