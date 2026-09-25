@@ -15,6 +15,7 @@ executor and no fake service.
 
 import logging
 from datetime import UTC, datetime, timedelta
+from typing import ClassVar
 from uuid import uuid4
 
 import pytest
@@ -91,7 +92,7 @@ def _judge_text(score, explanation):
     return f"SCORE: {score}\nEXPLANATION: {explanation}"
 
 
-def _make_coding_service(fake_llm, settings, evaluator=None):
+def _make_coding_service(fake_llm, settings, evaluator=None, prompt_versions=None):
     """Build the service over the *real* executor, as ADR-017 prescribes."""
     anonymizer = FakeAnonymizer()
     executor = LLMCallExecutor(
@@ -102,7 +103,11 @@ def _make_coding_service(fake_llm, settings, evaluator=None):
         max_total_tokens=MAX_TOKENS,
     )
     return CodingService(
-        llm=fake_llm, anonymizer=anonymizer, executor=executor, evaluator=evaluator
+        llm=fake_llm,
+        anonymizer=anonymizer,
+        executor=executor,
+        evaluator=evaluator,
+        prompt_versions=prompt_versions,
     )
 
 
@@ -354,6 +359,57 @@ class TestAssignCodesOneShot:
         assert len(fake_llm.calls) == 2
         assigned = result.coded_feedback_records[0].assigned_codes
         assert "Weak fit." in assigned[0].explanation
+
+
+class TestCodingPromptVersions:
+    """The pick call and every per-level judge call tag their own name (#398)."""
+
+    _PROMPT_VERSIONS: ClassVar[dict[str, int]] = {
+        "coding-classifier-system": 3,
+        "coding-classifier-judge": 5,
+    }
+
+    @pytest.mark.asyncio
+    async def test_pick_and_judge_calls_tag_their_own_prompt(self, settings):
+        root_codes = [CodingNode(id="code-1", name="Code A")]
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=CodingResponse(selected=[0])),
+                _make_llm_response(structured=_judge_text(0.9, "Fits.")),
+            ]
+        )
+        service = _make_coding_service(
+            fake_llm, settings, prompt_versions=self._PROMPT_VERSIONS
+        )
+
+        await service.assign_codes(
+            _make_coding_request(root_codes=root_codes), _future_deadline()
+        )
+
+        assert fake_llm.calls[0]["prompt_name"] == "coding-classifier-system"
+        assert fake_llm.calls[0]["prompt_version"] == 3
+        assert fake_llm.calls[1]["prompt_name"] == "coding-classifier-judge"
+        assert fake_llm.calls[1]["prompt_version"] == 5
+
+    @pytest.mark.asyncio
+    async def test_missing_version_leaves_prompt_version_none(self, settings):
+        root_codes = [CodingNode(id="code-1", name="Code A")]
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=CodingResponse(selected=[0])),
+                _make_llm_response(structured=_judge_text(0.9, "Fits.")),
+            ]
+        )
+        service = _make_coding_service(fake_llm, settings)
+
+        await service.assign_codes(
+            _make_coding_request(root_codes=root_codes), _future_deadline()
+        )
+
+        assert fake_llm.calls[0]["prompt_name"] == "coding-classifier-system"
+        assert fake_llm.calls[0]["prompt_version"] is None
+        assert fake_llm.calls[1]["prompt_name"] == "coding-classifier-judge"
+        assert fake_llm.calls[1]["prompt_version"] is None
 
 
 class TestAssignCodesLiveScores:

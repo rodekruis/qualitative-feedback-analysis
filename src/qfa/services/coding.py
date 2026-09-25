@@ -324,6 +324,8 @@ class CodingService:
                 tenant_id=request.tenant_id,
                 response_model=CodingResponse,
                 timeout=timeout,
+                prompt_name="coding-classifier-system",
+                prompt_version=self._prompt_versions.get("coding-classifier-system"),
             )
             selected_indices = response.structured.selected
         except LLMResponseParseError as exc:
@@ -490,6 +492,8 @@ class CodingService:
                 user_message=user_message,
                 tenant_id=tenant_id,
                 response_model=str,
+                prompt_name="coding-classifier-judge",
+                prompt_version=self._prompt_versions.get("coding-classifier-judge"),
             )
         judged = _parse_judge_response(response.structured)
         if not 0.0 <= judged.score <= 1.0:
