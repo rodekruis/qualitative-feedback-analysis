@@ -211,6 +211,13 @@ class CodingService:
         always injects a real port, a no-op one when Langfuse is
         unconfigured, so ``None`` here is only ever a test/script default,
         never production behaviour.
+    prompt_versions : dict[str, int] | None
+        Current Langfuse version per name in
+        :data:`~qfa.services.prompt_registry.SYSTEM_PROMPTS` (#398). ``None``
+        (the default) is treated as ``{}``, so every pick and judge call this
+        service makes simply carries no prompt-version span attribute, the
+        same as a name absent because Langfuse is unconfigured or its push
+        failed.
     """
 
     def __init__(
@@ -220,6 +227,7 @@ class CodingService:
         executor: LLMCallExecutor,
         judge_llm: LLMPort | None = None,
         evaluator: EvaluationPort | None = None,
+        prompt_versions: dict[str, int] | None = None,
     ) -> None:
         self._llm = llm
         # Same rule as AnalyzeService/SummarizeService: judging runs on its
@@ -230,6 +238,7 @@ class CodingService:
         self._anonymizer: AnonymizationPort = anonymizer
         self._executor = executor
         self._evaluator = evaluator
+        self._prompt_versions: dict[str, int] = prompt_versions or {}
 
     async def assign_codes(
         self,
@@ -315,6 +324,8 @@ class CodingService:
                 tenant_id=request.tenant_id,
                 response_model=CodingResponse,
                 timeout=timeout,
+                prompt_name="coding-classifier-system",
+                prompt_version=self._prompt_versions.get("coding-classifier-system"),
             )
             selected_indices = response.structured.selected
         except LLMResponseParseError as exc:
@@ -481,6 +492,8 @@ class CodingService:
                 user_message=user_message,
                 tenant_id=tenant_id,
                 response_model=str,
+                prompt_name="coding-classifier-judge",
+                prompt_version=self._prompt_versions.get("coding-classifier-judge"),
             )
         judged = _parse_judge_response(response.structured)
         if not 0.0 <= judged.score <= 1.0:

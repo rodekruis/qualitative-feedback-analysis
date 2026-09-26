@@ -837,8 +837,9 @@ def _make_lifespan(llm_factory: LLMFactory):
            prices needed for ``completion_cost()``.
         6. Publish each service (``sensitivity_service``, ``coding_service``,
            ``analyze_service``, ``summarize_service``) plus ``api_keys``,
-           ``settings``, and ``usage_repo`` on ``app.state`` for
-           routes/middleware to read.
+           ``settings``, ``usage_repo``, and ``prompt_versions`` (the
+           Langfuse prompt-sync result ``build_services`` already computed,
+           #398) on ``app.state`` for routes/middleware to read.
 
         On shutdown the DB engine's connection pool is the only resource
         this lifespan explicitly tears down. The process-lifetime
@@ -902,7 +903,7 @@ def _make_lifespan(llm_factory: LLMFactory):
         if embedder is not None:
             logger.info("Embedding model ready (hierarchical analysis available)")
 
-        services = build_services(
+        services = await build_services(
             settings,
             llm=tracked_llm,
             judge_llm=tracked_judge_llm,
@@ -924,6 +925,9 @@ def _make_lifespan(llm_factory: LLMFactory):
         app.state.summarize_service = services.summarize
         app.state.settings = settings
         app.state.usage_repo = usage_repo
+        # Read once from the graph build_services already did (#398) — never
+        # a second Langfuse push — and republished as-is for GET /v1/health.
+        app.state.prompt_versions = services.prompt_versions
 
         yield
 

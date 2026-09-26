@@ -1239,6 +1239,13 @@ class ApiHealthResponse(BaseModel):
             " package version bump."
         ),
     )
+    prompts: dict[str, int] = Field(
+        description=(
+            "Current Langfuse prompt version for each system prompt name. "
+            "Never the prompt text itself. Empty when Langfuse is not "
+            "configured, or when a name's push to Langfuse failed."
+        ),
+    )
 
 
 class ApiErrorFieldDetail(BaseModel):

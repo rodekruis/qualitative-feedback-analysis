@@ -249,6 +249,7 @@ ignore_imports = [
     "qfa.api.composition -> qfa.adapters.embedding",
     "qfa.api.composition -> qfa.adapters.presidio_anonymizer",
     "qfa.api.composition -> qfa.adapters.evaluation",
+    "qfa.api.composition -> qfa.adapters.prompts",
 ]
 
 [[tool.importlinter.contracts]]

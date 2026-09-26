@@ -23,6 +23,12 @@ Call `run_metadata()` in `_common.py`. That is the single source.
 | `eval_script_sha`  | Commit of the script that sent the requests. |
 | `git_branch`       | Branch of that script. |
 
+Call `prompt_versions()` in `_common.py` to read the current Langfuse
+version of each system prompt from `GET /v1/health`. Each script adds only
+the one or two names it actually scores. It passes each one as its own
+`prompt_version` extra key on `run_metadata()` (#398). A version number
+means something only next to the score it produced.
+
 CI sets `GIT_SHA` / `GIT_REF_NAME` because a CI checkout is detached.
 A local run reads `git`.
 Start a new script from `_common` (`uv run python eval/x.py`):

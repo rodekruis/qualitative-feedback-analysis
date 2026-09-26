@@ -192,6 +192,13 @@ class SummarizeService:
         real port, a no-op one when Langfuse is unconfigured, so ``None``
         here is only ever a test/script default, never production
         behaviour.
+    prompt_versions : dict[str, int] | None
+        Current Langfuse version per name in
+        :data:`~qfa.services.prompt_registry.SYSTEM_PROMPTS` (#398). ``None``
+        (the default) is treated as ``{}``, so every generation and judge
+        call this service makes simply carries no prompt-version span
+        attribute, the same as a name absent because Langfuse is
+        unconfigured or its push failed.
     """
 
     def __init__(
@@ -201,6 +208,7 @@ class SummarizeService:
         executor: LLMCallExecutor,
         judge_llm: LLMPort | None = None,
         evaluator: EvaluationPort | None = None,
+        prompt_versions: dict[str, int] | None = None,
     ) -> None:
         self._llm = llm
         # Falling back to the primary client keeps the default (no
@@ -211,6 +219,7 @@ class SummarizeService:
         self._anonymizer: AnonymizationPort = anonymizer
         self._executor = executor
         self._evaluator = evaluator
+        self._prompt_versions: dict[str, int] = prompt_versions or {}
 
     async def summarize_bulk(
         self,
@@ -253,6 +262,8 @@ class SummarizeService:
             tenant_id=request.tenant_id,
             response_model=AggregateSummaryResultModel,
             timeout=timeout,
+            prompt_name="summarize-aggregate-system",
+            prompt_version=self._prompt_versions.get("summarize-aggregate-system"),
         )
 
         judge_system = _build_judge_system_message(
@@ -267,6 +278,8 @@ class SummarizeService:
                 tenant_id=request.tenant_id,
                 response_model=str,
                 timeout=judge_timeout,
+                prompt_name="summarize-judge",
+                prompt_version=self._prompt_versions.get("summarize-judge"),
             )
         components = _parse_judge_quality_score(judge_response.structured)
         log_judge_components(logger, components)
@@ -349,6 +362,8 @@ class SummarizeService:
             tenant_id=request.tenant_id,
             response_model=SummaryResultModel,
             timeout=timeout,
+            prompt_name="summarize-single-system",
+            prompt_version=self._prompt_versions.get("summarize-single-system"),
         )
 
         if not llm_completion.structured.feedback_record_summaries:
@@ -366,6 +381,8 @@ class SummarizeService:
                 tenant_id=request.tenant_id,
                 response_model=str,
                 timeout=judge_timeout,
+                prompt_name="summarize-judge",
+                prompt_version=self._prompt_versions.get("summarize-judge"),
             )
         components = _parse_judge_quality_score(judge_response.structured)
         log_judge_components(logger, components)
@@ -417,6 +434,10 @@ class SummarizeService:
             tenant_id=request.tenant_id,
             response_model=SummaryCommunityMeetingResultModel,
             timeout=timeout,
+            prompt_name="summarize-community-meeting-system",
+            prompt_version=self._prompt_versions.get(
+                "summarize-community-meeting-system"
+            ),
         )
 
         if not llm_completion.structured.community_meeting_record_summaries:
@@ -436,6 +457,8 @@ class SummarizeService:
                 tenant_id=request.tenant_id,
                 response_model=str,
                 timeout=judge_timeout,
+                prompt_name="summarize-judge",
+                prompt_version=self._prompt_versions.get("summarize-judge"),
             )
         components = _parse_judge_quality_score(judge_response.structured)
         log_judge_components(logger, components)

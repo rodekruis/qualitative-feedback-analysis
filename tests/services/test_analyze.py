@@ -720,6 +720,49 @@ class TestAnalyzeHappyPath:
         )
 
 
+class TestAnalyzePromptVersions:
+    """Each generation/judge call in ``analyze_bulk`` carries its own prompt name/version (#398)."""
+
+    @pytest.mark.asyncio
+    async def test_single_pass_call_carries_its_prompt_name_and_version(self, settings):
+        fake_llm = _judging_llm(analysis="analysis text")
+        service = _build_analyze_service(
+            fake_llm,
+            FakeAnonymizer(),
+            settings,
+            prompt_versions={
+                "analyze-single-pass-system": 3,
+                "analyze-judge": 7,
+            },
+        )
+
+        await service.analyze_bulk(_make_request(), _future_deadline())
+
+        assert fake_llm.calls[0]["prompt_name"] == "analyze-single-pass-system"
+        assert fake_llm.calls[0]["prompt_version"] == 3
+        assert fake_llm.calls[1]["prompt_name"] == "analyze-judge"
+        assert fake_llm.calls[1]["prompt_version"] == 7
+
+    @pytest.mark.asyncio
+    async def test_no_prompt_versions_means_the_version_is_none(self, settings):
+        """Without ``prompt_versions`` (the default), every call's version is ``None``.
+
+        The name is still sent — it is a hardcoded literal, not looked up.
+        ``LiteLLMClient.complete`` is what skips both span attributes when
+        the version is ``None`` (an unconfigured Langfuse, or a push that
+        failed); the call site itself does not withhold the name.
+        """
+        fake_llm = _judging_llm(analysis="analysis text")
+        service = _build_analyze_service(fake_llm, FakeAnonymizer(), settings)
+
+        await service.analyze_bulk(_make_request(), _future_deadline())
+
+        assert fake_llm.calls[0]["prompt_name"] == "analyze-single-pass-system"
+        assert fake_llm.calls[0]["prompt_version"] is None
+        assert fake_llm.calls[1]["prompt_name"] == "analyze-judge"
+        assert fake_llm.calls[1]["prompt_version"] is None
+
+
 class TestAnalyzeJudgeFailure:
     @pytest.mark.asyncio
     async def test_judge_failure_returns_none_score_and_unavailable_text(

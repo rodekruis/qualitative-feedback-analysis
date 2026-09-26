@@ -38,7 +38,13 @@ from typing import Any
 import httpx
 from langfuse import Evaluation, get_client
 
-from _common import MAX_CONCURRENCY, load_env, resolve_config, run_metadata
+from _common import (
+    MAX_CONCURRENCY,
+    load_env,
+    prompt_versions,
+    resolve_config,
+    run_metadata,
+)
 
 DATASET_NAME = "assign-codes/ukrain"
 MAX_CODES = 10
@@ -149,7 +155,11 @@ def main() -> None:
     load_env()
     base_url, api_key = resolve_config()
     print(f"Backend: {base_url}")
-    metadata = run_metadata(base_url, confidence_threshold=CONFIDENCE_THRESHOLD)
+    metadata = run_metadata(
+        base_url,
+        confidence_threshold=CONFIDENCE_THRESHOLD,
+        prompt_version=prompt_versions(base_url).get("coding-classifier-system"),
+    )
 
     langfuse = get_client()
     dataset = langfuse.get_dataset(DATASET_NAME)

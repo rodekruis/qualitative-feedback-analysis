@@ -442,6 +442,8 @@ class LiteLLMClient(LLMPort):
         tenant_id: str,
         response_model: type[T_Response],
         timeout: float = 40.0,
+        prompt_name: str | None = None,
+        prompt_version: int | None = None,
     ) -> LLMResponse[T_Response]:
         """Send a completion request via LiteLLM, retrying transient failures.
 
@@ -496,6 +498,19 @@ class LiteLLMClient(LLMPort):
             Maximum time in seconds to wait for a single attempt.
         tenant_id : str
             Tenant identifier passed as ``user`` for audit trail.
+        prompt_name : str | None
+            Langfuse prompt name the caller built ``system_message`` from
+            (#398). When both this and ``prompt_version`` are not ``None``,
+            the span gains ``langfuse.observation.prompt.name`` and
+            ``langfuse.observation.prompt.version`` — the SDK's own
+            attribute names for linking a generation back to its Langfuse
+            Prompt version. This client holds no prompt-version state of
+            its own; it only tags whatever the caller passes.
+        prompt_version : int | None
+            Current Langfuse version of that prompt. ``None`` when Langfuse
+            is unconfigured or that name's push failed, in which case
+            neither attribute is set — a name is never sent without a
+            version, or a version without a name.
 
         Returns
         -------
@@ -540,6 +555,11 @@ class LiteLLMClient(LLMPort):
         ) as span:
             span.set_attribute("langfuse.observation.type", "generation")
             span.set_attribute("langfuse.user.id", tenant_id)
+            if prompt_name is not None and prompt_version is not None:
+                span.set_attribute("langfuse.observation.prompt.name", prompt_name)
+                span.set_attribute(
+                    "langfuse.observation.prompt.version", prompt_version
+                )
             if ctx is not None:
                 tags = [ctx.operation, "judge"] if is_judge else [ctx.operation]
                 span.set_attribute("langfuse.trace.tags", json.dumps(tags))

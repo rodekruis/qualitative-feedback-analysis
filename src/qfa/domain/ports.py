@@ -7,6 +7,7 @@ port).
 """
 
 import datetime as dt
+from collections.abc import Mapping
 from typing import Protocol, runtime_checkable
 
 from qfa.domain.models import (
@@ -102,6 +103,8 @@ class LLMPort(Protocol):
         tenant_id: str,
         response_model: type[T_Response],
         timeout: float = 20.0,
+        prompt_name: str | None = None,
+        prompt_version: int | None = None,
     ) -> LLMResponse[T_Response]:
         """Send a completion request to the LLM provider.
 
@@ -117,11 +120,46 @@ class LLMPort(Protocol):
             The Pydantic model to parse the response into.
         timeout : float
             Maximum time in seconds to wait for a response.
+        prompt_name : str | None
+            Langfuse prompt name this call's ``system_message`` was built
+            from (see :mod:`qfa.services.prompt_registry`), for trace
+            linking (#398). ``None`` (the default) tags the call with no
+            prompt name. Never set without ``prompt_version``, and vice
+            versa.
+        prompt_version : int | None
+            Current Langfuse version of that prompt, from
+            ``app.state.prompt_versions``. ``None`` when Langfuse is
+            unconfigured or that name's push failed.
 
         Returns
         -------
         LLMResponse
             The model's response including token usage.
+        """
+        ...
+
+
+class PromptPort(Protocol):
+    """Port for mirroring hardcoded system prompts to Langfuse for versioning.
+
+    The repo's hardcoded prompt text (:mod:`qfa.services.prompt_registry`)
+    is always the ground truth; this port never feeds text back into a call.
+    Async, unlike :class:`EvaluationPort` and :class:`EmbeddingPort`: a real
+    implementation does blocking network I/O (one ``get_prompt``/
+    ``create_prompt`` round trip per name). :meth:`sync` runs once, during
+    app startup before the server accepts traffic — never on the request
+    path.
+    """
+
+    async def sync(self, prompts: Mapping[str, str]) -> dict[str, int]:
+        """Make sure every name in ``prompts`` exists in Langfuse at that exact text.
+
+        For each ``name: text`` pair: when no version exists yet, or the
+        current version's text differs from ``text``, create a new Langfuse
+        version. Returns ``{name: current_version}`` for every key in
+        ``prompts`` whose lookup/create succeeded, whether or not this call
+        created a new version — a name whose call failed is left out (never
+        raised) so one bad name cannot block the others.
         """
         ...
 

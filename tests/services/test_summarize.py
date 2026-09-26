@@ -12,6 +12,7 @@ is no fake executor.
 
 import logging
 from datetime import UTC, datetime, timedelta
+from typing import ClassVar
 from uuid import uuid4
 
 import pytest
@@ -199,6 +200,8 @@ class FakeLLMPort(LLMPort):
         tenant_id,
         response_model=str,
         timeout=40.0,
+        prompt_name=None,
+        prompt_version=None,
     ):
         self.calls.append(
             {
@@ -207,6 +210,8 @@ class FakeLLMPort(LLMPort):
                 "tenant_id": tenant_id,
                 "response_model": response_model,
                 "timeout": timeout,
+                "prompt_name": prompt_name,
+                "prompt_version": prompt_version,
             }
         )
         idx = self._call_count
@@ -256,6 +261,7 @@ def _build_service(
     judge_llm=None,
     max_total_tokens=MAX_TOKENS,
     evaluator=None,
+    prompt_versions=None,
 ):
     """Build a ``SummarizeService`` over the real executor.
 
@@ -269,6 +275,7 @@ def _build_service(
         anonymizer=anonymizer,
         judge_llm=judge_llm,
         evaluator=evaluator,
+        prompt_versions=prompt_versions,
         executor=LLMCallExecutor(
             llm=llm,
             anonymizer=anonymizer,
@@ -911,3 +918,98 @@ class TestSummarizeJudgeScores:
             )
 
         assert result.components is not None
+
+
+class TestSummarizePromptVersions:
+    """Each of the three summarisation flows tags its calls with its own name (#398).
+
+    All three share one ``summarize-judge`` prompt (see ``_JUDGE_PROMPT``),
+    so its version is the same across every ``calls[1]`` below; only the
+    generation call's name/version differs per flow.
+    """
+
+    _PROMPT_VERSIONS: ClassVar[dict[str, int]] = {
+        "summarize-aggregate-system": 2,
+        "summarize-single-system": 4,
+        "summarize-community-meeting-system": 6,
+        "summarize-judge": 9,
+    }
+
+    @pytest.mark.asyncio
+    async def test_summarize_bulk_tags_aggregate_system_and_judge(self, settings):
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=_make_aggregate_summary_result()),
+                _make_llm_response(structured=_judge_text()),
+            ]
+        )
+        service = _build_service(
+            fake_llm, settings, prompt_versions=self._PROMPT_VERSIONS
+        )
+
+        await service.summarize_bulk(_make_aggregate_request(), _future_deadline())
+
+        assert fake_llm.calls[0]["prompt_name"] == "summarize-aggregate-system"
+        assert fake_llm.calls[0]["prompt_version"] == 2
+        assert fake_llm.calls[1]["prompt_name"] == "summarize-judge"
+        assert fake_llm.calls[1]["prompt_version"] == 9
+
+    @pytest.mark.asyncio
+    async def test_summarize_tags_single_system_and_judge(self, settings):
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=_make_summary_result()),
+                _make_llm_response(structured=_judge_text()),
+            ]
+        )
+        service = _build_service(
+            fake_llm, settings, prompt_versions=self._PROMPT_VERSIONS
+        )
+
+        await service.summarize(_make_summary_request(), _future_deadline())
+
+        assert fake_llm.calls[0]["prompt_name"] == "summarize-single-system"
+        assert fake_llm.calls[0]["prompt_version"] == 4
+        assert fake_llm.calls[1]["prompt_name"] == "summarize-judge"
+        assert fake_llm.calls[1]["prompt_version"] == 9
+
+    @pytest.mark.asyncio
+    async def test_summarize_community_meeting_tags_its_system_and_judge(
+        self, settings
+    ):
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=_make_community_meeting_summary_result()),
+                _make_llm_response(structured=_judge_text()),
+            ]
+        )
+        service = _build_service(
+            fake_llm, settings, prompt_versions=self._PROMPT_VERSIONS
+        )
+
+        await service.summarize_community_meeting(
+            _make_community_meeting_request(), _future_deadline()
+        )
+
+        assert fake_llm.calls[0]["prompt_name"] == "summarize-community-meeting-system"
+        assert fake_llm.calls[0]["prompt_version"] == 6
+        assert fake_llm.calls[1]["prompt_name"] == "summarize-judge"
+        assert fake_llm.calls[1]["prompt_version"] == 9
+
+    @pytest.mark.asyncio
+    async def test_no_prompt_versions_means_the_version_is_none(self, settings):
+        """Without ``prompt_versions`` (the default), the name is still sent."""
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=_make_summary_result()),
+                _make_llm_response(structured=_judge_text()),
+            ]
+        )
+        service = _build_service(fake_llm, settings)
+
+        await service.summarize(_make_summary_request(), _future_deadline())
+
+        assert fake_llm.calls[0]["prompt_name"] == "summarize-single-system"
+        assert fake_llm.calls[0]["prompt_version"] is None
+        assert fake_llm.calls[1]["prompt_name"] == "summarize-judge"
+        assert fake_llm.calls[1]["prompt_version"] is None

@@ -1330,3 +1330,16 @@ class TestHealth:
         monkeypatch.delenv("GIT_SHA", raising=False)
         resp = await client.get("/v1/health")
         assert resp.json()["commit"] == "unknown"
+
+    @pytest.mark.asyncio
+    async def test_health_prompts_matches_app_state(self, test_app, client):
+        """``prompts`` is read straight from ``app.state.prompt_versions`` (#398).
+
+        Never invented here: whatever the composition root published at
+        startup is what this field echoes back, version numbers only.
+        """
+        test_app.state.prompt_versions = {"analyze-single-pass-system": 3}
+
+        resp = await client.get("/v1/health")
+
+        assert resp.json()["prompts"] == {"analyze-single-pass-system": 3}

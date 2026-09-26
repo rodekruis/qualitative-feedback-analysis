@@ -651,16 +651,19 @@ async def detect_sensitive(
 @router.get(
     "/v1/health", response_model=ApiHealthResponse, status_code=200, tags=["Default"]
 )
-async def health() -> ApiHealthResponse:
+async def health(request: Request) -> ApiHealthResponse:
     """Return service health status.
 
     Returns
     -------
     HealthResponse
-        Health status, package version, and the built commit SHA.
+        Health status, package version, the built commit SHA, and the
+        current Langfuse prompt version per name (``app.state.prompt_versions``,
+        published once at startup by the lifespan; see #398).
     """
     return ApiHealthResponse(
         status="ok",
         version=qfa.__version__,
         commit=os.environ.get("GIT_SHA", "unknown"),
+        prompts=request.app.state.prompt_versions,
     )

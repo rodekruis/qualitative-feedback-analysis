@@ -60,10 +60,12 @@ from opentelemetry.trace import Tracer
 from qfa.adapters.embedding import build_onnx_embedder
 from qfa.adapters.evaluation import LangfuseEvaluationAdapter, NoOpEvaluationAdapter
 from qfa.adapters.presidio_anonymizer import PresidioAnonymizer
+from qfa.adapters.prompts import LangfusePromptAdapter, NoOpPromptAdapter
 from qfa.domain.ports import EmbeddingPort, EvaluationPort, LLMPort
 from qfa.services.analyze import AnalyzeService
 from qfa.services.coding import CodingService
 from qfa.services.llm_call_executor import LLMCallExecutor
+from qfa.services.prompt_registry import SYSTEM_PROMPTS
 from qfa.services.sensitivity import SensitivityService
 from qfa.services.summarize import SummarizeService
 from qfa.settings import (
@@ -112,12 +114,19 @@ class ServiceGraph:
         extracted in #266.
     summarize : SummarizeService
         The summarize / summarize_bulk use cases, extracted in #264.
+    prompt_versions : dict[str, int]
+        Current Langfuse prompt version per name in
+        :data:`~qfa.services.prompt_registry.SYSTEM_PROMPTS`, from the one
+        :func:`build_prompt_versions` call this graph's construction makes.
+        The lifespan reads this once and republishes it as
+        ``app.state.prompt_versions`` (#398).
     """
 
     sensitivity: SensitivityService
     coding: CodingService
     analyze: AnalyzeService
     summarize: SummarizeService
+    prompt_versions: dict[str, int]
 
 
 def resolve_judge_llm_settings(
@@ -236,6 +245,37 @@ def build_evaluator(settings: LangfuseSettings) -> EvaluationPort:
     return LangfuseEvaluationAdapter(settings)
 
 
+async def build_prompt_versions(settings: LangfuseSettings) -> dict[str, int]:
+    """Push every hardcoded system prompt to Langfuse; return its current version per name.
+
+    Mirrors :func:`build_evaluator`'s own gate on the same settings: while
+    ``LANGFUSE_PUBLIC_KEY``/``LANGFUSE_SECRET_KEY`` are unset, no push
+    happens and every name is simply absent from ``GET /v1/health``'s
+    ``prompts`` field. Runs once, at startup, before the server accepts
+    traffic — never on the request path (#398).
+
+    Parameters
+    ----------
+    settings : LangfuseSettings
+        Langfuse configuration loaded from environment variables.
+
+    Returns
+    -------
+    dict[str, int]
+        Current Langfuse version for each name in
+        :data:`~qfa.services.prompt_registry.SYSTEM_PROMPTS` whose push
+        succeeded. Empty when Langfuse is unconfigured, or when every push
+        failed.
+    """
+    if settings.public_key is None or settings.secret_key is None:
+        logger.debug(
+            "LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY unset; prompt sync disabled"
+        )
+        return await NoOpPromptAdapter().sync(SYSTEM_PROMPTS)
+    logger.info("Langfuse prompt sync configured (host=%s)", settings.host)
+    return await LangfusePromptAdapter(settings).sync(SYSTEM_PROMPTS)
+
+
 def register_custom_model_prices() -> None:
     """Load custom model pricing from the bundled YAML resource.
 
@@ -302,15 +342,23 @@ def build_langfuse_tracer(settings: LangfuseSettings) -> Tracer:
     return provider.get_tracer("qfa.adapters.llm_client")
 
 
-def build_services(
+async def build_services(
     settings: AppSettings,
     *,
     llm: LLMPort | None = None,
     judge_llm: LLMPort | None = None,
     embedder: EmbeddingPort | None = None,
     evaluator: EvaluationPort | None = None,
+    prompt_versions: dict[str, int] | None = None,
 ) -> ServiceGraph:
     """Construct every application service from application settings.
+
+    Async because it makes one Langfuse prompt-sync round trip (via
+    :func:`build_prompt_versions`) when Langfuse is configured — the only
+    I/O this factory itself performs; everything else it builds is
+    constructed, not called. Every other network-facing dependency
+    (the LLM client, the tracer, the evaluator) is either injected already
+    built or does its I/O lazily, on the request path.
 
     This is the shared composition point used by both the FastAPI
     lifespan and out-of-process callers (scripts, notebooks). It owns
@@ -367,6 +415,12 @@ def build_services(
         when Langfuse is unconfigured, so :class:`AnalyzeService`,
         :class:`SummarizeService`, and :class:`CodingService` always hold
         a real :class:`~qfa.domain.ports.EvaluationPort` (#354).
+    prompt_versions : dict[str, int] | None, optional
+        Pre-built ``{name: version}`` map to use instead of pushing
+        :data:`~qfa.services.prompt_registry.SYSTEM_PROMPTS` to Langfuse.
+        ``None`` (the default) builds one via :func:`build_prompt_versions`,
+        which never raises — an unconfigured or failing push simply leaves
+        a name's version absent (#398).
 
     Returns
     -------
@@ -399,6 +453,9 @@ def build_services(
     if evaluator is None:
         evaluator = build_evaluator(settings.langfuse)
 
+    if prompt_versions is None:
+        prompt_versions = await build_prompt_versions(settings.langfuse)
+
     anonymizer = PresidioAnonymizer(
         max_workers=settings.anonymization.max_workers,
         batch_size=settings.anonymization.batch_size,
@@ -426,10 +483,13 @@ def build_services(
         max_total_tokens=settings.llm.max_total_tokens,
         embedder=embedder,
         evaluator=evaluator,
+        prompt_versions=prompt_versions,
     )
 
     return ServiceGraph(
-        sensitivity=SensitivityService(executor=executor),
+        sensitivity=SensitivityService(
+            executor=executor, prompt_versions=prompt_versions
+        ),
         # The one-shot pick stays on the primary connection; only the
         # per-level judge follows judge_llm (#310).
         coding=CodingService(
@@ -438,6 +498,7 @@ def build_services(
             anonymizer=anonymizer,
             executor=executor,
             evaluator=evaluator,
+            prompt_versions=prompt_versions,
         ),
         analyze=analyze,
         # Neither summarisation path runs the token-budget guard or needs an
@@ -449,11 +510,13 @@ def build_services(
             anonymizer=anonymizer,
             executor=executor,
             evaluator=evaluator,
+            prompt_versions=prompt_versions,
         ),
+        prompt_versions=prompt_versions,
     )
 
 
-def build_analyze_service(
+async def build_analyze_service(
     settings: AppSettings,
     *,
     llm: LLMPort | None = None,
@@ -466,8 +529,10 @@ def build_analyze_service(
     ``analyze_bulk`` / ``analyze_hierarchical`` in-process. Pass
     ``embedder`` (or configure ``EMBEDDING_MODEL_PATH``) for the
     hierarchical mode; without one it raises ``AnalysisError`` at request
-    time and ``single_pass`` still works.
+    time and ``single_pass`` still works. Async because it delegates to
+    :func:`build_services`, which pushes prompt versions to Langfuse (#398).
     """
-    return build_services(
+    services = await build_services(
         settings, llm=llm, judge_llm=judge_llm, embedder=embedder
-    ).analyze
+    )
+    return services.analyze
