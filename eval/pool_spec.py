@@ -30,6 +30,10 @@ STOPLIST = ("minor", "ill", "far", "age", "single", "general")
 
 DECOYS = 4
 
+# A label value with this many records or more is a "required" item: one
+# an answer key expects a correct answer to report.
+REQUIRED_MIN_RECORDS = 5
+
 FAMILY_LABEL: dict[str, tuple[str, ...]] = {
     "themes": ("theme",),
     "needs": ("need",),
