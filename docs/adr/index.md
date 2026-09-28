@@ -31,6 +31,7 @@ to them, the options considered, and the reasoning behind the chosen approach.
 | [020](020-mistral-medium-as-judge-model.md) | `mistral-medium-3-5` as the judge model | Accepted |
 | [021](021-two-model-person-union.md) | Two-model NER union for person-name recall | Accepted |
 | [022](022-evaluation-port-for-live-judge-scores.md) | `EvaluationPort` for live judge scores in Langfuse | Accepted |
+| [023](023-eval-black-box-and-langfuse-ground-truth.md) | `eval/` as a black-box client, and Langfuse as the analyze ground truth | Accepted |
 
 ## Obsolete
 
@@ -62,5 +63,6 @@ to them, the options considered, and the reasoning behind the chosen approach.
 020-mistral-medium-as-judge-model
 021-two-model-person-union
 022-evaluation-port-for-live-judge-scores
+023-eval-black-box-and-langfuse-ground-truth
 obsolete/008-keep-orchestrator-port
 ```
