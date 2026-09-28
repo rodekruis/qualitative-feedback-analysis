@@ -14,6 +14,7 @@ real money.
 | `upload_prompts.py`       | Checks and uploads the analyze prompts to a Langfuse dataset, e.g. `analyze/prompts-v1`. Makes no LLM call.         |
 | `upload_pool.py`          | Checks and uploads the analyze feedback pool to a Langfuse dataset, e.g. `feedback/records-en-v1`. Makes no LLM call. |
 | `make_analyze_cases.py`   | Builds the analyze case set from the pool, vocabulary and prompts, and uploads it to `analyze/cases-frequent-en-v1`. Makes no LLM call. |
+| `analyze_eval.py`         | Scores `POST /v1/analyze-bulk` against a Langfuse analyze case set, named on the command line. |
 
 ## Shared helpers
 
@@ -390,3 +391,73 @@ The script stops before uploading anything if a prompt is tagged
 `unplanted`, or if a family other than `protection` has no required item
 in its answer key — either would mean the case set no longer matches
 what the pool can support.
+
+## Running `analyze_eval.py`
+
+This script scores `POST /v1/analyze-bulk` against a Langfuse case set
+you name on the command line, so the same script works for any analyze
+case set. Every call is a real LLM call, so every run costs real money.
+**Results are on synthetic data.**
+
+Set these before you run it. They can live in the repo-root `.env`.
+See Shared helpers for a local server.
+
+- Set `QFA_DEV_API_KEY`, or locally `AUTH_API_KEYS`.
+- Set `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` for a Langfuse
+  project at `LANGFUSE_HOST` that holds the case set and the pool it was
+  built from.
+
+```bash
+# smoke test against the first case
+uv run python eval/analyze_eval.py --dataset analyze/cases-frequent-en-v1 --smoke-limit 1
+
+# full run
+uv run python eval/analyze_eval.py --dataset analyze/cases-frequent-en-v1
+```
+
+`--dataset` is required. `--smoke-limit N` runs the first N cases.
+`--run-name` replaces the default `<dataset>-smoke-<N>-<timestamp>` or
+`<dataset>-full-<timestamp>`.
+
+The harness sends at most 2 calls at a time (`MAX_CONCURRENCY` in
+`analyze_eval.py`, separate from the eval-wide default of 5 in
+`_common.py`): one analyze call can run for minutes, and the dev
+backend's Postgres pool is small. The task is `async`, because the
+Langfuse SDK runs a sync task inside its own event loop one case at a
+time, whatever `max_concurrency` says.
+
+A 413 becomes the outcome `payload_too_large`, and a content-filter 422
+becomes `content_filtered`; both let the run continue. Any other failure
+— another 422, a 5xx, a timeout — becomes `error`. A case naming a
+record id the records dataset does not hold fails loudly: Langfuse logs
+it and leaves the case out of the run.
+
+Every case carries these scores. `quality_score`, `faithfulness`,
+`coverage`, `clarity` and `judge_failed` come from the service itself;
+`item_recall` through `decoys_cited` are computed against the case's
+answer key (see `analyze_scorers.py`):
+
+| Score | Meaning |
+| --- | --- |
+| `quality_score`, `faithfulness`, `coverage`, `clarity` | As the service returns them; `null` when the judge call failed. |
+| `judge_failed` | 1 when `quality_score` is null, else 0. `single_pass` only. |
+| `outcome`, `mode` | Categorical, always present. |
+| `latency_seconds` | Measured around the POST. |
+| `item_recall` | Share of required items with 2 or more keyword hits. |
+| `group_coverage` | Share of the key's groups with 1 or more keyword hit. |
+| `group_issue_pairs` | Share of the key's groups with a group keyword and one of its issue keywords in one paragraph. |
+| `ids_cited`, `unknown_ids_cited` | How many sent ids the answer cites, and how many cited ids were never sent. |
+| `urgent_ids_cited`, `urgent_described` | Protection case only: urgent records cited by id, or described by 2 or more of their keywords in one paragraph. |
+| `decoys_cited` | Protection case only, information: decoys cited by id — a cite can say "not urgent". |
+
+The run carries `mean_<score>` for every numeric score above (nulls
+excluded, never counted as 0, with `n_scored`/`n_items` in the score
+metadata), `judge_failure_rate`, `outcome_count::<outcome>`,
+`group_coverage::<group>` (coverage of one group, over only the cases
+whose key held it), and `judge_model` — read from the Langfuse trace of
+one `ok` case after the run, since the run metadata is recorded before
+any trace exists.
+
+The console prints raw counts per case, for example
+`P03-en urgent_ids_cited 6/6, urgent_described 2/6`, then the link to the
+run and the number of cases that failed.
