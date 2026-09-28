@@ -13,6 +13,7 @@ real money.
 | `evaluate_sensitivity.py` | Scores `POST /v1/detect-sensitive` against any Langfuse dataset of labelled records, named on the command line.     |
 | `upload_prompts.py`       | Checks and uploads the analyze prompts to a Langfuse dataset, e.g. `analyze/prompts-v1`. Makes no LLM call.         |
 | `upload_pool.py`          | Checks and uploads the analyze feedback pool to a Langfuse dataset, e.g. `feedback/records-en-v1`. Makes no LLM call. |
+| `make_analyze_cases.py`   | Builds the analyze case set from the pool, vocabulary and prompts, and uploads it to `analyze/cases-frequent-en-v1`. Makes no LLM call. |
 
 ## Shared helpers
 
@@ -318,3 +319,74 @@ contains a word from `STOPLIST` in `pool_spec.py` (for example `minor`,
 which would credit the unaccompanied-minors group for "a minor theme");
 two group entries share a keyword; two urgent records share a keyword; or
 an urgent record's keyword appears in a decoy's text.
+
+## Running `make_analyze_cases.py`
+
+This script reads the live pool, vocabulary and prompts from Langfuse and
+builds the analyze case set: one call to score per English prompt. It
+calls no endpoint, so it makes no LLM call and costs nothing. It always
+uploads to `analyze/cases-frequent-en-v1`.
+
+Set `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` for a Langfuse project
+at `LANGFUSE_HOST` that holds `feedback/records-en-v1`,
+`feedback/vocab-v1` and `analyze/prompts-v1`, then:
+
+```bash
+uv run python eval/make_analyze_cases.py --dry-run
+
+uv run python eval/make_analyze_cases.py
+```
+
+`--dry-run` runs every check and prints what would change, but writes
+nothing. A real upload updates a case whose content changed. Langfuse
+keeps the old version.
+
+The three source datasets are read at one UTC timestamp, so the case set
+always describes one consistent snapshot of the pool. Each case is:
+
+```json
+{
+  "id": "P02-en",
+  "input": {
+    "prompt_id": "P02",
+    "prompt": "Identify the types of unmet needs, grouped by frequency",
+    "mode": "single_pass",
+    "output_language": "English",
+    "record_ids": ["en-0108", "en-0037", "..."]
+  },
+  "expected_output": { "family": "needs", "...": "the answer key" },
+  "metadata": {
+    "records_dataset": "feedback/records-en-v1",
+    "records_version": "2026-09-29T09:12:44.512000+00:00",
+    "vocab_dataset": "feedback/vocab-v1",
+    "vocab_version": "2026-09-29T09:12:44.512000+00:00",
+    "prompt_dataset": "analyze/prompts-v1",
+    "prompt_id": "P02",
+    "family": "needs",
+    "language": "en",
+    "key_positions": { "groups:children": [12, 17, "..."], "urgent:en-0089": [61] }
+  }
+}
+```
+
+`record_ids` holds every pool record, newest `created` first (then by
+id) — the order the EspoCRM flow sends them in. `output_language` is
+always set: without it, the service adds no language instruction.
+`key_positions` gives, for each group and each urgent record in the
+answer key, the positions of its records in `record_ids`, so a person can
+see they are spread across the list rather than clustered together.
+
+The answer key (`expected_output`) is computed by `build_answer_key()`,
+never written by hand:
+
+| Key part | Rule |
+| --- | --- |
+| `items` | One entry per value of the family's label, with its count, whether it is `required` (5 or more records), its vocabulary keywords, and its record ids. `protection` has no items, because `urgent` and `decoys` score it instead. |
+| `rank_checked` | Only for `themes` and `needs`. The required items, highest count first, for as long as each is at least 1.5 times the next — the pairs close enough that a labelling difference could flip their order stay out. |
+| `groups` | Only the groups with a record that also sets one of the family's labels. Every record sets `theme`, so the `themes` key holds every group. |
+| `urgent`, `decoys` | On every key, from every record with an `urgent_kind` or a `decoy` flag. Only the `protection` case's scorers read them. |
+
+The script stops before uploading anything if a prompt is tagged
+`unplanted`, or if a family other than `protection` has no required item
+in its answer key — either would mean the case set no longer matches
+what the pool can support.

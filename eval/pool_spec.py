@@ -16,6 +16,8 @@ from datetime import datetime
 
 RECORDS_DATASET = "feedback/records-en-v1"
 VOCAB_DATASET = "feedback/vocab-v1"
+PROMPTS_DATASET = "analyze/prompts-v1"
+FREQUENT_CASES_DATASET = "analyze/cases-frequent-en-v1"
 
 WINDOW_START = datetime(2026, 6, 1, 0, 0, 0)
 WINDOW_END = datetime(2026, 8, 31, 23, 59, 59)

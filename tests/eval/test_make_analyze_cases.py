@@ -1,19 +1,30 @@
-"""Tests for ``build_answer_key`` in ``eval/make_analyze_cases.py``.
+"""Tests for ``eval/make_analyze_cases.py``.
 
 Each test builds a small, hand-made record and vocabulary list rather
 than the real ~110-record pool, so counts and thresholds stay easy to
 read. A record only needs the ``id`` and ``metadata`` keys that
 ``build_answer_key`` reads; missing labels default to ``None`` through
-``dict.get``.
+``dict.get``. Fake Langfuse dataset items are ``SimpleNamespace(input=...,
+metadata=...)``, since the real ``DatasetItem`` reads both the same way.
 """
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
-from make_analyze_cases import build_answer_key
+from make_analyze_cases import (
+    build_answer_key,
+    build_cases,
+    key_positions,
+    record_from_item,
+    send_order,
+    vocab_from_item,
+)
+from pool_spec import PROMPTS_DATASET, RECORDS_DATASET, VOCAB_DATASET
 
 
 def _record(record_id: str, **metadata: Any) -> dict[str, Any]:
@@ -21,12 +32,19 @@ def _record(record_id: str, **metadata: Any) -> dict[str, Any]:
 
 
 def _records_with(label: str, counts: dict[str, int]) -> list[dict[str, Any]]:
-    """``sum(counts.values())`` records, ``en-0001`` first, in ``counts`` order."""
+    """``sum(counts.values())`` records, ``en-0001`` first, in ``counts`` order.
+
+    Every record gets the same ``created``, so ``send_order`` can sort
+    them without a ``KeyError`` even though these tests don't care about
+    send order.
+    """
     records = []
     n = 1
     for value, count in counts.items():
         for _ in range(count):
-            records.append(_record(f"en-{n:04d}", **{label: value}))
+            records.append(
+                _record(f"en-{n:04d}", created="2026-07-01T00:00:00Z", **{label: value})
+            )
             n += 1
     return records
 
@@ -212,3 +230,142 @@ def test_missing_vocab_entry_for_a_group_raises_with_the_group_name() -> None:
 
     with pytest.raises(SystemExit, match="children"):
         build_answer_key(records, vocab, "themes", "en")
+
+
+def _item_stub(input_: Any, metadata: dict[str, Any]) -> SimpleNamespace:
+    """A fake Langfuse dataset item: only the two attributes these functions read."""
+    return SimpleNamespace(input=input_, metadata=metadata)
+
+
+def _prompt(
+    prompt_id: str, family: str, *, language: str = "en", text: str = "Prompt text"
+) -> SimpleNamespace:
+    return _item_stub(
+        text, {"prompt_id": prompt_id, "language": language, "family": family}
+    )
+
+
+def test_record_from_item_moves_created_back_into_metadata() -> None:
+    item = _item_stub(
+        {
+            "id": "en-0001",
+            "content": "hello",
+            "metadata": {"created": "2026-07-01T00:00:00Z"},
+        },
+        {"theme": "food", "groups": ["children"]},
+    )
+
+    assert record_from_item(item) == {
+        "id": "en-0001",
+        "content": "hello",
+        "metadata": {
+            "theme": "food",
+            "groups": ["children"],
+            "created": "2026-07-01T00:00:00Z",
+        },
+    }
+
+
+def test_vocab_from_item_carries_issue_keywords_only_when_present() -> None:
+    group_item = _item_stub(
+        {"keywords": {"en": ["a", "b", "c"]}, "issue_keywords": {"en": ["x", "y"]}},
+        {"kind": "group", "name": "children"},
+    )
+    theme_item = _item_stub(
+        {"keywords": {"en": ["a", "b", "c"]}}, {"kind": "theme", "name": "food"}
+    )
+
+    assert vocab_from_item(group_item) == {
+        "kind": "group",
+        "name": "children",
+        "keywords": {"en": ["a", "b", "c"]},
+        "issue_keywords": {"en": ["x", "y"]},
+    }
+    assert vocab_from_item(theme_item) == {
+        "kind": "theme",
+        "name": "food",
+        "keywords": {"en": ["a", "b", "c"]},
+    }
+
+
+def test_send_order_sorts_newest_created_first_then_by_id() -> None:
+    records = [
+        _record("en-0003", created="2026-07-01T00:00:00Z"),
+        _record("en-0001", created="2026-08-01T00:00:00Z"),
+        _record("en-0002", created="2026-08-01T00:00:00Z"),
+    ]
+
+    ordered = send_order(records)
+
+    assert [r["id"] for r in ordered] == ["en-0001", "en-0002", "en-0003"]
+
+
+def test_key_positions_reports_only_group_and_urgent_positions() -> None:
+    key = {
+        "items": [{"name": "food", "record_ids": ["en-0001"]}],
+        "groups": [{"name": "children", "record_ids": ["en-0003", "en-0001"]}],
+        "urgent": [{"record_id": "en-0002"}],
+        "decoys": [{"record_id": "en-0001"}],
+    }
+    record_ids = ["en-0001", "en-0002", "en-0003"]
+
+    assert key_positions(key, record_ids) == {
+        "groups:children": [0, 2],
+        "urgent:en-0002": [1],
+    }
+
+
+def test_build_cases_builds_one_case_per_english_prompt() -> None:
+    records = _records_with("theme", {"food": 5, "shelter": 3})
+    vocab = [_vocab_entry("theme", "food"), _vocab_entry("theme", "shelter")]
+    prompts = [
+        _prompt("P01", "themes", text="Summarise the themes"),
+        # A non-English twin: build_cases sends one case per English prompt only.
+        _prompt("P01", "themes", language="es", text="Resuma los temas"),
+    ]
+    read_at = datetime(2026, 9, 29, 9, 12, 44, 512000, tzinfo=UTC)
+
+    cases = build_cases(records, vocab, prompts, read_at)
+
+    assert len(cases) == 1
+    [case] = cases
+    assert case["id"] == "P01-en"
+    assert case["input"] == {
+        "prompt_id": "P01",
+        "prompt": "Summarise the themes",
+        "mode": "single_pass",
+        "output_language": "English",
+        "record_ids": [r["id"] for r in send_order(records)],
+    }
+    assert case["expected_output"] == build_answer_key(records, vocab, "themes", "en")
+    assert case["metadata"] == {
+        "records_dataset": RECORDS_DATASET,
+        "records_version": read_at.isoformat(),
+        "vocab_dataset": VOCAB_DATASET,
+        "vocab_version": read_at.isoformat(),
+        "prompt_dataset": PROMPTS_DATASET,
+        "prompt_id": "P01",
+        "family": "themes",
+        "language": "en",
+        "key_positions": key_positions(
+            case["expected_output"], case["input"]["record_ids"]
+        ),
+    }
+
+
+def test_build_cases_stops_on_an_unplanted_prompt() -> None:
+    records = _records_with("theme", {"food": 5})
+    vocab = [_vocab_entry("theme", "food")]
+    prompts = [_prompt("P99", "unplanted")]
+
+    with pytest.raises(SystemExit, match="P99"):
+        build_cases(records, vocab, prompts, datetime.now(UTC))
+
+
+def test_build_cases_stops_when_a_family_has_no_required_item() -> None:
+    records = _records_with("theme", {"food": 2})  # below REQUIRED_MIN_RECORDS
+    vocab = [_vocab_entry("theme", "food")]
+    prompts = [_prompt("P01", "themes")]
+
+    with pytest.raises(SystemExit, match="themes"):
+        build_cases(records, vocab, prompts, datetime.now(UTC))
