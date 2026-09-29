@@ -35,7 +35,7 @@ from langfuse import Evaluation, get_client
 from langfuse.api import NotFoundError
 
 from _common import load_env, resolve_config, run_metadata
-from analyze_scorers import judge_scores, run_scores, score_answer
+from analyze_scorers import judge_scores, score_answer
 
 EXPERIMENT_NAME = "analyze-bulk"
 
@@ -247,10 +247,8 @@ def _make_analyze(
     return analyze
 
 
-def _judge_scores_evaluator(
-    *, output: Any, input: Any, **kwargs: Any
-) -> list[Evaluation]:
-    return judge_scores(output, input["mode"])
+def _judge_scores_evaluator(*, output: Any, **kwargs: Any) -> list[Evaluation]:
+    return judge_scores(output)
 
 
 def _outcome_evaluator(*, output: Any, input: Any, **kwargs: Any) -> list[Evaluation]:
@@ -267,10 +265,6 @@ def _reference_scores_evaluator(
     if output.get("outcome") != "ok":
         return []
     return score_answer(output["analysis"], expected_output, input["record_ids"])
-
-
-def _run_scores_evaluator(*, item_results: Any, **kwargs: Any) -> list[Evaluation]:
-    return run_scores(item_results)
 
 
 def _find_ok_request_id(item_results: Sequence[Any]) -> str | None:
@@ -374,7 +368,6 @@ def main() -> None:
             _outcome_evaluator,
             _reference_scores_evaluator,
         ],
-        run_evaluators=[_run_scores_evaluator],
         max_concurrency=MAX_CONCURRENCY,
         metadata=run_metadata(
             base_url,

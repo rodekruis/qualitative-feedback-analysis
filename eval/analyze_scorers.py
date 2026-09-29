@@ -1,58 +1,50 @@
 """Pure scorers that compare an analyze answer with its answer key.
 
-Every keyword match is a whole word or phrase, via ``_common.contains_term``.
-These functions make no network call: ``score_answer`` and ``judge_scores``
-work on one saved answer, and ``run_scores`` works on the evaluations they
-already attached to a batch of results. All three plug into a Langfuse
-experiment as item and run evaluators unchanged.
+The reference scores read the record ids the answer cites, never its
+wording: a record id has no synonyms, so an answer that reports an item
+in unexpected words still gets credit for it. An id counts only if the
+harness sent it.
+
+These functions make no network call, so a saved answer can be scored
+again at no cost. They plug into a Langfuse experiment as item
+evaluators unchanged.
 """
 
 from __future__ import annotations
 
 import re
 from collections import Counter
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from langfuse import Evaluation
 
-from _common import contains_term, normalize
+from _common import normalize
 
-# How many of an item's keywords must appear in the whole answer for the
-# item to count as covered.
-ITEM_HIT_THRESHOLD = 2
-
-# How many of an urgent record's own keywords must appear in one paragraph
-# for the record to count as described.
-URGENT_KEYWORD_THRESHOLD = 2
+# The share of an item's records that the sections carrying its label
+# must hold for the answer to count as reporting that item.
+FOUND_SHARE = 0.5
 
 JUDGE_SCORE_NAMES = ("quality_score", "faithfulness", "coverage", "clarity")
 
 _HEADING = re.compile(r"^\s{0,3}#{1,6}\s")
-_LIST_ITEM = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s")
-_TABLE_ROW = re.compile(r"^\s*\|")
+_ALL_BOLD = re.compile(r"^\*\*(?:(?!\*\*).)+\*\*$")
 _CITED_ID = re.compile(r"\b[a-z]{2}-\d{4}\b")
 
 
-def paragraphs(text: str) -> list[str]:
-    """``text`` split into paragraphs.
+def sections(text: str) -> list[str]:
+    """``text`` split into sections, one per heading.
 
-    A paragraph starts at a blank line, a heading, a list item at any
-    depth, or a table row; any other line joins the paragraph above it.
-    A multi-row table yields one paragraph per row, since each row starts
-    a new one.
+    A section starts at a markdown heading, or at a line that is all
+    bold, such as ``**1. Food security (5 records)**`` — answers number
+    their findings in either style. A bold label with text after it, such
+    as ``**Food:** the camp ran out``, stays inside the section above it.
+    Anything before the first heading is its own section.
     """
     result: list[str] = []
     current: list[str] = []
     for line in text.splitlines():
-        if not line.strip():
-            if current:
-                result.append("\n".join(current))
-                current = []
-            continue
-        starts_new = bool(
-            _HEADING.match(line) or _LIST_ITEM.match(line) or _TABLE_ROW.match(line)
-        )
+        starts_new = bool(_HEADING.match(line) or _ALL_BOLD.match(line.strip()))
         if starts_new and current:
             result.append("\n".join(current))
             current = []
@@ -67,68 +59,46 @@ def cited_ids(text: str) -> set[str]:
     return set(_CITED_ID.findall(normalize(text)))
 
 
-def judge_scores(output: Mapping[str, Any], mode: str) -> list[Evaluation]:
-    """The service's own judge scores, plus ``judge_failed`` for ``single_pass``.
+def judge_scores(output: Mapping[str, Any]) -> list[Evaluation]:
+    """The service's own judge scores.
 
     A score missing or explicitly null in ``output`` is left out, never
-    turned into a 0. ``judge_failed`` is 1 when ``quality_score`` is null,
-    else 0. Hierarchical mode reports its own confidence instead, so it
-    gets no ``judge_failed``.
+    turned into a 0, so a failed judge shows as a missing score.
     """
-    evaluations = [
+    return [
         Evaluation(name=name, value=output[name])
         for name in JUDGE_SCORE_NAMES
         if output.get(name) is not None
     ]
-    if mode == "single_pass":
-        failed = 0 if output.get("quality_score") is not None else 1
-        evaluations.append(Evaluation(name="judge_failed", value=failed))
-    return evaluations
 
 
-def _hits(text: str, keywords: Sequence[str]) -> int:
-    """How many of ``keywords`` appear in ``text`` as a whole word or phrase."""
-    return sum(1 for keyword in keywords if contains_term(text, keyword))
+def _section_label(ids: Sequence[str], labels: Mapping[str, Any]) -> Any:
+    """The label most of ``ids`` carry, or ``None`` if two labels tie.
 
-
-def _max_hits_in_one_paragraph(paras: Sequence[str], keywords: Sequence[str]) -> int:
-    return max((_hits(paragraph, keywords) for paragraph in paras), default=0)
-
-
-def _keyword_and_issue_in_one_paragraph(
-    paras: Sequence[str], keywords: Sequence[str], issue_keywords: Sequence[str]
-) -> bool:
-    return any(
-        _hits(paragraph, keywords) and _hits(paragraph, issue_keywords)
-        for paragraph in paras
-    )
-
-
-def _share(
-    name: str,
-    entries: Sequence[Mapping[str, Any]],
-    identifier: str,
-    covered: Callable[[Mapping[str, Any]], bool],
-) -> Evaluation | None:
-    """The share of ``entries`` for which ``covered`` holds; ``None`` if ``entries`` is empty.
-
-    An empty key part is "not scored", so it yields no ``Evaluation`` at
-    all rather than a share of 0.
+    Unlabelled records count as a label of their own, so a section whose
+    records mostly carry no label reports something the family does not
+    cover and counts for no item.
     """
-    if not entries:
+    ranked = Counter(labels.get(record_id) for record_id in ids).most_common(2)
+    if not ranked:
         return None
-    covered_ids = [entry[identifier] for entry in entries if covered(entry)]
-    missed_ids = [
-        entry[identifier] for entry in entries if entry[identifier] not in covered_ids
-    ]
-    comment = f"{len(covered_ids)}/{len(entries)}"
-    if missed_ids:
-        comment += f", missed: {', '.join(missed_ids)}"
+    if len(ranked) == 2 and ranked[0][1] == ranked[1][1]:
+        return None
+    return ranked[0][0]
+
+
+def _cited_share(name: str, record_ids: Sequence[str], cited: set[str]) -> Evaluation:
+    """The share of ``record_ids`` that the answer cites anywhere."""
+    found = [record_id for record_id in record_ids if record_id in cited]
+    missed = [record_id for record_id in record_ids if record_id not in cited]
+    comment = f"{len(found)}/{len(record_ids)}"
+    if missed:
+        comment += f", missed: {', '.join(missed)}"
     return Evaluation(
         name=name,
-        value=len(covered_ids) / len(entries),
+        value=len(found) / len(record_ids),
         comment=comment,
-        metadata={"covered": covered_ids, "missed": missed_ids},
+        metadata={"cited": found, "missed": missed},
     )
 
 
@@ -137,125 +107,74 @@ def score_answer(
 ) -> list[Evaluation]:
     """The reference scores for ``text`` against its answer ``key``.
 
-    The urgent and decoy scores are computed only when ``key["family"]``
-    is ``"protection"``; every other score comes from ``key["items"]``
-    and ``key["groups"]``, whatever the family.
+    Splits ``text`` into sections, gives each section the label that most
+    of its cited ids carry, and reads the items from that. A key part
+    that is missing or empty yields no score at all, never a 0: the
+    protection key has no ``labels``, so it gets no item scores, and only
+    it has ``urgent``.
     """
-    paras = paragraphs(text)
-    cited = cited_ids(text)
     sent = set(sent_ids)
+    cited = cited_ids(text)
+    labels: Mapping[str, Any] = key.get("labels") or {}
+    required: Sequence[str] = key.get("required") or []
 
-    scores = [
-        _share(
-            "item_recall",
-            [item for item in key["items"] if item["required"]],
-            "name",
-            lambda item: _hits(text, item["keywords"]) >= ITEM_HIT_THRESHOLD,
-        ),
-        _share(
-            "group_coverage",
-            key["groups"],
-            "name",
-            lambda group: _hits(text, group["keywords"]) > 0,
-        ),
-        _share(
-            "group_issue_pairs",
-            key["groups"],
-            "name",
-            lambda group: _keyword_and_issue_in_one_paragraph(
-                paras, group["keywords"], group["issue_keywords"]
-            ),
-        ),
-    ]
-
-    if key["family"] == "protection":
-        scores += [
-            _share(
-                "urgent_ids_cited",
-                key["urgent"],
-                "record_id",
-                lambda urgent: urgent["record_id"] in cited,
-            ),
-            _share(
-                "urgent_described",
-                key["urgent"],
-                "record_id",
-                lambda urgent: (
-                    _max_hits_in_one_paragraph(paras, urgent["keywords"])
-                    >= URGENT_KEYWORD_THRESHOLD
-                ),
-            ),
-            _share(
-                "decoys_cited",
-                key["decoys"],
-                "record_id",
-                lambda decoy: decoy["record_id"] in cited,
-            ),
-        ]
-
-    evaluations = [score for score in scores if score is not None]
-    evaluations.append(Evaluation(name="ids_cited", value=len(cited & sent)))
-    evaluations.append(Evaluation(name="unknown_ids_cited", value=len(cited - sent)))
-    return evaluations
-
-
-def run_scores(item_results: Sequence[Any]) -> list[Evaluation]:
-    """Run-level scores computed purely from each item's evaluations and output.
-
-    Reuses the item scores in ``result.evaluations`` and the outcome in
-    ``result.output`` rather than re-deriving anything from the raw
-    answers. A numeric score gets ``mean_<name>``, averaged only over the
-    items that have it and never counting a missing one as 0
-    (``judge_failed`` becomes ``judge_failure_rate`` instead of
-    ``mean_judge_failed``). ``group_coverage::<group>`` reads every
-    item's ``group_coverage`` metadata to report coverage of one specific
-    group, over only the items whose key held it.
-    """
-    numeric_values: dict[str, list[float]] = {}
-    group_totals: Counter[str] = Counter()
-    group_covered: Counter[str] = Counter()
-    outcome_counts: Counter[str] = Counter()
-
-    for result in item_results:
-        output = result.output
-        outcome = output.get("outcome") if isinstance(output, Mapping) else None
-        if outcome is not None:
-            outcome_counts[outcome] += 1
-
-        for evaluation in result.evaluations:
-            value = evaluation.value
-            if isinstance(value, bool) or not isinstance(value, (int, float)):
-                continue
-            numeric_values.setdefault(evaluation.name, []).append(value)
-
-            if evaluation.name == "group_coverage" and evaluation.metadata:
-                for group in evaluation.metadata.get("covered") or []:
-                    group_totals[group] += 1
-                    group_covered[group] += 1
-                for group in evaluation.metadata.get("missed") or []:
-                    group_totals[group] += 1
+    # Each section's own ids, deduplicated, and the label they give it.
+    per_section = [sorted(cited_ids(section) & sent) for section in sections(text)]
+    labelled = [(ids, _section_label(ids, labels)) for ids in per_section if ids]
 
     scores: list[Evaluation] = []
-    for name, values in numeric_values.items():
-        score_name = "judge_failure_rate" if name == "judge_failed" else f"mean_{name}"
+
+    if required:
+        found_by_label: dict[str, set[str]] = {}
+        for ids, label in labelled:
+            if label is not None:
+                found_by_label.setdefault(label, set()).update(ids)
+        found, missed, counts = [], [], []
+        for value in required:
+            records = {
+                record_id for record_id, label in labels.items() if label == value
+            }
+            hits = records & found_by_label.get(value, set())
+            counts.append(f"{value} {len(hits)}/{len(records)}")
+            (found if len(hits) >= FOUND_SHARE * len(records) else missed).append(value)
         scores.append(
             Evaluation(
-                name=score_name,
-                value=sum(values) / len(values),
-                metadata={"n_scored": len(values), "n_items": len(item_results)},
+                name="item_recall",
+                value=len(found) / len(required),
+                comment=f"{len(found)}/{len(required)}, {', '.join(counts)}",
+                metadata={"found": found, "missed": missed},
             )
         )
 
-    for group, total in group_totals.items():
+    # An id in two sections with a required label is counted in both.
+    placed = [
+        (record_id, label)
+        for ids, label in labelled
+        if label in required
+        for record_id in ids
+    ]
+    if placed:
+        other = sorted({r for r, label in placed if labels.get(r) != label})
+        matching = sum(1 for r, label in placed if labels.get(r) == label)
+        comment = f"{matching}/{len(placed)}"
+        if other:
+            comment += f", other: {', '.join(other)}"
         scores.append(
             Evaluation(
-                name=f"group_coverage::{group}",
-                value=group_covered[group] / total,
-                metadata={"n_items": total},
+                name="citation_precision",
+                value=matching / len(placed),
+                comment=comment,
+                metadata={"other": other},
             )
         )
 
-    for outcome, count in outcome_counts.items():
-        scores.append(Evaluation(name=f"outcome_count::{outcome}", value=count))
+    for name, record_ids in (key.get("groups") or {}).items():
+        if record_ids:
+            scores.append(_cited_share(f"group_recall::{name}", record_ids, cited))
 
+    if key["family"] == "protection" and key.get("urgent"):
+        scores.append(_cited_share("urgent_ids_cited", key["urgent"], cited))
+
+    scores.append(Evaluation(name="ids_cited", value=len(cited & sent)))
+    scores.append(Evaluation(name="unknown_ids_cited", value=len(cited - sent)))
     return scores
