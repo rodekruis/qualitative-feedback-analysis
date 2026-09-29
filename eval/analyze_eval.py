@@ -5,6 +5,8 @@ computed answer key as its ``expected_output`` (see
 ``make_analyze_cases.py``). This script sends the call, maps the response
 to an outcome, and records both the service's own judge scores and the
 reference scores computed against the key as one Langfuse Dataset Run.
+It also saves the raw answers, so a changed scorer can be tried on a
+finished run without paying for a new one.
 
 It never fails on a low score, and never gates anything — it only
 reports. Results are on synthetic data.
@@ -25,9 +27,11 @@ Run::
 from __future__ import annotations
 
 import argparse
+import json
 import time
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -58,9 +62,22 @@ JUDGE_OBSERVATION_NAME = "analyze:judge"
 DATASET_METADATA_KEYS = (
     "records_dataset",
     "records_version",
-    "vocab_dataset",
-    "vocab_version",
     "prompt_dataset",
+)
+
+# Where the raw answers of a run are saved, so a scorer change can be
+# tried on them again without paying for a new run. Git ignores it.
+ANSWERS_DIR = Path(".corpus_work/analyze-runs")
+
+# Neither the service nor the analyst prompts ask the model to name the
+# records behind a finding, so an answer cites record ids only by chance:
+# one smoke answer over 111 records cited none, which scores every
+# reference score 0 however good the answer is. The harness therefore
+# asks. It names no theme, need or group, so it cannot tell the model
+# what to find, and it gives no example id, so it cannot seed a citation.
+CITE_RECORDS_INSTRUCTION = (
+    "\n\nFor each point you report, list the ids of the feedback records it "
+    "is based on, written exactly as the id attribute of those records."
 )
 
 
@@ -141,6 +158,8 @@ def build_request_body(
 ) -> dict[str, Any]:
     """The ``/v1/analyze-bulk`` request body: only the keys the service accepts.
 
+    ``prompt`` is the analyst prompt plus ``CITE_RECORDS_INSTRUCTION``,
+    because the reference scores read the record ids an answer cites.
     Each record sends only ``id``, ``content`` and ``metadata.created``.
     ``ApiFeedbackRecordMetadata`` rejects any other metadata key with a
     422 for the whole request, and the ``coding_level_*`` codes would
@@ -149,7 +168,7 @@ def build_request_body(
     or ``url_id`` (together they turn cited ids into links).
     """
     return {
-        "prompt": prompt,
+        "prompt": prompt + CITE_RECORDS_INSTRUCTION,
         "mode": mode,
         "output_language": output_language,
         "feedback_records": [
@@ -203,7 +222,6 @@ def _make_analyze(
             resolved,
         )
 
-        start = time.perf_counter()
         try:
             async with httpx.AsyncClient(
                 base_url=base_url, timeout=REQUEST_TIMEOUT_SECONDS
@@ -217,10 +235,8 @@ def _make_analyze(
             return {
                 "outcome": "error",
                 "status": None,
-                "latency_seconds": time.perf_counter() - start,
                 "error": f"{type(exc).__name__}: {exc}",
             }
-        latency_seconds = time.perf_counter() - start
 
         try:
             response_body = response.json()
@@ -232,7 +248,6 @@ def _make_analyze(
             return {
                 "outcome": outcome,
                 "status": response.status_code,
-                "latency_seconds": latency_seconds,
                 "error": response_body,
             }
 
@@ -240,7 +255,6 @@ def _make_analyze(
             **response_body,
             "outcome": "ok",
             "status": response.status_code,
-            "latency_seconds": latency_seconds,
             "request_id": response.headers.get("x-request-id"),
         }
 
@@ -251,11 +265,9 @@ def _judge_scores_evaluator(*, output: Any, **kwargs: Any) -> list[Evaluation]:
     return judge_scores(output)
 
 
-def _outcome_evaluator(*, output: Any, input: Any, **kwargs: Any) -> list[Evaluation]:
+def _outcome_evaluator(*, output: Any, **kwargs: Any) -> list[Evaluation]:
     return [
-        Evaluation(name="outcome", value=output["outcome"], data_type="CATEGORICAL"),
-        Evaluation(name="mode", value=input["mode"], data_type="CATEGORICAL"),
-        Evaluation(name="latency_seconds", value=output["latency_seconds"]),
+        Evaluation(name="outcome", value=output["outcome"], data_type="CATEGORICAL")
     ]
 
 
@@ -303,11 +315,45 @@ def _read_judge_model(langfuse: Any, trace_id: str) -> str:
     return "unknown"
 
 
+def _case_label(item: Any) -> str:
+    """The case's own id, e.g. ``P03-en``."""
+    return f"{item.input['prompt_id']}-{item.metadata['language']}"
+
+
+def save_answers(item_results: Sequence[Any], run_name: str) -> Path:
+    """Write one JSON line per case to ``ANSWERS_DIR/<run name>.jsonl``, and return the path.
+
+    Holds everything ``score_answer`` needs — the answer, the key and the
+    ids that were sent — so a changed scorer can be tried on a finished
+    run at no cost. A case that is not ``ok`` has a null ``analysis``.
+    """
+    ANSWERS_DIR.mkdir(parents=True, exist_ok=True)
+    path = ANSWERS_DIR / f"{run_name}.jsonl"
+    with path.open("w", encoding="utf-8") as handle:
+        for item_result in item_results:
+            item = item_result.item
+            output = (
+                item_result.output if isinstance(item_result.output, Mapping) else {}
+            )
+            handle.write(
+                json.dumps(
+                    {
+                        "case": _case_label(item),
+                        "outcome": output.get("outcome"),
+                        "analysis": output.get("analysis"),
+                        "key": item.expected_output,
+                        "record_ids": item.input["record_ids"],
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
+    return path
+
+
 def _raw_counts_line(item_result: Any) -> str:
     """One line of raw counts for a case, e.g. ``P03-en urgent_ids_cited 6/6, ...``."""
-    case_label = (
-        f"{item_result.item.input['prompt_id']}-{item_result.item.metadata['language']}"
-    )
+    case_label = _case_label(item_result.item)
     parts = [
         f"{evaluation.name} {evaluation.comment.split(',', 1)[0]}"
         for evaluation in item_result.evaluations
@@ -384,6 +430,8 @@ def main() -> None:
     print()
     for item_result in result.item_results:
         print(_raw_counts_line(item_result))
+
+    print(f"\nAnswers: {save_answers(result.item_results, run_name)}")
 
     request_id = _find_ok_request_id(result.item_results)
     if request_id is not None:

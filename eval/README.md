@@ -430,38 +430,45 @@ backend's Postgres pool is small. The task is `async`, because the
 Langfuse SDK runs a sync task inside its own event loop one case at a
 time, whatever `max_concurrency` says.
 
+The harness appends one sentence to each analyst prompt, asking the model
+to list the ids of the records behind each point it reports
+(`CITE_RECORDS_INSTRUCTION`). Neither the service nor the analyst prompts
+ask for this, so an answer cites ids only by chance — the first smoke
+answer cited none, which scored every reference score 0. The sentence
+names no theme, need or group and gives no example id, so it cannot tell
+the model what to find. It does mean the scores describe the prompt *plus*
+that sentence, not the production prompt on its own.
+
 A 413 becomes the outcome `payload_too_large`, and a content-filter 422
 becomes `content_filtered`; both let the run continue. Any other failure
 — another 422, a 5xx, a timeout — becomes `error`. A case naming a
 record id the records dataset does not hold fails loudly: Langfuse logs
 it and leaves the case out of the run.
 
-Every case carries these scores. `quality_score`, `faithfulness`,
-`coverage`, `clarity` and `judge_failed` come from the service itself;
-`item_recall` through `decoys_cited` are computed against the case's
-answer key (see `analyze_scorers.py`):
+A case carries these scores. The judge scores come from the service; the
+rest are computed against the case's answer key, from the record ids the
+answer cites (`analyze_scorers.py`):
 
-| Score | Meaning |
-| --- | --- |
-| `quality_score`, `faithfulness`, `coverage`, `clarity` | As the service returns them; `null` when the judge call failed. |
-| `judge_failed` | 1 when `quality_score` is null, else 0. `single_pass` only. |
-| `outcome`, `mode` | Categorical, always present. |
-| `latency_seconds` | Measured around the POST. |
-| `item_recall` | Share of required items with 2 or more keyword hits. |
-| `group_coverage` | Share of the key's groups with 1 or more keyword hit. |
-| `group_issue_pairs` | Share of the key's groups with a group keyword and one of its issue keywords in one paragraph. |
-| `ids_cited`, `unknown_ids_cited` | How many sent ids the answer cites, and how many cited ids were never sent. |
-| `urgent_ids_cited`, `urgent_described` | Protection case only: urgent records cited by id, or described by 2 or more of their keywords in one paragraph. |
-| `decoys_cited` | Protection case only, information: decoys cited by id — a cite can say "not urgent". |
+| Score | Value | Recorded when |
+| --- | --- | --- |
+| `outcome` | `ok`, `payload_too_large`, `content_filtered` or `error`. | Always. |
+| `quality_score`, `faithfulness`, `coverage`, `clarity` | As the service returns them. A failed judge shows as a missing score. | The outcome is `ok`, and the value is not null. |
+| `item_recall` | The share of required items found. An item is found when the sections carrying its label hold at least half of its records. | The key has `required`. |
+| `citation_precision` | Of the ids in the sections with a required label, the share that carries that label. | A section has a required label. |
+| `group_recall::<group>` | The share of the group's records that the answer cites anywhere. | The key holds the group. |
+| `urgent_ids_cited` | The share of the urgent records that the answer cites anywhere. | The protection case. |
+| `ids_cited`, `unknown_ids_cited` | How many sent ids the answer cites, and how many cited ids were never sent. | The outcome is `ok`. |
 
-The run carries `mean_<score>` for every numeric score above (nulls
-excluded, never counted as 0, with `n_scored`/`n_items` in the score
-metadata), `judge_failure_rate`, `outcome_count::<outcome>`,
-`group_coverage::<group>` (coverage of one group, over only the cases
-whose key held it), and `judge_model` — read from the Langfuse trace of
-one `ok` case after the run, since the run metadata is recorded before
-any trace exists.
+Langfuse averages each score over a run itself, so the run carries one
+score of its own: `judge_model`, read from the trace of one `ok` case
+after the run, since the run metadata is recorded before any trace
+exists.
 
-The console prints raw counts per case, for example
-`P03-en urgent_ids_cited 6/6, urgent_described 2/6`, then the link to the
-run and the number of cases that failed.
+Each share comments its raw counts, and the console prints them per case
+— `P03-en item_recall 4/4, citation_precision 41/44` — then the link to
+the run and the number of cases that failed.
+
+The answers are saved to `.corpus_work/analyze-runs/<run name>.jsonl`,
+one line per case with the answer, its key and the ids that were sent, so
+a changed scorer can be tried on a finished run at no cost. Git ignores
+that folder.
