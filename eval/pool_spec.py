@@ -15,7 +15,6 @@ from __future__ import annotations
 from datetime import datetime
 
 RECORDS_DATASET = "feedback/records-en-v1"
-VOCAB_DATASET = "feedback/vocab-v1"
 PROMPTS_DATASET = "analyze/prompts-v1"
 FREQUENT_CASES_DATASET = "analyze/cases-frequent-en-v1"
 
@@ -24,11 +23,6 @@ WINDOW_END = datetime(2026, 8, 31, 23, 59, 59)
 CREATED_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 
 BANNED_WORDS = ("PSEA", "safeguarding", "exploitation", "referral")
-
-# Common English words banned from vocabulary keywords because they would
-# false-match ordinary text — "minor" would credit the unaccompanied-minors
-# group for the words "a minor theme".
-STOPLIST = ("minor", "ill", "far", "age", "single", "general")
 
 DECOYS = 4
 
@@ -48,17 +42,6 @@ FAMILY_LABEL: dict[str, tuple[str, ...]] = {
     "suggestions": ("suggestion",),
     "information": ("info_request",),
 }
-
-# Record metadata field -> vocabulary "kind" for that field's values.
-# ``urgent_kind`` and ``decoy`` are excluded: their keywords live on the
-# records themselves, not in the shared vocabulary. ``groups`` is a list
-# field, so its vocabulary kind is the singular "group".
-VOCAB_LABELS: dict[str, str] = {
-    label: label
-    for labels in FAMILY_LABEL.values()
-    for label in labels
-    if label not in ("urgent_kind", "decoy")
-} | {"groups": "group"}
 
 # How many records carry each label value. ``groups`` counts a record
 # once per group it lists, because ``groups`` is a list. Each

@@ -19,8 +19,6 @@ from typing import Any
 
 from langfuse import Evaluation
 
-from _common import normalize
-
 # The share of an item's records that the sections carrying its label
 # must hold for the answer to count as reporting that item.
 FOUND_SHARE = 0.5
@@ -66,7 +64,7 @@ def sections(text: str) -> list[str]:
 
 def cited_ids(text: str) -> set[str]:
     """The record ids ``text`` cites, matched case-insensitively."""
-    return set(_CITED_ID.findall(normalize(text)))
+    return set(_CITED_ID.findall(text.lower()))
 
 
 def judge_scores(output: Mapping[str, Any]) -> list[Evaluation]:
