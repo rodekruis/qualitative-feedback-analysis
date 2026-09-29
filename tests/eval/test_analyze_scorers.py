@@ -59,6 +59,22 @@ def test_sections_start_at_a_heading_or_an_all_bold_line_but_not_a_bold_label() 
     ]
 
 
+def test_a_top_level_list_item_starts_a_section_but_an_indented_one_does_not() -> None:
+    """Answers with no headings report one point per list item."""
+    text = (
+        "- Rumours about eligibility are circulating.\n"
+        "  IDs: en-0001, en-0002\n"
+        "1. **Food distribution problems**\n"
+        "   - rations too small\n"
+        "   Records: en-0003"
+    )
+
+    assert sections(text) == [
+        "- Rumours about eligibility are circulating.\n  IDs: en-0001, en-0002",
+        "1. **Food distribution problems**\n   - rations too small\n   Records: en-0003",
+    ]
+
+
 def test_cited_ids_matches_bold_and_uppercase_but_not_a_longer_number() -> None:
     text = "See **en-0042** and EN-0042, but not en-00421."
 

@@ -325,7 +325,11 @@ def save_answers(item_results: Sequence[Any], run_name: str) -> Path:
 
     Holds everything ``score_answer`` needs — the answer, the key and the
     ids that were sent — so a changed scorer can be tried on a finished
-    run at no cost. A case that is not ``ok`` has a null ``analysis``.
+    run at no cost. ``faithfulness`` and ``uncertainty_explanation`` ride
+    along because a review of a low-faithfulness case compares the records
+    that explanation names with their labels, and the Langfuse UI is the
+    only other place that holds them. A case that is not ``ok`` has a null
+    ``analysis``.
     """
     ANSWERS_DIR.mkdir(parents=True, exist_ok=True)
     path = ANSWERS_DIR / f"{run_name}.jsonl"
@@ -341,6 +345,10 @@ def save_answers(item_results: Sequence[Any], run_name: str) -> Path:
                         "case": _case_label(item),
                         "outcome": output.get("outcome"),
                         "analysis": output.get("analysis"),
+                        "faithfulness": output.get("faithfulness"),
+                        "uncertainty_explanation": output.get(
+                            "uncertainty_explanation"
+                        ),
                         "key": item.expected_output,
                         "record_ids": item.input["record_ids"],
                     },

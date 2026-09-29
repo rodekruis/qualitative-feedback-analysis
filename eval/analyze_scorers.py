@@ -29,22 +29,32 @@ JUDGE_SCORE_NAMES = ("quality_score", "faithfulness", "coverage", "clarity")
 
 _HEADING = re.compile(r"^\s{0,3}#{1,6}\s")
 _ALL_BOLD = re.compile(r"^\*\*(?:(?!\*\*).)+\*\*$")
+# No leading space: an indented item is a detail of the point above it,
+# and a nested item under "1. " is already indented three spaces.
+_TOP_LEVEL_LIST_ITEM = re.compile(r"^(?:[-*+]|\d+[.)])\s")
 _CITED_ID = re.compile(r"\b[a-z]{2}-\d{4}\b")
 
 
 def sections(text: str) -> list[str]:
-    """``text`` split into sections, one per heading.
+    """``text`` split into sections, one per point the answer reports.
 
-    A section starts at a markdown heading, or at a line that is all
-    bold, such as ``**1. Food security (5 records)**`` — answers number
-    their findings in either style. A bold label with text after it, such
-    as ``**Food:** the camp ran out``, stays inside the section above it.
-    Anything before the first heading is its own section.
+    A section starts at a markdown heading, at a line that is all bold
+    such as ``**1. Food security (5 records)**``, or at a top-level list
+    item — answers report one point per heading or per list item, and
+    which of the two they use varies by prompt. An indented list item
+    stays inside its point, so the detail bullets under a heading do not
+    split it. A bold label with text after it, such as ``**Food:** the
+    camp ran out``, also stays inside the section above it. Anything
+    before the first section start is its own section.
     """
     result: list[str] = []
     current: list[str] = []
     for line in text.splitlines():
-        starts_new = bool(_HEADING.match(line) or _ALL_BOLD.match(line.strip()))
+        starts_new = bool(
+            _HEADING.match(line)
+            or _ALL_BOLD.match(line.strip())
+            or _TOP_LEVEL_LIST_ITEM.match(line)
+        )
         if starts_new and current:
             result.append("\n".join(current))
             current = []

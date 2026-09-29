@@ -181,7 +181,15 @@ def test_save_answers_writes_one_line_per_case(
 ) -> None:
     monkeypatch.setattr(analyze_eval, "ANSWERS_DIR", tmp_path / "analyze-runs")
     item_results = [
-        _item_result("P02", {"outcome": "ok", "analysis": "## Food\nen-0001."}),
+        _item_result(
+            "P02",
+            {
+                "outcome": "ok",
+                "analysis": "## Food\nen-0001.",
+                "faithfulness": 0.9,
+                "uncertainty_explanation": "en-0002 is weakly grounded.",
+            },
+        ),
         _item_result("P03", {"outcome": "payload_too_large", "status": 413}),
     ]
 
@@ -192,6 +200,8 @@ def test_save_answers_writes_one_line_per_case(
         "case": "P02-en",
         "outcome": "ok",
         "analysis": "## Food\nen-0001.",
+        "faithfulness": 0.9,
+        "uncertainty_explanation": "en-0002 is weakly grounded.",
         "key": {"family": "needs", "required": ["food"]},
         "record_ids": ["en-0001", "en-0002"],
     }
