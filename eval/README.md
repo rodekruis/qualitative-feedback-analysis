@@ -13,6 +13,8 @@ real money.
 | `evaluate_sensitivity.py` | Scores `POST /v1/detect-sensitive` against any Langfuse dataset of labelled records, named on the command line.     |
 | `upload_prompts.py`       | Checks and uploads the analyze prompts to a Langfuse dataset, e.g. `analyze/prompts-v1`. Makes no LLM call.         |
 | `upload_pool.py`          | Checks and uploads the analyze feedback pool to a Langfuse dataset, e.g. `feedback/records-en-v1`. Makes no LLM call. |
+| `make_analyze_cases.py`   | Builds the analyze case set from the pool and the prompts, and uploads it to `analyze/cases-frequent-en-v1`. Makes no LLM call. |
+| `analyze_eval.py`         | Scores `POST /v1/analyze-bulk` against a Langfuse analyze case set, named on the command line. |
 
 ## Shared helpers
 
@@ -254,7 +256,6 @@ Each record in the input file is one feedback record:
     promise_gap: null
     access_barrier: null
     groups: [] # the vulnerable groups this record is about
-    keywords: [] # urgent/decoy records only, filled in alongside the text
     facts: [] # one sentence per fact; filled in alongside the text
     language: en
     created: "2026-07-14T09:23:41Z" # random, seeded, inside 2026-06-01..2026-08-31
@@ -268,53 +269,157 @@ The script stops before uploading anything if an id is not shaped
 above, a planted count (`PLANTED` in `pool_spec.py`) is wrong, the decoy
 count or the `urgent_kind`s are wrong, a `created` falls outside the
 window, or — once a record has text — its length is outside 60–1,200
-characters, it has no `facts`, its text uses a banned word (`PSEA`,
-`safeguarding`, `exploitation`, `referral`), or an urgent/decoy record
-has fewer than 3 `keywords`.
+characters, it has no `facts`, or its text uses a banned word (`PSEA`,
+`safeguarding`, `exploitation`, `referral`).
 
-### The vocabulary (`--vocab`)
+## Running `make_analyze_cases.py`
 
-Add `--vocab <file>` to also check and upload the keyword vocabulary, to
-`feedback/vocab-v1`, after the records:
+This script reads the live pool and prompts from Langfuse and builds the
+analyze case set: one call to score per English prompt. It calls no
+endpoint, so it makes no LLM call and costs nothing. It always uploads to
+`analyze/cases-frequent-en-v1`.
+
+Set `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` for a Langfuse project
+at `LANGFUSE_HOST` that holds `feedback/records-en-v1` and
+`analyze/prompts-v1`, then:
 
 ```bash
-uv run python eval/upload_pool.py \
-  --input .corpus_work/analyze-pool/records-en-v1.yaml \
-  --vocab .corpus_work/analyze-pool/vocab-v1.yaml --dry-run
+uv run python eval/make_analyze_cases.py --dry-run
+
+uv run python eval/make_analyze_cases.py
 ```
 
-A fact counts as reported when one of these keywords appears in a model's
-answer, matched by `_common.contains_term` — a whole-word match on text
-that `_common.normalize` has lowercased, accent-stripped, and folded
-`LGBTQI+` to `lgbtqi`, so `"ill"` never matches inside `"will"`.
+`--dry-run` runs every check and prints what would change, but writes
+nothing. A real upload updates a case whose content changed. Langfuse
+keeps the old version.
 
-Each entry in the vocabulary file is one label value:
+Both source datasets are read at one UTC timestamp, so the case set
+always describes one consistent snapshot of the pool. Each case is:
 
-```yaml
-- kind: theme # or need, complaint_about, rumour, suggestion, praise_about,
-  # info_request, promise_gap, access_barrier, or group
-  name: food # the label value; "<kind>:<name>" is the bare id, e.g. group:older_people
-  keywords:
-    en: [food shortage, not enough food, hunger] # 3 or more
-
-- kind: group
-  name: older_people
-  keywords:
-    en: [older person, elderly, older resident]
-  issue_keywords: # group entries only, 3 or more
-    en: [mobility difficulty, long walk difficult, needs assistance carrying]
+```json
+{
+  "id": "P02-en",
+  "input": {
+    "prompt_id": "P02",
+    "prompt": "Identify the types of unmet needs, grouped by frequency",
+    "mode": "single_pass",
+    "output_language": "English",
+    "record_ids": ["en-0108", "en-0037", "..."]
+  },
+  "expected_output": { "family": "needs", "...": "the answer key" },
+  "metadata": {
+    "records_dataset": "feedback/records-en-v1",
+    "records_version": "2026-09-29T09:12:44.512000+00:00",
+    "prompt_dataset": "analyze/prompts-v1",
+    "prompt_id": "P02",
+    "family": "needs",
+    "language": "en"
+  }
+}
 ```
 
-There is no entry for `urgent_kind` or `decoy`: those keywords stay on the
-6 urgent and 4 decoy records themselves (see `upload_pool.py` above), so
-the check below can confirm an urgent record's keyword is never found in
-a decoy's text.
+`record_ids` holds every pool record, newest `created` first (then by
+id) — the order the EspoCRM flow sends them in. `output_language` is
+always set: without it, the service adds no language instruction.
 
-The script stops before uploading anything if a label value used in the
-records has no matching entry, or an entry's value matches no record; an
-entry has fewer than 3 `keywords.en`, or a group entry fewer than 3
-`issue_keywords.en`; a keyword — in the vocabulary or on a record —
-contains a word from `STOPLIST` in `pool_spec.py` (for example `minor`,
-which would credit the unaccompanied-minors group for "a minor theme");
-two group entries share a keyword; two urgent records share a keyword; or
-an urgent record's keyword appears in a decoy's text.
+The answer key (`expected_output`) is computed by `build_answer_key()`,
+never written by hand. It holds record ids and labels only, because the
+scorers score an answer by the record ids it cites:
+
+```json
+{
+  "family": "needs",
+  "labels": { "en-0001": null, "en-0002": "food", "en-0004": "shelter" },
+  "required": ["food", "health", "shelter", "water"],
+  "groups": { "children": ["en-0006", "en-0011", "en-0021"] }
+}
+```
+
+| Key part | Rule |
+| --- | --- |
+| `labels` | The family's label for every sent record, null included. A section that cites mostly unlabelled records is about something else. |
+| `required` | The label values with 5 or more records (`REQUIRED_MIN_RECORDS` in `pool_spec.py`). |
+| `groups` | Each group, with its records that also set one of the family's labels. Every record sets `theme`, so the `themes` key holds every group. |
+| `urgent` | The ids of the records with an `urgent_kind`. The `protection` key has this instead of `labels` and `required`. |
+
+The script stops before uploading anything if a prompt is tagged
+`unplanted`, or if a family other than `protection` has no required value
+in its answer key — either would mean the case set no longer matches
+what the pool can support.
+
+## Running `analyze_eval.py`
+
+This script scores `POST /v1/analyze-bulk` against a Langfuse case set
+you name on the command line, so the same script works for any analyze
+case set. Every call is a real LLM call, so every run costs real money.
+**Results are on synthetic data.**
+
+Set these before you run it. They can live in the repo-root `.env`.
+See Shared helpers for a local server.
+
+- Set `QFA_DEV_API_KEY`, or locally `AUTH_API_KEYS`.
+- Set `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` for a Langfuse
+  project at `LANGFUSE_HOST` that holds the case set and the pool it was
+  built from.
+
+```bash
+# smoke test against the first case
+uv run python eval/analyze_eval.py --dataset analyze/cases-frequent-en-v1 --smoke-limit 1
+
+# full run
+uv run python eval/analyze_eval.py --dataset analyze/cases-frequent-en-v1
+```
+
+`--dataset` is required. `--smoke-limit N` runs the first N cases.
+`--run-name` replaces the default `<dataset>-smoke-<N>-<timestamp>` or
+`<dataset>-full-<timestamp>`.
+
+The harness sends at most 2 calls at a time (`MAX_CONCURRENCY` in
+`analyze_eval.py`, separate from the eval-wide default of 5 in
+`_common.py`): one analyze call can run for minutes, and the dev
+backend's Postgres pool is small. The task is `async`, because the
+Langfuse SDK runs a sync task inside its own event loop one case at a
+time, whatever `max_concurrency` says.
+
+The harness appends one sentence to each analyst prompt, asking the model
+to list the ids of the records behind each point it reports
+(`CITE_RECORDS_INSTRUCTION`). Neither the service nor the analyst prompts
+ask for this, so an answer cites ids only by chance — the first smoke
+answer cited none, which scored every reference score 0. The sentence
+names no theme, need or group and gives no example id, so it cannot tell
+the model what to find. It does mean the scores describe the prompt *plus*
+that sentence, not the production prompt on its own.
+
+A 413 becomes the outcome `payload_too_large`, and a content-filter 422
+becomes `content_filtered`; both let the run continue. Any other failure
+— another 422, a 5xx, a timeout — becomes `error`. A case naming a
+record id the records dataset does not hold fails loudly: Langfuse logs
+it and leaves the case out of the run.
+
+A case carries these scores. The judge scores come from the service; the
+rest are computed against the case's answer key, from the record ids the
+answer cites (`analyze_scorers.py`):
+
+| Score | Value | Recorded when |
+| --- | --- | --- |
+| `outcome` | `ok`, `payload_too_large`, `content_filtered` or `error`. | Always. |
+| `quality_score`, `faithfulness`, `coverage`, `clarity` | As the service returns them. A failed judge shows as a missing score. | The outcome is `ok`, and the value is not null. |
+| `item_recall` | The share of required items found. An item is found when the sections carrying its label hold at least half of its records. | The key has `required`. |
+| `citation_precision` | Of the ids in the sections with a required label, the share that carries that label. | A section has a required label. |
+| `group_recall::<group>` | The share of the group's records that the answer cites anywhere. | The key holds the group. |
+| `urgent_ids_cited` | The share of the urgent records that the answer cites anywhere. | The protection case. |
+| `ids_cited`, `unknown_ids_cited` | How many sent ids the answer cites, and how many cited ids were never sent. | The outcome is `ok`. |
+
+Langfuse averages each score over a run itself, so the run carries one
+score of its own: `judge_model`, read from the trace of one `ok` case
+after the run, since the run metadata is recorded before any trace
+exists.
+
+Each share comments its raw counts, and the console prints them per case
+— `P03-en item_recall 4/4, citation_precision 41/44` — then the link to
+the run and the number of cases that failed.
+
+The answers are saved to `.corpus_work/analyze-runs/<run name>.jsonl`,
+one line per case with the answer, its key and the ids that were sent, so
+a changed scorer can be tried on a finished run at no cost. Git ignores
+that folder.
