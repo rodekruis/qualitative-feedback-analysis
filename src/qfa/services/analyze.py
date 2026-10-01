@@ -34,9 +34,10 @@ from qfa.domain.errors import (
     LLMTimeoutError,
 )
 from qfa.domain.models import (
+    AnalysisRecord,
     AnalysisRequestModel,
     AnalysisResultModel,
-    FeedbackRecordModel,
+    record_text,
 )
 from qfa.domain.ports import AnonymizationPort, EmbeddingPort, LLMPort
 from qfa.services.call_context import judge_call
@@ -458,7 +459,7 @@ class AnalyzeService:
         # above: onnxruntime releases the GIL during session.run(), so this
         # genuinely benefits rather than just avoiding the heartbeat stall
         # (#325).
-        texts = tuple(r.content for r in anonymized_records)
+        texts = tuple(record_text(record) for record in anonymized_records)
         logger.info("starting embedding of %d record(s)", len(texts))
         with timed() as embed_sw:
             vectors = await asyncio.to_thread(self._embedder.embed, texts)
@@ -733,7 +734,7 @@ class AnalyzeService:
     async def _map_chunk(
         self,
         analyst_prompt: str,
-        records: tuple[FeedbackRecordModel, ...],
+        records: tuple[AnalysisRecord, ...],
         tenant_id: str,
         deadline: datetime,
         semaphore: asyncio.Semaphore,
@@ -762,7 +763,7 @@ class AnalyzeService:
     async def _judge_chunk(
         self,
         analyst_prompt: str,
-        records: tuple[FeedbackRecordModel, ...],
+        records: tuple[AnalysisRecord, ...],
         partial: Optional[str],
         tenant_id: str,
         deadline: datetime,

@@ -12,7 +12,14 @@ import unicodedata
 from abc import ABC, abstractmethod
 from typing import Any, Literal, override
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    field_validator,
+    model_validator,
+)
 
 from qfa.api.html_text import html_to_text
 from qfa.domain.clustering_models import TrendPeriod
@@ -471,6 +478,33 @@ class ApiCommunityMeetingRecordInput(BaseModel):
         return html_to_text(value) if isinstance(value, str) else value
 
 
+class ApiAnalyzeFeedbackRecordInput(ApiFeedbackRecordInput):
+    """Feedback record variant accepted by ``/v1/analyze-bulk``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    record_type: Literal["feedback"] | None = Field(
+        default=None,
+        description=(
+            "Optional record discriminator. Omit for backwards-compatible"
+            " feedback-only requests; send ``feedback`` in mixed requests."
+        ),
+    )
+
+
+class ApiAnalyzeCommunityMeetingRecordInput(ApiCommunityMeetingRecordInput):
+    """Community meeting record variant accepted by ``/v1/analyze-bulk``."""
+
+    record_type: Literal["community_meeting"] = Field(
+        description="Discriminator identifying this as a community meeting record."
+    )
+
+
+ApiAnalyzeRecordInput = (
+    ApiAnalyzeFeedbackRecordInput | ApiAnalyzeCommunityMeetingRecordInput
+)
+
+
 ##### Bulk requests Base Model #####
 
 
@@ -556,6 +590,7 @@ class ApiAnalyzeRequest(ApiBulkInferenceRequestBase):
                 {
                     "feedback_records": [
                         {
+                            "record_type": "feedback",
                             "id": "doc-001",
                             "content": "The water distribution was well organized but we had to wait for three hours.",
                             "metadata": {
@@ -564,6 +599,7 @@ class ApiAnalyzeRequest(ApiBulkInferenceRequestBase):
                             },
                         },
                         {
+                            "record_type": "feedback",
                             "id": "doc-002",
                             "content": "Medical staff were very professional. Medicine supply was insufficient.",
                             "metadata": {
@@ -578,6 +614,14 @@ class ApiAnalyzeRequest(ApiBulkInferenceRequestBase):
             ],
         },
     }
+
+    feedback_records: list[ApiAnalyzeRecordInput] = Field(
+        min_length=1,
+        description=(
+            "Non-empty list of feedback and/or community meeting records."
+            " Legacy feedback-only requests may omit ``record_type``."
+        ),
+    )
 
     prompt: str = Field(
         min_length=1,
@@ -603,6 +647,29 @@ class ApiAnalyzeRequest(ApiBulkInferenceRequestBase):
             " (``ANALYZE_DEFAULT_CODING_TREND_PERIOD``)."
         ),
     )
+
+    @model_validator(mode="after")
+    def _validate_record_identity_and_types(self) -> "ApiAnalyzeRequest":
+        """Require unambiguous kinds and identifiers in mixed batches."""
+        if len({record.id for record in self.feedback_records}) != len(
+            self.feedback_records
+        ):
+            raise ValueError("record ids must be unique across the analysis batch")
+
+        has_meeting = any(
+            isinstance(record, ApiAnalyzeCommunityMeetingRecordInput)
+            for record in self.feedback_records
+        )
+        has_legacy_feedback = any(
+            isinstance(record, ApiAnalyzeFeedbackRecordInput)
+            and record.record_type is None
+            for record in self.feedback_records
+        )
+        if has_meeting and has_legacy_feedback:
+            raise ValueError(
+                "record_type is required for every record in a mixed analysis batch"
+            )
+        return self
 
 
 class ApiCodingTrendCell(BaseModel):
@@ -665,7 +732,10 @@ class ApiAnalyzeBulkResponse(ApiBulkInferenceResponseBase):
         ),
     )
     feedback_record_count: int = Field(
-        description="Number of feedback records that were analyzed.",
+        description=(
+            "Number of feedback and community meeting records that were"
+            " analyzed; retained as a legacy field name."
+        ),
     )
     request_id: str = Field(description="Unique identifier for this request.")
     confidence: float | None = Field(
@@ -681,7 +751,8 @@ class ApiAnalyzeBulkResponse(ApiBulkInferenceResponseBase):
         default=None,
         description=(
             "Deterministic code-by-period frequency table. Populated for"
-            " both modes whenever metadata contains parseable date+code fields."
+            " both modes from feedback records whenever metadata contains"
+            " parseable date+code fields; meeting-only requests return null."
         ),
     )
 

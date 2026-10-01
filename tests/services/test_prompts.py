@@ -1,6 +1,11 @@
 """Tests for the analyse prompt module: constants, escape helper, envelope builder."""
 
-from qfa.domain.models import FeedbackRecordMetadataModel, FeedbackRecordModel
+from qfa.domain.models import (
+    CommunityMeetingRecordMetadataModel,
+    CommunityMeetingRecordModel,
+    FeedbackRecordMetadataModel,
+    FeedbackRecordModel,
+)
 from qfa.services.prompts import (
     ANALYZE_GUARDRAILS_PROMPT,
     build_analyze_judge_system_message,
@@ -160,6 +165,18 @@ class TestBuildAnalyzeUserMessage:
         assert "<feedback_records>" in out
         assert "</feedback_records>" in out
         assert out.index("<feedback_records>") < out.index("</feedback_records>")
+
+    def test_wraps_community_meeting_records_with_their_distinct_tag(self):
+        record = CommunityMeetingRecordModel(
+            id="meeting-1",
+            meetingNotes="Participants requested safer water points.",
+            metadata=CommunityMeetingRecordMetadataModel(),
+        )
+
+        out = build_analyze_user_message("q", (record,))
+
+        assert '<community_meeting_record id="meeting-1">' in out
+        assert '<feedback_record id="' not in out
 
     def test_includes_record_id_as_attribute(self):
         """Each record exposes its id as the ``id`` attribute on ``<feedback_record>``."""

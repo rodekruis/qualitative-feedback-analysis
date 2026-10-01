@@ -151,6 +151,23 @@ class CommunityMeetingRecordModel(BaseModel):
     )
 
 
+AnalysisRecord = FeedbackRecordModel | CommunityMeetingRecordModel
+
+
+def record_text(record: AnalysisRecord) -> str:
+    """Return the analyzable text from either supported record type."""
+    if isinstance(record, FeedbackRecordModel):
+        return record.content
+    return record.meetingNotes
+
+
+def record_kind(record: AnalysisRecord) -> Literal["feedback", "community_meeting"]:
+    """Return the stable wire-level kind for an analysis record."""
+    if isinstance(record, FeedbackRecordModel):
+        return "feedback"
+    return "community_meeting"
+
+
 class CodingNode(BaseModel):
     """A node in a hierarchical coding framework."""
 
@@ -182,9 +199,9 @@ class AnalysisRequestModel(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    feedback_records: tuple[FeedbackRecordModel, ...] = Field(
+    feedback_records: tuple[AnalysisRecord, ...] = Field(
         min_length=1,
-        description="Non-empty tuple of feedback records to analyze.",
+        description="Non-empty tuple of feedback and/or community meeting records to analyze.",
     )
     output_language: str | None = Field(
         default=None,

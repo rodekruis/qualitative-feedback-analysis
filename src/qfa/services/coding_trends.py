@@ -23,7 +23,7 @@ from qfa.domain.clustering_models import (
     CodingTrendTable,
     TrendPeriod,
 )
-from qfa.domain.models import FeedbackRecordModel
+from qfa.domain.models import AnalysisRecord, FeedbackRecordModel
 
 logger = logging.getLogger(__name__)
 
@@ -86,9 +86,7 @@ def _period_of(raw_date: object, period: TrendPeriod) -> str | None:
     return f"{iso_year:04d}-W{iso_week:02d}"
 
 
-def _codes_in_record(
-    record: FeedbackRecordModel, code_fields: Sequence[str]
-) -> list[str]:
+def _codes_in_record(record: AnalysisRecord, code_fields: Sequence[str]) -> list[str]:
     """Extract coding labels from a record's metadata.
 
     Each configured code field may hold a comma-separated string of
@@ -97,7 +95,7 @@ def _codes_in_record(
 
     Parameters
     ----------
-    record : FeedbackRecordModel
+    record : AnalysisRecord
         The record whose metadata is inspected. Only metadata is read;
         the record's text is not used.
     code_fields : Sequence[str]
@@ -124,7 +122,7 @@ def _codes_in_record(
 
 
 def build_coding_trend_table(
-    records: tuple[FeedbackRecordModel, ...],
+    records: tuple[AnalysisRecord, ...],
     *,
     code_fields: Sequence[str],
     period: TrendPeriod = "week",
@@ -133,8 +131,9 @@ def build_coding_trend_table(
 
     Parameters
     ----------
-    records : tuple[FeedbackRecordModel, ...]
-        The full input record set.
+    records : tuple[AnalysisRecord, ...]
+        The full input record set. Community meeting records are ignored;
+        only feedback records carry coding-level metadata.
     code_fields : Sequence[str]
         Metadata keys holding coding labels (comma-separated strings).
     period : TrendPeriod
@@ -152,6 +151,8 @@ def build_coding_trend_table(
     periods: set[str] = set()
 
     for record in records:
+        if not isinstance(record, FeedbackRecordModel):
+            continue
         bucket = _period_of(record.metadata.created, period)
         if bucket is None:
             continue

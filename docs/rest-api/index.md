@@ -31,7 +31,7 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `feedback_records` | list | — | Non-empty list of `{id, content, metadata?, url_id?}` records. Individual records may have empty `content` (e.g. a blank EspoCRM description) — those are dropped before analysis rather than failing the request. |
+| `feedback_records` | list | — | Non-empty list of feedback and/or community meeting records. Feedback items use `{id, content, metadata?, url_id?}`; meeting items use `{record_type: "community_meeting", id, meetingNotes, metadata?, url_id?}`. Feedback-only legacy requests may omit `record_type`; every item must be explicit when a batch contains meetings. Blank `content` or `meetingNotes` is dropped before analysis. IDs must be unique across the batch. |
 | `prompt` | string | — | Analyst question (1–4000 chars). |
 | `output_language` | string or null | `null` | Free-text target language for the analysis output (e.g. `"Dutch"`, `"Brazilian Portuguese"`) — any language the model can produce. Prefer an ISO 639-1 code (`"nl"`) or English language name (`"Dutch"`) for the most predictable results. The value is sanitized and never rejected. Omit (or `null`) to let the model answer in the language of the input records. |
 | `anonymize` | bool | `true` | Anonymize record text before the LLM call. |
@@ -49,17 +49,26 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 | `quality_text` | string or null | Quality score as dots and percentage, e.g. `"●●●●● 100%"`. `null` when `quality_score` is `null`. |
 | `pretty_output` | string | Analysis text verbatim — exists for EspoCRM's `modelResponse` mapping so the flowchart needs no change when this backend is deployed. |
 | `uncertainty_explanation` | string | Natural-language judge reasoning, or a constant unavailable message when the judge failed. |
-| `feedback_record_count` | int | Number of records actually analyzed (records with empty `content` are dropped). |
+| `feedback_record_count` | int | Number of records actually analyzed across both record types (blank records are dropped). The legacy field name is retained for compatibility. |
 | `request_id` | string | Canonical UUID matching the `X-Request-ID` response header. |
 | `used_anonymization` | bool | Whether anonymization was applied. |
 | `confidence` | float or null | Coverage-weighted mean of per-chunk faithfulness scores. Populated only for `mode=hierarchical`; `null` for `single_pass`. |
-| `coding_trends` | object or null | Deterministic code-by-period frequency table. Populated for **both** modes whenever the configured date + code metadata fields are present (it depends only on metadata, not on the analysis pipeline). `null` when no record carries a parseable date. Bucket-label shape depends on `period`: `YYYY-MM-DD` for day, `YYYY-Www` (ISO week) for week, `YYYY-MM` for month. |
+| `coding_trends` | object or null | Deterministic code-by-period frequency table from feedback records only. Meeting-only requests return `null`; mixed requests may return trends for eligible feedback records. Bucket-label shape depends on `period`: `YYYY-MM-DD` for day, `YYYY-Www` (ISO week) for week, `YYYY-MM` for month. |
 
 For `mode: "hierarchical"`, the response additionally populates `confidence`
 (a coverage-weighted mean of per-chunk faithfulness). `coding_trends` is
 populated for both modes, so existing single-pass integrations that ignored
 the field are unaffected; clients that want trends can now read them from
 the single-pass response too.
+
+The endpoint accepts community meeting notes as well as feedback. A meeting
+item must include `record_type: "community_meeting"` and uses `meetingNotes`;
+HTML is reduced to plain text at the API boundary. Feedback items may include
+`record_type: "feedback"`, although the discriminator remains optional for
+backwards-compatible feedback-only requests. Mixed batches must explicitly
+type every item and are analyzed together in one request. Both
+`single_pass` and `hierarchical` modes use the record text; hierarchical
+clustering does not use meeting metadata.
 
 Per-record inference endpoints (`/v1/summarize`, `/v1/summarize-community-meeting`, `/v1/assign-codes`, `/v1/detect-sensitive`) accept a single record and return one result object, unlike bulk endpoints that accept multiple records and return aggregated output.
 

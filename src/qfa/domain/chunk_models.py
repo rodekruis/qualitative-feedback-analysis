@@ -10,7 +10,7 @@ without creating a circular dependency: ``models`` imports
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from qfa.domain.models import FeedbackRecordModel
+from qfa.domain.models import AnalysisRecord
 
 
 class Chunk(BaseModel):
@@ -36,7 +36,7 @@ class Chunk(BaseModel):
             " Outliers are analysed like any other chunk, never dropped."
         ),
     )
-    records: tuple[FeedbackRecordModel, ...] = Field(
+    records: tuple[AnalysisRecord, ...] = Field(
         min_length=1,
-        description="Feedback records in this chunk (non-empty).",
+        description="Feedback or community meeting records in this chunk (non-empty).",
     )

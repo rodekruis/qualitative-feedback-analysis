@@ -7,7 +7,11 @@ token budget, so the recursion trigger in the orchestrator is well-defined.
 These are pure, deterministic and tested with hand-built vectors (no model).
 """
 
-from qfa.domain.models import FeedbackRecordMetadataModel, FeedbackRecordModel
+from qfa.domain.models import (
+    FeedbackRecordMetadataModel,
+    FeedbackRecordModel,
+    record_text,
+)
 from qfa.services.clustering import _split_to_budget, cluster_records
 
 
@@ -97,7 +101,7 @@ def test_over_budget_chunk_is_split_into_budget_sized_subchunks() -> None:
     )
     # Every chunk must fit the budget.
     for chunk in chunks:
-        chars = sum(len(r.content) for r in chunk.records)
+        chars = sum(len(record_text(r)) for r in chunk.records)
         assert chars // 4 <= 300, "a chunk exceeds the token budget after splitting"
     # And coverage still holds.
     seen = [r.id for c in chunks for r in c.records]
@@ -127,7 +131,7 @@ def test_large_cluster_is_split_by_target_below_the_llm_cap() -> None:
     )
     assert len(chunks) > 1, "a target far below the cap did not split the cluster"
     for chunk in chunks:
-        tokens = sum(len(r.content) for r in chunk.records) // 4
+        tokens = sum(len(record_text(r)) for r in chunk.records) // 4
         assert tokens <= 100, "a sub-chunk exceeded the target size"
     seen = [r.id for c in chunks for r in c.records]
     assert sorted(seen) == sorted(r.id for r in records)
@@ -148,7 +152,7 @@ def test_split_to_budget_produces_balanced_not_remainder_groups() -> None:
     assert counts == [5, 5, 6, 6], f"not balanced into equal contiguous parts: {counts}"
     # Hard budget still respected by every group.
     for group in groups:
-        assert sum(len(r.content) for r in group) // 4 <= 60
+        assert sum(len(record_text(r)) for r in group) // 4 <= 60
 
 
 def test_split_to_budget_grows_part_count_when_a_balanced_part_overflows() -> None:
@@ -169,7 +173,9 @@ def test_split_to_budget_grows_part_count_when_a_balanced_part_overflows() -> No
     )
     groups = _split_to_budget(records, max_total_tokens=30, chars_per_token=4)
     for group in groups:
-        assert sum(len(r.content) for r in group) // 4 <= 30, "a group busts the budget"
+        assert sum(len(record_text(r)) for r in group) // 4 <= 30, (
+            "a group busts the budget"
+        )
     seen = [r.id for g in groups for r in g]
     assert sorted(seen) == ["big", "s1", "s2", "s3"]
 
@@ -192,7 +198,7 @@ def test_target_above_the_llm_cap_still_respects_the_cap() -> None:
         target_chunk_tokens=1_000_000,  # absurd target must not win
     )
     for chunk in chunks:
-        tokens = sum(len(r.content) for r in chunk.records) // 4
+        tokens = sum(len(record_text(r)) for r in chunk.records) // 4
         assert tokens <= 50, "a chunk exceeded the hard LLM cap"
 
 

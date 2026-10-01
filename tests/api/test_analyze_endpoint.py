@@ -8,7 +8,11 @@ test_routes.py::TestAnalyzeSuccess.
 
 import pytest
 
-from qfa.domain.models import AnalysisResultModel
+from qfa.domain.models import (
+    AnalysisResultModel,
+    CommunityMeetingRecordModel,
+    FeedbackRecordModel,
+)
 
 from .conftest import FAKE_API_KEY, FakeService
 
@@ -154,6 +158,128 @@ class TestResponseShape:
         data = resp.json()
         assert data["quality_score"] is None
         assert data["uncertainty_explanation"] == JUDGE_UNAVAILABLE_EXPLANATION
+
+
+class TestMixedRecordInputs:
+    @pytest.mark.asyncio
+    async def test_meeting_only_batch_is_forwarded_as_domain_meeting_record(
+        self, client, fake_service
+    ):
+        response = await client.post(
+            "/v1/analyze-bulk",
+            json=_valid_body(
+                feedback_records=[
+                    {
+                        "record_type": "community_meeting",
+                        "id": "meeting-1",
+                        "meetingNotes": "<p>Participants requested safer water points.</p>",
+                    }
+                ]
+            ),
+            headers=_auth_header(),
+        )
+
+        assert response.status_code == 200
+        assert response.json()["feedback_record_count"] == 1
+        record = fake_service.last_analyze_request.feedback_records[0]
+        assert isinstance(record, CommunityMeetingRecordModel)
+        assert record.meetingNotes == "Participants requested safer water points."
+
+    @pytest.mark.asyncio
+    async def test_explicit_mixed_batch_preserves_order_and_types(
+        self, client, fake_service
+    ):
+        response = await client.post(
+            "/v1/analyze-bulk",
+            json=_valid_body(
+                feedback_records=[
+                    {
+                        "record_type": "feedback",
+                        "id": "feedback-1",
+                        "content": "Water access improved.",
+                    },
+                    {
+                        "record_type": "community_meeting",
+                        "id": "meeting-1",
+                        "meetingNotes": "Participants requested safer water points.",
+                    },
+                ]
+            ),
+            headers=_auth_header(),
+        )
+
+        assert response.status_code == 200
+        assert response.json()["feedback_record_count"] == 2
+        records = fake_service.last_analyze_request.feedback_records
+        assert isinstance(records[0], FeedbackRecordModel)
+        assert isinstance(records[1], CommunityMeetingRecordModel)
+
+    @pytest.mark.asyncio
+    async def test_legacy_feedback_cannot_be_mixed_with_meeting_record(self, client):
+        response = await client.post(
+            "/v1/analyze-bulk",
+            json=_valid_body(
+                feedback_records=[
+                    {"id": "feedback-1", "content": "Water access improved."},
+                    {
+                        "record_type": "community_meeting",
+                        "id": "meeting-1",
+                        "meetingNotes": "Meeting notes.",
+                    },
+                ]
+            ),
+            headers=_auth_header(),
+        )
+
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_duplicate_ids_are_rejected_across_record_types(self, client):
+        response = await client.post(
+            "/v1/analyze-bulk",
+            json=_valid_body(
+                feedback_records=[
+                    {
+                        "record_type": "feedback",
+                        "id": "same-id",
+                        "content": "Feedback.",
+                    },
+                    {
+                        "record_type": "community_meeting",
+                        "id": "same-id",
+                        "meetingNotes": "Meeting notes.",
+                    },
+                ]
+            ),
+            headers=_auth_header(),
+        )
+
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_blank_meeting_notes_are_dropped(self, client, fake_service):
+        response = await client.post(
+            "/v1/analyze-bulk",
+            json=_valid_body(
+                feedback_records=[
+                    {
+                        "record_type": "feedback",
+                        "id": "feedback-1",
+                        "content": "Water access improved.",
+                    },
+                    {
+                        "record_type": "community_meeting",
+                        "id": "meeting-1",
+                        "meetingNotes": "<p></p>",
+                    },
+                ]
+            ),
+            headers=_auth_header(),
+        )
+
+        assert response.status_code == 200
+        assert response.json()["feedback_record_count"] == 1
+        assert len(fake_service.last_analyze_request.feedback_records) == 1
 
 
 class TestOutputLanguage:
