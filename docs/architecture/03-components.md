@@ -44,6 +44,7 @@ generation reference, and the diagram collapses to a single `LLMPort` edge.
 | {py:class}`~qfa.domain.ports.AnonymizationPort` | {py:class}`~qfa.adapters.presidio_anonymizer.PresidioAnonymizer` | `anonymize(text) -> (text, mapping)`, `anonymize_batch(texts) -> (texts, mapping)` (one shared placeholder namespace, so placeholders are unique across the whole batch) and `deanonymize(text, mapping) -> text`. The mapping is held in memory for the request lifetime, then discarded. |
 | {py:class}`~qfa.domain.ports.UsageRepositoryPort` | {py:class}`~qfa.adapters.usage_repository.SqlAlchemyUsageRepository` | Writes one {py:class}`~qfa.domain.usage_models.LLMCallRecord` per LLM call (from {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter`) and reads aggregate stats (from the `/v1/usage` routes). |
 | {py:class}`~qfa.domain.ports.EmbeddingPort` | {py:class}`~qfa.adapters.embedding.BgeM3OnnxEmbedder` | One method, `embed(texts) -> vectors`. Multilingual dense embeddings (BGE-M3 ONNX-int8, dense-1024-d, in-process, CPU-only). Used only by `mode=hierarchical`. See [ADR-014](../adr/014-embedding-port-and-self-hosted-model.md). |
+| {py:class}`~qfa.domain.ports.PromptPort` | {py:class}`~qfa.adapters.prompts.LangfusePromptAdapter`, {py:class}`~qfa.adapters.prompts.NoOpPromptAdapter` | One method, `sync(prompts) -> dict[str, int]`. Mirrors {py:mod}`qfa.services.prompt_registry`'s hardcoded system prompts to Langfuse as versioned Text prompts, once at startup, and returns each prompt's deployed version. See [ADR-024](../adr/024-prompt-port-langfuse-mirror.md). |
 
 The tracking decorator is the only place hex's "stack adapters at the composition root" earns its keep — {py:class}`~qfa.adapters.tracking_llm.TrackingLLMAdapter` is itself an {py:class}`~qfa.domain.ports.LLMPort`, so a service never knows whether tracking is on.
 
@@ -176,10 +177,12 @@ The lifespan then attaches each service (`app.state.sensitivity_service`, `app.s
 The split exists so callers outside the API server — scripts, notebooks, ad-hoc evaluation harnesses — can construct the services over a plain LLM client with a single call ({py:func}`~qfa.api.composition.build_analyze_service` is the narrow wrapper over `build_services` for exactly that case):
 
 ```python
+import asyncio
+
 from qfa.api.composition import build_analyze_service
 from qfa.settings import AppSettings
 
-analyze = build_analyze_service(AppSettings())
+analyze = asyncio.run(build_analyze_service(AppSettings()))
 ```
 
 `build_services` (and its single-service wrapper `build_analyze_service`) is intentionally pure with respect to the API server's runtime concerns: it does not touch the database, does not wrap the LLM in `TrackingLLMAdapter`, and does not read auth keys. The FastAPI lifespan keeps those concerns and passes the wrapped clients in via the `llm=` and `judge_llm=` keywords. See `notebooks/analyze_corpus.ipynb` for an example.
