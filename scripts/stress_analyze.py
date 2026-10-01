@@ -138,7 +138,6 @@ def build_request(
     prompt: str,
     *,
     mode: str = "hierarchical",
-    anonymize: bool = True,
     period: str | None = None,
 ) -> dict[str, Any]:
     """Shape a ``/v1/analyze`` request body from sampled records.
@@ -158,7 +157,6 @@ def build_request(
         "feedback_records": projected_records,
         "prompt": prompt,
         "mode": mode,
-        "anonymize": anonymize,
     }
     if period is not None:
         body["period"] = period
@@ -249,7 +247,6 @@ async def run_batch(
     timeout_s: float = DEFAULT_TIMEOUT_S,
     prompt: str = DEFAULT_PROMPT,
     mode: str = "hierarchical",
-    anonymize: bool = True,
     period: str | None = None,
     total_calls: int | None = None,
 ) -> list[RunResult]:
@@ -273,7 +270,7 @@ async def run_batch(
         Max in-flight requests at once.
     timeout_s : float
         Per-request httpx timeout (read + write + pool).
-    prompt, mode, anonymize, period : forwarded to :func:`build_request`.
+    prompt, mode, period : forwarded to :func:`build_request`.
     total_calls : int | None
         How many requests to fire in total. Defaults to ``concurrency``
         — i.e. fan out N parallel calls once. Set higher to sustain
@@ -293,7 +290,6 @@ async def run_batch(
         records,
         prompt,
         mode=mode,
-        anonymize=anonymize,
         period=period,
     )
     semaphore = asyncio.Semaphore(concurrency)
@@ -496,11 +492,6 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Coding-trend granularity (default: server-side default)",
     )
     parser.add_argument(
-        "--no-anonymize",
-        action="store_true",
-        help="Disable PII anonymisation (default: enabled)",
-    )
-    parser.add_argument(
         "--timeout",
         type=float,
         default=DEFAULT_TIMEOUT_S,
@@ -540,7 +531,6 @@ async def _amain(args: argparse.Namespace) -> int:
         timeout_s=args.timeout,
         prompt=args.prompt,
         mode=args.mode,
-        anonymize=not args.no_anonymize,
         period=args.period,
         total_calls=args.total_calls,
     )

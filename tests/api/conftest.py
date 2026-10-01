@@ -25,6 +25,7 @@ from qfa.domain.models import (
     CodingAssignmentRequestModel,
     CodingAssignmentResultModel,
     FeedbackRecordSummaryModel,
+    JudgeComponents,
     KeyCreationResponse,
     SensitivityAnalysisRequestModel,
     SensitivityAnalysisResultModel,
@@ -117,6 +118,7 @@ class FakeService:
         self._analyze_result = analyze_result or AnalysisResultModel(
             result="Fake analysis result",
             quality_score=0.85,
+            components=JudgeComponents(faithfulness=0.9, coverage=0.8, clarity=0.7),
             uncertainty_explanation="Coverage is good; all themes well-supported.",
         )
         self._summarize_result = summarize_result or FeedbackRecordSummaryModel(

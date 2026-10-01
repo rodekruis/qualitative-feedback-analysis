@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import re
 from typing import cast
 
@@ -20,6 +21,7 @@ from tenacity import (
     wait_exponential,
 )
 
+import qfa
 from qfa.domain import FeedbackTooLargeError, PromptInjectionDetectedError
 from qfa.domain.errors import (
     LLMBadRequestError,
@@ -31,7 +33,11 @@ from qfa.domain.errors import (
 )
 from qfa.domain.models import LLMResponse, T_Response
 from qfa.domain.ports import LLMPort
-from qfa.services.call_context import current_call_context, current_call_role
+from qfa.services.call_context import (
+    current_call_context,
+    current_call_role,
+    otel_context_for,
+)
 from qfa.settings import LLM_RETRY_BUDGET_MULTIPLIER
 from qfa.utils import timed
 
@@ -466,10 +472,17 @@ class LiteLLMClient(LLMPort):
         Also emits one Langfuse span (via ``self._tracer``) around the whole
         call, tagged with ``tenant_id`` and, inside an active
         ``current_call_context`` (unset for scripts/tests outside an HTTP
-        request), the orchestrator ``operation``. Also tagged (and named)
+        request), the orchestrator ``operation`` plus the deployed
+        ``version``/``commit`` as trace metadata. Also tagged (and named)
         as a judge call inside an active ``judge_call()`` block (see
         ``qfa.services.call_context``) — every current judge call site
-        wraps itself in one. Never carries the prompt, completion, or any
+        wraps itself in one. Opened with ``context=otel_context_for(ctx.call_id)``
+        rather than the ambient OTel context, so every call made inside
+        one ``call_scope`` shares one Langfuse trace id — a judge call's
+        span lands in the same trace as the generation call it graded
+        (#354) — without reparenting unrelated spans opened elsewhere
+        during the request (see ``qfa.services.call_context``'s module
+        docstring). Never carries the prompt, completion, or any
         other request/response content — only the same model/tokens/cost
         fields logged at DEBUG below and returned in ``LLMResponse``.
 
@@ -507,22 +520,38 @@ class LiteLLMClient(LLMPort):
         """
         ctx = current_call_context.get()
         is_judge = current_call_role.get() == "judge"
-        # Langfuse's OTel ingestion uses this one span both as the trace and
-        # as its sole observation, so its name is what both list views show.
-        # Named by operation (when known) so the list is scannable without
-        # opening a row or filtering by the langfuse.trace.tags attribute
-        # below; "llm_call" is only the fallback outside an HTTP request
-        # (scripts, notebooks, tests), where no operation is known. Suffixed
-        # with ":judge" for a judge call -- a generation call's name is
-        # unchanged, since that is the common case.
+        # Langfuse's OTel ingestion treats one span as one observation of the
+        # trace its trace id names, so this span's name is what both list
+        # views show. Named by operation (when known) so the list is
+        # scannable without opening a row or filtering by the
+        # langfuse.trace.tags attribute below; "llm_call" is only the
+        # fallback outside an HTTP request (scripts, notebooks, tests),
+        # where no operation is known. Suffixed with ":judge" for a judge
+        # call -- a generation call's name is unchanged, since that is the
+        # common case. ``qfa.services.call_context.call_scope`` makes every
+        # call inside one request share one trace id (#354), so a request
+        # with both a generation and a judge call now shows as one trace
+        # with two observations, not two separate traces.
         operation = ctx.operation if ctx is not None else "llm_call"
         span_name = f"{operation}:judge" if is_judge else operation
-        with self._tracer.start_as_current_span(span_name) as span:
+        parent_context = otel_context_for(ctx.call_id) if ctx is not None else None
+        with self._tracer.start_as_current_span(
+            span_name, context=parent_context
+        ) as span:
             span.set_attribute("langfuse.observation.type", "generation")
             span.set_attribute("langfuse.user.id", tenant_id)
             if ctx is not None:
                 tags = [ctx.operation, "judge"] if is_judge else [ctx.operation]
                 span.set_attribute("langfuse.trace.tags", json.dumps(tags))
+                span.set_attribute(
+                    "langfuse.trace.metadata",
+                    json.dumps(
+                        {
+                            "deployed_version": qfa.__version__,
+                            "deployed_commit": os.environ.get("GIT_SHA", "unknown"),
+                        }
+                    ),
+                )
             try:
                 response = await self._complete_impl(
                     system_message, user_message, tenant_id, response_model, timeout

@@ -18,7 +18,9 @@ Use `uv` for all dependency management (not `pip`). Examples:
 ### Workflow
 
 `main` is protected and requires a pull request, so every change lands on a branch —
-direct pushes are rejected. Required approvals: 0, so self-merge is fine.
+direct pushes are rejected. One approving review is required, and the ruleset that
+enforces it is named "Review by at least one other human", so your own approval does
+not count: request a review and wait for it before merging.
 
 1. create a new branch from `main`
 2. commit small, focused changes to the branch

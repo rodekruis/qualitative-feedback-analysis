@@ -12,3 +12,11 @@ jobs:
     permissions:
       contents: read
     secrets: inherit
+
+  sensitivity:
+    uses: ./.github/workflows/evaluate-sensitivity.yaml
+    with:
+      dataset: sensitivity/SubsetIFRCBorderlineSensitiveRecords
+    permissions:
+      contents: read
+    secrets: inherit

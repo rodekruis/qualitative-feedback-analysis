@@ -58,8 +58,9 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.trace import Tracer
 
 from qfa.adapters.embedding import build_onnx_embedder
+from qfa.adapters.evaluation import LangfuseEvaluationAdapter, NoOpEvaluationAdapter
 from qfa.adapters.presidio_anonymizer import PresidioAnonymizer
-from qfa.domain.ports import EmbeddingPort, LLMPort
+from qfa.domain.ports import EmbeddingPort, EvaluationPort, LLMPort
 from qfa.services.analyze import AnalyzeService
 from qfa.services.coding import CodingService
 from qfa.services.llm_call_executor import LLMCallExecutor
@@ -206,6 +207,35 @@ def build_embedder(settings: EmbeddingSettings) -> EmbeddingPort | None:
     )
 
 
+def build_evaluator(settings: LangfuseSettings) -> EvaluationPort:
+    """Build the live judge-score adapter, or a no-op one when unconfigured.
+
+    Mirrors :func:`build_langfuse_tracer`'s own gate on the same settings:
+    while ``LANGFUSE_PUBLIC_KEY``/``LANGFUSE_SECRET_KEY`` are unset, judge
+    scores are dropped rather than sent, and every call site still holds a
+    real :class:`~qfa.domain.ports.EvaluationPort` (#354).
+
+    Parameters
+    ----------
+    settings : LangfuseSettings
+        Langfuse configuration loaded from environment variables.
+
+    Returns
+    -------
+    EvaluationPort
+        A :class:`~qfa.adapters.evaluation.LangfuseEvaluationAdapter` when
+        configured, else a
+        :class:`~qfa.adapters.evaluation.NoOpEvaluationAdapter`.
+    """
+    if settings.public_key is None or settings.secret_key is None:
+        logger.debug(
+            "LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY unset; judge score delivery disabled"
+        )
+        return NoOpEvaluationAdapter()
+    logger.info("Langfuse judge-score delivery configured (host=%s)", settings.host)
+    return LangfuseEvaluationAdapter(settings)
+
+
 def register_custom_model_prices() -> None:
     """Load custom model pricing from the bundled YAML resource.
 
@@ -278,6 +308,7 @@ def build_services(
     llm: LLMPort | None = None,
     judge_llm: LLMPort | None = None,
     embedder: EmbeddingPort | None = None,
+    evaluator: EvaluationPort | None = None,
 ) -> ServiceGraph:
     """Construct every application service from application settings.
 
@@ -328,6 +359,14 @@ def build_services(
         hierarchical analysis will fail at runtime with ``AnalysisError``
         (single-pass remains usable). Only :class:`AnalyzeService` takes
         it; no other use case needs an embedder.
+    evaluator : EvaluationPort | None, optional
+        Pre-built live judge-score adapter to use instead of constructing
+        one from ``settings.langfuse``. ``None`` (the default) builds one
+        via :func:`build_evaluator`, which never itself returns ``None`` —
+        it is a :class:`~qfa.adapters.evaluation.NoOpEvaluationAdapter`
+        when Langfuse is unconfigured, so :class:`AnalyzeService`,
+        :class:`SummarizeService`, and :class:`CodingService` always hold
+        a real :class:`~qfa.domain.ports.EvaluationPort` (#354).
 
     Returns
     -------
@@ -357,6 +396,9 @@ def build_services(
     if embedder is None:
         embedder = build_embedder(settings.embedding)
 
+    if evaluator is None:
+        evaluator = build_evaluator(settings.langfuse)
+
     anonymizer = PresidioAnonymizer(
         max_workers=settings.anonymization.max_workers,
         batch_size=settings.anonymization.batch_size,
@@ -383,6 +425,7 @@ def build_services(
         analyze_settings=settings.analyze,
         max_total_tokens=settings.llm.max_total_tokens,
         embedder=embedder,
+        evaluator=evaluator,
     )
 
     return ServiceGraph(
@@ -394,6 +437,7 @@ def build_services(
             judge_llm=judge_llm,
             anonymizer=anonymizer,
             executor=executor,
+            evaluator=evaluator,
         ),
         analyze=analyze,
         # Neither summarisation path runs the token-budget guard or needs an
@@ -404,6 +448,7 @@ def build_services(
             judge_llm=judge_llm,
             anonymizer=anonymizer,
             executor=executor,
+            evaluator=evaluator,
         ),
     )
 

@@ -10,12 +10,15 @@ Per ADR-017 the service is driven over the **real**
 is no fake executor.
 """
 
+import logging
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 import pytest
 
 from qfa.domain.errors import AnalysisError, LLMError
 from qfa.domain.models import (
+    QUALITY_SCORE_WEIGHTS,
     AggregateSummaryResultModel,
     CommunityMeetingRecordModel,
     CommunityMeetingRecordSummaryModel,
@@ -29,7 +32,9 @@ from qfa.domain.models import (
     SummaryRequestModel,
     SummaryResultModel,
 )
-from qfa.domain.ports import AnonymizationPort, LLMPort
+from qfa.domain.ports import AnonymizationPort, EvaluationPort, LLMPort
+from qfa.domain.usage_models import Operation
+from qfa.services.call_context import call_scope
 from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.services.summarize import SummarizeService
 from qfa.settings import OrchestratorSettings
@@ -121,6 +126,33 @@ def _make_aggregate_summary_result(title="Title", summary="- Point", quality_sco
     )
 
 
+def _judge_text(faithfulness=0.9, coverage=0.8, clarity=0.7, explanation="ok"):
+    """Render judge components as the four-line free-text reply the fake serves.
+
+    Matches ``_JUDGE_PROMPT``'s output format (``summarize.py``), which
+    ``_parse_judge_quality_score`` parses via the shared
+    ``parse_judge_components``. The explanation line is accepted but
+    discarded — summarize's result models carry no uncertainty_explanation
+    field, unlike analyze's.
+    """
+    return (
+        f"FAITHFULNESS: {faithfulness}\n"
+        f"COVERAGE: {coverage}\n"
+        f"CLARITY: {clarity}\n"
+        f"UNCERTAINTY_EXPLANATION: {explanation}"
+    )
+
+
+def _weighted_quality_score(faithfulness, coverage, clarity):
+    """Compute the same weighted total ``JudgeComponents.quality_score`` derives."""
+    return round(
+        QUALITY_SCORE_WEIGHTS.faithfulness * faithfulness
+        + QUALITY_SCORE_WEIGHTS.coverage * coverage
+        + QUALITY_SCORE_WEIGHTS.clarity * clarity,
+        2,
+    )
+
+
 def _make_summary_request(
     feedback_record=None,
     tenant_id=TENANT_ID,
@@ -202,6 +234,16 @@ class FakeAnonymizer(AnonymizationPort):
         return text
 
 
+class FakeEvaluationPort(EvaluationPort):
+    """Records every ``record_score`` call for assertions (#354)."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    def record_score(self, *, trace_id, name, value):
+        self.calls.append({"trace_id": trace_id, "name": name, "value": value})
+
+
 @pytest.fixture
 def settings():
     return OrchestratorSettings()
@@ -213,6 +255,7 @@ def _build_service(
     anonymizer=None,
     judge_llm=None,
     max_total_tokens=MAX_TOKENS,
+    evaluator=None,
 ):
     """Build a ``SummarizeService`` over the real executor.
 
@@ -225,6 +268,7 @@ def _build_service(
         llm=llm,
         anonymizer=anonymizer,
         judge_llm=judge_llm,
+        evaluator=evaluator,
         executor=LLMCallExecutor(
             llm=llm,
             anonymizer=anonymizer,
@@ -248,7 +292,7 @@ class TestTokenLimit:
                 _make_llm_response(
                     structured=_make_summary_result(),
                 ),
-                _make_llm_response(structured="0.8"),
+                _make_llm_response(structured=_judge_text()),
             ]
         )
         service = _build_service(fake_llm, settings, max_total_tokens=100)
@@ -268,7 +312,9 @@ class TestNonTransientError:
                         summary="- Bullet one\n- Bullet two"
                     )
                 ),
-                _make_llm_response(structured="0.8"),
+                _make_llm_response(
+                    structured=_judge_text(faithfulness=0.9, coverage=0.8, clarity=0.5)
+                ),
             ]
         )
         service = _build_service(fake_llm, settings)
@@ -276,7 +322,12 @@ class TestNonTransientError:
         result = await service.summarize(_make_summary_request(), _future_deadline())
 
         assert result.summary == "- Bullet one\n- Bullet two"
-        assert result.quality_score == 0.8
+        assert result.components.faithfulness == pytest.approx(0.9)
+        assert result.components.coverage == pytest.approx(0.8)
+        assert result.components.clarity == pytest.approx(0.5)
+        assert result.quality_score == pytest.approx(
+            _weighted_quality_score(0.9, 0.8, 0.5)
+        )
         assert fake_llm.calls[0]["response_model"] is SummaryResultModel
 
     @pytest.mark.asyncio
@@ -284,7 +335,9 @@ class TestNonTransientError:
         fake_llm = FakeLLMPort(
             responses=[
                 _make_llm_response(structured=_make_community_meeting_summary_result()),
-                _make_llm_response(structured="0.8"),
+                _make_llm_response(
+                    structured=_judge_text(faithfulness=0.8, coverage=0.7, clarity=0.6)
+                ),
             ]
         )
         service = _build_service(fake_llm, settings)
@@ -295,7 +348,12 @@ class TestNonTransientError:
 
         assert result.id == "meeting-1"
         assert result.summary == "- Meeting point"
-        assert result.quality_score == 0.8
+        assert result.components.faithfulness == pytest.approx(0.8)
+        assert result.components.coverage == pytest.approx(0.7)
+        assert result.components.clarity == pytest.approx(0.6)
+        assert result.quality_score == pytest.approx(
+            _weighted_quality_score(0.8, 0.7, 0.6)
+        )
         assert (
             "The community requested safer water access."
             in fake_llm.calls[0]["user_message"]
@@ -311,7 +369,9 @@ class TestNonTransientError:
                         summary="- Follow-up for meeting-1"
                     )
                 ),
-                _make_llm_response(structured="0.8"),
+                _make_llm_response(
+                    structured=_judge_text(faithfulness=0.8, coverage=0.7, clarity=0.6)
+                ),
             ]
         )
         service = _build_service(fake_llm, settings)
@@ -327,6 +387,9 @@ class TestNonTransientError:
         assert (
             result.summary
             == "- Follow-up for [meeting-1](https://espo.example.com/meetings/meeting-url-1)"
+        )
+        assert result.quality_score == pytest.approx(
+            _weighted_quality_score(0.8, 0.7, 0.6)
         )
 
     @pytest.mark.asyncio
@@ -344,7 +407,9 @@ class TestNonTransientError:
                 _make_llm_response(
                     structured=_make_aggregate_summary_result(summary="- Point one"),
                 ),
-                _make_llm_response(structured="0.82\n"),
+                _make_llm_response(
+                    structured=_judge_text(faithfulness=0.9, coverage=0.8, clarity=0.7)
+                ),
             ]
         )
         service = _build_service(fake_llm, settings)
@@ -354,7 +419,12 @@ class TestNonTransientError:
         )
 
         assert len(fake_llm.calls) == 2
-        assert result.quality_score == 0.82
+        assert result.components.faithfulness == pytest.approx(0.9)
+        assert result.components.coverage == pytest.approx(0.8)
+        assert result.components.clarity == pytest.approx(0.7)
+        assert result.quality_score == pytest.approx(
+            _weighted_quality_score(0.9, 0.8, 0.7)
+        )
         assert "Summary:" in fake_llm.calls[1]["system_message"]
         assert "- Point one" in fake_llm.calls[1]["system_message"]
 
@@ -387,7 +457,7 @@ class TestNonTransientError:
                 _make_llm_response(
                     structured=_make_summary_result(summary="Feedback from <PERSON_0>.")
                 ),
-                _make_llm_response(structured="0.8"),
+                _make_llm_response(structured=_judge_text()),
             ]
         )
         service = _build_service(
@@ -399,31 +469,32 @@ class TestNonTransientError:
         assert result.summary == 'Feedback from Alice "Ally" Smith.'
 
     @pytest.mark.asyncio
-    async def test_judge_non_numeric_raises_analysis_error(self, settings):
+    async def test_judge_garbage_reply_raises_analysis_error(self, settings):
         fake_llm = FakeLLMPort(
             responses=[
                 _make_llm_response(structured=_make_aggregate_summary_result()),
-                _make_llm_response(structured="not a float"),
+                _make_llm_response(structured="not a structured judge reply"),
             ]
         )
         service = _build_service(fake_llm, settings)
 
-        with pytest.raises(AnalysisError, match="invalid quality score"):
+        with pytest.raises(AnalysisError, match="unparsable response"):
             await service.summarize_bulk(_make_aggregate_request(), _future_deadline())
 
         assert len(fake_llm.calls) == 2
 
     @pytest.mark.asyncio
-    async def test_judge_score_above_one_raises_analysis_error(self, settings):
+    async def test_judge_out_of_range_component_raises_analysis_error(self, settings):
+        """Out-of-range raises ``AnalysisError`` (→ 502), never ``ValidationError`` (→ 500)."""
         fake_llm = FakeLLMPort(
             responses=[
                 _make_llm_response(structured=_make_aggregate_summary_result()),
-                _make_llm_response(structured="1.5"),
+                _make_llm_response(structured=_judge_text(faithfulness=1.5)),
             ]
         )
         service = _build_service(fake_llm, settings)
 
-        with pytest.raises(AnalysisError, match=r"outside 0\.0-1\.0"):
+        with pytest.raises(AnalysisError):
             await service.summarize_bulk(_make_aggregate_request(), _future_deadline())
 
         assert len(fake_llm.calls) == 2
@@ -441,7 +512,7 @@ class TestAggregateSummaryOutputLanguage:
         fake_llm = FakeLLMPort(
             responses=[
                 _make_llm_response(structured=_make_aggregate_summary_result()),
-                _make_llm_response(structured="0.82\n"),
+                _make_llm_response(structured=_judge_text()),
             ]
         )
         service = _build_service(fake_llm, settings)
@@ -466,7 +537,7 @@ class TestAggregateSummaryOutputLanguage:
         fake_llm = FakeLLMPort(
             responses=[
                 _make_llm_response(structured=_make_aggregate_summary_result()),
-                _make_llm_response(structured="0.82\n"),
+                _make_llm_response(structured=_judge_text()),
             ]
         )
         service = _build_service(fake_llm, settings)
@@ -491,7 +562,7 @@ class TestSingleSummaryDetectedLanguage:
         fake_llm = FakeLLMPort(
             responses=[
                 _make_llm_response(structured=_make_summary_result()),
-                _make_llm_response(structured="0.82\n"),
+                _make_llm_response(structured=_judge_text()),
             ]
         )
         service = _build_service(fake_llm, settings)
@@ -519,7 +590,7 @@ class TestSingleSummaryDetectedLanguage:
         fake_llm = FakeLLMPort(
             responses=[
                 _make_llm_response(structured=_make_summary_result()),
-                _make_llm_response(structured="0.82\n"),
+                _make_llm_response(structured=_judge_text()),
             ]
         )
         service = _build_service(fake_llm, settings)
@@ -552,7 +623,7 @@ class TestSingleSummaryDetectedLanguage:
         fake_llm = FakeLLMPort(
             responses=[
                 _make_llm_response(structured=_make_summary_result()),
-                _make_llm_response(structured="0.82\n"),
+                _make_llm_response(structured=_judge_text()),
             ]
         )
         service = _build_service(fake_llm, settings)
@@ -580,7 +651,7 @@ class TestSingleSummaryDetectedLanguage:
         fake_llm = FakeLLMPort(
             responses=[
                 _make_llm_response(structured=_make_summary_result()),
-                _make_llm_response(structured="0.82\n"),
+                _make_llm_response(structured=_judge_text()),
             ]
         )
         service = _build_service(fake_llm, settings)
@@ -613,7 +684,7 @@ class TestSummarizeBulkHyperlinks:
                         summary="- Water access raised in Form-07762"
                     )
                 ),
-                _make_llm_response(structured="0.8"),
+                _make_llm_response(structured=_judge_text()),
             ]
         )
         service = _build_service(fake_llm, settings)
@@ -638,7 +709,7 @@ class TestSummarizeBulkHyperlinks:
                         summary="- Water access raised in Form-07762"
                     )
                 ),
-                _make_llm_response(structured="0.8"),
+                _make_llm_response(structured=_judge_text()),
             ]
         )
         service = _build_service(fake_llm, settings)
@@ -666,7 +737,7 @@ class TestNoTrailingQuestion:
         fake_llm = FakeLLMPort(
             responses=[
                 _make_llm_response(structured=_make_aggregate_summary_result()),
-                _make_llm_response(structured="0.82\n"),
+                _make_llm_response(structured=_judge_text()),
             ]
         )
         service = _build_service(fake_llm, settings)
@@ -680,7 +751,7 @@ class TestNoTrailingQuestion:
         fake_llm = FakeLLMPort(
             responses=[
                 _make_llm_response(structured=_make_summary_result()),
-                _make_llm_response(structured="0.8"),
+                _make_llm_response(structured=_judge_text()),
             ]
         )
         service = _build_service(fake_llm, settings)
@@ -703,7 +774,7 @@ class TestInjectionSystemPrefix:
         fake_llm = FakeLLMPort(
             responses=[
                 _make_llm_response(structured=_make_summary_result()),
-                _make_llm_response(structured="0.8"),
+                _make_llm_response(structured=_judge_text()),
             ]
         )
         service = _build_service(fake_llm, settings)
@@ -711,3 +782,132 @@ class TestInjectionSystemPrefix:
         await service.summarize(request, _future_deadline())
 
         assert len(fake_llm.calls) == 2
+
+
+class TestSummarizeJudgeComponentsLog:
+    @pytest.mark.asyncio
+    async def test_summarize_bulk_logs_one_judge_components_line(
+        self, settings, caplog
+    ):
+        """Exactly one ``judge components:`` line, joined to the request by call_id."""
+        request_id = uuid4()
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=_make_aggregate_summary_result()),
+                _make_llm_response(
+                    structured=_judge_text(faithfulness=0.9, coverage=0.8, clarity=0.4)
+                ),
+            ]
+        )
+        service = _build_service(fake_llm, settings)
+
+        with caplog.at_level(logging.INFO, logger="qfa.services.summarize"):
+            async with call_scope(TENANT_ID, Operation.SUMMARIZE_AGGREGATE, request_id):
+                await service.summarize_bulk(
+                    _make_aggregate_request(), _future_deadline()
+                )
+
+        lines = [
+            record.getMessage()
+            for record in caplog.records
+            if "judge components:" in record.getMessage()
+        ]
+        assert len(lines) == 1
+        line = lines[0]
+        assert f"call_id={request_id}" in line
+        assert "faithfulness=0.900" in line
+        assert "coverage=0.800" in line
+        assert "clarity=0.400" in line
+
+    @pytest.mark.asyncio
+    async def test_summarize_logs_one_judge_components_line(self, settings, caplog):
+        """Same, for the single-record ``summarize`` path."""
+        request_id = uuid4()
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=_make_summary_result()),
+                _make_llm_response(
+                    structured=_judge_text(faithfulness=0.7, coverage=0.6, clarity=0.5)
+                ),
+            ]
+        )
+        service = _build_service(fake_llm, settings)
+
+        with caplog.at_level(logging.INFO, logger="qfa.services.summarize"):
+            async with call_scope(TENANT_ID, Operation.SUMMARIZE, request_id):
+                await service.summarize(_make_summary_request(), _future_deadline())
+
+        lines = [
+            record.getMessage()
+            for record in caplog.records
+            if "judge components:" in record.getMessage()
+        ]
+        assert len(lines) == 1
+        assert f"call_id={request_id}" in lines[0]
+
+
+class TestSummarizeJudgeScores:
+    """Live Langfuse scores (#354) run beside the log line, not instead of it."""
+
+    @pytest.mark.asyncio
+    async def test_summarize_bulk_sends_four_named_scores(self, settings):
+        request_id = uuid4()
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=_make_aggregate_summary_result()),
+                _make_llm_response(
+                    structured=_judge_text(faithfulness=0.9, coverage=0.8, clarity=0.4)
+                ),
+            ]
+        )
+        evaluator = FakeEvaluationPort()
+        service = _build_service(fake_llm, settings, evaluator=evaluator)
+
+        async with call_scope(TENANT_ID, Operation.SUMMARIZE_AGGREGATE, request_id):
+            await service.summarize_bulk(_make_aggregate_request(), _future_deadline())
+
+        sent = {call["name"]: call["value"] for call in evaluator.calls}
+        assert sent["faithfulness"] == pytest.approx(0.9)
+        assert sent["coverage"] == pytest.approx(0.8)
+        assert sent["clarity"] == pytest.approx(0.4)
+        assert "quality_score" in sent
+        assert all(call["trace_id"] == request_id.hex for call in evaluator.calls)
+
+    @pytest.mark.asyncio
+    async def test_summarize_sends_four_named_scores(self, settings):
+        request_id = uuid4()
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=_make_summary_result()),
+                _make_llm_response(
+                    structured=_judge_text(faithfulness=0.7, coverage=0.6, clarity=0.5)
+                ),
+            ]
+        )
+        evaluator = FakeEvaluationPort()
+        service = _build_service(fake_llm, settings, evaluator=evaluator)
+
+        async with call_scope(TENANT_ID, Operation.SUMMARIZE, request_id):
+            await service.summarize(_make_summary_request(), _future_deadline())
+
+        names = {call["name"] for call in evaluator.calls}
+        assert names == {"faithfulness", "coverage", "clarity", "quality_score"}
+        assert all(call["trace_id"] == request_id.hex for call in evaluator.calls)
+
+    @pytest.mark.asyncio
+    async def test_no_evaluator_means_no_scores_and_no_error(self, settings):
+        """A service built without an evaluator (the test-double default) just skips it."""
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=_make_summary_result()),
+                _make_llm_response(structured=_judge_text()),
+            ]
+        )
+        service = _build_service(fake_llm, settings)
+
+        async with call_scope(TENANT_ID, Operation.SUMMARIZE, uuid4()):
+            result = await service.summarize(
+                _make_summary_request(), _future_deadline()
+            )
+
+        assert result.components is not None

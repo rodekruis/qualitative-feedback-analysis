@@ -25,6 +25,38 @@ from qfa.domain.usage_models import (
 
 
 @runtime_checkable
+class EvaluationPort(Protocol):
+    """Port for recording a named judge-quality score against a live trace.
+
+    Synchronous by design, for the same reason as :class:`EmbeddingPort`:
+    every known implementation is a fast, local, non-raising call — the
+    Langfuse client queues the score for background delivery and never
+    surfaces a delivery failure to the caller (verified against the
+    installed ``langfuse`` client: ``create_score`` catches every
+    exception itself). If a future adapter needs real I/O, an async
+    variant can be added then.
+    """
+
+    def record_score(self, *, trace_id: str, name: str, value: float) -> None:
+        """Record one named score against ``trace_id``.
+
+        Parameters
+        ----------
+        trace_id : str
+            32-character lowercase hex trace identifier. Callers derive
+            this from ``CallContext.call_id`` (``call_id.hex``), so a
+            score can be joined to the ``LLMCallRecord`` rows sharing the
+            same call.
+        name : str
+            Score name, e.g. ``"faithfulness"``, ``"coverage"``,
+            ``"clarity"``, ``"quality_score"``.
+        value : float
+            The score value, in ``[0, 1]``.
+        """
+        ...
+
+
+@runtime_checkable
 class EmbeddingPort(Protocol):
     """Port for a multilingual text-embedding model.
 

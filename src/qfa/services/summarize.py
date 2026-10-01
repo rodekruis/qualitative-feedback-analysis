@@ -23,6 +23,7 @@ and hierarchical leaf judges). They live in :mod:`qfa.services.record_links`
 and :mod:`qfa.services.prompts` respectively, shared with their other users.
 """
 
+import logging
 from datetime import datetime
 
 from qfa.domain.errors import AnalysisError
@@ -30,14 +31,20 @@ from qfa.domain.models import (
     AggregateSummaryResultModel,
     CommunityMeetingRecordSummaryModel,
     FeedbackRecordSummaryModel,
+    JudgeComponents,
     SingleSummaryCommunityMeetingRequestModel,
     SingleSummaryRequestModel,
     SummaryCommunityMeetingResultModel,
     SummaryRequestModel,
     SummaryResultModel,
 )
-from qfa.domain.ports import AnonymizationPort, LLMPort
+from qfa.domain.ports import AnonymizationPort, EvaluationPort, LLMPort
 from qfa.services.call_context import judge_call
+from qfa.services.judge_scoring import (
+    log_judge_components,
+    parse_judge_components,
+    record_judge_scores,
+)
 from qfa.services.language import detect_source_language
 from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.services.prompts import (
@@ -48,6 +55,8 @@ from qfa.services.prompts import (
     build_output_language_instruction,
 )
 from qfa.services.record_links import hyperlink_form_references
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_SUMMARIZATION_PROMPT = (
     "Summarize the feedback item as concise bullet points.\n"
@@ -98,43 +107,49 @@ Summary:
 Score the summary using three criteria. Each must be a float between 0 and 1.
 
 Faithfulness:
-1.0 = fully supported by source, no hallucinations
+1.0 = fully supported by the source text above, no hallucinations
 0.5 = mostly correct, minor issues
 0.0 = major inaccuracies
 
 Coverage:
-1.0 = includes all key points
-0.5 = partially covers key points
-0.0 = misses most important points
+1.0 = captures every key point in the source text above — whether that is
+one feedback record's own points, or the recurring themes across a batch
+0.5 = partially covers the key points in the source text above
+0.0 = misses most of the key points in the source text above
 
 Clarity:
 1.0 = very clear and concise
 0.5 = somewhat clear
 0.0 = confusing or poorly written
 
-Compute the final score as:
-quality_score = 0.6 * faithfulness + 0.3 * coverage + 0.1 * clarity
+Also produce an uncertainty explanation — one short paragraph explaining
+which criterion drove the score, calling out unsupported claims if any.
 
-Output rules:
-- Return ONLY the final quality_score
-- Return a single float between 0 and 1
-- No JSON
-- No explanation
-- No extra text
-- Example output: 0.82
+Output format:
+Respond with exactly four lines and nothing else, in this exact format:
+FAITHFULNESS: <0.0-1.0>
+COVERAGE: <0.0-1.0>
+CLARITY: <0.0-1.0>
+UNCERTAINTY_EXPLANATION: <one short paragraph>
+
+Example:
+FAITHFULNESS: 0.9
+COVERAGE: 0.8
+CLARITY: 0.9
+UNCERTAINTY_EXPLANATION: The summary is well-supported by the source text and captures its key points, though it slightly overstates how significant one minor detail is.
 """
 
 
-def _parse_judge_quality_score(raw: str) -> float:
-    """Parse a single float on the first line of the judge model output."""
-    line = raw.strip().split("\n", maxsplit=1)[0].strip()
-    try:
-        score = float(line)
-    except ValueError as exc:
-        raise AnalysisError("LLM judge returned invalid quality score") from exc
-    if not 0.0 <= score <= 1.0:
-        raise AnalysisError("LLM judge returned quality score outside 0.0-1.0")
-    return score
+def _parse_judge_quality_score(raw: str) -> JudgeComponents:
+    """Parse the judge's FAITHFULNESS/COVERAGE/CLARITY reply into components and total.
+
+    Delegates to the shared :func:`~qfa.services.judge_scoring.parse_judge_components`
+    (also used by the analyse judge, #351), so an out-of-range component raises
+    ``AnalysisError`` here too, never a ``ValidationError`` that would escape as
+    a 500. The returned :class:`JudgeComponents` carries the derived total via
+    its ``quality_score`` property.
+    """
+    return parse_judge_components(raw)
 
 
 def _build_judge_system_message(source_text: str, summary: str) -> str:
@@ -146,8 +161,8 @@ class SummarizeService:
     """Summarisation use cases: one aggregate summary, or one per record.
 
     Both methods issue two LLM calls — the summary itself on ``llm``, then a
-    free-text judge call on ``judge_llm`` whose bare-float output becomes
-    ``quality_score``.
+    free-text judge call on ``judge_llm`` that reports faithfulness/coverage/
+    clarity, from which ``quality_score`` is derived.
 
     Parameters
     ----------
@@ -169,6 +184,14 @@ class SummarizeService:
         no ``JUDGE_LLM_MODEL`` is configured. Configured via ``JUDGE_LLM_*``
         and resolved in
         :func:`qfa.api.composition.resolve_judge_llm_settings`.
+    evaluator : EvaluationPort | None
+        Where judge components are sent as live Langfuse scores (#354).
+        ``None`` (the default) means every judge call's scores are simply
+        not sent — the composition root
+        (:func:`qfa.api.composition.build_services`) always injects a
+        real port, a no-op one when Langfuse is unconfigured, so ``None``
+        here is only ever a test/script default, never production
+        behaviour.
     """
 
     def __init__(
@@ -177,6 +200,7 @@ class SummarizeService:
         anonymizer: AnonymizationPort,
         executor: LLMCallExecutor,
         judge_llm: LLMPort | None = None,
+        evaluator: EvaluationPort | None = None,
     ) -> None:
         self._llm = llm
         # Falling back to the primary client keeps the default (no
@@ -186,6 +210,7 @@ class SummarizeService:
         self._judge_llm = judge_llm if judge_llm is not None else llm
         self._anonymizer: AnonymizationPort = anonymizer
         self._executor = executor
+        self._evaluator = evaluator
 
     async def summarize_bulk(
         self,
@@ -243,9 +268,12 @@ class SummarizeService:
                 response_model=str,
                 timeout=judge_timeout,
             )
-        quality_score = _parse_judge_quality_score(judge_response.structured)
+        components = _parse_judge_quality_score(judge_response.structured)
+        log_judge_components(logger, components)
+        record_judge_scores(self._evaluator, components)
 
-        response.structured.quality_score = quality_score
+        response.structured.quality_score = components.quality_score
+        response.structured.components = components
 
         return_model_as_string = response.structured.model_dump_json()
         unanonymized_return_model_as_string = self._executor.deanonymize_json(
@@ -339,7 +367,9 @@ class SummarizeService:
                 response_model=str,
                 timeout=judge_timeout,
             )
-        quality_score = _parse_judge_quality_score(judge_response.structured)
+        components = _parse_judge_quality_score(judge_response.structured)
+        log_judge_components(logger, components)
+        record_judge_scores(self._evaluator, components)
 
         return_model_as_string = llm_completion.structured.model_dump_json()
         unanonymized_return_model_as_string = self._executor.deanonymize_json(
@@ -350,7 +380,11 @@ class SummarizeService:
         )
 
         return result.feedback_record_summaries[0].model_copy(
-            update={"id": request.feedback_record.id, "quality_score": quality_score}
+            update={
+                "id": request.feedback_record.id,
+                "quality_score": components.quality_score,
+                "components": components,
+            }
         )
 
     async def summarize_community_meeting(
@@ -403,7 +437,8 @@ class SummarizeService:
                 response_model=str,
                 timeout=judge_timeout,
             )
-        quality_score = _parse_judge_quality_score(judge_response.structured)
+        components = _parse_judge_quality_score(judge_response.structured)
+        log_judge_components(logger, components)
 
         return_model_as_string = llm_completion.structured.model_dump_json()
         unanonymized_return_model_as_string = self._executor.deanonymize_json(
@@ -421,6 +456,7 @@ class SummarizeService:
                     (request.community_meeting_record,),
                     request.espo_feedback_base_url,
                 ),
-                "quality_score": quality_score,
+                "quality_score": components.quality_score,
+                "components": components,
             }
         )

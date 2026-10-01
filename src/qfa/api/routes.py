@@ -258,6 +258,9 @@ async def analyze_bulk(
         return ApiAnalyzeBulkResponse(
             analysis="All records were empty: no analysis was performed.",
             quality_score=None,
+            faithfulness=None,
+            coverage=None,
+            clarity=None,
             uncertainty_explanation=_NO_CONTENT_EXPLANATION,
             feedback_record_count=0,
             request_id=request.state.request_id,
@@ -293,9 +296,13 @@ async def analyze_bulk(
             ],
         )
 
+    components = result.components
     return ApiAnalyzeBulkResponse(
         analysis=result.result,
         quality_score=result.quality_score,
+        faithfulness=None if components is None else components.faithfulness,
+        coverage=None if components is None else components.coverage,
+        clarity=None if components is None else components.clarity,
         uncertainty_explanation=result.uncertainty_explanation,
         feedback_record_count=len(records),
         request_id=request.state.request_id,
@@ -339,7 +346,8 @@ async def summarize_bulk(
     Returns
     -------
     ApiSummarizeBulkResponse
-        A single summary with themes ordered by frequency across all feedback records.
+        A single summary with themes ordered by frequency across all
+        feedback records, and request ID.
     """
     deadline = datetime.now(UTC) + timedelta(seconds=240)
 
@@ -351,6 +359,10 @@ async def summarize_bulk(
             title="",
             summary="All records were empty: no analysis was performed.",
             quality_score=None,
+            faithfulness=None,
+            coverage=None,
+            clarity=None,
+            request_id=request.state.request_id,
         )
 
     feedback_records = tuple(
@@ -371,11 +383,16 @@ async def summarize_bulk(
 
     result = await summarize_service.summarize_bulk(domain_request, deadline)
 
+    components = result.components
     return ApiSummarizeBulkResponse(
         title=result.title,
         summary=result.summary,
         quality_score=result.quality_score,
+        faithfulness=None if components is None else components.faithfulness,
+        coverage=None if components is None else components.coverage,
+        clarity=None if components is None else components.clarity,
         output_language=body.output_language,
+        request_id=request.state.request_id,
     )
 
 
@@ -383,7 +400,7 @@ async def summarize_bulk(
     "/v1/summarize",
     response_model=ApiSummarizeResponse,
     status_code=200,
-    tags=["Inference"],
+    tags=["Single Inference"],
 )
 async def summarize(
     body: ApiSummarizeRequest,
@@ -425,6 +442,9 @@ async def summarize(
             title="",
             summary="",
             quality_score=None,
+            faithfulness=None,
+            coverage=None,
+            clarity=None,
         )
 
     domain_request = SingleSummaryRequestModel(
@@ -441,11 +461,15 @@ async def summarize(
         deadline,
     )
 
+    components = result.components
     return ApiSummarizeResponse(
         id=result.id,
         title=result.title,
         summary=result.summary,
         quality_score=result.quality_score,
+        faithfulness=None if components is None else components.faithfulness,
+        coverage=None if components is None else components.coverage,
+        clarity=None if components is None else components.clarity,
     )
 
 
@@ -453,7 +477,7 @@ async def summarize(
     "/v1/summarize-community-meeting",
     response_model=ApiSummarizeCommunityMeetingResponse,
     status_code=200,
-    tags=["Inference"],
+    tags=["Single Inference"],
 )
 async def summarize_community_meeting(
     body: ApiSummarizeCommunityMeetingRequest,
@@ -472,6 +496,9 @@ async def summarize_community_meeting(
             title="",
             summary="",
             quality_score=None,
+            faithfulness=None,
+            coverage=None,
+            clarity=None,
         )
 
     domain_request = SingleSummaryCommunityMeetingRequestModel(
@@ -487,12 +514,16 @@ async def summarize_community_meeting(
     result = await summarize_service.summarize_community_meeting(
         domain_request, deadline
     )
+    components = result.components
 
     return ApiSummarizeCommunityMeetingResponse(
         id=result.id,
         title=result.title,
         summary=result.summary,
         quality_score=result.quality_score,
+        faithfulness=None if components is None else components.faithfulness,
+        coverage=None if components is None else components.coverage,
+        clarity=None if components is None else components.clarity,
     )
 
 
@@ -500,7 +531,7 @@ async def summarize_community_meeting(
     "/v1/assign-codes",
     response_model=ApiAssignCodesResponse,
     status_code=200,
-    tags=["Inference"],
+    tags=["Single Inference"],
 )
 async def assign_codes(
     body: ApiAssignCodesRequest,
@@ -588,7 +619,7 @@ async def assign_codes(
     "/v1/detect-sensitive",
     response_model=ApiDetectSensitiveResponse,
     status_code=200,
-    tags=["Inference"],
+    tags=["Single Inference"],
 )
 async def detect_sensitive(
     body: ApiDetectSensitiveRequest,

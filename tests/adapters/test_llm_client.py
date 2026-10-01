@@ -179,8 +179,10 @@ class TestLiteLLMClientLangfuseSpan:
         assert json.loads(attrs["langfuse.observation.cost_details"]) == {
             "total": 0.001
         }
-        # No call_scope active outside an HTTP request, so no operation tag.
+        # No call_scope active outside an HTTP request, so no operation tag
+        # and no deployed-version/commit metadata either.
         assert "langfuse.trace.tags" not in attrs
+        assert "langfuse.trace.metadata" not in attrs
         # Never the assembled prompt or the model's own response text.
         for value in attrs.values():
             assert SYSTEM_MSG not in str(value)
@@ -220,6 +222,39 @@ class TestLiteLLMClientLangfuseSpan:
         assert json.loads(span.attributes["langfuse.trace.tags"]) == [
             Operation.SUMMARIZE
         ]
+
+    @pytest.mark.asyncio
+    async def test_span_carries_deployed_version_and_commit_inside_a_call_scope(
+        self, monkeypatch
+    ):
+        """The trace metadata #354 asks for, in the fields ``eval/assign_codes_eval.py`` uses."""
+        from uuid import uuid4
+
+        import qfa
+        from qfa.domain.usage_models import Operation
+        from qfa.services.call_context import call_scope
+
+        monkeypatch.setenv("GIT_SHA", "deadbeef")
+        mock_response = _make_mock_response()
+        client, exporter = _client_with_span_capture()
+        with (
+            patch(
+                "qfa.adapters.llm_client.acompletion",
+                new_callable=AsyncMock,
+                return_value=mock_response,
+            ),
+            patch("qfa.adapters.llm_client.completion_cost", return_value=0.0),
+        ):
+            async with call_scope(TENANT_ID, Operation.SUMMARIZE, uuid4()):
+                await client.complete(
+                    SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT
+                )
+
+        span = exporter.get_finished_spans()[0]
+        assert json.loads(span.attributes["langfuse.trace.metadata"]) == {
+            "deployed_version": qfa.__version__,
+            "deployed_commit": "deadbeef",
+        }
 
     @pytest.mark.asyncio
     async def test_span_is_suffixed_and_tagged_as_judge_inside_judge_call(self):

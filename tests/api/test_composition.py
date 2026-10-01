@@ -11,10 +11,12 @@ import litellm
 import pytest
 from pydantic import SecretStr, ValidationError
 
+from qfa.adapters.evaluation import NoOpEvaluationAdapter
 from qfa.adapters.llm_client import LiteLLMClient
 from qfa.adapters.presidio_anonymizer import PresidioAnonymizer
 from qfa.api.composition import (
     build_analyze_service,
+    build_evaluator,
     build_langfuse_tracer,
     build_services,
     register_custom_model_prices,
@@ -55,6 +57,13 @@ class _StubEmbedder:
 
     def embed(self, texts):  # pragma: no cover - never invoked here
         raise AssertionError("Embedder should not be called during construction")
+
+
+class _StubEvaluator:
+    """Minimal EvaluationPort stand-in for identity-check tests."""
+
+    def record_score(self, *, trace_id, name, value):  # pragma: no cover
+        raise AssertionError("Evaluator should not be called during construction")
 
 
 @pytest.fixture
@@ -502,6 +511,34 @@ class TestBuildServices:
         assert services.coding._judge_llm is not stub_llm
         assert services.coding._judge_llm is services.analyze._judge_llm
 
+    def test_default_evaluator_is_a_real_noop_port(self, auth_env: None) -> None:
+        """No ``LANGFUSE_*`` configured (the ``auth_env`` default) → a no-op adapter.
+
+        Never ``None``: #354's null-object contract means every judge call
+        site can call ``record_judge_scores`` unconditionally.
+        """
+        services = build_services(AppSettings(), llm=_StubLLM())
+
+        assert isinstance(services.analyze._evaluator, NoOpEvaluationAdapter)
+        assert isinstance(services.summarize._evaluator, NoOpEvaluationAdapter)
+
+    def test_every_service_shares_the_one_evaluator(self, auth_env: None) -> None:
+        """One evaluator instance, like the executor and anonymiser above."""
+        services = build_services(AppSettings(), llm=_StubLLM())
+
+        assert services.analyze._evaluator is services.summarize._evaluator
+
+    def test_uses_injected_evaluator(self, auth_env: None) -> None:
+        """An ``evaluator=`` override reaches both analyze and summarize."""
+        stub_evaluator = _StubEvaluator()
+
+        services = build_services(
+            AppSettings(), llm=_StubLLM(), evaluator=stub_evaluator
+        )
+
+        assert services.analyze._evaluator is stub_evaluator
+        assert services.summarize._evaluator is stub_evaluator
+
 
 class TestRegisterCustomModelPrices:
     """Judge calls on an unpriced model are silently recorded at zero cost.
@@ -594,3 +631,32 @@ class TestBuildLangfuseTracer:
         """A self-hosted deployment must never fall back to Langfuse Cloud."""
         with pytest.raises(ValidationError, match="LANGFUSE_HOST"):
             LangfuseSettings(public_key="pk-test", secret_key=SecretStr("sk-test"))
+
+
+class TestBuildEvaluator:
+    """Live judge-score delivery is opt-in, mirroring ``build_langfuse_tracer`` (#354).
+
+    ``build_evaluator`` always returns a real ``EvaluationPort`` — a
+    no-op one is not "unconfigured", it is the deliberate default.
+    """
+
+    def test_returns_a_noop_adapter_without_credentials(
+        self, no_ambient_langfuse_env: None
+    ) -> None:
+        """Local dev has no Langfuse keys, and scores are simply dropped."""
+        evaluator = build_evaluator(LangfuseSettings())
+
+        assert isinstance(evaluator, NoOpEvaluationAdapter)
+
+    def test_returns_a_langfuse_adapter_when_credentials_are_set(self) -> None:
+        settings = LangfuseSettings(
+            public_key="pk-test",
+            secret_key=SecretStr("sk-test"),
+            host="https://langfuse.internal.example",
+        )
+
+        with patch("qfa.api.composition.LangfuseEvaluationAdapter") as mock_adapter:
+            evaluator = build_evaluator(settings)
+
+        mock_adapter.assert_called_once_with(settings)
+        assert evaluator is mock_adapter.return_value

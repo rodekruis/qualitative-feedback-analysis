@@ -195,10 +195,13 @@ jobs:
           promotion to staging / prd.
           EOF
 
+      # Uses the default GITHUB_TOKEN, not the ruleset-bypass App token: the
+      # tag was already pushed by the Semantic Release step above, so this
+      # only creates a release object and needs no bypass privilege (#178).
       - name: Create draft GitHub Release
         if: steps.semrel.outputs.released == 'true'
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           PRERELEASE_FLAG=""
           if [ "${{ steps.semrel.outputs.is_prerelease }}" = "true" ]; then

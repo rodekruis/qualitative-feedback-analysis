@@ -94,14 +94,17 @@ class TestBuildRequest:
     """Shaping the ``/v1/analyze`` request body."""
 
     def test_default_body_contains_required_fields(self) -> None:
-        """Records, prompt, mode, anonymize are always present."""
+        """Records, prompt, mode are always present."""
         body = stress_analyze.build_request(
             [{"id": "x", "text": "y", "metadata": {}}],
             prompt="why?",
         )
-        assert set(body) == {"feedback_records", "prompt", "mode", "anonymize"}
+        assert set(body) == {"feedback_records", "prompt", "mode"}
         assert body["mode"] == "hierarchical"
-        assert body["anonymize"] is True
+        # f0d937e made anonymisation always-on and dropped the request
+        # toggle; the server silently ignores the key, so sending it
+        # would only imply a control the API no longer offers.
+        assert "anonymize" not in body
 
     def test_period_only_when_set(self) -> None:
         """Omitting ``period`` keeps the key out of the body.

@@ -16,6 +16,7 @@ from qfa.api.schemas import (
     ApiCodingFramework,
     ApiCodingNode,
     ApiSummarizeBulkResponse,
+    ApiSummarizeCommunityMeetingResponse,
     _assign_codes_request_examples,
     _create_pretty_output,
     _format_quality,
@@ -554,16 +555,21 @@ def test_summarize_bulk_pretty_output_is_summary_text_only():
         title="Any Title",
         summary=summary,
         quality_score=0.94,
+        request_id="req-1",
     )
     assert response.pretty_output == summary
 
 
 def test_summarize_bulk_quality_text_renders_dots_and_percent():
     """quality_text formats quality_score as dot-chars and a percentage."""
-    response = ApiSummarizeBulkResponse(title="T", summary="S", quality_score=0.94)
+    response = ApiSummarizeBulkResponse(
+        title="T", summary="S", quality_score=0.94, request_id="req-1"
+    )
     assert response.quality_text == "●●●●● 94%"
 
-    response_85 = ApiSummarizeBulkResponse(title="T", summary="S", quality_score=0.85)
+    response_85 = ApiSummarizeBulkResponse(
+        title="T", summary="S", quality_score=0.85, request_id="req-1"
+    )
     assert response_85.quality_text == "●●●●○ 85%"
 
 
@@ -573,7 +579,9 @@ def test_summarize_bulk_quality_text_empty_batch_is_none():
     An empty batch means no judge call was made; returning 0 would signal
     poor quality rather than "nothing to judge".
     """
-    response = ApiSummarizeBulkResponse(title="", summary="", quality_score=None)
+    response = ApiSummarizeBulkResponse(
+        title="", summary="", quality_score=None, request_id="req-1"
+    )
     assert response.quality_text is None
 
 
@@ -588,6 +596,7 @@ def test_summarize_bulk_response_output_language_excluded_from_serialization():
         summary="s",
         quality_score=0.5,
         output_language="French",
+        request_id="req-1",
     )
     assert "output_language" not in response.model_dump()
 
@@ -673,6 +682,20 @@ def test_analyze_bulk_title_defaults_to_analysis():
     )
     assert response.title == "Analysis"
     assert "title" in response.model_dump()
+
+
+def test_analyze_bulk_response_schema_includes_component_fields():
+    """OpenAPI schema exposes faithfulness, coverage and clarity."""
+    properties = ApiAnalyzeBulkResponse.model_json_schema()["properties"]
+    for name in ("faithfulness", "coverage", "clarity"):
+        assert name in properties
+
+
+def test_summarize_community_meeting_response_schema_includes_component_fields():
+    """The community-meeting summary response matches the other summarize endpoints."""
+    properties = ApiSummarizeCommunityMeetingResponse.model_json_schema()["properties"]
+    for name in ("faithfulness", "coverage", "clarity"):
+        assert name in properties
 
 
 class TestAssignCodesRequestExamples:
