@@ -22,7 +22,10 @@ section 3 for the full inventory). Two rules for what is versioned:
 """
 
 from qfa.services.coding_classifier import _JUDGE_SYSTEM, SYSTEM_PROMPT
-from qfa.services.hierarchical_prompts import _MAP_ACTION_PROMPT, _REDUCE_ACTION_PROMPT
+from qfa.services.hierarchical_prompts import (
+    build_map_system_message,
+    build_reduce_system_message,
+)
 from qfa.services.prompts import (
     ANALYZE_ACTION_PROMPT,
     ANALYZE_GUARDRAILS_PROMPT,
@@ -37,19 +40,15 @@ from qfa.services.summarize import (
     _JUDGE_PROMPT,
 )
 
-# Composed exactly as their real call sites assemble them (analyze.py's
-# analyze_bulk, hierarchical_prompts.py's build_map_system_message /
-# build_reduce_system_message), minus the output-language suffix those call
-# sites append per request.
+# Composed exactly as analyze.py's analyze_bulk assembles it, minus the
+# output-language suffix that call site appends per request.
 _ANALYZE_SINGLE_PASS_SYSTEM = (
     f"{ANALYZE_SYSTEM_PROMPT}\n\n{ANALYZE_GUARDRAILS_PROMPT}\n\n{ANALYZE_ACTION_PROMPT}"
 )
-_ANALYZE_HIERARCHICAL_MAP_SYSTEM = (
-    f"{ANALYZE_SYSTEM_PROMPT}\n\n{ANALYZE_GUARDRAILS_PROMPT}\n\n{_MAP_ACTION_PROMPT}"
-)
-_ANALYZE_HIERARCHICAL_REDUCE_SYSTEM = (
-    f"{ANALYZE_SYSTEM_PROMPT}\n\n{ANALYZE_GUARDRAILS_PROMPT}\n\n{_REDUCE_ACTION_PROMPT}"
-)
+# Built by the same functions hierarchical_prompts.py's real call sites use,
+# with output_language=None so the per-request suffix is left out.
+_ANALYZE_HIERARCHICAL_MAP_SYSTEM = build_map_system_message(output_language=None)
+_ANALYZE_HIERARCHICAL_REDUCE_SYSTEM = build_reduce_system_message(output_language=None)
 
 SYSTEM_PROMPTS: dict[str, str] = {
     "analyze-single-pass-system": _ANALYZE_SINGLE_PASS_SYSTEM,
