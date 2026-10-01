@@ -52,8 +52,7 @@ class _RecordingFakeLLM(LLMPort):
         tenant_id,
         response_model=str,
         timeout=20.0,
-        prompt_name=None,
-        prompt_version=None,
+        prompt=None,
     ) -> LLMResponse:
         raise AssertionError("No LLM call should happen during startup")
 

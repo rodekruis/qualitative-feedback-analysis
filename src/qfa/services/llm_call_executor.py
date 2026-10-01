@@ -30,7 +30,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from qfa.domain.errors import AnalysisTimeoutError, FeedbackTooLargeError
-from qfa.domain.models import FeedbackRecordModel, LLMResponse, T_Response
+from qfa.domain.models import FeedbackRecordModel, LLMResponse, PromptRef, T_Response
 from qfa.domain.ports import AnonymizationPort, LLMPort
 from qfa.settings import LLM_RETRY_BUDGET_MULTIPLIER, OrchestratorSettings
 
@@ -156,8 +156,7 @@ class LLMCallExecutor:
         response_model: type[T_Response],
         deadline: datetime,
         timing: SlotTiming | None = None,
-        prompt_name: str | None = None,
-        prompt_version: int | None = None,
+        prompt: PromptRef | None = None,
     ) -> LLMResponse[T_Response]:
         """Run one LLM completion, bounded by ``semaphore`` and the deadline.
 
@@ -185,8 +184,8 @@ class LLMCallExecutor:
         them apart rather than reporting one combined number that hides how long
         the call sat waiting for a slot.
 
-        ``prompt_name``/``prompt_version`` are forwarded to :meth:`complete`
-        unchanged (#398); see its docstring for their contract.
+        ``prompt`` is forwarded to :meth:`complete` unchanged (#398); see
+        its docstring for its contract.
         """
         queue_start = time.perf_counter()
         async with semaphore:
@@ -204,8 +203,7 @@ class LLMCallExecutor:
                     tenant_id=tenant_id,
                     response_model=response_model,
                     deadline=deadline,
-                    prompt_name=prompt_name,
-                    prompt_version=prompt_version,
+                    prompt=prompt,
                 )
             finally:
                 if timing is not None:
@@ -270,8 +268,7 @@ class LLMCallExecutor:
         tenant_id: str,
         response_model: type[T_Response],
         deadline: datetime,
-        prompt_name: str | None = None,
-        prompt_version: int | None = None,
+        prompt: PromptRef | None = None,
     ) -> LLMResponse[T_Response]:
         """Run one LLM completion bounded by the deadline.
 
@@ -286,11 +283,11 @@ class LLMCallExecutor:
 
         ``llm`` overrides the connection for this one call — see
         :meth:`bounded_complete` for why that override exists; ``None`` uses
-        the executor's own client. ``prompt_name``/``prompt_version`` are
-        forwarded to ``client.complete`` unchanged (#398), for the Langfuse
-        trace-linking span attributes; see
+        the executor's own client. ``prompt`` is forwarded to
+        ``client.complete`` unchanged (#398), for the Langfuse trace-linking
+        span attributes; see
         :meth:`~qfa.adapters.llm_client.LiteLLMClient.complete`'s docstring
-        for their contract.
+        for its contract.
         """
         timeout = self.check_deadline_and_get_timeout(deadline)
         client = llm if llm is not None else self._llm
@@ -300,8 +297,7 @@ class LLMCallExecutor:
             tenant_id=tenant_id,
             response_model=response_model,
             timeout=timeout,
-            prompt_name=prompt_name,
-            prompt_version=prompt_version,
+            prompt=prompt,
         )
 
     def deanonymize_json(self, payload: str, mapping: dict[str, str]) -> str:

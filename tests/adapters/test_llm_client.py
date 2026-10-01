@@ -32,7 +32,7 @@ from qfa.domain.errors import (
     LLMTimeoutError,
     PromptInjectionDetectedError,
 )
-from qfa.domain.models import LLMResponse
+from qfa.domain.models import LLMResponse, PromptRef
 
 SENTINEL = "LEAK-CANARY-7f3a"
 
@@ -398,10 +398,10 @@ class TestLiteLLMClientLangfuseSpan:
 
 
 class TestLiteLLMClientPromptSpan:
-    """The two prompt-linking span attributes ``complete`` can add (#398)."""
+    """The prompt-linking span attributes ``complete`` can add (#398)."""
 
     @pytest.mark.asyncio
-    async def test_sets_both_attributes_when_both_are_given(self):
+    async def test_sets_both_attributes_when_prompt_is_given(self):
         mock_response = _make_mock_response()
         client, exporter = _client_with_span_capture()
         with (
@@ -418,8 +418,7 @@ class TestLiteLLMClientPromptSpan:
                 TENANT_ID,
                 str,
                 timeout=TIMEOUT,
-                prompt_name="analyze-single-pass-system",
-                prompt_version=3,
+                prompt=PromptRef(name="analyze-single-pass-system", version=3),
             )
 
         attrs = exporter.get_finished_spans()[0].attributes or {}
@@ -427,60 +426,8 @@ class TestLiteLLMClientPromptSpan:
         assert attrs["langfuse.observation.prompt.version"] == 3
 
     @pytest.mark.asyncio
-    async def test_sets_neither_attribute_when_prompt_name_is_none(self):
-        mock_response = _make_mock_response()
-        client, exporter = _client_with_span_capture()
-        with (
-            patch(
-                "qfa.adapters.llm_client.acompletion",
-                new_callable=AsyncMock,
-                return_value=mock_response,
-            ),
-            patch("qfa.adapters.llm_client.completion_cost", return_value=0.001),
-        ):
-            await client.complete(
-                SYSTEM_MSG,
-                USER_MSG,
-                TENANT_ID,
-                str,
-                timeout=TIMEOUT,
-                prompt_name=None,
-                prompt_version=3,
-            )
-
-        attrs = exporter.get_finished_spans()[0].attributes or {}
-        assert "langfuse.observation.prompt.name" not in attrs
-        assert "langfuse.observation.prompt.version" not in attrs
-
-    @pytest.mark.asyncio
-    async def test_sets_neither_attribute_when_prompt_version_is_none(self):
-        mock_response = _make_mock_response()
-        client, exporter = _client_with_span_capture()
-        with (
-            patch(
-                "qfa.adapters.llm_client.acompletion",
-                new_callable=AsyncMock,
-                return_value=mock_response,
-            ),
-            patch("qfa.adapters.llm_client.completion_cost", return_value=0.001),
-        ):
-            await client.complete(
-                SYSTEM_MSG,
-                USER_MSG,
-                TENANT_ID,
-                str,
-                timeout=TIMEOUT,
-                prompt_name="analyze-single-pass-system",
-                prompt_version=None,
-            )
-
-        attrs = exporter.get_finished_spans()[0].attributes or {}
-        assert "langfuse.observation.prompt.name" not in attrs
-        assert "langfuse.observation.prompt.version" not in attrs
-
-    @pytest.mark.asyncio
-    async def test_sets_neither_attribute_when_both_are_omitted(self):
-        """The default (no caller passes either) matches every pre-#398 call site."""
+    async def test_sets_neither_attribute_when_prompt_is_omitted(self):
+        """The default (no caller passes ``prompt``) matches every pre-#398 call site."""
         mock_response = _make_mock_response()
         client, exporter = _client_with_span_capture()
         with (

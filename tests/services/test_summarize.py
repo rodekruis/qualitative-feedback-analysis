@@ -27,6 +27,7 @@ from qfa.domain.models import (
     FeedbackRecordModel,
     FeedbackRecordSummaryModel,
     LLMResponse,
+    PromptRef,
     SingleSummaryCommunityMeetingRequestModel,
     SingleSummaryRequestModel,
     SummaryCommunityMeetingResultModel,
@@ -200,8 +201,7 @@ class FakeLLMPort(LLMPort):
         tenant_id,
         response_model=str,
         timeout=40.0,
-        prompt_name=None,
-        prompt_version=None,
+        prompt=None,
     ):
         self.calls.append(
             {
@@ -210,8 +210,7 @@ class FakeLLMPort(LLMPort):
                 "tenant_id": tenant_id,
                 "response_model": response_model,
                 "timeout": timeout,
-                "prompt_name": prompt_name,
-                "prompt_version": prompt_version,
+                "prompt": prompt,
             }
         )
         idx = self._call_count
@@ -949,10 +948,12 @@ class TestSummarizePromptVersions:
 
         await service.summarize_bulk(_make_aggregate_request(), _future_deadline())
 
-        assert fake_llm.calls[0]["prompt_name"] == "summarize-aggregate-system"
-        assert fake_llm.calls[0]["prompt_version"] == 2
-        assert fake_llm.calls[1]["prompt_name"] == "summarize-judge"
-        assert fake_llm.calls[1]["prompt_version"] == 9
+        assert fake_llm.calls[0]["prompt"] == PromptRef(
+            name="summarize-aggregate-system", version=2
+        )
+        assert fake_llm.calls[1]["prompt"] == PromptRef(
+            name="summarize-judge", version=9
+        )
 
     @pytest.mark.asyncio
     async def test_summarize_tags_single_system_and_judge(self, settings):
@@ -968,10 +969,12 @@ class TestSummarizePromptVersions:
 
         await service.summarize(_make_summary_request(), _future_deadline())
 
-        assert fake_llm.calls[0]["prompt_name"] == "summarize-single-system"
-        assert fake_llm.calls[0]["prompt_version"] == 4
-        assert fake_llm.calls[1]["prompt_name"] == "summarize-judge"
-        assert fake_llm.calls[1]["prompt_version"] == 9
+        assert fake_llm.calls[0]["prompt"] == PromptRef(
+            name="summarize-single-system", version=4
+        )
+        assert fake_llm.calls[1]["prompt"] == PromptRef(
+            name="summarize-judge", version=9
+        )
 
     @pytest.mark.asyncio
     async def test_summarize_community_meeting_tags_its_system_and_judge(
@@ -991,14 +994,20 @@ class TestSummarizePromptVersions:
             _make_community_meeting_request(), _future_deadline()
         )
 
-        assert fake_llm.calls[0]["prompt_name"] == "summarize-community-meeting-system"
-        assert fake_llm.calls[0]["prompt_version"] == 6
-        assert fake_llm.calls[1]["prompt_name"] == "summarize-judge"
-        assert fake_llm.calls[1]["prompt_version"] == 9
+        assert fake_llm.calls[0]["prompt"] == PromptRef(
+            name="summarize-community-meeting-system", version=6
+        )
+        assert fake_llm.calls[1]["prompt"] == PromptRef(
+            name="summarize-judge", version=9
+        )
 
     @pytest.mark.asyncio
-    async def test_no_prompt_versions_means_the_version_is_none(self, settings):
-        """Without ``prompt_versions`` (the default), the name is still sent."""
+    async def test_no_prompt_versions_means_no_prompt_is_tagged(self, settings):
+        """Without ``prompt_versions`` (the default), neither name nor version is sent.
+
+        ``PromptRef`` requires both fields, so a call site that has no
+        version for a name cannot tag the call with the name alone.
+        """
         fake_llm = FakeLLMPort(
             responses=[
                 _make_llm_response(structured=_make_summary_result()),
@@ -1009,7 +1018,5 @@ class TestSummarizePromptVersions:
 
         await service.summarize(_make_summary_request(), _future_deadline())
 
-        assert fake_llm.calls[0]["prompt_name"] == "summarize-single-system"
-        assert fake_llm.calls[0]["prompt_version"] is None
-        assert fake_llm.calls[1]["prompt_name"] == "summarize-judge"
-        assert fake_llm.calls[1]["prompt_version"] is None
+        assert fake_llm.calls[0]["prompt"] is None
+        assert fake_llm.calls[1]["prompt"] is None

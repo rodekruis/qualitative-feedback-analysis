@@ -51,6 +51,11 @@ from qfa.services.coding_classifier import (
 )
 from qfa.services.judge_scoring import record_coding_judge_score
 from qfa.services.llm_call_executor import LLMCallExecutor
+from qfa.services.prompt_names import (
+    CODING_CLASSIFIER_JUDGE,
+    CODING_CLASSIFIER_SYSTEM,
+    prompt_ref,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -324,8 +329,7 @@ class CodingService:
                 tenant_id=request.tenant_id,
                 response_model=CodingResponse,
                 timeout=timeout,
-                prompt_name="coding-classifier-system",
-                prompt_version=self._prompt_versions.get("coding-classifier-system"),
+                prompt=prompt_ref(self._prompt_versions, CODING_CLASSIFIER_SYSTEM),
             )
             selected_indices = response.structured.selected
         except LLMResponseParseError as exc:
@@ -492,8 +496,7 @@ class CodingService:
                 user_message=user_message,
                 tenant_id=tenant_id,
                 response_model=str,
-                prompt_name="coding-classifier-judge",
-                prompt_version=self._prompt_versions.get("coding-classifier-judge"),
+                prompt=prompt_ref(self._prompt_versions, CODING_CLASSIFIER_JUDGE),
             )
         judged = _parse_judge_response(response.structured)
         if not 0.0 <= judged.score <= 1.0:

@@ -903,7 +903,7 @@ def _make_lifespan(llm_factory: LLMFactory):
         if embedder is not None:
             logger.info("Embedding model ready (hierarchical analysis available)")
 
-        services = await build_services(
+        services = build_services(
             settings,
             llm=tracked_llm,
             judge_llm=tracked_judge_llm,

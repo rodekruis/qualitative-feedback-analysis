@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import json
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import litellm
 import pytest
@@ -50,8 +50,7 @@ class _StubLLM:
         tenant_id,
         response_model=str,
         timeout=20.0,
-        prompt_name=None,
-        prompt_version=None,
+        prompt=None,
     ):
         raise AssertionError("LLM should not be called during construction")
 
@@ -73,7 +72,7 @@ class _StubEvaluator:
 class _StubPromptPort(PromptPort):
     """Minimal PromptPort stand-in for identity-check tests (#398)."""
 
-    async def sync(self, prompts):  # pragma: no cover - never invoked here
+    def sync(self, prompts):  # pragma: no cover - never invoked here
         raise AssertionError("PromptPort should not be called during construction")
 
 
@@ -279,8 +278,7 @@ class TestResolveJudgeLLMSettings:
 class TestBuildAnalyzeServiceJudgeClient:
     """The factory builds and injects a judge client only when one is configured."""
 
-    @pytest.mark.asyncio
-    async def test_judge_calls_use_the_primary_client_by_default(
+    def test_judge_calls_use_the_primary_client_by_default(
         self, auth_env: None
     ) -> None:
         """Without ``JUDGE_LLM_MODEL`` the service holds one client for everything.
@@ -289,12 +287,11 @@ class TestBuildAnalyzeServiceJudgeClient:
         exists at all, so behaviour and cost are byte-for-byte what they were
         before the judge connection was added.
         """
-        analyze = await build_analyze_service(AppSettings(), llm=_StubLLM())
+        analyze = build_analyze_service(AppSettings(), llm=_StubLLM())
 
         assert analyze._judge_llm is analyze._llm
 
-    @pytest.mark.asyncio
-    async def test_builds_a_distinct_judge_client_when_a_judge_model_is_set(
+    def test_builds_a_distinct_judge_client_when_a_judge_model_is_set(
         self, auth_env: None, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A configured judge model yields a second client, leaving the primary intact.
@@ -306,7 +303,7 @@ class TestBuildAnalyzeServiceJudgeClient:
         monkeypatch.setenv("JUDGE_LLM_MODEL", "azure_ai/mistral-medium-2505")
         stub_llm = _StubLLM()
 
-        analyze = await build_analyze_service(AppSettings(), llm=stub_llm)
+        analyze = build_analyze_service(AppSettings(), llm=stub_llm)
 
         assert analyze._llm is stub_llm
         assert analyze._judge_llm is not stub_llm
@@ -315,8 +312,7 @@ class TestBuildAnalyzeServiceJudgeClient:
         # The inherited credential is what makes this a no-new-secret change.
         assert analyze._judge_llm._api_key == "sk-test-composition"
 
-    @pytest.mark.asyncio
-    async def test_uses_injected_judge_llm(self, auth_env: None) -> None:
+    def test_uses_injected_judge_llm(self, auth_env: None) -> None:
         """A ``judge_llm=`` override is plumbed straight through, like ``llm=``.
 
         This is the seam the FastAPI lifespan uses to hand in a judge client
@@ -324,14 +320,13 @@ class TestBuildAnalyzeServiceJudgeClient:
         """
         stub_judge = _StubLLM()
 
-        analyze = await build_analyze_service(
+        analyze = build_analyze_service(
             AppSettings(), llm=_StubLLM(), judge_llm=stub_judge
         )
 
         assert analyze._judge_llm is stub_judge
 
-    @pytest.mark.asyncio
-    async def test_injected_judge_llm_wins_over_configuration(
+    def test_injected_judge_llm_wins_over_configuration(
         self, auth_env: None, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """An explicit ``judge_llm=`` suppresses building one from settings.
@@ -342,7 +337,7 @@ class TestBuildAnalyzeServiceJudgeClient:
         monkeypatch.setenv("JUDGE_LLM_MODEL", "azure_ai/mistral-medium-2505")
         stub_judge = _StubLLM()
 
-        analyze = await build_analyze_service(
+        analyze = build_analyze_service(
             AppSettings(), llm=_StubLLM(), judge_llm=stub_judge
         )
 
@@ -352,8 +347,7 @@ class TestBuildAnalyzeServiceJudgeClient:
 class TestBuildAnalyzeService:
     """Composition factory wires the analyze service dependencies correctly."""
 
-    @pytest.mark.asyncio
-    async def test_returns_analyze_service_with_default_components(
+    def test_returns_analyze_service_with_default_components(
         self, auth_env: None
     ) -> None:
         """Without overrides the factory builds a real LLM + Presidio + no embedder.
@@ -364,7 +358,7 @@ class TestBuildAnalyzeService:
         """
         settings = AppSettings()
 
-        analyze = await build_analyze_service(settings)
+        analyze = build_analyze_service(settings)
 
         assert isinstance(analyze, AnalyzeService)
         assert isinstance(analyze._llm, LiteLLMClient)
@@ -372,8 +366,7 @@ class TestBuildAnalyzeService:
         assert analyze._embedder is None
         assert analyze._analyze_settings is settings.analyze
 
-    @pytest.mark.asyncio
-    async def test_uses_injected_embedder(self, auth_env: None) -> None:
+    def test_uses_injected_embedder(self, auth_env: None) -> None:
         """An ``embedder=`` override is plumbed straight into the analyze service.
 
         Mirrors the lifespan, which builds the embedder explicitly to log
@@ -382,25 +375,23 @@ class TestBuildAnalyzeService:
         settings = AppSettings()
         stub_embedder = _StubEmbedder()
 
-        analyze = await build_analyze_service(settings, embedder=stub_embedder)
+        analyze = build_analyze_service(settings, embedder=stub_embedder)
 
         assert analyze._embedder is stub_embedder
 
-    @pytest.mark.asyncio
-    async def test_uses_injected_llm_and_judge_llm(self, auth_env: None) -> None:
+    def test_uses_injected_llm_and_judge_llm(self, auth_env: None) -> None:
         """``llm=`` / ``judge_llm=`` overrides reach the analyze service too."""
         stub_llm = _StubLLM()
         stub_judge = _StubLLM()
 
-        analyze = await build_analyze_service(
+        analyze = build_analyze_service(
             AppSettings(), llm=stub_llm, judge_llm=stub_judge
         )
 
         assert analyze._llm is stub_llm
         assert analyze._judge_llm is stub_judge
 
-    @pytest.mark.asyncio
-    async def test_propagates_token_budget(self, auth_env: None) -> None:
+    def test_propagates_token_budget(self, auth_env: None) -> None:
         """``max_total_tokens`` flows from settings.llm into the analyze service.
 
         It sizes the map chunks and reduce groups, so a regression here would
@@ -408,7 +399,7 @@ class TestBuildAnalyzeService:
         """
         settings = AppSettings()
 
-        analyze = await build_analyze_service(settings, llm=_StubLLM())
+        analyze = build_analyze_service(settings, llm=_StubLLM())
 
         assert analyze._max_total_tokens == settings.llm.max_total_tokens
 
@@ -416,53 +407,46 @@ class TestBuildAnalyzeService:
 class TestBuildServices:
     """The factory builds every service over one shared executor and anonymiser."""
 
-    @pytest.mark.asyncio
-    async def test_returns_every_service(self, auth_env: None) -> None:
+    def test_returns_every_service(self, auth_env: None) -> None:
         """One graph, one field per service the request lifecycle can reach."""
-        services = await build_services(AppSettings(), llm=_StubLLM())
+        services = build_services(AppSettings(), llm=_StubLLM())
 
         assert isinstance(services.sensitivity, SensitivityService)
         assert isinstance(services.coding, CodingService)
         assert isinstance(services.analyze, AnalyzeService)
         assert isinstance(services.summarize, SummarizeService)
 
-    @pytest.mark.asyncio
-    async def test_every_service_shares_the_one_executor(self, auth_env: None) -> None:
+    def test_every_service_shares_the_one_executor(self, auth_env: None) -> None:
         """Identity, not equality: a second executor is the failure to catch.
 
         Per ADR-017 the executor is where the token ceiling and per-call
         timeout are bound. Two instances would let a service drift onto a
         stale budget while still looking correctly wired.
         """
-        services = await build_services(AppSettings(), llm=_StubLLM())
+        services = build_services(AppSettings(), llm=_StubLLM())
 
         assert services.coding._executor is services.sensitivity._executor
         assert services.analyze._executor is services.sensitivity._executor
         assert services.summarize._executor is services.sensitivity._executor
 
-    @pytest.mark.asyncio
-    async def test_every_service_shares_the_one_anonymiser(
-        self, auth_env: None
-    ) -> None:
+    def test_every_service_shares_the_one_anonymiser(self, auth_env: None) -> None:
         """Constructing ``PresidioAnonymizer`` loads spaCy models; do it once."""
-        services = await build_services(AppSettings(), llm=_StubLLM())
+        services = build_services(AppSettings(), llm=_StubLLM())
 
         assert services.coding._anonymizer is services.analyze._anonymizer
         assert services.summarize._anonymizer is services.analyze._anonymizer
 
-    @pytest.mark.asyncio
-    async def test_no_judge_model_leaves_every_judge_on_the_primary(
+    def test_no_judge_model_leaves_every_judge_on_the_primary(
         self, auth_env: None
     ) -> None:
         """The default path: unset ``JUDGE_LLM_MODEL`` means one client each."""
-        services = await build_services(AppSettings(), llm=_StubLLM())
+        services = build_services(AppSettings(), llm=_StubLLM())
 
         assert services.coding._judge_llm is services.coding._llm
         assert services.analyze._judge_llm is services.analyze._llm
         assert services.summarize._judge_llm is services.summarize._llm
 
-    @pytest.mark.asyncio
-    async def test_shared_executor_gets_timeout_and_token_budget_from_settings(
+    def test_shared_executor_gets_timeout_and_token_budget_from_settings(
         self, auth_env: None
     ) -> None:
         """LLM-side limits flow from settings.llm into the shared executor.
@@ -474,7 +458,7 @@ class TestBuildServices:
         """
         settings = AppSettings()
 
-        services = await build_services(settings, llm=_StubLLM())
+        services = build_services(settings, llm=_StubLLM())
 
         assert services.analyze._executor._llm_timeout_seconds == (
             settings.llm.timeout_seconds
@@ -483,8 +467,7 @@ class TestBuildServices:
             settings.llm.max_total_tokens
         )
 
-    @pytest.mark.asyncio
-    async def test_anonymizer_gets_worker_count_and_batch_size_from_settings(
+    def test_anonymizer_gets_worker_count_and_batch_size_from_settings(
         self, auth_env: None, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """``ANONYMIZATION_*`` settings must reach the shared ``PresidioAnonymizer``.
@@ -498,17 +481,14 @@ class TestBuildServices:
         monkeypatch.setenv("ANONYMIZATION_BATCH_SIZE", "32")
         settings = AppSettings()
 
-        services = await build_services(settings, llm=_StubLLM())
+        services = build_services(settings, llm=_StubLLM())
 
         anonymizer = services.analyze._anonymizer
         assert isinstance(anonymizer, PresidioAnonymizer)
         assert anonymizer._max_workers == 1
         assert anonymizer._batch_size == 32
 
-    @pytest.mark.asyncio
-    async def test_summarize_service_gets_both_connections(
-        self, auth_env: None
-    ) -> None:
+    def test_summarize_service_gets_both_connections(self, auth_env: None) -> None:
         """Generation and judge clients reach the summarisation service.
 
         Its two judge call sites moved out of the old ``Orchestrator`` god
@@ -518,15 +498,12 @@ class TestBuildServices:
         stub_llm = _StubLLM()
         stub_judge = _StubLLM()
 
-        services = await build_services(
-            AppSettings(), llm=stub_llm, judge_llm=stub_judge
-        )
+        services = build_services(AppSettings(), llm=stub_llm, judge_llm=stub_judge)
 
         assert services.summarize._llm is stub_llm
         assert services.summarize._judge_llm is stub_judge
 
-    @pytest.mark.asyncio
-    async def test_coding_service_gets_the_judge_connection(
+    def test_coding_service_gets_the_judge_connection(
         self, auth_env: None, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """#310 routes coding's per-level judge onto the judge connection too.
@@ -538,45 +515,41 @@ class TestBuildServices:
         monkeypatch.setenv("JUDGE_LLM_MODEL", "azure_ai/mistral-medium-2505")
         stub_llm = _StubLLM()
 
-        services = await build_services(AppSettings(), llm=stub_llm)
+        services = build_services(AppSettings(), llm=stub_llm)
 
         assert services.coding._llm is stub_llm
         assert services.coding._judge_llm is not stub_llm
         assert services.coding._judge_llm is services.analyze._judge_llm
 
-    @pytest.mark.asyncio
-    async def test_default_evaluator_is_a_real_noop_port(self, auth_env: None) -> None:
+    def test_default_evaluator_is_a_real_noop_port(self, auth_env: None) -> None:
         """No ``LANGFUSE_*`` configured (the ``auth_env`` default) → a no-op adapter.
 
         Never ``None``: #354's null-object contract means every judge call
         site can call ``record_judge_scores`` unconditionally.
         """
-        services = await build_services(AppSettings(), llm=_StubLLM())
+        services = build_services(AppSettings(), llm=_StubLLM())
 
         assert isinstance(services.analyze._evaluator, NoOpEvaluationAdapter)
         assert isinstance(services.summarize._evaluator, NoOpEvaluationAdapter)
 
-    @pytest.mark.asyncio
-    async def test_every_service_shares_the_one_evaluator(self, auth_env: None) -> None:
+    def test_every_service_shares_the_one_evaluator(self, auth_env: None) -> None:
         """One evaluator instance, like the executor and anonymiser above."""
-        services = await build_services(AppSettings(), llm=_StubLLM())
+        services = build_services(AppSettings(), llm=_StubLLM())
 
         assert services.analyze._evaluator is services.summarize._evaluator
 
-    @pytest.mark.asyncio
-    async def test_uses_injected_evaluator(self, auth_env: None) -> None:
+    def test_uses_injected_evaluator(self, auth_env: None) -> None:
         """An ``evaluator=`` override reaches both analyze and summarize."""
         stub_evaluator = _StubEvaluator()
 
-        services = await build_services(
+        services = build_services(
             AppSettings(), llm=_StubLLM(), evaluator=stub_evaluator
         )
 
         assert services.analyze._evaluator is stub_evaluator
         assert services.summarize._evaluator is stub_evaluator
 
-    @pytest.mark.asyncio
-    async def test_uses_injected_prompt_versions(self, auth_env: None) -> None:
+    def test_uses_injected_prompt_versions(self, auth_env: None) -> None:
         """A ``prompt_versions=`` override reaches every service that needs it (#398).
 
         Passing one in skips the Langfuse push entirely, which is what lets
@@ -584,7 +557,7 @@ class TestBuildServices:
         """
         stub_versions = {"analyze-single-pass-system": 3}
 
-        services = await build_services(
+        services = build_services(
             AppSettings(), llm=_StubLLM(), prompt_versions=stub_versions
         )
 
@@ -720,23 +693,21 @@ class TestBuildEvaluator:
 class TestBuildPromptVersions:
     """Langfuse prompt sync is opt-in, mirroring ``build_evaluator`` (#398).
 
-    ``build_prompt_versions`` always awaits a real ``PromptPort`` — a no-op
+    ``build_prompt_versions`` always calls a real ``PromptPort`` — a no-op
     one is not "unconfigured", it is the deliberate default. Covers the gate
     only; ``LangfusePromptAdapter.sync``'s own compare-then-create behaviour
     is covered in ``tests/adapters/test_prompts.py``.
     """
 
-    @pytest.mark.asyncio
-    async def test_routes_to_the_noop_adapter_without_credentials(
+    def test_routes_to_the_noop_adapter_without_credentials(
         self, no_ambient_langfuse_env: None
     ) -> None:
         """Local dev has no Langfuse keys, and no prompt is ever pushed."""
-        result = await build_prompt_versions(LangfuseSettings())
+        result = build_prompt_versions(LangfuseSettings())
 
         assert result == {}
 
-    @pytest.mark.asyncio
-    async def test_routes_to_the_langfuse_adapter_when_credentials_are_set(
+    def test_routes_to_the_langfuse_adapter_when_credentials_are_set(
         self,
     ) -> None:
         settings = LangfuseSettings(
@@ -746,10 +717,8 @@ class TestBuildPromptVersions:
         )
 
         with patch("qfa.api.composition.LangfusePromptAdapter") as mock_adapter:
-            mock_adapter.return_value.sync = AsyncMock(
-                return_value={"analyze-judge": 1}
-            )
-            result = await build_prompt_versions(settings)
+            mock_adapter.return_value.sync.return_value = {"analyze-judge": 1}
+            result = build_prompt_versions(settings)
 
         mock_adapter.assert_called_once_with(settings)
         assert result == {"analyze-judge": 1}

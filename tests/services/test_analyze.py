@@ -29,6 +29,7 @@ from qfa.domain.models import (
     FeedbackRecordModel,
     JudgeComponents,
     LLMResponse,
+    PromptRef,
 )
 from qfa.domain.ports import AnonymizationPort
 from qfa.domain.usage_models import Operation
@@ -738,29 +739,26 @@ class TestAnalyzePromptVersions:
 
         await service.analyze_bulk(_make_request(), _future_deadline())
 
-        assert fake_llm.calls[0]["prompt_name"] == "analyze-single-pass-system"
-        assert fake_llm.calls[0]["prompt_version"] == 3
-        assert fake_llm.calls[1]["prompt_name"] == "analyze-judge"
-        assert fake_llm.calls[1]["prompt_version"] == 7
+        assert fake_llm.calls[0]["prompt"] == PromptRef(
+            name="analyze-single-pass-system", version=3
+        )
+        assert fake_llm.calls[1]["prompt"] == PromptRef(name="analyze-judge", version=7)
 
     @pytest.mark.asyncio
-    async def test_no_prompt_versions_means_the_version_is_none(self, settings):
-        """Without ``prompt_versions`` (the default), every call's version is ``None``.
+    async def test_no_prompt_versions_means_no_prompt_is_tagged(self, settings):
+        """Without ``prompt_versions`` (the default), no call is tagged at all.
 
-        The name is still sent — it is a hardcoded literal, not looked up.
-        ``LiteLLMClient.complete`` is what skips both span attributes when
-        the version is ``None`` (an unconfigured Langfuse, or a push that
-        failed); the call site itself does not withhold the name.
+        ``PromptRef`` requires both a name and a version, so a call site
+        with no looked-up version for a name cannot tag the call with the
+        name alone — it passes ``prompt=None``.
         """
         fake_llm = _judging_llm(analysis="analysis text")
         service = _build_analyze_service(fake_llm, FakeAnonymizer(), settings)
 
         await service.analyze_bulk(_make_request(), _future_deadline())
 
-        assert fake_llm.calls[0]["prompt_name"] == "analyze-single-pass-system"
-        assert fake_llm.calls[0]["prompt_version"] is None
-        assert fake_llm.calls[1]["prompt_name"] == "analyze-judge"
-        assert fake_llm.calls[1]["prompt_version"] is None
+        assert fake_llm.calls[0]["prompt"] is None
+        assert fake_llm.calls[1]["prompt"] is None
 
 
 class TestAnalyzeJudgeFailure:

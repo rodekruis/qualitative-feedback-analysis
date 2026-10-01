@@ -54,6 +54,13 @@ from qfa.services.judge_scoring import (
     record_judge_scores,
 )
 from qfa.services.llm_call_executor import LLMCallExecutor, SlotTiming
+from qfa.services.prompt_names import (
+    ANALYZE_HIERARCHICAL_MAP_SYSTEM,
+    ANALYZE_HIERARCHICAL_REDUCE_SYSTEM,
+    ANALYZE_JUDGE,
+    ANALYZE_SINGLE_PASS_SYSTEM,
+    prompt_ref,
+)
 from qfa.services.prompts import (
     ANALYZE_ACTION_PROMPT,
     ANALYZE_GUARDRAILS_PROMPT,
@@ -335,8 +342,7 @@ class AnalyzeService:
             tenant_id=request.tenant_id,
             response_model=str,
             timeout=analyse_timeout,
-            prompt_name="analyze-single-pass-system",
-            prompt_version=self._prompt_versions.get("analyze-single-pass-system"),
+            prompt=prompt_ref(self._prompt_versions, ANALYZE_SINGLE_PASS_SYSTEM),
         )
         analysis_text: str = analyse_response.structured
 
@@ -372,8 +378,7 @@ class AnalyzeService:
                     tenant_id=request.tenant_id,
                     response_model=str,
                     timeout=judge_timeout,
-                    prompt_name="analyze-judge",
-                    prompt_version=self._prompt_versions.get("analyze-judge"),
+                    prompt=prompt_ref(self._prompt_versions, ANALYZE_JUDGE),
                 )
             judged = _parse_analyze_judge_response(judge_response.structured)
             quality_score = judged.quality_score
@@ -799,8 +804,7 @@ class AnalyzeService:
             response_model=str,
             deadline=deadline,
             timing=timing,
-            prompt_name="analyze-hierarchical-map-system",
-            prompt_version=self._prompt_versions.get("analyze-hierarchical-map-system"),
+            prompt=prompt_ref(self._prompt_versions, ANALYZE_HIERARCHICAL_MAP_SYSTEM),
         )
         return response.structured
 
@@ -846,8 +850,7 @@ class AnalyzeService:
                     response_model=str,
                     deadline=deadline,
                     timing=timing,
-                    prompt_name="analyze-judge",
-                    prompt_version=self._prompt_versions.get("analyze-judge"),
+                    prompt=prompt_ref(self._prompt_versions, ANALYZE_JUDGE),
                 )
             judged = _parse_analyze_judge_response(judge_response.structured)
             # One score per chunk, not one aggregate for the whole
@@ -924,9 +927,8 @@ class AnalyzeService:
                 tenant_id=tenant_id,
                 response_model=str,
                 deadline=deadline,
-                prompt_name="analyze-hierarchical-reduce-system",
-                prompt_version=self._prompt_versions.get(
-                    "analyze-hierarchical-reduce-system"
+                prompt=prompt_ref(
+                    self._prompt_versions, ANALYZE_HIERARCHICAL_REDUCE_SYSTEM
                 ),
             )
             return response.structured

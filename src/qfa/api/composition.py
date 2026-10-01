@@ -245,14 +245,17 @@ def build_evaluator(settings: LangfuseSettings) -> EvaluationPort:
     return LangfuseEvaluationAdapter(settings)
 
 
-async def build_prompt_versions(settings: LangfuseSettings) -> dict[str, int]:
+def build_prompt_versions(settings: LangfuseSettings) -> dict[str, int]:
     """Push every hardcoded system prompt to Langfuse; return its current version per name.
 
     Mirrors :func:`build_evaluator`'s own gate on the same settings: while
     ``LANGFUSE_PUBLIC_KEY``/``LANGFUSE_SECRET_KEY`` are unset, no push
     happens and every name is simply absent from ``GET /v1/health``'s
     ``prompts`` field. Runs once, at startup, before the server accepts
-    traffic — never on the request path (#398).
+    traffic — never on the request path (#398). Synchronous and blocking:
+    :class:`~qfa.adapters.prompts.LangfusePromptAdapter` keeps each round
+    trip to a short, fixed timeout with no retry, so the worst case across
+    all 11 prompts stays well inside gunicorn's worker startup deadline.
 
     Parameters
     ----------
@@ -271,9 +274,9 @@ async def build_prompt_versions(settings: LangfuseSettings) -> dict[str, int]:
         logger.debug(
             "LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY unset; prompt sync disabled"
         )
-        return await NoOpPromptAdapter().sync(SYSTEM_PROMPTS)
+        return NoOpPromptAdapter().sync(SYSTEM_PROMPTS)
     logger.info("Langfuse prompt sync configured (host=%s)", settings.host)
-    return await LangfusePromptAdapter(settings).sync(SYSTEM_PROMPTS)
+    return LangfusePromptAdapter(settings).sync(SYSTEM_PROMPTS)
 
 
 def register_custom_model_prices() -> None:
@@ -342,7 +345,7 @@ def build_langfuse_tracer(settings: LangfuseSettings) -> Tracer:
     return provider.get_tracer("qfa.adapters.llm_client")
 
 
-async def build_services(
+def build_services(
     settings: AppSettings,
     *,
     llm: LLMPort | None = None,
@@ -353,7 +356,7 @@ async def build_services(
 ) -> ServiceGraph:
     """Construct every application service from application settings.
 
-    Async because it makes one Langfuse prompt-sync round trip (via
+    Makes one Langfuse prompt-sync round trip (via
     :func:`build_prompt_versions`) when Langfuse is configured — the only
     I/O this factory itself performs; everything else it builds is
     constructed, not called. Every other network-facing dependency
@@ -419,8 +422,9 @@ async def build_services(
         Pre-built ``{name: version}`` map to use instead of pushing
         :data:`~qfa.services.prompt_registry.SYSTEM_PROMPTS` to Langfuse.
         ``None`` (the default) builds one via :func:`build_prompt_versions`,
-        which never raises — an unconfigured or failing push simply leaves
-        a name's version absent (#398).
+        which blocks on one Langfuse round trip per name but never raises —
+        an unconfigured or failing push simply leaves a name's version
+        absent (#398).
 
     Returns
     -------
@@ -454,7 +458,7 @@ async def build_services(
         evaluator = build_evaluator(settings.langfuse)
 
     if prompt_versions is None:
-        prompt_versions = await build_prompt_versions(settings.langfuse)
+        prompt_versions = build_prompt_versions(settings.langfuse)
 
     anonymizer = PresidioAnonymizer(
         max_workers=settings.anonymization.max_workers,
@@ -516,7 +520,7 @@ async def build_services(
     )
 
 
-async def build_analyze_service(
+def build_analyze_service(
     settings: AppSettings,
     *,
     llm: LLMPort | None = None,
@@ -529,10 +533,7 @@ async def build_analyze_service(
     ``analyze_bulk`` / ``analyze_hierarchical`` in-process. Pass
     ``embedder`` (or configure ``EMBEDDING_MODEL_PATH``) for the
     hierarchical mode; without one it raises ``AnalysisError`` at request
-    time and ``single_pass`` still works. Async because it delegates to
-    :func:`build_services`, which pushes prompt versions to Langfuse (#398).
+    time and ``single_pass`` still works.
     """
-    services = await build_services(
-        settings, llm=llm, judge_llm=judge_llm, embedder=embedder
-    )
+    services = build_services(settings, llm=llm, judge_llm=judge_llm, embedder=embedder)
     return services.analyze

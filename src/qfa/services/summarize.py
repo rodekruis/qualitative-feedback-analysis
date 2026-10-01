@@ -47,6 +47,13 @@ from qfa.services.judge_scoring import (
 )
 from qfa.services.language import detect_source_language
 from qfa.services.llm_call_executor import LLMCallExecutor
+from qfa.services.prompt_names import (
+    SUMMARIZE_AGGREGATE_SYSTEM,
+    SUMMARIZE_COMMUNITY_MEETING_SYSTEM,
+    SUMMARIZE_JUDGE,
+    SUMMARIZE_SINGLE_SYSTEM,
+    prompt_ref,
+)
 from qfa.services.prompts import (
     JUDGE_USER_MESSAGE,
     build_community_meeting_record_envelope,
@@ -262,8 +269,7 @@ class SummarizeService:
             tenant_id=request.tenant_id,
             response_model=AggregateSummaryResultModel,
             timeout=timeout,
-            prompt_name="summarize-aggregate-system",
-            prompt_version=self._prompt_versions.get("summarize-aggregate-system"),
+            prompt=prompt_ref(self._prompt_versions, SUMMARIZE_AGGREGATE_SYSTEM),
         )
 
         judge_system = _build_judge_system_message(
@@ -278,8 +284,7 @@ class SummarizeService:
                 tenant_id=request.tenant_id,
                 response_model=str,
                 timeout=judge_timeout,
-                prompt_name="summarize-judge",
-                prompt_version=self._prompt_versions.get("summarize-judge"),
+                prompt=prompt_ref(self._prompt_versions, SUMMARIZE_JUDGE),
             )
         components = _parse_judge_quality_score(judge_response.structured)
         log_judge_components(logger, components)
@@ -362,8 +367,7 @@ class SummarizeService:
             tenant_id=request.tenant_id,
             response_model=SummaryResultModel,
             timeout=timeout,
-            prompt_name="summarize-single-system",
-            prompt_version=self._prompt_versions.get("summarize-single-system"),
+            prompt=prompt_ref(self._prompt_versions, SUMMARIZE_SINGLE_SYSTEM),
         )
 
         if not llm_completion.structured.feedback_record_summaries:
@@ -381,8 +385,7 @@ class SummarizeService:
                 tenant_id=request.tenant_id,
                 response_model=str,
                 timeout=judge_timeout,
-                prompt_name="summarize-judge",
-                prompt_version=self._prompt_versions.get("summarize-judge"),
+                prompt=prompt_ref(self._prompt_versions, SUMMARIZE_JUDGE),
             )
         components = _parse_judge_quality_score(judge_response.structured)
         log_judge_components(logger, components)
@@ -434,9 +437,8 @@ class SummarizeService:
             tenant_id=request.tenant_id,
             response_model=SummaryCommunityMeetingResultModel,
             timeout=timeout,
-            prompt_name="summarize-community-meeting-system",
-            prompt_version=self._prompt_versions.get(
-                "summarize-community-meeting-system"
+            prompt=prompt_ref(
+                self._prompt_versions, SUMMARIZE_COMMUNITY_MEETING_SYSTEM
             ),
         )
 
@@ -457,8 +459,7 @@ class SummarizeService:
                 tenant_id=request.tenant_id,
                 response_model=str,
                 timeout=judge_timeout,
-                prompt_name="summarize-judge",
-                prompt_version=self._prompt_versions.get("summarize-judge"),
+                prompt=prompt_ref(self._prompt_versions, SUMMARIZE_JUDGE),
             )
         components = _parse_judge_quality_score(judge_response.structured)
         log_judge_components(logger, components)

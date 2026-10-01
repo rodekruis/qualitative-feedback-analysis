@@ -177,12 +177,10 @@ The lifespan then attaches each service (`app.state.sensitivity_service`, `app.s
 The split exists so callers outside the API server — scripts, notebooks, ad-hoc evaluation harnesses — can construct the services over a plain LLM client with a single call ({py:func}`~qfa.api.composition.build_analyze_service` is the narrow wrapper over `build_services` for exactly that case):
 
 ```python
-import asyncio
-
 from qfa.api.composition import build_analyze_service
 from qfa.settings import AppSettings
 
-analyze = asyncio.run(build_analyze_service(AppSettings()))
+analyze = build_analyze_service(AppSettings())
 ```
 
 `build_services` (and its single-service wrapper `build_analyze_service`) is intentionally pure with respect to the API server's runtime concerns: it does not touch the database, does not wrap the LLM in `TrackingLLMAdapter`, and does not read auth keys. The FastAPI lifespan keeps those concerns and passes the wrapped clients in via the `llm=` and `judge_llm=` keywords. See `notebooks/analyze_corpus.ipynb` for an example.

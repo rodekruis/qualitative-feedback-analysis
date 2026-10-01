@@ -26,6 +26,17 @@ logger = logging.getLogger(__name__)
 
 _PRODUCTION_LABEL = "production"
 
+#: Per-attempt timeout (seconds) for every ``get_prompt``/``create_prompt``
+#: call, with no SDK-level retry. :meth:`LangfusePromptAdapter.sync` runs
+#: synchronously at app startup, before gunicorn's worker is accepting
+#: traffic — the SDK defaults (5s timeout, 2 retries, 1s backoff) would let
+#: 11 prompts cost up to ~187s in the worst case, well past gunicorn's
+#: ``--timeout 120`` worker deadline (which also has the embedding model to
+#: load in that window). At 2s with no retry, one name's worst case is ~4s
+#: (one failed ``get_prompt`` plus one ``create_prompt``), so 11 names stay
+#: under 30s even if every one of them fails.
+_REQUEST_TIMEOUT_SECONDS = 2
+
 
 class LangfusePromptAdapter(PromptPort):
     """Mirrors hardcoded system prompts to Langfuse as versioned Text prompts.
@@ -47,10 +58,11 @@ class LangfusePromptAdapter(PromptPort):
                 else None
             ),
             host=settings.host,
+            timeout=_REQUEST_TIMEOUT_SECONDS,
             tracer_provider=TracerProvider(),
         )
 
-    async def sync(self, prompts: Mapping[str, str]) -> dict[str, int]:
+    def sync(self, prompts: Mapping[str, str]) -> dict[str, int]:
         """Push every ``name: text`` pair whose ``"production"`` version differs.
 
         One ``get_prompt`` round trip per name, plus one ``create_prompt``
@@ -75,7 +87,12 @@ class LangfusePromptAdapter(PromptPort):
     def _sync_one(self, name: str, text: str) -> int:
         """Sync one prompt name; raises on an unrecovered lookup/create failure."""
         try:
-            existing = self._client.get_prompt(name, label=_PRODUCTION_LABEL)
+            existing = self._client.get_prompt(
+                name,
+                label=_PRODUCTION_LABEL,
+                max_retries=0,
+                fetch_timeout_seconds=_REQUEST_TIMEOUT_SECONDS,
+            )
         except NotFoundError:
             existing = None
 
@@ -91,6 +108,6 @@ class LangfusePromptAdapter(PromptPort):
 class NoOpPromptAdapter(PromptPort):
     """Discards every prompt. The default when Langfuse is not configured."""
 
-    async def sync(self, prompts: Mapping[str, str]) -> dict[str, int]:
+    def sync(self, prompts: Mapping[str, str]) -> dict[str, int]:
         """Return ``{}`` for any input; never invents a placeholder version."""
         return {}

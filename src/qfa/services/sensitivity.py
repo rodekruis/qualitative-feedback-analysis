@@ -22,6 +22,7 @@ from qfa.domain.models import (
 )
 from qfa.domain.sensitivity_types import SENSITIVITY_TYPE_DESCRIPTIONS
 from qfa.services.llm_call_executor import LLMCallExecutor
+from qfa.services.prompt_names import SENSITIVITY_DETECTION_SYSTEM, prompt_ref
 from qfa.services.prompts import build_feedback_record_envelope
 
 _SENSITIVITY_TYPE_GUIDANCE = "\n".join(
@@ -106,8 +107,7 @@ class SensitivityService:
             tenant_id=request.tenant_id,
             response_model=SensitivityAnalysisResultModelList,
             deadline=deadline,
-            prompt_name="sensitivity-detection-system",
-            prompt_version=self._prompt_versions.get("sensitivity-detection-system"),
+            prompt=prompt_ref(self._prompt_versions, SENSITIVITY_DETECTION_SYSTEM),
         )
 
         return_model_as_string = response.structured.model_dump_json()

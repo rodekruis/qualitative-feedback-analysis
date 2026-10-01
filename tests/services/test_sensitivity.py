@@ -16,6 +16,7 @@ from qfa.domain.models import (
     FeedbackRecordMetadataModel,
     FeedbackRecordModel,
     LLMResponse,
+    PromptRef,
     SensitivityAnalysisRequestModel,
     SensitivityAnalysisResultModel,
     SensitivityAnalysisResultModelList,
@@ -197,11 +198,13 @@ class TestSensitivityPromptVersions:
             _make_sensitivity_request(), _future_deadline()
         )
 
-        assert fake_llm.calls[0]["prompt_name"] == "sensitivity-detection-system"
-        assert fake_llm.calls[0]["prompt_version"] == 7
+        assert fake_llm.calls[0]["prompt"] == PromptRef(
+            name="sensitivity-detection-system", version=7
+        )
 
     @pytest.mark.asyncio
-    async def test_missing_version_leaves_prompt_version_none(self, settings):
+    async def test_missing_version_leaves_the_call_untagged(self, settings):
+        """``PromptRef`` requires both fields, so a missing version tags neither."""
         fake_llm = FakeLLMPort(
             responses=[_make_llm_response(structured=_make_sensitivity_result())]
         )
@@ -211,5 +214,4 @@ class TestSensitivityPromptVersions:
             _make_sensitivity_request(), _future_deadline()
         )
 
-        assert fake_llm.calls[0]["prompt_name"] == "sensitivity-detection-system"
-        assert fake_llm.calls[0]["prompt_version"] is None
+        assert fake_llm.calls[0]["prompt"] is None

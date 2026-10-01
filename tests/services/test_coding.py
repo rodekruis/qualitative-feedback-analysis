@@ -28,6 +28,7 @@ from qfa.domain.models import (
     FeedbackRecordMetadataModel,
     FeedbackRecordModel,
     LLMResponse,
+    PromptRef,
 )
 from qfa.domain.usage_models import Operation
 from qfa.services.call_context import call_scope
@@ -386,13 +387,16 @@ class TestCodingPromptVersions:
             _make_coding_request(root_codes=root_codes), _future_deadline()
         )
 
-        assert fake_llm.calls[0]["prompt_name"] == "coding-classifier-system"
-        assert fake_llm.calls[0]["prompt_version"] == 3
-        assert fake_llm.calls[1]["prompt_name"] == "coding-classifier-judge"
-        assert fake_llm.calls[1]["prompt_version"] == 5
+        assert fake_llm.calls[0]["prompt"] == PromptRef(
+            name="coding-classifier-system", version=3
+        )
+        assert fake_llm.calls[1]["prompt"] == PromptRef(
+            name="coding-classifier-judge", version=5
+        )
 
     @pytest.mark.asyncio
-    async def test_missing_version_leaves_prompt_version_none(self, settings):
+    async def test_missing_version_leaves_calls_untagged(self, settings):
+        """``PromptRef`` requires both fields, so a missing version tags neither."""
         root_codes = [CodingNode(id="code-1", name="Code A")]
         fake_llm = FakeLLMPort(
             responses=[
@@ -406,10 +410,8 @@ class TestCodingPromptVersions:
             _make_coding_request(root_codes=root_codes), _future_deadline()
         )
 
-        assert fake_llm.calls[0]["prompt_name"] == "coding-classifier-system"
-        assert fake_llm.calls[0]["prompt_version"] is None
-        assert fake_llm.calls[1]["prompt_name"] == "coding-classifier-judge"
-        assert fake_llm.calls[1]["prompt_version"] is None
+        assert fake_llm.calls[0]["prompt"] is None
+        assert fake_llm.calls[1]["prompt"] is None
 
 
 class TestAssignCodesLiveScores:

@@ -14,6 +14,7 @@ from qfa.domain.models import (
     AuthKeyInfo,
     KeyCreationResponse,
     LLMResponse,
+    PromptRef,
     T_Response,
     TenantApiKey,
     TenantInfo,
@@ -103,8 +104,7 @@ class LLMPort(Protocol):
         tenant_id: str,
         response_model: type[T_Response],
         timeout: float = 20.0,
-        prompt_name: str | None = None,
-        prompt_version: int | None = None,
+        prompt: PromptRef | None = None,
     ) -> LLMResponse[T_Response]:
         """Send a completion request to the LLM provider.
 
@@ -120,16 +120,14 @@ class LLMPort(Protocol):
             The Pydantic model to parse the response into.
         timeout : float
             Maximum time in seconds to wait for a response.
-        prompt_name : str | None
-            Langfuse prompt name this call's ``system_message`` was built
-            from (see :mod:`qfa.services.prompt_registry`), for trace
+        prompt : PromptRef | None
+            The Langfuse prompt name and version this call's
+            ``system_message`` was built from (see
+            :mod:`qfa.services.prompt_registry`,
+            :func:`qfa.services.prompt_names.prompt_ref`), for trace
             linking (#398). ``None`` (the default) tags the call with no
-            prompt name. Never set without ``prompt_version``, and vice
-            versa.
-        prompt_version : int | None
-            Current Langfuse version of that prompt, from
-            ``app.state.prompt_versions``. ``None`` when Langfuse is
-            unconfigured or that name's push failed.
+            prompt reference — Langfuse is unconfigured, or that name's
+            push failed.
 
         Returns
         -------
@@ -144,14 +142,17 @@ class PromptPort(Protocol):
 
     The repo's hardcoded prompt text (:mod:`qfa.services.prompt_registry`)
     is always the ground truth; this port never feeds text back into a call.
-    Async, unlike :class:`EvaluationPort` and :class:`EmbeddingPort`: a real
-    implementation does blocking network I/O (one ``get_prompt``/
-    ``create_prompt`` round trip per name). :meth:`sync` runs once, during
-    app startup before the server accepts traffic — never on the request
-    path.
+    Synchronous, like :class:`EvaluationPort` and :class:`EmbeddingPort`: a
+    real implementation does blocking network I/O (one ``get_prompt``/
+    ``create_prompt`` round trip per name), but :meth:`sync` runs once,
+    synchronously, during app startup before the server accepts traffic —
+    never on the request path — and its adapter keeps each round trip to a
+    short, fixed timeout with no retry (see
+    :class:`~qfa.adapters.prompts.LangfusePromptAdapter`), so blocking
+    startup on it stays bounded.
     """
 
-    async def sync(self, prompts: Mapping[str, str]) -> dict[str, int]:
+    def sync(self, prompts: Mapping[str, str]) -> dict[str, int]:
         """Make sure every name in ``prompts`` exists in Langfuse at that exact text.
 
         For each ``name: text`` pair: when no version exists yet, or the

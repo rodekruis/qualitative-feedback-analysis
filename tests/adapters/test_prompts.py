@@ -3,7 +3,6 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import pytest
 from langfuse.api import NotFoundError
 from opentelemetry.sdk.trace import TracerProvider
 from pydantic import SecretStr
@@ -39,19 +38,17 @@ class TestNoOpPromptAdapter:
         """
         assert PromptPort in NoOpPromptAdapter.__mro__
 
-    @pytest.mark.asyncio
-    async def test_sync_returns_empty_dict_for_any_input(self) -> None:
+    def test_sync_returns_empty_dict_for_any_input(self) -> None:
         adapter = NoOpPromptAdapter()
 
-        result = await adapter.sync({"analyze-judge": "some prompt text"})
+        result = adapter.sync({"analyze-judge": "some prompt text"})
 
         assert result == {}
 
-    @pytest.mark.asyncio
-    async def test_sync_returns_empty_dict_for_empty_input(self) -> None:
+    def test_sync_returns_empty_dict_for_empty_input(self) -> None:
         adapter = NoOpPromptAdapter()
 
-        result = await adapter.sync({})
+        result = adapter.sync({})
 
         assert result == {}
 
@@ -77,6 +74,18 @@ class TestLangfusePromptAdapter:
         assert kwargs["host"] == "https://langfuse.internal.example"
         assert isinstance(kwargs["tracer_provider"], TracerProvider)
 
+    def test_constructs_the_client_with_a_short_fail_fast_timeout(self) -> None:
+        """A blocking call at startup must not risk gunicorn's worker deadline.
+
+        See ``LangfusePromptAdapter``'s module docstring for the arithmetic:
+        the SDK's own defaults (5s timeout, 2 retries) cost up to ~187s for
+        all 11 prompts in the worst case.
+        """
+        with patch("qfa.adapters.prompts.Langfuse") as mock_langfuse:
+            LangfusePromptAdapter(_settings())
+
+        assert mock_langfuse.call_args.kwargs["timeout"] == 2
+
     def test_uses_its_own_tracer_provider_not_the_global_one(self) -> None:
         """Never the process-global provider Application Insights may install.
 
@@ -96,8 +105,7 @@ class TestLangfusePromptAdapter:
 
         assert mock_langfuse.call_args.kwargs["tracer_provider"] is not global_provider
 
-    @pytest.mark.asyncio
-    async def test_pushes_a_new_name_that_does_not_exist_yet(self) -> None:
+    def test_pushes_a_new_name_that_does_not_exist_yet(self) -> None:
         """``get_prompt`` raising ``NotFoundError`` means "create it"."""
         with patch("qfa.adapters.prompts.Langfuse") as mock_langfuse:
             client = mock_langfuse.return_value
@@ -105,53 +113,54 @@ class TestLangfusePromptAdapter:
             client.create_prompt.return_value = _existing_prompt("new text", version=1)
             adapter = LangfusePromptAdapter(_settings())
 
-            result = await adapter.sync({"analyze-judge": "new text"})
+            result = adapter.sync({"analyze-judge": "new text"})
 
         client.create_prompt.assert_called_once_with(
             name="analyze-judge", prompt="new text", labels=["production"]
         )
         assert result == {"analyze-judge": 1}
 
-    @pytest.mark.asyncio
-    async def test_does_not_push_a_name_whose_text_is_unchanged(self) -> None:
+    def test_does_not_push_a_name_whose_text_is_unchanged(self) -> None:
         with patch("qfa.adapters.prompts.Langfuse") as mock_langfuse:
             client = mock_langfuse.return_value
             client.get_prompt.return_value = _existing_prompt("same text", version=3)
             adapter = LangfusePromptAdapter(_settings())
 
-            result = await adapter.sync({"analyze-judge": "same text"})
+            result = adapter.sync({"analyze-judge": "same text"})
 
         client.create_prompt.assert_not_called()
         assert result == {"analyze-judge": 3}
 
-    @pytest.mark.asyncio
-    async def test_pushes_a_name_whose_text_changed(self) -> None:
+    def test_pushes_a_name_whose_text_changed(self) -> None:
         with patch("qfa.adapters.prompts.Langfuse") as mock_langfuse:
             client = mock_langfuse.return_value
             client.get_prompt.return_value = _existing_prompt("old text", version=3)
             client.create_prompt.return_value = _existing_prompt("new text", version=4)
             adapter = LangfusePromptAdapter(_settings())
 
-            result = await adapter.sync({"analyze-judge": "new text"})
+            result = adapter.sync({"analyze-judge": "new text"})
 
         client.create_prompt.assert_called_once_with(
             name="analyze-judge", prompt="new text", labels=["production"]
         )
         assert result == {"analyze-judge": 4}
 
-    @pytest.mark.asyncio
-    async def test_uses_the_production_label_for_the_lookup(self) -> None:
+    def test_uses_the_production_label_for_the_lookup(self) -> None:
         with patch("qfa.adapters.prompts.Langfuse") as mock_langfuse:
             client = mock_langfuse.return_value
             client.get_prompt.return_value = _existing_prompt("text", version=1)
             adapter = LangfusePromptAdapter(_settings())
 
-            await adapter.sync({"analyze-judge": "text"})
+            adapter.sync({"analyze-judge": "text"})
 
-        client.get_prompt.assert_called_once_with("analyze-judge", label="production")
+        client.get_prompt.assert_called_once_with(
+            "analyze-judge",
+            label="production",
+            max_retries=0,
+            fetch_timeout_seconds=2,
+        )
 
-    @pytest.mark.asyncio
-    async def test_one_names_failure_does_not_stop_the_others(self) -> None:
+    def test_one_names_failure_does_not_stop_the_others(self) -> None:
         """An unrelated exception on one name is swallowed; the rest still sync."""
 
         def _get_prompt(name: str, **kwargs: object) -> SimpleNamespace:
@@ -164,14 +173,11 @@ class TestLangfusePromptAdapter:
             client.get_prompt.side_effect = _get_prompt
             adapter = LangfusePromptAdapter(_settings())
 
-            result = await adapter.sync(
-                {"broken-prompt": "text", "healthy-prompt": "text"}
-            )
+            result = adapter.sync({"broken-prompt": "text", "healthy-prompt": "text"})
 
         assert result == {"healthy-prompt": 1}
 
-    @pytest.mark.asyncio
-    async def test_failure_log_never_carries_the_prompt_text(self, caplog) -> None:
+    def test_failure_log_never_carries_the_prompt_text(self, caplog) -> None:
         """The warning names the prompt only by its Langfuse name, never its text."""
         secret_text = "SECRET-PROMPT-TEXT-CANARY"
 
@@ -181,7 +187,7 @@ class TestLangfusePromptAdapter:
             adapter = LangfusePromptAdapter(_settings())
 
             with caplog.at_level("WARNING", logger="qfa.adapters.prompts"):
-                result = await adapter.sync({"broken-prompt": secret_text})
+                result = adapter.sync({"broken-prompt": secret_text})
 
         assert result == {}
         for record in caplog.records:

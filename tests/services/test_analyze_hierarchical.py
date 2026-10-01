@@ -23,6 +23,7 @@ from qfa.domain.models import (
     FeedbackRecordMetadataModel,
     FeedbackRecordModel,
     LLMResponse,
+    PromptRef,
 )
 from qfa.domain.ports import AnonymizationPort, EmbeddingPort, LLMPort
 from qfa.domain.usage_models import Operation
@@ -122,7 +123,7 @@ class RecordingLLM(LLMPort):
         # Parallel to `calls`, same index — kept separate so the many
         # existing `for a, b, c in llm.calls` unpacks elsewhere in this file
         # don't have to change shape for a #398-only concern.
-        self.prompt_calls: list[tuple[str | None, int | None]] = []
+        self.prompt_calls: list[PromptRef | None] = []
 
     async def complete(
         self,
@@ -131,12 +132,11 @@ class RecordingLLM(LLMPort):
         tenant_id,
         response_model=str,
         timeout=20.0,
-        prompt_name=None,
-        prompt_version=None,
+        prompt=None,
     ):
         """Record the call and return a canned response."""
         self.calls.append((system_message, user_message, response_model))
-        self.prompt_calls.append((prompt_name, prompt_version))
+        self.prompt_calls.append(prompt)
         if _is_judge_call(system_message):
             return LLMResponse(
                 structured=_judge_text(),
@@ -229,13 +229,13 @@ async def test_hierarchical_covers_all_records_and_returns_confidence():
 
 
 @pytest.mark.asyncio
-async def test_hierarchical_calls_carry_their_own_prompt_name_and_version():
+async def test_hierarchical_calls_carry_their_own_prompt_ref():
     """Map, leaf-judge, and reduce calls each carry their own prompt name (#398).
 
     All three phases share one LLM connection in this test, so the only way
-    to tell them apart on the wire is the ``prompt_name``/``prompt_version``
-    this asserts — a regression here would silently tag every hierarchical
-    call with the wrong (or no) Langfuse prompt version.
+    to tell them apart on the wire is the ``prompt`` ``PromptRef`` this
+    asserts — a regression here would silently tag every hierarchical call
+    with the wrong (or no) Langfuse prompt version.
     """
     water = _records(4, "water access was limited " * 5, "w")
     health = _records(4, "health clinic medicine " * 5, "h")
@@ -263,16 +263,19 @@ async def test_hierarchical_calls_carry_their_own_prompt_name_and_version():
     await service.analyze_hierarchical(request, deadline, anonymize=True)
 
     assert llm.calls, "expected at least one LLM call"
-    for (system_message, user_message, _response_model), (
-        name,
-        version,
-    ) in zip(llm.calls, llm.prompt_calls, strict=True):
+    for (system_message, user_message, _response_model), prompt in zip(
+        llm.calls, llm.prompt_calls, strict=True
+    ):
         if _is_judge_call(system_message):
-            assert (name, version) == ("analyze-judge", 5)
+            assert prompt == PromptRef(name="analyze-judge", version=5)
         elif "<partial_analyses>" in user_message:
-            assert (name, version) == ("analyze-hierarchical-reduce-system", 9)
+            assert prompt == PromptRef(
+                name="analyze-hierarchical-reduce-system", version=9
+            )
         else:
-            assert (name, version) == ("analyze-hierarchical-map-system", 2)
+            assert prompt == PromptRef(
+                name="analyze-hierarchical-map-system", version=2
+            )
 
 
 @pytest.mark.asyncio
@@ -490,8 +493,7 @@ class LargeOutputLLM(LLMPort):
         tenant_id,
         response_model=str,
         timeout=20.0,
-        prompt_name=None,
-        prompt_version=None,
+        prompt=None,
     ):
         """Return moderate output for map calls to trigger multi-level tree-reduce."""
         self.calls.append((system_message, user_message, response_model))
@@ -590,8 +592,7 @@ class ConcurrencyTrackingLLM(LLMPort):
         tenant_id,
         response_model=str,
         timeout=20.0,
-        prompt_name=None,
-        prompt_version=None,
+        prompt=None,
     ):
         """Track in-flight depth around a single event-loop yield, then answer."""
         self.calls.append((system_message, user_message, response_model))
@@ -713,8 +714,7 @@ class OverlapTrackingLLM(LLMPort):
         tenant_id,
         response_model=str,
         timeout=20.0,
-        prompt_name=None,
-        prompt_version=None,
+        prompt=None,
     ):
         """Track which call kinds coexist in flight, then return a canned answer."""
         self.calls.append((system_message, user_message, response_model))
@@ -768,8 +768,7 @@ class OneChunkMapFailsLLM(LLMPort):
         tenant_id,
         response_model=str,
         timeout=20.0,
-        prompt_name=None,
-        prompt_version=None,
+        prompt=None,
     ):
         """Raise on the 'health' map chunk; return canned output otherwise."""
         self.calls.append((system_message, user_message, response_model))
@@ -852,8 +851,7 @@ class AllJudgesFailLLM(LLMPort):
         tenant_id,
         response_model=str,
         timeout=20.0,
-        prompt_name=None,
-        prompt_version=None,
+        prompt=None,
     ):
         """Raise on judge calls; return canned output for map and reduce."""
         self.calls.append((system_message, user_message, response_model))
@@ -957,8 +955,7 @@ async def test_all_chunks_failing_raises_analysis_error():
             tenant_id,
             response_model=str,
             timeout=20.0,
-            prompt_name=None,
-            prompt_version=None,
+            prompt=None,
         ):
             """Raise on every map call regardless of cluster."""
             self.calls.append((system_message, user_message, response_model))
@@ -1084,8 +1081,7 @@ class EchoingLLM(LLMPort):
         tenant_id,
         response_model=str,
         timeout=20.0,
-        prompt_name=None,
-        prompt_version=None,
+        prompt=None,
     ):
         """Record the call; echo the user message, or serve a judge score."""
         self.calls.append((system_message, user_message, response_model))
