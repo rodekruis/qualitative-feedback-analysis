@@ -185,12 +185,12 @@ class AnalyzeService:
 
     # Entity types whose placeholders are NOT restored in `analyze` output.
     # Defense in depth for the "do not identify individuals" guardrail in
-    # `ANALYZE_GUARDRAILS_PROMPT`. NRP joins PERSON because it's where the
-    # per-language NER model's misread given names land; ORGANIZATION stays
-    # restored so findings keep useful context. Scoped to `analyze` only —
+    # `ANALYZE_GUARDRAILS_PROMPT`. ORGANIZATION and NRP stay restored so
+    # findings keep useful context and language directives remain readable.
+    # Scoped to `analyze` only —
     # `summarize`/`assign_codes` still restore everything.
     _ANALYZE_RETAINED_PLACEHOLDER_TYPES: ClassVar[frozenset[str]] = frozenset(
-        {"PERSON", "NRP"}
+        {"PERSON"}
     )
 
     def __init__(

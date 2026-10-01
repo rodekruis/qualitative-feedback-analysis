@@ -171,15 +171,15 @@ Empty `content` short-circuits to a 200 with blank `title`/`summary` and every s
 | `clarity` | float or null | How clear and concise the summary is, in [0, 1]. `null` only when `meetingNotes` was empty. |
 | `pretty_output` | string | Human-readable formatted output string, built from `id`/`title`/`summary`/`quality_score`. |
 
-## Hyperlinking feedback records
+## Hyperlinking records
 
-`/v1/analyze-bulk` and `/v1/summarize-bulk` accept an optional `espo_feedback_base_url` alongside `feedback_records`. When it's set, any mention of a feedback record's `id` in the output text (e.g. an analysis citing `Form-07762` as supporting evidence) is rewritten as a markdown hyperlink:
+`/v1/analyze-bulk` and `/v1/summarize-bulk` accept an optional `espo_feedback_base_url` alongside `feedback_records`. When it's set, any mention of a feedback or community meeting record's `id` in the output text (e.g. an analysis citing `Form-07762` or `Meeting-00007`) is rewritten as a markdown hyperlink:
 
 ```
 [Form-07762](espo_feedback_base_url/url_id)
 ```
 
-`url_id` is a separate, optional field on each feedback record — the EspoCRM URL path segment for that record (distinct from `id`, which is the citation-friendly identifier the model sees and may repeat in prose). A record is only hyperlinked if both `espo_feedback_base_url` is set on the request **and** that record's `url_id` is non-empty; otherwise its `id` is left as plain text. Matching is exact and word-boundary-safe (`Form-1` never matches inside `Form-10`).
+`url_id` is a separate, optional field on each record — the EspoCRM URL path segment for that record (distinct from `id`, which is the citation-friendly identifier the model sees and may repeat in prose). A record is only hyperlinked if both `espo_feedback_base_url` is set on the request **and** that record's `url_id` is non-empty; otherwise its `id` is left as plain text. For `Form-*` and `Meeting-*` IDs, a bare numeric suffix such as `10821` is also linked to the full record label. Meeting links automatically use the `CCommunityMeetingData` entity fragment when the supplied base URL uses `CFeedbackData`. Existing Markdown links are not wrapped again.
 
 This is presentational only — it rewrites the already-generated `analysis`/`summary` text before it's returned, including the `pretty_output` block, so no extra rendering step is needed on the EspoCRM side beyond the flowchart's existing markdown-aware field display.
 
