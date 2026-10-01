@@ -62,14 +62,11 @@ from qfa.services.prompt_names import (
     prompt_ref,
 )
 from qfa.services.prompts import (
-    ANALYZE_ACTION_PROMPT,
-    ANALYZE_GUARDRAILS_PROMPT,
-    ANALYZE_SYSTEM_PROMPT,
     JUDGE_UNAVAILABLE_EXPLANATION,
     JUDGE_USER_MESSAGE,
     build_analyze_judge_system_message,
     build_analyze_user_message,
-    build_output_language_instruction,
+    build_single_pass_system_message,
 )
 from qfa.services.record_links import hyperlink_form_references
 from qfa.settings import AnalyzeSettings, OrchestratorSettings
@@ -290,12 +287,7 @@ class AnalyzeService:
         - Existing regex prompt-injection tripwire still applies and
           returns 422 ``prompt_injection_detected``.
         """
-        system_message = (
-            f"{ANALYZE_SYSTEM_PROMPT}\n\n"
-            f"{ANALYZE_GUARDRAILS_PROMPT}\n\n"
-            f"{ANALYZE_ACTION_PROMPT}"
-            f"{build_output_language_instruction(request.output_language)}"
-        )
+        system_message = build_single_pass_system_message(request.output_language)
         user_message = build_analyze_user_message(
             request.prompt, request.feedback_records
         )

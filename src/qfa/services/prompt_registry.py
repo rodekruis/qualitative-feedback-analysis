@@ -26,12 +26,20 @@ from qfa.services.hierarchical_prompts import (
     build_map_system_message,
     build_reduce_system_message,
 )
-from qfa.services.prompts import (
-    ANALYZE_ACTION_PROMPT,
-    ANALYZE_GUARDRAILS_PROMPT,
-    ANALYZE_JUDGE_PROMPT,
-    ANALYZE_SYSTEM_PROMPT,
+from qfa.services.prompt_names import (
+    ANALYZE_HIERARCHICAL_MAP_SYSTEM,
+    ANALYZE_HIERARCHICAL_REDUCE_SYSTEM,
+    ANALYZE_JUDGE,
+    ANALYZE_SINGLE_PASS_SYSTEM,
+    CODING_CLASSIFIER_JUDGE,
+    CODING_CLASSIFIER_SYSTEM,
+    SENSITIVITY_DETECTION_SYSTEM,
+    SUMMARIZE_AGGREGATE_SYSTEM,
+    SUMMARIZE_COMMUNITY_MEETING_SYSTEM,
+    SUMMARIZE_JUDGE,
+    SUMMARIZE_SINGLE_SYSTEM,
 )
+from qfa.services.prompts import ANALYZE_JUDGE_PROMPT, build_single_pass_system_message
 from qfa.services.sensitivity import _DEFAULT_SENSITIVITY_DETECTION_PROMPT
 from qfa.services.summarize import (
     _DEFAULT_AGGREGATE_SUMMARIZATION_PROMPT,
@@ -40,28 +48,24 @@ from qfa.services.summarize import (
     _JUDGE_PROMPT,
 )
 
-# Composed exactly as analyze.py's analyze_bulk assembles it, minus the
-# output-language suffix that call site appends per request.
-_ANALYZE_SINGLE_PASS_SYSTEM = (
-    f"{ANALYZE_SYSTEM_PROMPT}\n\n{ANALYZE_GUARDRAILS_PROMPT}\n\n{ANALYZE_ACTION_PROMPT}"
-)
-# Built by the same functions hierarchical_prompts.py's real call sites use,
-# with output_language=None so the per-request suffix is left out.
+# Built by the same functions the real call sites use, with
+# output_language=None so each builder's per-request suffix is left out.
+_ANALYZE_SINGLE_PASS_SYSTEM = build_single_pass_system_message(output_language=None)
 _ANALYZE_HIERARCHICAL_MAP_SYSTEM = build_map_system_message(output_language=None)
 _ANALYZE_HIERARCHICAL_REDUCE_SYSTEM = build_reduce_system_message(output_language=None)
 
 SYSTEM_PROMPTS: dict[str, str] = {
-    "analyze-single-pass-system": _ANALYZE_SINGLE_PASS_SYSTEM,
-    "analyze-hierarchical-map-system": _ANALYZE_HIERARCHICAL_MAP_SYSTEM,
-    "analyze-hierarchical-reduce-system": _ANALYZE_HIERARCHICAL_REDUCE_SYSTEM,
-    "analyze-judge": ANALYZE_JUDGE_PROMPT,
-    "summarize-aggregate-system": _DEFAULT_AGGREGATE_SUMMARIZATION_PROMPT,
-    "summarize-single-system": _DEFAULT_SUMMARIZATION_PROMPT,
-    "summarize-community-meeting-system": (
+    ANALYZE_SINGLE_PASS_SYSTEM: _ANALYZE_SINGLE_PASS_SYSTEM,
+    ANALYZE_HIERARCHICAL_MAP_SYSTEM: _ANALYZE_HIERARCHICAL_MAP_SYSTEM,
+    ANALYZE_HIERARCHICAL_REDUCE_SYSTEM: _ANALYZE_HIERARCHICAL_REDUCE_SYSTEM,
+    ANALYZE_JUDGE: ANALYZE_JUDGE_PROMPT,
+    SUMMARIZE_AGGREGATE_SYSTEM: _DEFAULT_AGGREGATE_SUMMARIZATION_PROMPT,
+    SUMMARIZE_SINGLE_SYSTEM: _DEFAULT_SUMMARIZATION_PROMPT,
+    SUMMARIZE_COMMUNITY_MEETING_SYSTEM: (
         _DEFAULT_SUMMARIZATION_COMMUNITY_MEETING_PROMPT
     ),
-    "summarize-judge": _JUDGE_PROMPT,
-    "coding-classifier-system": SYSTEM_PROMPT,
-    "coding-classifier-judge": _JUDGE_SYSTEM,
-    "sensitivity-detection-system": _DEFAULT_SENSITIVITY_DETECTION_PROMPT,
+    SUMMARIZE_JUDGE: _JUDGE_PROMPT,
+    CODING_CLASSIFIER_SYSTEM: SYSTEM_PROMPT,
+    CODING_CLASSIFIER_JUDGE: _JUDGE_SYSTEM,
+    SENSITIVITY_DETECTION_SYSTEM: _DEFAULT_SENSITIVITY_DETECTION_PROMPT,
 }

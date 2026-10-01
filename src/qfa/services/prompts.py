@@ -123,6 +123,23 @@ UNCERTAINTY_EXPLANATION: The analysis is well-supported by the source records an
 """
 
 
+def build_single_pass_system_message(output_language: str | None = None) -> str:
+    """Build the single-pass analyse system message: role + guardrails + action.
+
+    The one builder both the ``analyze_bulk`` call site and
+    :data:`~qfa.services.prompt_registry.SYSTEM_PROMPTS` use, so the two
+    cannot drift apart the way two copies of the same literal would
+    (mirrors :func:`~qfa.services.hierarchical_prompts.build_map_system_message`
+    for the hierarchical path).
+    """
+    return (
+        f"{ANALYZE_SYSTEM_PROMPT}\n\n"
+        f"{ANALYZE_GUARDRAILS_PROMPT}\n\n"
+        f"{ANALYZE_ACTION_PROMPT}"
+        f"{build_output_language_instruction(output_language)}"
+    )
+
+
 def build_output_language_instruction(
     output_language: str | None, subject: str = "analysis"
 ) -> str:
