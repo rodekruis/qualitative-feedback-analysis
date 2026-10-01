@@ -45,11 +45,18 @@ need to avoid spamming a new version on every deploy.
    one request, not to the prompt's identity.
 
 3. **A new port, `PromptPort`**, declared in `qfa.domain.ports` as a
-   `Protocol` per ADR-002, with one async method,
-   `sync(prompts: Mapping[str, str]) -> dict[str, int]`. Async because a
-   real implementation does blocking network I/O, unlike the synchronous
-   `EvaluationPort`, but it runs once, at startup, never on the request
-   path.
+   `Protocol` per ADR-002, with one synchronous method,
+   `sync(prompts: Mapping[str, str]) -> dict[str, int]`. A real
+   implementation does blocking network I/O, like `EvaluationPort`. It runs
+   once, at startup, never on the request path. `LangfusePromptAdapter`
+   sets a short, fixed timeout on every `get_prompt`/`create_prompt` round
+   trip and turns off the SDK's own retries
+   (`Langfuse(timeout=2)`, `get_prompt(..., max_retries=0,
+   fetch_timeout_seconds=2)`). The SDK's defaults add up: a 5s timeout with
+   2 retries costs up to 17s per prompt, so all 11 prompts can cost up to
+   187s. Gunicorn's worker startup deadline is shorter than that. The fixed
+   2s timeout with no retry keeps the worst case for all 11 prompts under
+   30s.
 
 4. **Two adapters, a real null object**, mirroring ADR-022's pattern for
    `EvaluationPort`. `qfa.adapters.prompts.LangfusePromptAdapter` talks to
@@ -69,22 +76,34 @@ need to avoid spamming a new version on every deploy.
    differs from the current hardcoded constant.
 
 6. **Trace linking is two OTel span attributes, not a Langfuse SDK
-   call.** `LLMPort.complete` and `LiteLLMClient.complete` gain two
-   optional keyword arguments, `prompt_name` and `prompt_version`.
+   call.** `LLMPort.complete` and `LiteLLMClient.complete` gain one
+   optional keyword argument, `prompt: PromptRef | None`.
+   `qfa.domain.models.PromptRef` is a frozen Pydantic model with `name` and
+   `version` fields, so a call site cannot pass one without the other —
+   the two were separate `prompt_name`/`prompt_version` keywords at first,
+   but a code review on #405 found that shape let a typo silently drop the
+   tag with no error, and made every call site spell the name twice.
    `LiteLLMClient.complete` sets `langfuse.observation.prompt.name` and
-   `langfuse.observation.prompt.version` on its existing span when both
-   are given, the same literal-string-attribute style the rest of that
+   `langfuse.observation.prompt.version` on its existing span when `prompt`
+   is given, the same literal-string-attribute style the rest of that
    method already uses. `LiteLLMClient` holds no prompt-version state of
-   its own; each service passes its own flow's name and the version it
-   looked up from the shared `prompt_versions` dict it was constructed
-   with.
+   its own; each service builds its `PromptRef` via
+   `qfa.services.prompt_names.prompt_ref`, which looks up its flow's name
+   in the `prompt_versions` dict the service was constructed with. The name
+   constants themselves live in the new `qfa.services.prompt_names` module,
+   not in `prompt_registry`: `prompt_registry` imports every prompt-owning
+   service module, so a service importing it back would be a cycle.
 
-7. **`build_services` becomes `async def`.** `build_prompt_versions` is
-   async, and is called once inside `build_services` unless a caller
-   overrides it via a new `prompt_versions: dict[str, int] | None = None`
-   parameter, matching the existing `evaluator` override. Every test and
-   script that called `build_services`/`build_analyze_service`
-   synchronously needed the same one-line `await` this decision implies.
+7. **`build_services` stays synchronous.** `build_prompt_versions` is
+   called once inside `build_services`, unless a caller overrides it via a
+   `prompt_versions: dict[str, int] | None = None` parameter, matching the
+   existing `evaluator` override. An earlier version of this change made
+   `build_prompt_versions` (and so `build_services`/`build_analyze_service`)
+   `async def`, since a real implementation's `sync` does blocking network
+   I/O. Point 3 above replaced that with a short, fixed timeout and no
+   retry instead, so the call stays safely bounded without an `async def`
+   that every caller, in production code, tests, and the one notebook that
+   calls `build_analyze_service`, would otherwise need an `await` for.
 
 8. **`GET /v1/health` gains a `prompts: dict[str, int]` field**, current
    version per name, sourced from the same `prompt_versions` dict every
@@ -134,20 +153,21 @@ asks for.
 
 - `qfa.domain.ports.PromptPort`, `qfa.adapters.prompts.LangfusePromptAdapter`,
   `qfa.adapters.prompts.NoOpPromptAdapter`,
-  `qfa.services.prompt_registry.SYSTEM_PROMPTS`, and
+  `qfa.services.prompt_registry.SYSTEM_PROMPTS`,
+  `qfa.services.prompt_names` (name constants plus `prompt_ref`),
+  `qfa.domain.models.PromptRef`, and
   `qfa.api.composition.build_prompt_versions` are new.
 - `qfa.api.composition.build_services` and
-  `qfa.api.composition.build_analyze_service` are now `async def`. Every
-  caller, in production code, tests, and the one notebook that calls
-  `build_analyze_service`, needed a new `await`.
+  `qfa.api.composition.build_analyze_service` stay synchronous. Every
+  caller keeps calling them without `await`.
 - `AnalyzeService`, `SummarizeService`, `CodingService`, and
   `SensitivityService` each take a `prompt_versions: dict[str, int] | None`
   constructor argument, defaulted to `None`.
 - `LLMPort.complete`, `LiteLLMClient.complete`,
   `LLMCallExecutor.complete`, and `LLMCallExecutor.bounded_complete` each
-  gain `prompt_name`/`prompt_version` optional keyword arguments. Every
-  fake `LLMPort` in the test suite needed the same two, unused,
-  parameters.
+  gain one `prompt: PromptRef | None` optional keyword argument. Every
+  fake `LLMPort` in the test suite needed the same one, unused,
+  parameter.
 - `ApiHealthResponse` gains `prompts: dict[str, int]`, and `health()`
   gains a `Request` parameter to read `app.state.prompt_versions`.
 - The import-linter "Enforce hexagonal layers" contract needed one new
@@ -162,9 +182,8 @@ asks for.
 - If Langfuse ships server-side deduplication for `create_prompt`, the
   compare-then-create logic in `LangfusePromptAdapter.sync` (point 5)
   becomes redundant and can be simplified.
-- If a twelfth prompt is added, or an existing flow's composition
-  changes, `qfa.services.prompt_registry.SYSTEM_PROMPTS` and the flow
-  table in `SPEC.md` are the two places to update together.
+- If a twelfth prompt is added, or an existing flow's composition changes,
+  `qfa.services.prompt_registry.SYSTEM_PROMPTS` is the one place to update.
 - If prompt text ever needs to vary per tenant or per experiment at
   request time, this ADR's core decision, that the repository stays the
   only source of truth, needs revisiting first.
