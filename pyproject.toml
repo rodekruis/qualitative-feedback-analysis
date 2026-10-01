@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "qualitative-feedback-analysis"
-version = "2.8.0"
+version = "2.9.0"
 description = "The feedback analysis tool receives feedback items and analyses trends, topics and their evolution over time."
 readme = "README.md"
 license = "LicenseRef-Proprietary"
@@ -29,7 +29,7 @@ dependencies = [
     "fastapi~=0.135.0",
     "gunicorn~=25.3",
     "langfuse>=4.6",
-    "litellm~=1.84.0",
+    "litellm>=1.84,<1.89",
     "presidio-analyzer>=2.2.362",
     "presidio-anonymizer>=2.2.362",
     "pydantic~=2.0",

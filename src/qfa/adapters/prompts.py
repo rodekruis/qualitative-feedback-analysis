@@ -32,7 +32,7 @@ class LangfusePromptAdapter(PromptPort):
 
     ``Langfuse.create_prompt`` creates a new version on every call — neither
     the server nor the client deduplicates by content (verified against the
-    installed ``langfuse`` SDK; see ADR-023). Calling it unconditionally at
+    installed ``langfuse`` SDK; see ADR-024). Calling it unconditionally at
     every app startup would create a fresh, identical version on every
     restart, so :meth:`sync` compares against the current ``"production"``
     version first and calls ``create_prompt`` only when the text differs.

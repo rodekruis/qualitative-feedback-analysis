@@ -1,4 +1,4 @@
-# ADR-023: `PromptPort` and a push-based Langfuse prompt mirror
+# ADR-024: `PromptPort` and a push-based Langfuse prompt mirror
 
 ## Status
 
