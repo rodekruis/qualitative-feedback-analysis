@@ -7,8 +7,8 @@ means adding one entry here — every value is imported from its owning
 module, never copied as a duplicate literal, so this registry cannot drift
 from the text an LLM call actually sends.
 
-Each of the 11 names maps to one combined, static prompt (see SPEC.md
-section 3 for the full inventory). Two rules for what is versioned:
+Each of the 11 names maps to one combined, static prompt. Two rules for
+what is versioned:
 
 * Where a real call site appends request-specific text to a prompt — the
   output-language instruction, or ``summarize_bulk``'s free-text
