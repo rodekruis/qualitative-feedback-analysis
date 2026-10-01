@@ -36,7 +36,7 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 | `output_language` | string or null | `null` | Free-text target language for the analysis output (e.g. `"Dutch"`, `"Brazilian Portuguese"`) — any language the model can produce. Prefer an ISO 639-1 code (`"nl"`) or English language name (`"Dutch"`) for the most predictable results. The value is sanitized and never rejected. Omit (or `null`) to let the model answer in the language of the input records. |
 | `mode` | `"single_pass"` \| `"hierarchical"` | `"single_pass"` | `single_pass` runs one LLM call under the token cap (input over the cap → 413). `hierarchical` runs embed → cluster → map → reduce over large corpora and additionally returns `confidence`. |
 | `period` | `"day"` \| `"week"` \| `"month"` \| null | `null` → server default (`week`) | Granularity for the deterministic `coding_trends` table. `day` for short-window deep-dives, `week` for the typical 1-3 month operational corpus, `month` for multi-year corpora. Omit to use the server-side default (`ANALYZE_DEFAULT_CODING_TREND_PERIOD`). |
-| `espo_feedback_base_url` | string or null | `null` | Base URL for the EspoCRM feedback record detail view. See [Hyperlinking feedback records](#hyperlinking-feedback-records) below. |
+| `espo_feedback_base_url` | string or null | `null` | Base URL for the EspoCRM record detail view. See [Hyperlinking records](#hyperlinking-records) below. |
 
 ### Response (200 OK)
 
@@ -53,7 +53,6 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 | `uncertainty_explanation` | string | Natural-language judge reasoning, or a constant unavailable message when the judge failed. |
 | `feedback_record_count` | int | Number of records actually analyzed across both record types (blank records are dropped). The legacy field name is retained for compatibility. |
 | `request_id` | string | Canonical UUID matching the `X-Request-ID` response header. |
-| `used_anonymization` | bool | Whether anonymization was applied. |
 | `confidence` | float or null | Coverage-weighted mean of per-chunk quality scores (the composite of faithfulness, coverage and clarity). Populated only for `mode=hierarchical`; `null` for `single_pass`. |
 | `coding_trends` | object or null | Deterministic code-by-period frequency table from feedback records only, populated for both modes when eligible records have the configured date and code metadata. Meeting-only requests return `null`. Bucket-label shape depends on `period`: `YYYY-MM-DD` for day, `YYYY-Www` (ISO week), `YYYY-MM` for month. |
 
@@ -110,7 +109,7 @@ These explanations are English only, regardless of the language of the feedback.
 |---|---|---|---|
 | `feedback_records` | list | — | Non-empty list of `{id, content, metadata?, url_id?}` records. Records with empty `content` are dropped. |
 | `output_language` | string or null | `null` | Free-text target language for the summary (e.g. `"Dutch"`). Sets the language of the generated text; `pretty_output` carries no localized headers. Omit to mirror the input records' language. |
-| `espo_feedback_base_url` | string or null | `null` | See [Hyperlinking feedback records](#hyperlinking-feedback-records). |
+| `espo_feedback_base_url` | string or null | `null` | See [Hyperlinking records](#hyperlinking-records). |
 
 ### Response (200 OK)
 

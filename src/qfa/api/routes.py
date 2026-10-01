@@ -216,19 +216,11 @@ async def analyze_bulk(
     table's granularity (``day`` / ``week`` / ``month``); omit it to
     use the server-side default.
 
-    **Edge cases**:
-
-    - Input that exceeds the token cap for ``single_pass`` → 413
-      ``payload_too_large`` (use ``mode=hierarchical`` for large corpora).
-        - Records with empty ``content`` or ``meetingNotes`` are dropped before
-            analysis (a blank EspoCRM field must not fail the whole batch — issue #138).
-      ``feedback_record_count`` reflects the records actually analyzed. If
-      *every* record is empty the response is a 200 with
-      ``feedback_record_count=0`` and a fallback ``analysis`` explaining
-      that no analysis was performed.
-    - Injection-like text in record content or metadata is neutralised
-      structurally by the envelope; regex-based detection is a separate
-      guard handled by the LLM adapter.
+    Edge cases: oversized ``single_pass`` requests return 413
+    ``payload_too_large``; use ``mode=hierarchical`` for large corpora.
+    Empty ``content`` or ``meetingNotes`` records are dropped, and
+    ``feedback_record_count`` reflects records actually analyzed. Injection-like
+    record text is treated as data by the structural envelope.
 
     Parameters
     ----------

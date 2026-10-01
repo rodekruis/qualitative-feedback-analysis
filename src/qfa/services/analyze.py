@@ -37,7 +37,6 @@ from qfa.domain.models import (
     AnalysisRecord,
     AnalysisRequestModel,
     AnalysisResultModel,
-    FeedbackRecordModel,
     JudgeComponents,
     record_text,
 )
