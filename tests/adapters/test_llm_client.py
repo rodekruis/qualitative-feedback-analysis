@@ -32,7 +32,7 @@ from qfa.domain.errors import (
     LLMTimeoutError,
     PromptInjectionDetectedError,
 )
-from qfa.domain.models import LLMResponse
+from qfa.domain.models import LLMResponse, PromptRef
 
 SENTINEL = "LEAK-CANARY-7f3a"
 
@@ -395,6 +395,54 @@ class TestLiteLLMClientLangfuseSpan:
         assert sent["json_schema"]["name"] == "_StructuredResponse"
         assert isinstance(result.structured, _StructuredResponse)
         assert result.structured.summary == "Structured summary."
+
+
+class TestLiteLLMClientPromptSpan:
+    """The prompt-linking span attributes ``complete`` can add (#398)."""
+
+    @pytest.mark.asyncio
+    async def test_sets_both_attributes_when_prompt_is_given(self):
+        mock_response = _make_mock_response()
+        client, exporter = _client_with_span_capture()
+        with (
+            patch(
+                "qfa.adapters.llm_client.acompletion",
+                new_callable=AsyncMock,
+                return_value=mock_response,
+            ),
+            patch("qfa.adapters.llm_client.completion_cost", return_value=0.001),
+        ):
+            await client.complete(
+                SYSTEM_MSG,
+                USER_MSG,
+                TENANT_ID,
+                str,
+                timeout=TIMEOUT,
+                prompt=PromptRef(name="analyze-single-pass-system", version=3),
+            )
+
+        attrs = exporter.get_finished_spans()[0].attributes or {}
+        assert attrs["langfuse.observation.prompt.name"] == "analyze-single-pass-system"
+        assert attrs["langfuse.observation.prompt.version"] == 3
+
+    @pytest.mark.asyncio
+    async def test_sets_neither_attribute_when_prompt_is_omitted(self):
+        """The default (no caller passes ``prompt``) matches every pre-#398 call site."""
+        mock_response = _make_mock_response()
+        client, exporter = _client_with_span_capture()
+        with (
+            patch(
+                "qfa.adapters.llm_client.acompletion",
+                new_callable=AsyncMock,
+                return_value=mock_response,
+            ),
+            patch("qfa.adapters.llm_client.completion_cost", return_value=0.001),
+        ):
+            await client.complete(SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT)
+
+        attrs = exporter.get_finished_spans()[0].attributes or {}
+        assert "langfuse.observation.prompt.name" not in attrs
+        assert "langfuse.observation.prompt.version" not in attrs
 
 
 class TestLiteLLMClientCostFallback:

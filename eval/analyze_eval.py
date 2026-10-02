@@ -38,10 +38,21 @@ import httpx
 from langfuse import Evaluation, get_client
 from langfuse.api import NotFoundError
 
-from _common import load_env, resolve_config, run_metadata
+from _common import load_env, prompt_versions, resolve_config, run_metadata
 from analyze_scorers import judge_scores, score_answer
 
 EXPERIMENT_NAME = "analyze-bulk"
+
+# Every prompt name the analyze flows can tag a call with (#398). Recorded
+# unconditionally rather than per item: a dataset mixes single_pass and
+# hierarchical items (see ``item.input["mode"]``), and a run's metadata is
+# one dict for the whole experiment, not one per item.
+ANALYZE_PROMPTS = (
+    "analyze-single-pass-system",
+    "analyze-hierarchical-map-system",
+    "analyze-hierarchical-reduce-system",
+    "analyze-judge",
+)
 
 # One analyze call can run for minutes, and the dev backend has a small
 # Postgres pool — 5 (the eval-wide default) would exhaust it. The task
@@ -402,6 +413,7 @@ def main() -> None:
         run_name = f"{dataset_label}-full-{timestamp}"
 
     dataset_keys = {key: items[0].metadata[key] for key in DATASET_METADATA_KEYS}
+    _analyze_prompt_versions = prompt_versions(base_url)
 
     print(f"Dataset: {args.dataset}")
     print(f"Backend: {base_url}")
@@ -430,6 +442,9 @@ def main() -> None:
             run_kind=run_kind,
             smoke_limit=args.smoke_limit,
             cases_version=cases_version.isoformat(),
+            prompt_versions={
+                name: _analyze_prompt_versions.get(name) for name in ANALYZE_PROMPTS
+            },
             **dataset_keys,
         ),
     )

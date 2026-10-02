@@ -22,6 +22,7 @@ from qfa.domain.models import (
 )
 from qfa.domain.sensitivity_types import SENSITIVITY_TYPE_DESCRIPTIONS
 from qfa.services.llm_call_executor import LLMCallExecutor
+from qfa.services.prompt_names import SENSITIVITY_DETECTION_SYSTEM, prompt_ref
 from qfa.services.prompts import build_feedback_record_envelope
 
 _SENSITIVITY_TYPE_GUIDANCE = "\n".join(
@@ -55,10 +56,21 @@ class SensitivityService:
         itself, and restoration of the redacted values in the response. The
         composition root (:func:`qfa.api.composition.build_services`) hands
         over the same instance the other services use.
+    prompt_versions : dict[str, int] | None
+        Current Langfuse version per name in
+        :data:`~qfa.services.prompt_registry.SYSTEM_PROMPTS` (#398). ``None``
+        (the default) is treated as ``{}``, so the one LLM call this service
+        makes simply carries no prompt-version span attribute, the same as a
+        name absent because Langfuse is unconfigured or its push failed.
     """
 
-    def __init__(self, executor: LLMCallExecutor) -> None:
+    def __init__(
+        self,
+        executor: LLMCallExecutor,
+        prompt_versions: dict[str, int] | None = None,
+    ) -> None:
         self._executor = executor
+        self._prompt_versions: dict[str, int] = prompt_versions or {}
 
     async def detect_sensitive_content(
         self,
@@ -95,6 +107,7 @@ class SensitivityService:
             tenant_id=request.tenant_id,
             response_model=SensitivityAnalysisResultModelList,
             deadline=deadline,
+            prompt=prompt_ref(self._prompt_versions, SENSITIVITY_DETECTION_SYSTEM),
         )
 
         return_model_as_string = response.structured.model_dump_json()

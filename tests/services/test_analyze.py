@@ -29,6 +29,7 @@ from qfa.domain.models import (
     FeedbackRecordModel,
     JudgeComponents,
     LLMResponse,
+    PromptRef,
 )
 from qfa.domain.ports import AnonymizationPort
 from qfa.domain.usage_models import Operation
@@ -718,6 +719,46 @@ class TestAnalyzeHappyPath:
             "[Form-10](https://espo.example.com/feedback/id-10) both raised"
             in result.result
         )
+
+
+class TestAnalyzePromptVersions:
+    """Each generation/judge call in ``analyze_bulk`` carries its own prompt name/version (#398)."""
+
+    @pytest.mark.asyncio
+    async def test_single_pass_call_carries_its_prompt_name_and_version(self, settings):
+        fake_llm = _judging_llm(analysis="analysis text")
+        service = _build_analyze_service(
+            fake_llm,
+            FakeAnonymizer(),
+            settings,
+            prompt_versions={
+                "analyze-single-pass-system": 3,
+                "analyze-judge": 7,
+            },
+        )
+
+        await service.analyze_bulk(_make_request(), _future_deadline())
+
+        assert fake_llm.calls[0]["prompt"] == PromptRef(
+            name="analyze-single-pass-system", version=3
+        )
+        assert fake_llm.calls[1]["prompt"] == PromptRef(name="analyze-judge", version=7)
+
+    @pytest.mark.asyncio
+    async def test_no_prompt_versions_means_no_prompt_is_tagged(self, settings):
+        """Without ``prompt_versions`` (the default), no call is tagged at all.
+
+        ``PromptRef`` requires both a name and a version, so a call site
+        with no looked-up version for a name cannot tag the call with the
+        name alone — it passes ``prompt=None``.
+        """
+        fake_llm = _judging_llm(analysis="analysis text")
+        service = _build_analyze_service(fake_llm, FakeAnonymizer(), settings)
+
+        await service.analyze_bulk(_make_request(), _future_deadline())
+
+        assert fake_llm.calls[0]["prompt"] is None
+        assert fake_llm.calls[1]["prompt"] is None
 
 
 class TestAnalyzeJudgeFailure:

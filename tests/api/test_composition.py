@@ -18,10 +18,12 @@ from qfa.api.composition import (
     build_analyze_service,
     build_evaluator,
     build_langfuse_tracer,
+    build_prompt_versions,
     build_services,
     register_custom_model_prices,
     resolve_judge_llm_settings,
 )
+from qfa.domain.ports import PromptPort
 from qfa.services.analyze import AnalyzeService
 from qfa.services.coding import CodingService
 from qfa.services.sensitivity import SensitivityService
@@ -48,6 +50,7 @@ class _StubLLM:
         tenant_id,
         response_model=str,
         timeout=20.0,
+        prompt=None,
     ):
         raise AssertionError("LLM should not be called during construction")
 
@@ -64,6 +67,13 @@ class _StubEvaluator:
 
     def record_score(self, *, trace_id, name, value):  # pragma: no cover
         raise AssertionError("Evaluator should not be called during construction")
+
+
+class _StubPromptPort(PromptPort):
+    """Minimal PromptPort stand-in for identity-check tests (#398)."""
+
+    def sync(self, prompts):  # pragma: no cover - never invoked here
+        raise AssertionError("PromptPort should not be called during construction")
 
 
 @pytest.fixture
@@ -539,6 +549,24 @@ class TestBuildServices:
         assert services.analyze._evaluator is stub_evaluator
         assert services.summarize._evaluator is stub_evaluator
 
+    def test_uses_injected_prompt_versions(self, auth_env: None) -> None:
+        """A ``prompt_versions=`` override reaches every service that needs it (#398).
+
+        Passing one in skips the Langfuse push entirely, which is what lets
+        this test run without a real Langfuse instance or a mocked adapter.
+        """
+        stub_versions = {"analyze-single-pass-system": 3}
+
+        services = build_services(
+            AppSettings(), llm=_StubLLM(), prompt_versions=stub_versions
+        )
+
+        assert services.analyze._prompt_versions is stub_versions
+        assert services.summarize._prompt_versions is stub_versions
+        assert services.coding._prompt_versions is stub_versions
+        assert services.sensitivity._prompt_versions is stub_versions
+        assert services.prompt_versions is stub_versions
+
 
 class TestRegisterCustomModelPrices:
     """Judge calls on an unpriced model are silently recorded at zero cost.
@@ -660,3 +688,37 @@ class TestBuildEvaluator:
 
         mock_adapter.assert_called_once_with(settings)
         assert evaluator is mock_adapter.return_value
+
+
+class TestBuildPromptVersions:
+    """Langfuse prompt sync is opt-in, mirroring ``build_evaluator`` (#398).
+
+    ``build_prompt_versions`` always calls a real ``PromptPort`` — a no-op
+    one is not "unconfigured", it is the deliberate default. Covers the gate
+    only; ``LangfusePromptAdapter.sync``'s own compare-then-create behaviour
+    is covered in ``tests/adapters/test_prompts.py``.
+    """
+
+    def test_routes_to_the_noop_adapter_without_credentials(
+        self, no_ambient_langfuse_env: None
+    ) -> None:
+        """Local dev has no Langfuse keys, and no prompt is ever pushed."""
+        result = build_prompt_versions(LangfuseSettings())
+
+        assert result == {}
+
+    def test_routes_to_the_langfuse_adapter_when_credentials_are_set(
+        self,
+    ) -> None:
+        settings = LangfuseSettings(
+            public_key="pk-test",
+            secret_key=SecretStr("sk-test"),
+            host="https://langfuse.internal.example",
+        )
+
+        with patch("qfa.api.composition.LangfusePromptAdapter") as mock_adapter:
+            mock_adapter.return_value.sync.return_value = {"analyze-judge": 1}
+            result = build_prompt_versions(settings)
+
+        mock_adapter.assert_called_once_with(settings)
+        assert result == {"analyze-judge": 1}

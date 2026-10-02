@@ -353,6 +353,10 @@ def test_app(fake_service, fake_auth_orchestrator):
     app.state.summarize_service = fake_service
     app.state.auth_orchestrator = fake_auth_orchestrator
     app.state.usage_repo = FakeUsageRepository()
+    # Default no-op state (#398): Langfuse unconfigured means no prompt was
+    # ever pushed, so GET /v1/health's `prompts` field is empty, exactly as
+    # the real lifespan leaves it. Tests that care set this explicitly.
+    app.state.prompt_versions = {}
 
     return app
 
