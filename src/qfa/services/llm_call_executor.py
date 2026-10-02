@@ -32,10 +32,10 @@ from datetime import UTC, datetime
 from qfa.domain.errors import AnalysisTimeoutError, FeedbackTooLargeError
 from qfa.domain.models import (
     AnalysisRecord,
-    FeedbackRecordModel,
     LLMResponse,
     T_Response,
     record_text,
+    with_record_text,
 )
 from qfa.domain.ports import AnonymizationPort, LLMPort
 from qfa.settings import LLM_RETRY_BUDGET_MULTIPLIER, OrchestratorSettings
@@ -134,13 +134,7 @@ class LLMCallExecutor:
         )
         redacted_prompt, redacted_contents = redacted[0], redacted[1:]
         new_records = tuple(
-            record.model_copy(
-                update={
-                    "content"
-                    if isinstance(record, FeedbackRecordModel)
-                    else "meetingNotes": content
-                }
-            )
+            with_record_text(record, content)
             for record, content in zip(records, redacted_contents, strict=True)
         )
         return new_records, redacted_prompt, mapping

@@ -454,7 +454,8 @@ class SummarizeService:
                 "summary": hyperlink_form_references(
                     result.community_meeting_record_summaries[0].summary,
                     (request.community_meeting_record,),
-                    request.espo_feedback_base_url,
+                    None,
+                    espo_meeting_base_url=request.espo_feedback_base_url,
                 ),
                 "quality_score": components.quality_score,
                 "components": components,

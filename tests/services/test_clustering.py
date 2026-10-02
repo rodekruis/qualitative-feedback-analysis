@@ -8,6 +8,8 @@ These are pure, deterministic and tested with hand-built vectors (no model).
 """
 
 from qfa.domain.models import (
+    CommunityMeetingRecordMetadataModel,
+    CommunityMeetingRecordModel,
     FeedbackRecordMetadataModel,
     FeedbackRecordModel,
     record_text,
@@ -252,6 +254,38 @@ def test_records_without_a_parseable_date_sort_last_and_stably() -> None:
     order = [r.id for r in chunks[0].records]
     # Dated records first in date order; undated/unparseable keep input order.
     assert order == ["c", "a", "b", "d", "e"], order
+
+
+def test_meetings_sort_by_date_of_meeting_then_fall_back_to_created() -> None:
+    meeting_with_date = CommunityMeetingRecordModel(
+        id="meeting-date",
+        meetingNotes="meeting notes",
+        metadata=CommunityMeetingRecordMetadataModel(
+            created="2026-03-01",
+            dateOfMeeting="2024-01-01",
+        ),
+    )
+    meeting_without_date = CommunityMeetingRecordModel(
+        id="meeting-created",
+        meetingNotes="meeting notes",
+        metadata=CommunityMeetingRecordMetadataModel(created="2024-03-01"),
+    )
+    feedback = _record("feedback", created="2024-06-01")
+
+    chunks = cluster_records(
+        records=(feedback, meeting_without_date, meeting_with_date),
+        vectors=((0.0, 0.0), (0.0, 0.001), (0.0, 0.002)),
+        min_cluster_size=2,
+        max_total_tokens=100_000,
+        chars_per_token=4,
+    )
+
+    assert len(chunks) == 1
+    assert [record.id for record in chunks[0].records] == [
+        "meeting-date",
+        "meeting-created",
+        "feedback",
+    ]
 
 
 def test_single_record_corpus_yields_one_chunk() -> None:

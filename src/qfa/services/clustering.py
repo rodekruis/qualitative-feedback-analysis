@@ -20,7 +20,7 @@ import hdbscan
 import numpy as np
 
 from qfa.domain.chunk_models import Chunk
-from qfa.domain.models import AnalysisRecord, record_text
+from qfa.domain.models import AnalysisRecord, record_date, record_text
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ def _iso_date_prefix(raw: object) -> str | None:
 def _sort_by_date(
     records: tuple[AnalysisRecord, ...],
 ) -> tuple[AnalysisRecord, ...]:
-    """Order records chronologically by their ``created`` metadata.
+    """Order records chronologically by their applicable date metadata.
 
     Dated records come first, ascending; undated or unparseable-date records
     sort last. Sorting is stable, so records sharing a key (and all the
@@ -61,7 +61,7 @@ def _sort_by_date(
     """
 
     def key(record: AnalysisRecord) -> tuple[bool, str]:
-        prefix = _iso_date_prefix(record.metadata.created)
+        prefix = _iso_date_prefix(record_date(record))
         return (prefix is None, prefix or "")
 
     return tuple(sorted(records, key=key))

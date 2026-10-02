@@ -161,11 +161,18 @@ def record_text(record: AnalysisRecord) -> str:
     return record.meetingNotes
 
 
-def record_kind(record: AnalysisRecord) -> Literal["feedback", "community_meeting"]:
-    """Return the stable wire-level kind for an analysis record."""
+def record_date(record: AnalysisRecord) -> str:
+    """Return the date used to place a record in chronological order."""
+    if isinstance(record, CommunityMeetingRecordModel):
+        return record.metadata.dateOfMeeting or record.metadata.created
+    return record.metadata.created
+
+
+def with_record_text(record: AnalysisRecord, text: str) -> AnalysisRecord:
+    """Return a copy of ``record`` with its analyzable text replaced."""
     if isinstance(record, FeedbackRecordModel):
-        return "feedback"
-    return "community_meeting"
+        return record.model_copy(update={"content": text})
+    return record.model_copy(update={"meetingNotes": text})
 
 
 class CodingNode(BaseModel):
@@ -242,6 +249,14 @@ class AnalysisRequestModel(BaseModel):
             " output are rewritten as a markdown hyperlink"
             " `[id](espo_feedback_base_url/url_id)`, using that record's"
             " `url_id`. Records with no `url_id` are left as plain text."
+        ),
+    )
+    espo_meeting_base_url: str | None = Field(
+        default=None,
+        description=(
+            "Base URL for community meeting detail links in the analysis output."
+            " Used only for community meeting records; feedback records use"
+            " ``espo_feedback_base_url``."
         ),
     )
 

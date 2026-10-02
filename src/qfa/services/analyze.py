@@ -184,12 +184,12 @@ class AnalyzeService:
 
     # Entity types whose placeholders are NOT restored in `analyze` output.
     # Defense in depth for the "do not identify individuals" guardrail in
-    # `ANALYZE_GUARDRAILS_PROMPT`. ORGANIZATION and NRP stay restored so
-    # findings keep useful context and language directives remain readable.
-    # Scoped to `analyze` only —
+    # `ANALYZE_GUARDRAILS_PROMPT`. NRP is included because per-language NER
+    # models can label given names as NRP; ORGANIZATION stays restored so
+    # findings keep useful context. Scoped to `analyze` only —
     # `summarize`/`assign_codes` still restore everything.
     _ANALYZE_RETAINED_PLACEHOLDER_TYPES: ClassVar[frozenset[str]] = frozenset(
-        {"PERSON"}
+        {"PERSON", "NRP"}
     )
 
     def __init__(
@@ -337,7 +337,10 @@ class AnalyzeService:
             )
 
         analysis_text = hyperlink_form_references(
-            analysis_text, request.feedback_records, request.espo_feedback_base_url
+            analysis_text,
+            request.feedback_records,
+            request.espo_feedback_base_url,
+            request.espo_meeting_base_url,
         )
 
         quality_score: float | None
@@ -726,7 +729,10 @@ class AnalyzeService:
             analysis_text = self._anonymizer.deanonymize(analysis_text, restorable)
 
         analysis_text = hyperlink_form_references(
-            analysis_text, request.feedback_records, request.espo_feedback_base_url
+            analysis_text,
+            request.feedback_records,
+            request.espo_feedback_base_url,
+            request.espo_meeting_base_url,
         )
 
         # One-line breakdown so a single log line answers "where did the time

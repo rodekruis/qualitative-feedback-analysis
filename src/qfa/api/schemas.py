@@ -10,12 +10,14 @@ import logging
 import re
 import unicodedata
 from abc import ABC, abstractmethod
-from typing import Any, Literal, override
+from typing import Annotated, Any, Literal, override
 
 from pydantic import (
     BaseModel,
     ConfigDict,
+    Discriminator,
     Field,
+    Tag,
     computed_field,
     field_validator,
     model_validator,
@@ -464,9 +466,9 @@ class ApiCommunityMeetingRecordInput(BaseModel):
         default="",
         description=(
             "EspoCRM URL path segment for this record. When the request"
-            " also sets `espo_feedback_base_url`, mentions of this"
+            " also sets `espo_meeting_base_url`, mentions of this"
             " record's `id` in the output are hyperlinked to"
-            " `{espo_feedback_base_url}/{url_id}`. Omit if hyperlinking"
+            " `{espo_meeting_base_url}/{url_id}`. Omit if hyperlinking"
             " isn't needed."
         ),
     )
@@ -480,8 +482,6 @@ class ApiCommunityMeetingRecordInput(BaseModel):
 
 class ApiAnalyzeFeedbackRecordInput(ApiFeedbackRecordInput):
     """Feedback record variant accepted by ``/v1/analyze-bulk``."""
-
-    model_config = ConfigDict(extra="forbid")
 
     record_type: Literal["feedback"] | None = Field(
         default=None,
@@ -500,9 +500,21 @@ class ApiAnalyzeCommunityMeetingRecordInput(ApiCommunityMeetingRecordInput):
     )
 
 
-ApiAnalyzeRecordInput = (
-    ApiAnalyzeFeedbackRecordInput | ApiAnalyzeCommunityMeetingRecordInput
-)
+def _analyze_record_type(value: Any) -> str:
+    """Select the feedback variant for legacy items without a type field."""
+    if isinstance(value, dict):
+        return value.get("record_type") or "feedback"
+    return getattr(value, "record_type", None) or "feedback"
+
+
+ApiAnalyzeRecordInput = Annotated[
+    Annotated[ApiAnalyzeFeedbackRecordInput, Tag("feedback")]
+    | Annotated[
+        ApiAnalyzeCommunityMeetingRecordInput,
+        Tag("community_meeting"),
+    ],
+    Discriminator(_analyze_record_type),
+]
 
 
 ##### Bulk requests Base Model #####
@@ -647,13 +659,20 @@ class ApiAnalyzeRequest(ApiBulkInferenceRequestBase):
             " (``ANALYZE_DEFAULT_CODING_TREND_PERIOD``)."
         ),
     )
+    espo_meeting_base_url: str | None = Field(
+        default=None,
+        description=(
+            "Base URL for community meeting record details. When set, meeting"
+            " record mentions use this URL and feedback record mentions use"
+            " ``espo_feedback_base_url``."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_record_identity_and_types(self) -> "ApiAnalyzeRequest":
         """Require unambiguous kinds and identifiers in mixed batches."""
-        if len({record.id for record in self.feedback_records}) != len(
-            self.feedback_records
-        ):
+        ids = [record.id for record in self.feedback_records if record.id]
+        if len(ids) != len(set(ids)):
             raise ValueError("record ids must be unique across the analysis batch")
 
         has_meeting = any(

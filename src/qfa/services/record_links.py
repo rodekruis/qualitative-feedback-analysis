@@ -17,50 +17,34 @@ def hyperlink_form_references(
     text: str,
     feedback_records: tuple[FeedbackRecordModel | CommunityMeetingRecordModel, ...],
     espo_feedback_base_url: str | None,
+    espo_meeting_base_url: str | None = None,
 ) -> str:
     """Rewrite feedback and meeting-record mentions as EspoCRM hyperlinks.
 
     When the analysis/summary text names a feedback record by its ``id``
     (e.g. ``Form-07762``), rewrite that mention as
     ``[Form-07762](espo_feedback_base_url/url_id)`` so it renders as a
-    clickable link back to the record in EspoCRM. Bare numeric suffixes of
-    ``Form-*`` and ``Meeting-*`` IDs are also accepted because models often
-    omit the human-readable prefix in lists. Community meeting records use
-    the ``CCommunityMeetingData`` entity fragment when the supplied base URL
-    contains the feedback entity fragment. No-op when
-    ``espo_feedback_base_url`` is not provided; per-record no-op when that
-    record has no ``url_id``. Matches are boundary-safe so one record's id
+    clickable link back to the record in EspoCRM. Meeting records use
+    ``espo_meeting_base_url``. Only complete record IDs are matched, so
+    unrelated numbers in the analysis are never rewritten. No-op when the
+    matching base URL is not provided; per-record
+    no-op when that record has no ``url_id``. Matches are boundary-safe so one record's id
     cannot match as a substring of another's (e.g. ``Form-1`` vs
     ``Form-10``), and existing Markdown links are left unchanged.
     """
-    if not espo_feedback_base_url:
+    if not espo_feedback_base_url and not espo_meeting_base_url:
         return text
-    base = espo_feedback_base_url.rstrip("/")
     links: dict[str, str] = {}
-    short_id_candidates: dict[str, set[str]] = {}
     for record in feedback_records:
-        if not record.url_id:
+        base_url = (
+            espo_meeting_base_url
+            if isinstance(record, CommunityMeetingRecordModel)
+            else espo_feedback_base_url
+        )
+        if not record.id or not record.url_id or not base_url:
             continue
-        record_base = base
-        if isinstance(record, CommunityMeetingRecordModel):
-            record_base = record_base.replace(
-                "#CFeedbackData/view", "#CCommunityMeetingData/view", 1
-            )
-        link = f"[{record.id}]({record_base}/{record.url_id})"
+        link = f"[{record.id}]({base_url.rstrip('/')}/{record.url_id})"
         links[record.id] = link
-
-        if isinstance(record, FeedbackRecordModel) and record.id.startswith("Form-"):
-            short_id = record.id.removeprefix("Form-")
-            short_id_candidates.setdefault(short_id, set()).add(record.id)
-        elif isinstance(record, CommunityMeetingRecordModel) and record.id.startswith(
-            "Meeting-"
-        ):
-            short_id = record.id.removeprefix("Meeting-")
-            short_id_candidates.setdefault(short_id, set()).add(record.id)
-
-    for short_id, record_ids in short_id_candidates.items():
-        if len(record_ids) == 1:
-            links[short_id] = links[next(iter(record_ids))]
 
     if not links:
         return text

@@ -270,6 +270,7 @@ async def analyze_bulk(
         mode=body.mode,
         period=body.period,
         espo_feedback_base_url=body.espo_feedback_base_url,
+        espo_meeting_base_url=body.espo_meeting_base_url,
     )
 
     if body.mode == "hierarchical":

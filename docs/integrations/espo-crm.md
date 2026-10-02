@@ -111,7 +111,7 @@ Both bulk endpoints return the same four fields for EspoCRM to write to separate
 
 ### Hyperlinking records in insight text
 
-When the `motherPayload` for `analyze-bulk` or `summarize-bulk` includes `espo_feedback_base_url` and each record's `url_id`, any mention of a record's `id` in the generated insight text (analysis or summary) is rewritten as a markdown hyperlink back to that record in EspoCRM — see [REST API § Hyperlinking records](../rest-api/index.md#hyperlinking-records) for the exact mechanics. This flows through `pretty_output` automatically, so a markdown-aware EspoCRM field renders it as a clickable link with no extra flowchart step. Older flowcharts that don't send these fields are unaffected — the output stays plain text.
+For `analyze-bulk`, the `motherPayload` sends `espo_feedback_base_url` and `espo_meeting_base_url`; each record also needs its `url_id`. For `summarize-bulk`, only feedback records use `espo_feedback_base_url`. Matching full record IDs in the generated text are rewritten as markdown hyperlinks — see [REST API § Hyperlinking records](../rest-api/index.md#hyperlinking-records). This flows through `pretty_output` automatically, so a markdown-aware EspoCRM field renders it as a clickable link. Bare numbers are not linked. Older flowcharts that omit these fields leave the output as plain text.
 
 ## Authentication
 

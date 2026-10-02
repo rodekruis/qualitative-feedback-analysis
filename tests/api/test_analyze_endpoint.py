@@ -223,6 +223,67 @@ class TestResponseShape:
 
 class TestMixedRecordInputs:
     @pytest.mark.asyncio
+    async def test_legacy_feedback_ignores_unknown_record_fields(
+        self, client, fake_service
+    ):
+        response = await client.post(
+            "/v1/analyze-bulk",
+            json=_valid_body(
+                feedback_records=[
+                    {
+                        "id": "feedback-1",
+                        "content": "Water access improved.",
+                        "source": "legacy-client-field",
+                    }
+                ]
+            ),
+            headers=_auth_header(),
+        )
+
+        assert response.status_code == 200
+        record = fake_service.last_analyze_request.feedback_records[0]
+        assert isinstance(record, FeedbackRecordModel)
+        assert not hasattr(record, "source")
+
+    @pytest.mark.asyncio
+    async def test_meeting_without_record_type_has_clear_validation_error(self, client):
+        response = await client.post(
+            "/v1/analyze-bulk",
+            json=_valid_body(
+                feedback_records=[{"id": "meeting-1", "meetingNotes": "Notes."}]
+            ),
+            headers=_auth_header(),
+        )
+
+        assert response.status_code == 422
+        fields = response.json()["error"]["fields"]
+        assert len(fields) == 1
+        assert fields[0]["field"].endswith("feedback_records.0.feedback.content")
+        assert fields[0]["issue"] == "Field required"
+
+    @pytest.mark.asyncio
+    async def test_unknown_record_type_has_clear_validation_error(self, client):
+        response = await client.post(
+            "/v1/analyze-bulk",
+            json=_valid_body(
+                feedback_records=[
+                    {
+                        "record_type": "unknown",
+                        "id": "record-1",
+                        "content": "Text.",
+                    }
+                ]
+            ),
+            headers=_auth_header(),
+        )
+
+        assert response.status_code == 422
+        fields = response.json()["error"]["fields"]
+        assert len(fields) == 1
+        assert fields[0]["field"].endswith("feedback_records.0")
+        assert "expected tags" in fields[0]["issue"]
+
+    @pytest.mark.asyncio
     async def test_meeting_only_batch_is_forwarded_as_domain_meeting_record(
         self, client, fake_service
     ):
@@ -276,6 +337,39 @@ class TestMixedRecordInputs:
         assert isinstance(records[1], CommunityMeetingRecordModel)
 
     @pytest.mark.asyncio
+    async def test_separate_record_base_urls_are_forwarded(self, client, fake_service):
+        response = await client.post(
+            "/v1/analyze-bulk",
+            json=_valid_body(
+                feedback_records=[
+                    {
+                        "record_type": "feedback",
+                        "id": "feedback-1",
+                        "content": "Feedback.",
+                    },
+                    {
+                        "record_type": "community_meeting",
+                        "id": "meeting-1",
+                        "meetingNotes": "Meeting notes.",
+                    },
+                ],
+                espo_feedback_base_url="https://example/#CFeedbackData/view",
+                espo_meeting_base_url="https://example/#CCommunityMeetingData/view",
+            ),
+            headers=_auth_header(),
+        )
+
+        assert response.status_code == 200
+        assert (
+            fake_service.last_analyze_request.espo_feedback_base_url
+            == "https://example/#CFeedbackData/view"
+        )
+        assert (
+            fake_service.last_analyze_request.espo_meeting_base_url
+            == "https://example/#CCommunityMeetingData/view"
+        )
+
+    @pytest.mark.asyncio
     async def test_legacy_feedback_cannot_be_mixed_with_meeting_record(self, client):
         response = await client.post(
             "/v1/analyze-bulk",
@@ -316,6 +410,23 @@ class TestMixedRecordInputs:
         )
 
         assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_repeated_empty_ids_are_accepted(self, client, fake_service):
+        response = await client.post(
+            "/v1/analyze-bulk",
+            json=_valid_body(
+                feedback_records=[
+                    {"id": "", "content": "First feedback."},
+                    {"id": "", "content": "Second feedback."},
+                ]
+            ),
+            headers=_auth_header(),
+        )
+
+        assert response.status_code == 200
+        assert response.json()["feedback_record_count"] == 2
+        assert len(fake_service.last_analyze_request.feedback_records) == 2
 
     @pytest.mark.asyncio
     async def test_blank_meeting_notes_are_dropped(self, client, fake_service):
