@@ -117,7 +117,7 @@ These explanations are English only, regardless of the language of the feedback.
 
 | Field | Type | Notes |
 |---|---|---|
-| `summary` | string | Generated bullet-point summary. |
+| `summary` | string | Markdown summary: one header per theme, most frequent first, key words in bold, then a conclusion. |
 | `title` | string | LLM-generated short title. |
 | `quality_score` | float or null | Weighted composite of `faithfulness`, `coverage` and `clarity`, computed in Python. `null` only when the batch was empty (no judge call was made) — a malformed judge reply raises a 502 instead of a `null` score. |
 | `faithfulness` | float or null | How well the summary is supported by the source records, in [0, 1]. `null` only when the batch was empty. |

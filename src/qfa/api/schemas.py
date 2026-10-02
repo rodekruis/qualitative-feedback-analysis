@@ -847,7 +847,7 @@ class ApiSummarizeBulkResponse(ApiBulkInferenceResponseBase):
 
     title: str = Field(description="Generated short title for the aggregate summary.")
     summary: str = Field(
-        description="Generated bullet-point summary ordered by theme frequency."
+        description="Generated markdown summary ordered by theme frequency."
     )
     quality_score: float | None = Field(
         default=None,
