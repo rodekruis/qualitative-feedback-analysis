@@ -97,8 +97,16 @@ def test_request_bodies_come_from_json_encode(path):
         )
 
 
-def test_insight_flowchart_only_sends_meetings_to_analyze():
-    """summarize-bulk must not receive meeting records it cannot validate."""
+def test_community_meeting_flowchart_sends_meeting_base_url():
+    formulas = "\n".join(
+        _formulas(FLOWCHART_DIR / "Community_meeting_summary_flowchart.csv")
+    )
+    assert "$payload['espo_meeting_base_url'] = $espoBaseUrl" in formulas
+    assert "espo_feedback_base_url" not in formulas
+
+
+def test_insight_flowchart_sends_meetings_to_both_bulk_endpoints():
+    """Meeting records are collected regardless of the insight method."""
     flowchart = FLOWCHART_DIR / "Insight_creation_flowchart.csv"
     nodes = _nodes(flowchart)
     collection = next(node for node in nodes if node["id"] == "ski0qsd6qx")
@@ -113,11 +121,8 @@ def test_insight_flowchart_only_sends_meetings_to_analyze():
         "$analysisRecords = array\\push($analysisRecords, $meetingRecord);" in formula
     )
     assert "$feedbackRecords" not in formula
-    assert "$meetingCount = 0;" in formula
-    assert (
-        "ifThen($method == 'analyze', $meetingCount = "
-        "array\\length($$meetingBackendIDs));"
-    ) in formula
+    assert "$meetingCount = array\\length($$meetingBackendIDs);" in formula
+    assert "$method ==" not in formula
     assert "ifThen($meetingNotes == null" not in formula
 
 

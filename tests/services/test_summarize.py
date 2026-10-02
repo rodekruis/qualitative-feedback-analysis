@@ -17,10 +17,11 @@ from uuid import uuid4
 
 import pytest
 
-from qfa.domain.errors import AnalysisError, LLMError
+from qfa.domain.errors import AnalysisError, FeedbackTooLargeError, LLMError
 from qfa.domain.models import (
     QUALITY_SCORE_WEIGHTS,
     AggregateSummaryResultModel,
+    CommunityMeetingRecordMetadataModel,
     CommunityMeetingRecordModel,
     CommunityMeetingRecordSummaryModel,
     FeedbackRecordMetadataModel,
@@ -107,7 +108,7 @@ def _make_community_meeting_summary_result(
 
 
 def _make_community_meeting_request(
-    tenant_id=TENANT_ID, url_id="", espo_feedback_base_url=None
+    tenant_id=TENANT_ID, url_id="", espo_meeting_base_url=None
 ):
     return SingleSummaryCommunityMeetingRequestModel(
         community_meeting_record=CommunityMeetingRecordModel(
@@ -116,7 +117,7 @@ def _make_community_meeting_request(
             url_id=url_id,
         ),
         tenant_id=tenant_id,
-        espo_feedback_base_url=espo_feedback_base_url,
+        espo_meeting_base_url=espo_meeting_base_url,
     )
 
 
@@ -264,9 +265,8 @@ def _build_service(
 ):
     """Build a ``SummarizeService`` over the real executor.
 
-    ``max_total_tokens`` is threaded through to the executor even though
-    neither summarisation path runs the token-budget guard: the tests that
-    set it low assert precisely that a large payload is *still* forwarded.
+    ``max_total_tokens`` feeds the executor's budget guard, which only
+    ``summarize_bulk`` runs.
     """
     anonymizer = anonymizer if anonymizer is not None else FakeAnonymizer()
     return SummarizeService(
@@ -306,6 +306,94 @@ class TestTokenLimit:
         await service.summarize(request, _future_deadline())
 
         assert len(fake_llm.calls) == 2
+
+    @pytest.mark.asyncio
+    async def test_oversized_bulk_request_fails_before_anonymisation(self, settings):
+        anonymize_calls = []
+
+        class SpyAnonymizer(FakeAnonymizer):
+            def anonymize(self, text):
+                anonymize_calls.append(text)
+                return super().anonymize(text)
+
+        fake_llm = FakeLLMPort()
+        service = _build_service(
+            fake_llm, settings, anonymizer=SpyAnonymizer(), max_total_tokens=100
+        )
+        request = _make_aggregate_request(
+            feedback_records=(_make_feedback_record(content="word " * 1_000),)
+        )
+
+        with pytest.raises(FeedbackTooLargeError):
+            await service.summarize_bulk(request, _future_deadline())
+
+        assert anonymize_calls == []
+        assert fake_llm.calls == []
+
+
+class TestSummarizeBulkCommunityMeetingRecords:
+    @staticmethod
+    def _mixed_request(**updates):
+        meeting = CommunityMeetingRecordModel(
+            id="meeting-1",
+            meetingNotes="Participants requested safer water points.",
+            metadata=CommunityMeetingRecordMetadataModel(location="Camp A"),
+            url_id="m-url",
+        )
+        feedback = _make_feedback_record(
+            doc_id="Form-1", metadata={"coding_level_1": "Water"}
+        )
+        return _make_aggregate_request(feedback_records=(feedback, meeting)).model_copy(
+            update=updates
+        )
+
+    @staticmethod
+    def _fake_llm(summary="- Point"):
+        return FakeLLMPort(
+            responses=[
+                _make_llm_response(
+                    structured=_make_aggregate_summary_result(summary=summary)
+                ),
+                _make_llm_response(structured=_judge_text()),
+            ]
+        )
+
+    @pytest.mark.asyncio
+    async def test_envelope_carries_both_record_types_with_metadata(self, settings):
+        fake_llm = self._fake_llm()
+        service = _build_service(fake_llm, settings)
+
+        await service.summarize_bulk(self._mixed_request(), _future_deadline())
+
+        user_message = fake_llm.calls[0]["user_message"]
+        assert '<feedback_record id="Form-1">' in user_message
+        assert '<community_meeting_record id="meeting-1">' in user_message
+        assert "coding_level_1=Water" in user_message
+        assert "location=Camp A" in user_message
+
+    @pytest.mark.asyncio
+    async def test_system_message_covers_meeting_notes(self, settings):
+        fake_llm = self._fake_llm()
+        service = _build_service(fake_llm, settings)
+
+        await service.summarize_bulk(self._mixed_request(), _future_deadline())
+
+        system_message = fake_llm.calls[0]["system_message"]
+        assert "community meeting notes" in system_message
+        assert "fgd means focus group discussion" in system_message
+
+    @pytest.mark.asyncio
+    async def test_meeting_mentions_link_to_meeting_base_url(self, settings):
+        fake_llm = self._fake_llm(summary="- Raised in Form-1 and meeting-1")
+        service = _build_service(fake_llm, settings)
+        request = self._mixed_request(
+            espo_feedback_base_url="https://espo/fb",
+            espo_meeting_base_url="https://espo/mt",
+        )
+
+        result = await service.summarize_bulk(request, _future_deadline())
+
+        assert "[meeting-1](https://espo/mt/m-url)" in result.summary
 
 
 class TestNonTransientError:
@@ -385,7 +473,7 @@ class TestNonTransientError:
         result = await service.summarize_community_meeting(
             _make_community_meeting_request(
                 url_id="meeting-url-1",
-                espo_feedback_base_url="https://espo.example.com/meetings/",
+                espo_meeting_base_url="https://espo.example.com/meetings/",
             ),
             _future_deadline(),
         )
