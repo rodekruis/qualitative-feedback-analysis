@@ -106,8 +106,12 @@ def test_insight_flowchart_only_sends_meetings_to_analyze():
 
     assert "$analysisRecords = list();" in formula
     assert "$feedbackRecord['record_type'] = 'feedback';" in formula
-    assert "$analysisRecords = array\\push($analysisRecords, $feedbackRecord);" in formula
-    assert "$analysisRecords = array\\push($analysisRecords, $meetingRecord);" in formula
+    assert (
+        "$analysisRecords = array\\push($analysisRecords, $feedbackRecord);" in formula
+    )
+    assert (
+        "$analysisRecords = array\\push($analysisRecords, $meetingRecord);" in formula
+    )
     assert "$feedbackRecords" not in formula
     assert "$meetingCount = 0;" in formula
     assert (
