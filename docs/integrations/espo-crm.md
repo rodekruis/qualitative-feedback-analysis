@@ -20,7 +20,7 @@ These use all single-feedback record endpoints such as `summarize`, `detect-sens
 
 ### Insight saving flow
 
-`Insight_creation_flowchart.csv` triggers when an insight record is **created**. This flow selects the endpoint that coincides with the user request, and calls one of the bulk endpoints: `analyze-bulk` or `summarize-bulk`.
+`Insight_creation_flowchart.csv` triggers when an insight record is **created**. This flow selects the endpoint that coincides with the user request, and calls one of the bulk endpoints: `analyze-bulk` or `summarize-bulk`. Both receive the insight's related feedback and community meeting records, each tagged with `record_type`.
 
 ![Espo flowchart for creating an insight entity](../assets/espo_insight_creation_flow.png)
 
@@ -111,7 +111,7 @@ Both bulk endpoints return the same four fields for EspoCRM to write to separate
 
 ### Hyperlinking records in insight text
 
-For `analyze-bulk`, the `motherPayload` sends `espo_feedback_base_url` and `espo_meeting_base_url`; each record also needs its `url_id`. For `summarize-bulk`, only feedback records use `espo_feedback_base_url`. Matching full record IDs in the generated text are rewritten as markdown hyperlinks — see [REST API § Hyperlinking records](../rest-api/index.md#hyperlinking-records). This flows through `pretty_output` automatically, so a markdown-aware EspoCRM field renders it as a clickable link. Bare numbers are not linked. Older flowcharts that omit these fields leave the output as plain text.
+The `motherPayload` sends `espo_feedback_base_url` and `espo_meeting_base_url` to both bulk endpoints; each record also needs its `url_id`. Matching full record IDs in the generated text are rewritten as markdown hyperlinks — see [REST API § Hyperlinking records](../rest-api/index.md#hyperlinking-records). This flows through `pretty_output` automatically, so a markdown-aware EspoCRM field renders it as a clickable link. Bare numbers are not linked. Older flowcharts that omit these fields leave the output as plain text.
 
 ## Authentication
 

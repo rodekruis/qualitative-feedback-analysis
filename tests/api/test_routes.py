@@ -1,5 +1,7 @@
 """Tests for API route handlers."""
 
+from typing import ClassVar
+
 import httpx
 import pytest
 
@@ -17,7 +19,11 @@ from qfa.domain.errors import (
     LLMTimeoutError,
     PromptInjectionDetectedError,
 )
-from qfa.domain.models import FeedbackRecordSummaryModel
+from qfa.domain.models import (
+    CommunityMeetingRecordModel,
+    FeedbackRecordModel,
+    FeedbackRecordSummaryModel,
+)
 from qfa.services.coding import NO_CODING_EMPTY_CONTENT_EXPLANATION
 
 from .conftest import FAKE_API_KEY, FakeService
@@ -975,6 +981,80 @@ class TestFeedbackUrlFieldsForwarded:
         forwarded = test_app.state.summarize_service.last_summarize_bulk_request
         assert forwarded.feedback_records[0].url_id == "abc123"
         assert forwarded.espo_feedback_base_url == "https://espo.example.com/feedback"
+
+
+class TestSummarizeBulkCommunityMeetingRecords:
+    """summarize-bulk accepts the same typed record union as analyze-bulk."""
+
+    _FEEDBACK: ClassVar[dict] = {
+        "record_type": "feedback",
+        "id": "feedback-1",
+        "content": "Fb.",
+    }
+    _MEETING: ClassVar[dict] = {
+        "record_type": "community_meeting",
+        "id": "meeting-1",
+        "meetingNotes": "<p>Participants requested safer water points.</p>",
+    }
+
+    async def _post(self, client, records, **extra):
+        return await client.post(
+            "/v1/summarize-bulk",
+            json={"feedback_records": records} | extra,
+            headers=_auth_header(),
+        )
+
+    @pytest.mark.asyncio
+    async def test_meeting_only_batch_is_forwarded_with_markup_stripped(
+        self, client, test_app
+    ):
+        resp = await self._post(client, [self._MEETING])
+        assert resp.status_code == 200
+        forwarded = test_app.state.summarize_service.last_summarize_bulk_request
+        (record,) = forwarded.feedback_records
+        assert isinstance(record, CommunityMeetingRecordModel)
+        assert record.meetingNotes == "Participants requested safer water points."
+
+    @pytest.mark.asyncio
+    async def test_mixed_batch_preserves_order_types_and_base_urls(
+        self, client, test_app
+    ):
+        resp = await self._post(
+            client,
+            [self._FEEDBACK, self._MEETING],
+            espo_feedback_base_url="https://example/#CFeedbackData/view",
+            espo_meeting_base_url="https://example/#CCommunityMeetingData/view",
+        )
+        assert resp.status_code == 200
+        forwarded = test_app.state.summarize_service.last_summarize_bulk_request
+        assert isinstance(forwarded.feedback_records[0], FeedbackRecordModel)
+        assert isinstance(forwarded.feedback_records[1], CommunityMeetingRecordModel)
+        assert forwarded.espo_feedback_base_url == "https://example/#CFeedbackData/view"
+        assert (
+            forwarded.espo_meeting_base_url
+            == "https://example/#CCommunityMeetingData/view"
+        )
+
+    @pytest.mark.asyncio
+    async def test_empty_meeting_notes_are_dropped(self, client, test_app):
+        empty_meeting = self._MEETING | {"id": "meeting-2", "meetingNotes": ""}
+        resp = await self._post(client, [self._FEEDBACK, empty_meeting])
+        assert resp.status_code == 200
+        forwarded = test_app.state.summarize_service.last_summarize_bulk_request
+        assert [r.id for r in forwarded.feedback_records] == ["feedback-1"]
+
+    @pytest.mark.asyncio
+    async def test_untyped_feedback_cannot_be_mixed_with_meeting(self, client):
+        untyped = {"id": "feedback-1", "content": "Fb."}
+        resp = await self._post(client, [untyped, self._MEETING])
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_duplicate_ids_are_rejected(self, client):
+        resp = await self._post(
+            client, [self._FEEDBACK, self._FEEDBACK | {"content": "Other."}]
+        )
+        assert resp.status_code == 422
 
 
 # ------------------------------------------------------------------ #

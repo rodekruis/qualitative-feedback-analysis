@@ -368,13 +368,13 @@ class AnalysisResultModel(BaseModel):
 
 
 class SummaryRequestModel(BaseModel):
-    """A request to summarize multiple feedback records (bulk path)."""
+    """A request to summarize multiple feedback and/or community meeting records (bulk path)."""
 
     model_config = ConfigDict(frozen=True)
 
-    feedback_records: tuple[FeedbackRecordModel, ...] = Field(
+    feedback_records: tuple[AnalysisRecord, ...] = Field(
         min_length=1,
-        description="Non-empty tuple of feedback records to summarize.",
+        description="Non-empty tuple of feedback and/or community meeting records to summarize.",
     )
     output_language: str | None = Field(
         default=None,
@@ -394,6 +394,14 @@ class SummaryRequestModel(BaseModel):
             " summary are rewritten as a markdown hyperlink"
             " `[id](espo_feedback_base_url/url_id)`, using that record's"
             " `url_id`. Records with no `url_id` are left as plain text."
+        ),
+    )
+    espo_meeting_base_url: str | None = Field(
+        default=None,
+        description=(
+            "Base URL for community meeting detail links in the aggregate summary."
+            " Used only for community meeting records; feedback records use"
+            " ``espo_feedback_base_url``."
         ),
     )
 
