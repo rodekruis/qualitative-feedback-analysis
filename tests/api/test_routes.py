@@ -313,6 +313,32 @@ class TestSummarizeSuccess:
         assert "pretty_output" in data
 
     @pytest.mark.asyncio
+    async def test_community_meeting_summary_forwards_meeting_base_url(
+        self, client, test_app
+    ):
+        resp = await client.post(
+            "/v1/summarize-community-meeting",
+            json={
+                "community_meeting_record": {
+                    "id": "meeting-1",
+                    "meetingNotes": "Notes.",
+                    "url_id": "m-url",
+                },
+                "espo_meeting_base_url": "https://example/#CCommunityMeetingData/view",
+            },
+            headers=_auth_header(),
+        )
+
+        assert resp.status_code == 200
+        forwarded = (
+            test_app.state.summarize_service.last_summarize_community_meeting_request
+        )
+        assert (
+            forwarded.espo_meeting_base_url
+            == "https://example/#CCommunityMeetingData/view"
+        )
+
+    @pytest.mark.asyncio
     async def test_community_meeting_summary_empty_notes_returns_empty_result(
         self, client
     ):

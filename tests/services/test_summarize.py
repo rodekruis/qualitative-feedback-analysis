@@ -108,7 +108,7 @@ def _make_community_meeting_summary_result(
 
 
 def _make_community_meeting_request(
-    tenant_id=TENANT_ID, url_id="", espo_feedback_base_url=None
+    tenant_id=TENANT_ID, url_id="", espo_meeting_base_url=None
 ):
     return SingleSummaryCommunityMeetingRequestModel(
         community_meeting_record=CommunityMeetingRecordModel(
@@ -117,7 +117,7 @@ def _make_community_meeting_request(
             url_id=url_id,
         ),
         tenant_id=tenant_id,
-        espo_feedback_base_url=espo_feedback_base_url,
+        espo_meeting_base_url=espo_meeting_base_url,
     )
 
 
@@ -473,7 +473,7 @@ class TestNonTransientError:
         result = await service.summarize_community_meeting(
             _make_community_meeting_request(
                 url_id="meeting-url-1",
-                espo_feedback_base_url="https://espo.example.com/meetings/",
+                espo_meeting_base_url="https://espo.example.com/meetings/",
             ),
             _future_deadline(),
         )

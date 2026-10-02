@@ -160,7 +160,7 @@ Empty `content` short-circuits to a 200 with blank `title`/`summary` and every s
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `community_meeting_record` | object | — | A single `{id, meetingNotes, metadata?, url_id?}` record. `meetingNotes` may be empty and may contain HTML — see below. |
-| `espo_feedback_base_url` | string or null | `null` | Base URL for the EspoCRM community-meeting detail view. Mentions of the record id in the summary become markdown links when both this and `url_id` are present. |
+| `espo_meeting_base_url` | string or null | `null` | Base URL for the EspoCRM community-meeting detail view. Mentions of the record id in the summary become markdown links when both this and `url_id` are present. |
 
 ### Response (200 OK)
 
@@ -177,7 +177,7 @@ Empty `content` short-circuits to a 200 with blank `title`/`summary` and every s
 
 ## Hyperlinking records
 
-`/v1/analyze-bulk` and `/v1/summarize-bulk` accept optional `espo_feedback_base_url` and `espo_meeting_base_url` values alongside `feedback_records`. Matching record mentions are rewritten as markdown hyperlinks:
+`/v1/analyze-bulk` and `/v1/summarize-bulk` accept optional `espo_feedback_base_url` and `espo_meeting_base_url` values alongside `feedback_records`; `/v1/summarize-community-meeting` accepts `espo_meeting_base_url`. Matching record mentions are rewritten as markdown hyperlinks:
 
 ```
 [Form-07762](espo_feedback_base_url/url_id)

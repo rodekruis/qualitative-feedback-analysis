@@ -426,7 +426,7 @@ class SingleSummaryCommunityMeetingRequestModel(BaseModel):
         description="The community meeting record to summarize.",
     )
     tenant_id: str = Field(description="Tenant identifier injected by the auth layer.")
-    espo_feedback_base_url: str | None = Field(
+    espo_meeting_base_url: str | None = Field(
         default=None,
         description=(
             "Base URL for the community meeting record detail view. Mentions"

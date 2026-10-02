@@ -482,7 +482,7 @@ async def summarize_community_meeting(
             url_id=record.url_id,
         ),
         tenant_id=tenant.tenant_id,
-        espo_feedback_base_url=body.espo_feedback_base_url,
+        espo_meeting_base_url=body.espo_meeting_base_url,
     )
     result = await summarize_service.summarize_community_meeting(
         domain_request, deadline

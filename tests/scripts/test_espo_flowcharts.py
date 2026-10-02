@@ -97,6 +97,14 @@ def test_request_bodies_come_from_json_encode(path):
         )
 
 
+def test_community_meeting_flowchart_sends_meeting_base_url():
+    formulas = "\n".join(
+        _formulas(FLOWCHART_DIR / "Community_meeting_summary_flowchart.csv")
+    )
+    assert "$payload['espo_meeting_base_url'] = $espoBaseUrl" in formulas
+    assert "espo_feedback_base_url" not in formulas
+
+
 def test_insight_flowchart_sends_meetings_to_both_bulk_endpoints():
     """Meeting records are collected regardless of the insight method."""
     flowchart = FLOWCHART_DIR / "Insight_creation_flowchart.csv"

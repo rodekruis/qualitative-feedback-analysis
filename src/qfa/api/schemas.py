@@ -1007,7 +1007,7 @@ class ApiSummarizeCommunityMeetingRequest(BaseModel):
     community_meeting_record: ApiCommunityMeetingRecordInput = Field(
         description="Community meeting record to summarize."
     )
-    espo_feedback_base_url: str | None = Field(
+    espo_meeting_base_url: str | None = Field(
         default=None,
         description=(
             "Base URL for the community meeting record detail view. When set,"
