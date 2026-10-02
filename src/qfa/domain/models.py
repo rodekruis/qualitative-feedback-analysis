@@ -691,6 +691,21 @@ class LLMResponse(BaseModel, Generic[T_Response]):
     cost: float = Field(description="Estimated request cost in USD.")
 
 
+class PromptRef(BaseModel):
+    """Identifies the exact Langfuse prompt version an LLM call's system message came from.
+
+    Always both fields or neither: ``LLMPort.complete``'s ``prompt: PromptRef
+    | None`` keyword can tag a call with a name and a version together, or
+    tag it with neither — there is no longer a way to pass one without the
+    other (#398).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str = Field(description="Langfuse prompt name, e.g. 'analyze-judge'.")
+    version: int = Field(description="Current Langfuse version of that prompt.")
+
+
 class TenantApiKey(BaseModel):
     """An API key associated with a tenant."""
 

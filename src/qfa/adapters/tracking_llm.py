@@ -14,7 +14,7 @@ from tenacity import (
 )
 
 from qfa.domain.errors import LLMContentPolicyViolationError
-from qfa.domain.models import LLMResponse, T_Response
+from qfa.domain.models import LLMResponse, PromptRef, T_Response
 from qfa.domain.ports import LLMPort, UsageRepositoryPort
 from qfa.domain.usage_models import CallContext, CallStatus, LLMCallRecord
 from qfa.services.call_context import current_call_context
@@ -55,6 +55,7 @@ class TrackingLLMAdapter(LLMPort):
         tenant_id: str,
         response_model: type[T_Response],
         timeout: float = 20.0,
+        prompt: PromptRef | None = None,
     ) -> LLMResponse[T_Response]:
         """Run the inner ``complete`` and record the attempt.
 
@@ -65,6 +66,10 @@ class TrackingLLMAdapter(LLMPort):
         invoked outside an HTTP request (e.g. a CLI or test that forgot
         to set up scopes); HTTP paths set the scope via
         ``call_scope_for`` at the route layer.
+
+        ``prompt`` is forwarded to the inner client unchanged (#398) — this
+        decorator records usage/cost, not Langfuse trace attributes, so it
+        has no use for it beyond passing it through.
         """
         ctx = current_call_context.get()
         started_at = datetime.now(UTC)
@@ -78,6 +83,7 @@ class TrackingLLMAdapter(LLMPort):
                 tenant_id=tenant_id,
                 response_model=response_model,
                 timeout=timeout,
+                prompt=prompt,
             )
         except Exception as exc:
             outcome = exc

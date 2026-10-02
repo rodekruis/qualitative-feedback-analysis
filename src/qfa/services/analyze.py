@@ -55,15 +55,19 @@ from qfa.services.judge_scoring import (
     record_judge_scores,
 )
 from qfa.services.llm_call_executor import LLMCallExecutor, SlotTiming
+from qfa.services.prompt_names import (
+    ANALYZE_HIERARCHICAL_MAP_SYSTEM,
+    ANALYZE_HIERARCHICAL_REDUCE_SYSTEM,
+    ANALYZE_JUDGE,
+    ANALYZE_SINGLE_PASS_SYSTEM,
+    prompt_ref,
+)
 from qfa.services.prompts import (
-    ANALYZE_ACTION_PROMPT,
-    ANALYZE_GUARDRAILS_PROMPT,
-    ANALYZE_SYSTEM_PROMPT,
     JUDGE_UNAVAILABLE_EXPLANATION,
     JUDGE_USER_MESSAGE,
     build_analyze_judge_system_message,
     build_analyze_user_message,
-    build_output_language_instruction,
+    build_single_pass_system_message,
 )
 from qfa.services.record_links import hyperlink_form_references
 from qfa.settings import AnalyzeSettings, OrchestratorSettings
@@ -180,6 +184,13 @@ class AnalyzeService:
         real port, a no-op one when Langfuse is unconfigured, so ``None``
         here is only ever a test/script default, never production
         behaviour.
+    prompt_versions : dict[str, int] | None
+        Current Langfuse version per name in
+        :data:`~qfa.services.prompt_registry.SYSTEM_PROMPTS` (#398). ``None``
+        (the default) is treated as ``{}``, so every generation and judge
+        call this service makes simply carries no prompt-version span
+        attribute — the same as a name absent because Langfuse is
+        unconfigured or its push failed.
     """
 
     # Entity types whose placeholders are NOT restored in `analyze` output.
@@ -203,10 +214,16 @@ class AnalyzeService:
         embedder: EmbeddingPort | None = None,
         judge_llm: LLMPort | None = None,
         evaluator: EvaluationPort | None = None,
+        prompt_versions: dict[str, int] | None = None,
     ) -> None:
         self._executor = executor
         self._llm = llm
         self._evaluator = evaluator
+        # {} (never None) so every call site can .get(name) unconditionally;
+        # a name absent here (Langfuse unconfigured, or its push failed) just
+        # means that flow's LLM call carries no prompt-version span attribute
+        # (#398).
+        self._prompt_versions: dict[str, int] = prompt_versions or {}
         # Judge calls run on their own connection when one is configured, so
         # the generator does not grade its own output. Falling back to the
         # primary client keeps the default (no JUDGE_LLM_MODEL) behaviour
@@ -271,12 +288,7 @@ class AnalyzeService:
         - Existing regex prompt-injection tripwire still applies and
           returns 422 ``prompt_injection_detected``.
         """
-        system_message = (
-            f"{ANALYZE_SYSTEM_PROMPT}\n\n"
-            f"{ANALYZE_GUARDRAILS_PROMPT}\n\n"
-            f"{ANALYZE_ACTION_PROMPT}"
-            f"{build_output_language_instruction(request.output_language)}"
-        )
+        system_message = build_single_pass_system_message(request.output_language)
         user_message = build_analyze_user_message(
             request.prompt, request.feedback_records
         )
@@ -323,6 +335,7 @@ class AnalyzeService:
             tenant_id=request.tenant_id,
             response_model=str,
             timeout=analyse_timeout,
+            prompt=prompt_ref(self._prompt_versions, ANALYZE_SINGLE_PASS_SYSTEM),
         )
         analysis_text: str = analyse_response.structured
 
@@ -361,6 +374,7 @@ class AnalyzeService:
                     tenant_id=request.tenant_id,
                     response_model=str,
                     timeout=judge_timeout,
+                    prompt=prompt_ref(self._prompt_versions, ANALYZE_JUDGE),
                 )
             judged = _parse_analyze_judge_response(judge_response.structured)
             quality_score = judged.quality_score
@@ -789,6 +803,7 @@ class AnalyzeService:
             response_model=str,
             deadline=deadline,
             timing=timing,
+            prompt=prompt_ref(self._prompt_versions, ANALYZE_HIERARCHICAL_MAP_SYSTEM),
         )
         return response.structured
 
@@ -834,6 +849,7 @@ class AnalyzeService:
                     response_model=str,
                     deadline=deadline,
                     timing=timing,
+                    prompt=prompt_ref(self._prompt_versions, ANALYZE_JUDGE),
                 )
             judged = _parse_analyze_judge_response(judge_response.structured)
             # One score per chunk, not one aggregate for the whole
@@ -910,6 +926,9 @@ class AnalyzeService:
                 tenant_id=tenant_id,
                 response_model=str,
                 deadline=deadline,
+                prompt=prompt_ref(
+                    self._prompt_versions, ANALYZE_HIERARCHICAL_REDUCE_SYSTEM
+                ),
             )
             return response.structured
 

@@ -136,6 +136,7 @@ class RoutingLLM(LLMPort):
         tenant_id,
         response_model=str,
         timeout=20.0,
+        prompt=None,
     ):
         """Record the call and return a canned payload tagged with this client's name."""
         self.calls.append(
