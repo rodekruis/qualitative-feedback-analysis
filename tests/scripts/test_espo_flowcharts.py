@@ -137,3 +137,28 @@ def test_insight_flowchart_preserves_trace_and_meeting_links():
     assert "QFA_ESPO_MEETING_BASE_URL" in payload_formula
     assert "$payload['espo_meeting_base_url'] = $espoMeetingBaseUrl;" in payload_formula
     assert "requestID = json\\retrieve($response, 'request_id');" in response_formula
+
+
+def test_langfuse_flow_requires_non_empty_request_id():
+    """Do not submit Langfuse scores without a usable trace ID."""
+    flowchart = FLOWCHART_DIR / "user-feedback-to-Langfuse.csv"
+    nodes = _nodes(flowchart)
+    start = next(node for node in nodes if node["id"] == "9ozig1mlsx")
+    payload = next(node for node in nodes if node["id"] == "aub7jtft8l")
+    condition_items = [
+        condition for group in start["conditionsAll"] for condition in group["value"]
+    ]
+    request_id_values = {
+        condition["value"]
+        for condition in condition_items
+        if condition.get("fieldToCompare") == "requestID"
+    }
+    formula = next(
+        action["formula"]
+        for action in payload["actionList"]
+        if action["type"] == "executeFormula"
+    )
+
+    assert None in request_id_values
+    assert "" in request_id_values
+    assert "ifThen($request_id == null, $request_id = '');" in formula
