@@ -18,6 +18,8 @@ from qfa.api.dependencies import (
 )
 from qfa.api.schemas import (
     ApiAnalyzeBulkResponse,
+    ApiAnalyzeFeedbackRecordInput,
+    ApiAnalyzeRecordInput,
     ApiAnalyzeRequest,
     ApiAssignCodesRequest,
     ApiAssignCodesResponse,
@@ -39,6 +41,7 @@ from qfa.api.schemas import (
     ApiSummarizeResponse,
 )
 from qfa.domain.models import (
+    AnalysisRecord,
     AnalysisRequestModel,
     CodingAssignmentRequestModel,
     CodingFramework,
@@ -100,10 +103,24 @@ def _to_domain_community_meeting_metadata(
     return CommunityMeetingRecordMetadataModel.model_validate(metadata.model_dump())
 
 
-def _drop_empty_records(
+def _drop_empty_feedback_records(
     records: Sequence[ApiFeedbackRecordInput],
 ) -> list[ApiFeedbackRecordInput]:
-    """Return only records with non-empty ``content``, logging any dropped.
+    """Return only feedback records with non-empty ``content``."""
+    kept = [record for record in records if record.content]
+    dropped = len(records) - len(kept)
+    if dropped:
+        logger.info(
+            "Dropped %d feedback record(s) with empty content before processing.",
+            dropped,
+        )
+    return kept
+
+
+def _drop_empty_analysis_records(
+    records: Sequence[ApiAnalyzeRecordInput],
+) -> list[ApiAnalyzeRecordInput]:
+    """Return only records with non-empty analyzable text, logging any dropped.
 
     EspoCRM may submit feedback records with a blank description. Such
     records carry no information for the LLM and would violate the domain
@@ -123,7 +140,15 @@ def _drop_empty_records(
     aggregate output and single-record endpoints echo the source ``id``,
     so EspoCRM matches responses by id, never by position.
     """
-    kept = [record for record in records if record.content]
+    kept = [
+        record
+        for record in records
+        if (
+            record.content
+            if isinstance(record, ApiAnalyzeFeedbackRecordInput)
+            else record.meetingNotes
+        )
+    ]
     dropped = len(records) - len(kept)
     if dropped:
         logger.info(
@@ -131,6 +156,23 @@ def _drop_empty_records(
             dropped,
         )
     return kept
+
+
+def _to_domain_analysis_record(record: ApiAnalyzeRecordInput) -> AnalysisRecord:
+    """Translate one analyze-bulk input variant into its domain model."""
+    if isinstance(record, ApiAnalyzeFeedbackRecordInput):
+        return FeedbackRecordModel(
+            id=record.id,
+            content=record.content,
+            metadata=_to_domain_metadata(record.metadata),
+            url_id=record.url_id,
+        )
+    return CommunityMeetingRecordModel(
+        id=record.id,
+        meetingNotes=record.meetingNotes,
+        metadata=_to_domain_community_meeting_metadata(record.metadata),
+        url_id=record.url_id,
+    )
 
 
 router = APIRouter()
@@ -149,7 +191,7 @@ async def analyze_bulk(
     analyze_service: AnalyzeService = Depends(get_analyze_service),
     _scope: CallContext = Depends(call_scope_for(Operation.ANALYZE)),
 ) -> ApiAnalyzeBulkResponse:
-    """Analyze a batch of feedback records for trends and themes.
+    """Analyze a batch of feedback and/or community meeting records.
 
     The analyst prompt in ``body.prompt`` is wrapped in a structural
     envelope together with the feedback records, and the model is
@@ -174,24 +216,16 @@ async def analyze_bulk(
     table's granularity (``day`` / ``week`` / ``month``); omit it to
     use the server-side default.
 
-    **Edge cases**:
-
-    - Input that exceeds the token cap for ``single_pass`` → 413
-      ``payload_too_large`` (use ``mode=hierarchical`` for large corpora).
-    - Records with empty ``content`` are dropped before analysis (a blank
-      EspoCRM description must not fail the whole batch — issue #138).
-      ``feedback_record_count`` reflects the records actually analyzed. If
-      *every* record is empty the response is a 200 with
-      ``feedback_record_count=0`` and a fallback ``analysis`` explaining
-      that no analysis was performed.
-    - Injection-like text in record content or metadata is neutralised
-      structurally by the envelope; regex-based detection is a separate
-      guard handled by the LLM adapter.
+    Edge cases: oversized ``single_pass`` requests return 413
+    ``payload_too_large``; use ``mode=hierarchical`` for large corpora.
+    Empty ``content`` or ``meetingNotes`` records are dropped, and
+    ``feedback_record_count`` reflects records actually analyzed. Injection-like
+    record text is treated as data by the structural envelope.
 
     Parameters
     ----------
     body : AnalyzeRequest
-        The request body containing feedback records and prompt.
+        The request body containing typed records and prompt.
     request : Request
         The incoming HTTP request.
     tenant : TenantApiKey
@@ -203,13 +237,13 @@ async def analyze_bulk(
     -------
     AnalyzeResponse
         The analysis result with quality score, uncertainty explanation,
-        feedback record count, and request ID. ``coding_trends`` is
-        populated for both modes whenever metadata permits; ``confidence``
-        is populated only for ``hierarchical`` mode.
+        analyzed-record count, and request ID. ``coding_trends`` uses only
+        feedback records; ``confidence`` is populated only for
+        ``hierarchical`` mode.
     """
     deadline = datetime.now(UTC) + timedelta(seconds=1200)
 
-    records = _drop_empty_records(body.feedback_records)
+    records = _drop_empty_analysis_records(body.feedback_records)
     if not records:
         # All records were empty: nothing to analyze. Return a 200 empty
         # result rather than failing the request.
@@ -226,24 +260,17 @@ async def analyze_bulk(
             coding_trends=None,
         )
 
-    domain_feedback_records = tuple(
-        FeedbackRecordModel(
-            id=doc.id,
-            content=doc.content,
-            metadata=_to_domain_metadata(doc.metadata),
-            url_id=doc.url_id,
-        )
-        for doc in records
-    )
+    domain_records = tuple(_to_domain_analysis_record(record) for record in records)
 
     domain_request = AnalysisRequestModel(
-        feedback_records=domain_feedback_records,
+        feedback_records=domain_records,
         output_language=body.output_language,
         prompt=body.prompt,
         tenant_id=tenant.tenant_id,
         mode=body.mode,
         period=body.period,
         espo_feedback_base_url=body.espo_feedback_base_url,
+        espo_meeting_base_url=body.espo_meeting_base_url,
     )
 
     if body.mode == "hierarchical":
@@ -317,7 +344,7 @@ async def summarize_bulk(
     """
     deadline = datetime.now(UTC) + timedelta(seconds=240)
 
-    records = _drop_empty_records(body.feedback_records)
+    records = _drop_empty_feedback_records(body.feedback_records)
     if not records:
         # All records were empty: nothing to summarize. Return a 200 empty
         # aggregate rather than failing the request.

@@ -30,7 +30,14 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from qfa.domain.errors import AnalysisTimeoutError, FeedbackTooLargeError
-from qfa.domain.models import FeedbackRecordModel, LLMResponse, PromptRef, T_Response
+from qfa.domain.models import (
+    AnalysisRecord,
+    LLMResponse,
+    PromptRef,
+    T_Response,
+    record_text,
+    with_record_text,
+)
 from qfa.domain.ports import AnonymizationPort, LLMPort
 from qfa.settings import LLM_RETRY_BUDGET_MULTIPLIER, OrchestratorSettings
 
@@ -106,10 +113,10 @@ class LLMCallExecutor:
 
     def anonymize_records_and_prompt(
         self,
-        records: tuple[FeedbackRecordModel, ...],
+        records: tuple[AnalysisRecord, ...],
         analyst_prompt: str,
         anonymize: bool,
-    ) -> tuple[tuple[FeedbackRecordModel, ...], str, dict[str, str]]:
+    ) -> tuple[tuple[AnalysisRecord, ...], str, dict[str, str]]:
         """Redact every record's text and the analyst prompt in one namespace.
 
         The prompt travels with the records because it must share their
@@ -124,11 +131,11 @@ class LLMCallExecutor:
         if not anonymize:
             return records, analyst_prompt, {}
         redacted, mapping = self._anonymizer.anonymize_batch(
-            (analyst_prompt, *(record.content for record in records))
+            (analyst_prompt, *(record_text(record) for record in records))
         )
         redacted_prompt, redacted_contents = redacted[0], redacted[1:]
         new_records = tuple(
-            record.model_copy(update={"content": content})
+            with_record_text(record, content)
             for record, content in zip(records, redacted_contents, strict=True)
         )
         return new_records, redacted_prompt, mapping

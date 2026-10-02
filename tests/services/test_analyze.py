@@ -958,15 +958,14 @@ class TestAnalyzeAnonymizationOrdering:
 
     @pytest.mark.asyncio
     async def test_person_and_nrp_placeholders_are_retained_in_output(self, settings):
-        """Analyze leaves ``<PERSON_*>`` and ``<NRP_*>`` placeholders un-restored.
+        """Analyze retains person and NRP placeholders in its output.
 
         Defense in depth for the "do not identify individuals" guardrail
         in ``ANALYZE_GUARDRAILS_PROMPT``: if the LLM echoes a retained
         placeholder we supplied back into its analysis, the analyst must
-        not see the underlying value. NRP joins PERSON because it's where
-        the per-language NER model's misread names land. Other entity
-        types (here, ``LOCATION`` and ``EMAIL_ADDRESS``) are still
-        deanonymised as before.
+        not see the underlying value. NRP is included because per-language
+        NER models can label given names as NRP. Other entity types (here,
+        ``LOCATION`` and ``EMAIL_ADDRESS``) are still deanonymised.
         """
         placeholders = {
             "<PERSON_0>": "Alice",
@@ -998,7 +997,7 @@ class TestAnalyzeAnonymizationOrdering:
 
         result = await service.analyze_bulk(_make_request(), _future_deadline())
 
-        # Retained placeholders remain — analyst never sees the underlying value.
+        # Person placeholders remain — analyst never sees the underlying value.
         assert "<PERSON_0>" in result.result
         assert "Alice" not in result.result
         assert "<NRP_0>" in result.result

@@ -17,7 +17,8 @@ from qfa.services.prompts import (
 )
 
 _MAP_ACTION_PROMPT = (
-    "Analyse the feedback records below for trends and themes only. This is"
+    "Analyse the feedback and community meeting records below for trends and"
+    " themes only. This is"
     " one chunk of a larger corpus; produce a faithful partial analysis of"
     " THIS chunk that a later synthesis step can combine with others."
     " The analyst's instruction in <analyst_instruction> is the question to"

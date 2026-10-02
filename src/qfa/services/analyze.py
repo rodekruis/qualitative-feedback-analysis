@@ -34,10 +34,11 @@ from qfa.domain.errors import (
     LLMTimeoutError,
 )
 from qfa.domain.models import (
+    AnalysisRecord,
     AnalysisRequestModel,
     AnalysisResultModel,
-    FeedbackRecordModel,
     JudgeComponents,
+    record_text,
 )
 from qfa.domain.ports import AnonymizationPort, EmbeddingPort, EvaluationPort, LLMPort
 from qfa.services.call_context import judge_call
@@ -194,9 +195,9 @@ class AnalyzeService:
 
     # Entity types whose placeholders are NOT restored in `analyze` output.
     # Defense in depth for the "do not identify individuals" guardrail in
-    # `ANALYZE_GUARDRAILS_PROMPT`. NRP joins PERSON because it's where the
-    # per-language NER model's misread given names land; ORGANIZATION stays
-    # restored so findings keep useful context. Scoped to `analyze` only —
+    # `ANALYZE_GUARDRAILS_PROMPT`. NRP is included because per-language NER
+    # models can label given names as NRP; ORGANIZATION stays restored so
+    # findings keep useful context. Scoped to `analyze` only —
     # `summarize`/`assign_codes` still restore everything.
     _ANALYZE_RETAINED_PLACEHOLDER_TYPES: ClassVar[frozenset[str]] = frozenset(
         {"PERSON", "NRP"}
@@ -349,7 +350,10 @@ class AnalyzeService:
             )
 
         analysis_text = hyperlink_form_references(
-            analysis_text, request.feedback_records, request.espo_feedback_base_url
+            analysis_text,
+            request.feedback_records,
+            request.espo_feedback_base_url,
+            request.espo_meeting_base_url,
         )
 
         quality_score: float | None
@@ -498,7 +502,7 @@ class AnalyzeService:
         # above: onnxruntime releases the GIL during session.run(), so this
         # genuinely benefits rather than just avoiding the heartbeat stall
         # (#325).
-        texts = tuple(r.content for r in anonymized_records)
+        texts = tuple(record_text(record) for record in anonymized_records)
         logger.info("starting embedding of %d record(s)", len(texts))
         with timed() as embed_sw:
             vectors = await asyncio.to_thread(self._embedder.embed, texts)
@@ -739,7 +743,10 @@ class AnalyzeService:
             analysis_text = self._anonymizer.deanonymize(analysis_text, restorable)
 
         analysis_text = hyperlink_form_references(
-            analysis_text, request.feedback_records, request.espo_feedback_base_url
+            analysis_text,
+            request.feedback_records,
+            request.espo_feedback_base_url,
+            request.espo_meeting_base_url,
         )
 
         # One-line breakdown so a single log line answers "where did the time
@@ -773,7 +780,7 @@ class AnalyzeService:
     async def _map_chunk(
         self,
         analyst_prompt: str,
-        records: tuple[FeedbackRecordModel, ...],
+        records: tuple[AnalysisRecord, ...],
         tenant_id: str,
         deadline: datetime,
         semaphore: asyncio.Semaphore,
@@ -803,7 +810,7 @@ class AnalyzeService:
     async def _judge_chunk(
         self,
         analyst_prompt: str,
-        records: tuple[FeedbackRecordModel, ...],
+        records: tuple[AnalysisRecord, ...],
         partial: Optional[str],
         tenant_id: str,
         deadline: datetime,

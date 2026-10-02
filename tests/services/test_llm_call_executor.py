@@ -26,6 +26,8 @@ from qfa.domain.errors import (
     LLMTimeoutError,
 )
 from qfa.domain.models import (
+    CommunityMeetingRecordMetadataModel,
+    CommunityMeetingRecordModel,
     FeedbackRecordMetadataModel,
     FeedbackRecordModel,
     LLMResponse,
@@ -200,6 +202,21 @@ class TestCheckTokenLimit:
 
 
 class TestAnonymizeRecordsAndPrompt:
+    def test_redacts_community_meeting_notes_without_changing_record_type(self):
+        executor = _make_executor(anonymizer=RedactingAnonymizer())
+        record = CommunityMeetingRecordModel(
+            id="meeting-1",
+            meetingNotes="Jane reported a leak.",
+            metadata=CommunityMeetingRecordMetadataModel(),
+        )
+
+        anonymized, _, _ = executor.anonymize_records_and_prompt(
+            (record,), "What did Jane report?", anonymize=True
+        )
+
+        assert isinstance(anonymized[0], CommunityMeetingRecordModel)
+        assert anonymized[0].meetingNotes == "<PERSON_0> reported a leak."
+
     def test_round_trips_through_the_returned_mapping(self):
         anonymizer = RedactingAnonymizer()
         executor = _make_executor(anonymizer=anonymizer)

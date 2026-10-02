@@ -7,7 +7,13 @@ token budget, so the recursion trigger in the orchestrator is well-defined.
 These are pure, deterministic and tested with hand-built vectors (no model).
 """
 
-from qfa.domain.models import FeedbackRecordMetadataModel, FeedbackRecordModel
+from qfa.domain.models import (
+    CommunityMeetingRecordMetadataModel,
+    CommunityMeetingRecordModel,
+    FeedbackRecordMetadataModel,
+    FeedbackRecordModel,
+    record_text,
+)
 from qfa.services.clustering import _split_to_budget, cluster_records
 
 
@@ -97,7 +103,7 @@ def test_over_budget_chunk_is_split_into_budget_sized_subchunks() -> None:
     )
     # Every chunk must fit the budget.
     for chunk in chunks:
-        chars = sum(len(r.content) for r in chunk.records)
+        chars = sum(len(record_text(r)) for r in chunk.records)
         assert chars // 4 <= 300, "a chunk exceeds the token budget after splitting"
     # And coverage still holds.
     seen = [r.id for c in chunks for r in c.records]
@@ -127,7 +133,7 @@ def test_large_cluster_is_split_by_target_below_the_llm_cap() -> None:
     )
     assert len(chunks) > 1, "a target far below the cap did not split the cluster"
     for chunk in chunks:
-        tokens = sum(len(r.content) for r in chunk.records) // 4
+        tokens = sum(len(record_text(r)) for r in chunk.records) // 4
         assert tokens <= 100, "a sub-chunk exceeded the target size"
     seen = [r.id for c in chunks for r in c.records]
     assert sorted(seen) == sorted(r.id for r in records)
@@ -148,7 +154,7 @@ def test_split_to_budget_produces_balanced_not_remainder_groups() -> None:
     assert counts == [5, 5, 6, 6], f"not balanced into equal contiguous parts: {counts}"
     # Hard budget still respected by every group.
     for group in groups:
-        assert sum(len(r.content) for r in group) // 4 <= 60
+        assert sum(len(record_text(r)) for r in group) // 4 <= 60
 
 
 def test_split_to_budget_grows_part_count_when_a_balanced_part_overflows() -> None:
@@ -169,7 +175,9 @@ def test_split_to_budget_grows_part_count_when_a_balanced_part_overflows() -> No
     )
     groups = _split_to_budget(records, max_total_tokens=30, chars_per_token=4)
     for group in groups:
-        assert sum(len(r.content) for r in group) // 4 <= 30, "a group busts the budget"
+        assert sum(len(record_text(r)) for r in group) // 4 <= 30, (
+            "a group busts the budget"
+        )
     seen = [r.id for g in groups for r in g]
     assert sorted(seen) == ["big", "s1", "s2", "s3"]
 
@@ -192,7 +200,7 @@ def test_target_above_the_llm_cap_still_respects_the_cap() -> None:
         target_chunk_tokens=1_000_000,  # absurd target must not win
     )
     for chunk in chunks:
-        tokens = sum(len(r.content) for r in chunk.records) // 4
+        tokens = sum(len(record_text(r)) for r in chunk.records) // 4
         assert tokens <= 50, "a chunk exceeded the hard LLM cap"
 
 
@@ -246,6 +254,38 @@ def test_records_without_a_parseable_date_sort_last_and_stably() -> None:
     order = [r.id for r in chunks[0].records]
     # Dated records first in date order; undated/unparseable keep input order.
     assert order == ["c", "a", "b", "d", "e"], order
+
+
+def test_meetings_sort_by_date_of_meeting_then_fall_back_to_created() -> None:
+    meeting_with_date = CommunityMeetingRecordModel(
+        id="meeting-date",
+        meetingNotes="meeting notes",
+        metadata=CommunityMeetingRecordMetadataModel(
+            created="2026-03-01",
+            dateOfMeeting="2024-01-01",
+        ),
+    )
+    meeting_without_date = CommunityMeetingRecordModel(
+        id="meeting-created",
+        meetingNotes="meeting notes",
+        metadata=CommunityMeetingRecordMetadataModel(created="2024-03-01"),
+    )
+    feedback = _record("feedback", created="2024-06-01")
+
+    chunks = cluster_records(
+        records=(feedback, meeting_without_date, meeting_with_date),
+        vectors=((0.0, 0.0), (0.0, 0.001), (0.0, 0.002)),
+        min_cluster_size=2,
+        max_total_tokens=100_000,
+        chars_per_token=4,
+    )
+
+    assert len(chunks) == 1
+    assert [record.id for record in chunks[0].records] == [
+        "meeting-date",
+        "meeting-created",
+        "feedback",
+    ]
 
 
 def test_single_record_corpus_yields_one_chunk() -> None:

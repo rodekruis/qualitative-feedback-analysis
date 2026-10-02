@@ -151,6 +151,30 @@ class CommunityMeetingRecordModel(BaseModel):
     )
 
 
+AnalysisRecord = FeedbackRecordModel | CommunityMeetingRecordModel
+
+
+def record_text(record: AnalysisRecord) -> str:
+    """Return the analyzable text from either supported record type."""
+    if isinstance(record, FeedbackRecordModel):
+        return record.content
+    return record.meetingNotes
+
+
+def record_date(record: AnalysisRecord) -> str:
+    """Return the date used to place a record in chronological order."""
+    if isinstance(record, CommunityMeetingRecordModel):
+        return record.metadata.dateOfMeeting or record.metadata.created
+    return record.metadata.created
+
+
+def with_record_text(record: AnalysisRecord, text: str) -> AnalysisRecord:
+    """Return a copy of ``record`` with its analyzable text replaced."""
+    if isinstance(record, FeedbackRecordModel):
+        return record.model_copy(update={"content": text})
+    return record.model_copy(update={"meetingNotes": text})
+
+
 class CodingNode(BaseModel):
     """A node in a hierarchical coding framework."""
 
@@ -182,9 +206,9 @@ class AnalysisRequestModel(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    feedback_records: tuple[FeedbackRecordModel, ...] = Field(
+    feedback_records: tuple[AnalysisRecord, ...] = Field(
         min_length=1,
-        description="Non-empty tuple of feedback records to analyze.",
+        description="Non-empty tuple of feedback and/or community meeting records to analyze.",
     )
     output_language: str | None = Field(
         default=None,
@@ -225,6 +249,14 @@ class AnalysisRequestModel(BaseModel):
             " output are rewritten as a markdown hyperlink"
             " `[id](espo_feedback_base_url/url_id)`, using that record's"
             " `url_id`. Records with no `url_id` are left as plain text."
+        ),
+    )
+    espo_meeting_base_url: str | None = Field(
+        default=None,
+        description=(
+            "Base URL for community meeting detail links in the analysis output."
+            " Used only for community meeting records; feedback records use"
+            " ``espo_feedback_base_url``."
         ),
     )
 

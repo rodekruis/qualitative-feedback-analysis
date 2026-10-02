@@ -31,12 +31,13 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `feedback_records` | list | — | Non-empty list of `{id, content, metadata?, url_id?}` records. Individual records may have empty `content` (e.g. a blank EspoCRM description) — those are dropped before analysis rather than failing the request. |
+| `feedback_records` | list | — | Non-empty list of feedback and/or community meeting records. Feedback items use `{id, content, metadata?, url_id?}`; meeting items use `{record_type: "community_meeting", id, meetingNotes, metadata?, url_id?}`. Feedback-only legacy requests may omit `record_type`; every item must be explicit when a batch contains meetings. Blank `content` or `meetingNotes` is dropped before analysis. Non-empty IDs must be unique across the batch; repeated empty IDs are accepted. |
 | `prompt` | string | — | Analyst question (1–4000 chars). |
 | `output_language` | string or null | `null` | Free-text target language for the analysis output (e.g. `"Dutch"`, `"Brazilian Portuguese"`) — any language the model can produce. Prefer an ISO 639-1 code (`"nl"`) or English language name (`"Dutch"`) for the most predictable results. The value is sanitized and never rejected. Omit (or `null`) to let the model answer in the language of the input records. |
 | `mode` | `"single_pass"` \| `"hierarchical"` | `"single_pass"` | `single_pass` runs one LLM call under the token cap (input over the cap → 413). `hierarchical` runs embed → cluster → map → reduce over large corpora and additionally returns `confidence`. |
 | `period` | `"day"` \| `"week"` \| `"month"` \| null | `null` → server default (`week`) | Granularity for the deterministic `coding_trends` table. `day` for short-window deep-dives, `week` for the typical 1-3 month operational corpus, `month` for multi-year corpora. Omit to use the server-side default (`ANALYZE_DEFAULT_CODING_TREND_PERIOD`). |
-| `espo_feedback_base_url` | string or null | `null` | Base URL for the EspoCRM feedback record detail view. See [Hyperlinking feedback records](#hyperlinking-feedback-records) below. |
+| `espo_feedback_base_url` | string or null | `null` | Base URL for feedback record details. See [Hyperlinking records](#hyperlinking-records) below. |
+| `espo_meeting_base_url` | string or null | `null` | Base URL for community meeting record details. Used only for meeting links. |
 
 ### Response (200 OK)
 
@@ -51,17 +52,27 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 | `quality_text` | string or null | Quality score as dots and percentage, e.g. `"●●●●● 100%"`. `null` when `quality_score` is `null`. |
 | `pretty_output` | string | Analysis text verbatim — exists for EspoCRM's `modelResponse` mapping so the flowchart needs no change when this backend is deployed. |
 | `uncertainty_explanation` | string | Natural-language judge reasoning, or a constant unavailable message when the judge failed. |
-| `feedback_record_count` | int | Number of records actually analyzed (records with empty `content` are dropped). |
+| `feedback_record_count` | int | Number of records actually analyzed across both record types (blank records are dropped). The legacy field name is retained for compatibility. |
 | `request_id` | string | Canonical UUID matching the `X-Request-ID` response header. |
 | `confidence` | float or null | Coverage-weighted mean of per-chunk quality scores (the composite of faithfulness, coverage and clarity). Populated only for `mode=hierarchical`; `null` for `single_pass`. |
-| `coding_trends` | object or null | Deterministic code-by-period frequency table. Populated for **both** modes whenever the configured date + code metadata fields are present (it depends only on metadata, not on the analysis pipeline). `null` when no record carries a parseable date. Bucket-label shape depends on `period`: `YYYY-MM-DD` for day, `YYYY-Www` (ISO week) for week, `YYYY-MM` for month. |
+| `coding_trends` | object or null | Deterministic code-by-period frequency table from feedback records only, populated for both modes when eligible records have the configured date and code metadata. Meeting-only requests return `null`. Bucket-label shape depends on `period`: `YYYY-MM-DD` for day, `YYYY-Www` (ISO week), `YYYY-MM` for month. |
 
 For `mode: "hierarchical"`, the response populates `confidence` (a
 coverage-weighted mean of per-chunk quality scores). `faithfulness`,
 `coverage` and `clarity` stay `null` until per-chunk aggregation lands.
-`coding_trends` is populated for both modes, so existing single-pass
-integrations that ignored the field are unaffected; clients that want
-trends can now read them from the single-pass response too.
+`coding_trends` is populated for both modes from feedback records only, so
+existing single-pass integrations that ignored the field are unaffected;
+clients that want trends can now read them from the single-pass response too.
+
+The endpoint accepts community meeting notes as well as feedback. A meeting
+item must include `record_type: "community_meeting"` and uses `meetingNotes`;
+HTML is reduced to plain text at the API boundary. Feedback items may include
+`record_type: "feedback"`, although the discriminator remains optional for
+backwards-compatible feedback-only requests. Mixed batches must explicitly
+type every item and are analyzed together in one request. Both
+`single_pass` and `hierarchical` modes use the record text; hierarchical
+clustering orders meeting notes by `dateOfMeeting`, falling back to `created`.
+Other meeting metadata is not used for clustering.
 
 Per-record inference endpoints (`/v1/summarize`, `/v1/summarize-community-meeting`, `/v1/assign-codes`, `/v1/detect-sensitive`) accept a single record and return one result object, unlike bulk endpoints that accept multiple records and return aggregated output.
 
@@ -100,7 +111,7 @@ These explanations are English only, regardless of the language of the feedback.
 |---|---|---|---|
 | `feedback_records` | list | — | Non-empty list of `{id, content, metadata?, url_id?}` records. Records with empty `content` are dropped. |
 | `output_language` | string or null | `null` | Free-text target language for the summary (e.g. `"Dutch"`). Sets the language of the generated text; `pretty_output` carries no localized headers. Omit to mirror the input records' language. |
-| `espo_feedback_base_url` | string or null | `null` | See [Hyperlinking feedback records](#hyperlinking-feedback-records). |
+| `espo_feedback_base_url` | string or null | `null` | See [Hyperlinking records](#hyperlinking-records). |
 
 ### Response (200 OK)
 
@@ -161,15 +172,15 @@ Empty `content` short-circuits to a 200 with blank `title`/`summary` and every s
 | `clarity` | float or null | How clear and concise the summary is, in [0, 1]. `null` only when `meetingNotes` was empty. |
 | `pretty_output` | string | Human-readable formatted output string, built from `id`/`title`/`summary`/`quality_score`. |
 
-## Hyperlinking feedback records
+## Hyperlinking records
 
-`/v1/analyze-bulk` and `/v1/summarize-bulk` accept an optional `espo_feedback_base_url` alongside `feedback_records`. When it's set, any mention of a feedback record's `id` in the output text (e.g. an analysis citing `Form-07762` as supporting evidence) is rewritten as a markdown hyperlink:
+`/v1/analyze-bulk` accepts optional `espo_feedback_base_url` and `espo_meeting_base_url` values alongside `feedback_records`. `/v1/summarize-bulk` accepts `espo_feedback_base_url` for its feedback records. Matching record mentions are rewritten as markdown hyperlinks:
 
 ```
 [Form-07762](espo_feedback_base_url/url_id)
 ```
 
-`url_id` is a separate, optional field on each feedback record — the EspoCRM URL path segment for that record (distinct from `id`, which is the citation-friendly identifier the model sees and may repeat in prose). A record is only hyperlinked if both `espo_feedback_base_url` is set on the request **and** that record's `url_id` is non-empty; otherwise its `id` is left as plain text. Matching is exact and word-boundary-safe (`Form-1` never matches inside `Form-10`).
+`url_id` is a separate, optional field on each record — the EspoCRM URL path segment for that record (distinct from `id`, which is the citation-friendly identifier the model sees and may repeat in prose). Feedback records are hyperlinked only when `espo_feedback_base_url` and that record's `url_id` are non-empty. Community meeting records are hyperlinked only when `espo_meeting_base_url` and their `url_id` are non-empty. Otherwise the ID stays plain text. Only complete IDs are linked; bare numbers are left untouched to avoid turning ordinary quantities into links. Existing Markdown links are not wrapped again.
 
 This is presentational only — it rewrites the already-generated `analysis`/`summary` text before it's returned, including the `pretty_output` block, so no extra rendering step is needed on the EspoCRM side beyond the flowchart's existing markdown-aware field display.
 

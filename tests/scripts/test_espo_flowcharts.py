@@ -95,3 +95,45 @@ def test_request_bodies_come_from_json_encode(path):
             f"{path.name}: node {node['id']} posts ${name}, which no formula "
             "assigns from json\\encode()."
         )
+
+
+def test_insight_flowchart_only_sends_meetings_to_analyze():
+    """summarize-bulk must not receive meeting records it cannot validate."""
+    flowchart = FLOWCHART_DIR / "Insight_creation_flowchart.csv"
+    nodes = _nodes(flowchart)
+    collection = next(node for node in nodes if node["id"] == "ski0qsd6qx")
+    formula = collection["actionList"][0]["formula"]
+
+    assert "$analysisRecords = list();" in formula
+    assert "$feedbackRecord['record_type'] = 'feedback';" in formula
+    assert (
+        "$analysisRecords = array\\push($analysisRecords, $feedbackRecord);" in formula
+    )
+    assert (
+        "$analysisRecords = array\\push($analysisRecords, $meetingRecord);" in formula
+    )
+    assert "$feedbackRecords" not in formula
+    assert "$meetingCount = 0;" in formula
+    assert (
+        "ifThen($method == 'analyze', $meetingCount = "
+        "array\\length($$meetingBackendIDs));"
+    ) in formula
+    assert "ifThen($meetingNotes == null" not in formula
+
+
+def test_insight_flowchart_preserves_trace_and_meeting_links():
+    """Insight responses retain Langfuse IDs and separate meeting link bases."""
+    flowchart = FLOWCHART_DIR / "Insight_creation_flowchart.csv"
+    nodes = _nodes(flowchart)
+    payload = next(node for node in nodes if node["id"] == "rzhpnsh7eu")
+    response = next(node for node in nodes if node["id"] == "wkr4x6yr9y")
+    payload_formula = payload["actionList"][0]["formula"]
+    response_formula = next(
+        action["formula"]
+        for action in response["actionList"]
+        if action["type"] == "executeFormula"
+    )
+
+    assert "QFA_ESPO_MEETING_BASE_URL" in payload_formula
+    assert "$payload['espo_meeting_base_url'] = $espoMeetingBaseUrl;" in payload_formula
+    assert "requestID = json\\retrieve($response, 'request_id');" in response_formula
