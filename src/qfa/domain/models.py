@@ -648,8 +648,14 @@ class SensitivityAnalysisRequestModel(BaseModel):
     tenant_id: str = Field(description="Tenant identifier injected by the auth layer.")
 
 
-class SensitivityAnalysisResultModel(BaseModel):
-    """The result of analyzing feedback records for sensitivity."""
+class SensitivityClassificationModel(BaseModel):
+    """One record's sensitivity classification, as the classifier returns it.
+
+    Doubles as the classifier call's response schema, so every field here is
+    a field the LLM is asked to produce. The judge's ``confidence`` therefore
+    lives on :class:`SensitivityAnalysisResultModel` instead — asking the
+    classifier to score its own answer is what the judge exists to avoid.
+    """
 
     model_config = ConfigDict(frozen=True)
 
@@ -669,13 +675,30 @@ class SensitivityAnalysisResultModel(BaseModel):
         return len(self.sensitivity_types) > 0
 
 
-class SensitivityAnalysisResultModelList(BaseModel):
-    """The result of analyzing feedback records for sensitivity."""
+class SensitivityClassificationModelList(BaseModel):
+    """The classifier's reply: one classification per submitted record."""
 
     model_config = ConfigDict(frozen=True)
 
-    results: tuple[SensitivityAnalysisResultModel, ...] = Field(
+    results: tuple[SensitivityClassificationModel, ...] = Field(
         description="Sensitivity analysis results for each feedback record.",
+    )
+
+
+class SensitivityAnalysisResultModel(SensitivityClassificationModel):
+    """A classification plus the judge's confidence in it.
+
+    What :class:`~qfa.services.sensitivity.SensitivityService` returns.
+    """
+
+    confidence: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Judge confidence that this classification is correct (0-1); "
+            "null when the judge call failed or was not run."
+        ),
     )
 
 

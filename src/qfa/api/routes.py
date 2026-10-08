@@ -603,9 +603,15 @@ async def detect_sensitive(
 ) -> ApiDetectSensitiveResponse:
     """Detect sensitive content in feedback items.
 
+    A second LLM call (AI-as-judge) scores how confident it is that the
+    rating is right and returns that as ``confidence``. It runs on every
+    record, not only the ones rated sensitive, because a sensitive record
+    wrongly let through is the costly error. If the judge call fails the
+    response is still a 200, with ``confidence=null``.
+
     If the record's ``content`` is empty the response is a 200 reporting
-    ``is_sensitive=False`` with no ``sensitivity_types``, returned without an
-    LLM call (issue #138).
+    ``is_sensitive=False`` with no ``sensitivity_types`` and
+    ``confidence=null``, returned without an LLM call (issue #138).
 
     Parameters
     ----------
@@ -621,7 +627,8 @@ async def detect_sensitive(
     Returns
     -------
     ApiDetectSensitiveResponse
-        Sensitivity rating for each submitted feedback item.
+        Sensitivity rating for each submitted feedback item, with the
+        judge's ``confidence`` in that rating.
     """
     deadline = datetime.now(UTC) + timedelta(seconds=240)
 
@@ -633,6 +640,7 @@ async def detect_sensitive(
             is_sensitive=False,
             explanation=_NO_CONTENT_EXPLANATION,
             sensitivity_types=[],
+            confidence=None,
         )
 
     result = await sensitivity_service.detect_sensitive_content(
@@ -652,6 +660,7 @@ async def detect_sensitive(
         is_sensitive=result.is_sensitive,
         explanation=result.explanation,
         sensitivity_types=[st.value for st in result.sensitivity_types],
+        confidence=result.confidence,
     )
 
 

@@ -1213,6 +1213,8 @@ class ApiDetectSensitiveResponse(BaseModel):
         Explanation for the sensitivity rating.
     sensitivity_types : list[str]
         Sensitivity categories detected for the feedback item.
+    confidence : float | None
+        Judge confidence that the rating is correct.
     """
 
     id: str = Field(description="Identifier of the source feedback item.")
@@ -1222,6 +1224,17 @@ class ApiDetectSensitiveResponse(BaseModel):
     explanation: str = Field(description="Explanation for the sensitivity rating.")
     sensitivity_types: list[str] = Field(
         description="Sensitivity categories detected for the feedback item."
+    )
+    confidence: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Judge confidence that this rating is correct (0-1), whether or "
+            "not the item was rated sensitive: a high value on a "
+            "not-sensitive item means nothing was likely missed. Null when "
+            "the judge call failed or was not run (empty content)."
+        ),
     )
 
 

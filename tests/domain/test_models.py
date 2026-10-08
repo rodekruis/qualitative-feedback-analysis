@@ -10,7 +10,7 @@ from qfa.domain.models import (
     FeedbackRecordModel,
     JudgeComponents,
     LLMResponse,
-    SensitivityAnalysisResultModelList,
+    SensitivityClassificationModelList,
     TenantApiKey,
 )
 from qfa.domain.sensitivity_types import SensitivityType
@@ -302,7 +302,7 @@ class TestTenantApiKey:
 
 class TestSensitivityModels:
     def test_sensitive_result_parses_enum_codes_from_json(self):
-        result = SensitivityAnalysisResultModelList.model_validate_json(
+        result = SensitivityClassificationModelList.model_validate_json(
             """
             {
                 "results": [
