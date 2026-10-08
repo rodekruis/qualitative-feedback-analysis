@@ -24,6 +24,7 @@ SUMMARIZE_JUDGE = "summarize-judge"
 CODING_CLASSIFIER_SYSTEM = "coding-classifier-system"
 CODING_CLASSIFIER_JUDGE = "coding-classifier-judge"
 SENSITIVITY_DETECTION_SYSTEM = "sensitivity-detection-system"
+SENSITIVITY_DETECTION_JUDGE = "sensitivity-detection-judge"
 
 
 def prompt_ref(versions: Mapping[str, int], name: str) -> PromptRef | None:

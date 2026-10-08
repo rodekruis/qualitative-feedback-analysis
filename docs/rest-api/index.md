@@ -20,6 +20,7 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 | `POST` | `/v1/summarize-community-meeting` | Community meeting note summaries with quality scores |
 | `POST` | `/v1/summarize-bulk` | Single bulk summary with judge score |
 | `POST` | `/v1/assign-codes` | Hierarchical code assignment |
+| `POST` | `/v1/detect-sensitive` | Per-record sensitivity rating with judge confidence |
 | `GET` | `/v1/usage` | Aggregate stats for the caller's tenant |
 | `GET` | `/v1/usage/all/by-tenant` | Cross-tenant stats, tenants top-level with per-operation nested (requires `is_superuser=true`) |
 | `GET` | `/v1/usage/all/by-operation` | Cross-tenant stats, operations top-level with per-tenant nested (requires `is_superuser=true`) |
@@ -102,6 +103,8 @@ Water — 3%
 ```
 
 These explanations are English only, regardless of the language of the feedback.
+
+`POST /v1/detect-sensitive` classifies the record in one LLM call, then scores that classification in a second judge call and returns the score as `confidence` (0-1). The judge runs on **every** record, not only the ones rated sensitive, because a sensitive record wrongly let through is the error that costs most — on a `is_sensitive: false` result a high `confidence` means nothing was likely missed, and a low one marks the record for human review. `confidence` is `null` when the judge call failed or when the record's `content` was empty, so the endpoint never fails because its grader did.
 
 ## POST /v1/summarize-bulk — field reference
 

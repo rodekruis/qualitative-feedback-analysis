@@ -1,10 +1,10 @@
-"""Shared judge-scoring utilities for the analyse, summarise and coding use cases.
+"""Shared judge-scoring utilities for every use case that runs an LLM judge.
 
 Reused by :mod:`qfa.services.analyze` (single_pass and the hierarchical
-leaf judge), :mod:`qfa.services.summarize` (#351, #352, #354), and
-:mod:`qfa.services.coding`, so the component regex and the live-scoring
-calls each live in one place rather than becoming a fourth copy per use
-case.
+leaf judge), :mod:`qfa.services.summarize` (#351, #352, #354),
+:mod:`qfa.services.coding` and :mod:`qfa.services.sensitivity`, so the
+judge-reply regexes and the live-scoring calls each live in one place
+rather than becoming a fifth copy per use case.
 """
 
 from __future__ import annotations
@@ -55,8 +55,8 @@ class JudgeResponse(BaseModel):
 def parse_judge_response(raw: str) -> JudgeResponse:
     """Parse a judge reply of the form ``SCORE: <float>`` / ``EXPLANATION: <text>``.
 
-    Used by the coding judge, whose prompt specifies this two-line output
-    format. Raises
+    Shared by the coding and sensitivity judges, whose prompts specify the
+    same two-line output format. Raises
     :class:`~qfa.domain.errors.AnalysisError` — the class and message shape
     summarise already uses for a malformed judge reply — on anything that
     does not match, so no caller sees a ``pydantic.ValidationError``. The
@@ -185,4 +185,29 @@ def record_coding_judge_score(
         trace_id=ctx.call_id.hex,
         name=f"confidence_level_{level_num}",
         value=score,
+    )
+
+
+def record_sensitivity_judge_score(
+    evaluator: EvaluationPort | None, *, score: float
+) -> None:
+    """Send the sensitivity judge's confidence to *evaluator* as one score.
+
+    Named ``sensitivity_confidence``, matching
+    :class:`~qfa.domain.models.SensitivityAnalysisResultModel`'s own
+    ``confidence`` field. One score per request, since the judge runs once
+    per feedback record regardless of how the record was classified. Same
+    no-op rules as :func:`record_judge_scores`: skipped when *evaluator* is
+    ``None``, or when
+    :data:`~qfa.services.call_context.current_call_context` is ``None``
+    (outside an HTTP request, so there is no ``call_id`` to key a trace
+    on).
+    """
+    if evaluator is None:
+        return
+    ctx = current_call_context.get()
+    if ctx is None:
+        return
+    evaluator.record_score(
+        trace_id=ctx.call_id.hex, name="sensitivity_confidence", value=score
     )
