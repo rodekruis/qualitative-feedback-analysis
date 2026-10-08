@@ -103,7 +103,8 @@ message** inside XML-style envelope tags:
 
 The two record tags remain distinct so the model can distinguish feedback
 from meeting notes in a mixed batch. Their order in the shared envelope is
-the order supplied by the client.
+the order supplied by the client. `/v1/summarize-bulk` sends the same
+`<feedback_records>` block, metadata included, without `<analyst_instruction>`.
 
 ### Why a user message, not the system message?
 
