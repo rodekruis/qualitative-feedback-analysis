@@ -18,7 +18,7 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 | `POST` | `/v1/analyze-bulk` | Bulk free-text analysis over submitted feedback records |
 | `POST` | `/v1/summarize` | Per-record summaries with quality scores |
 | `POST` | `/v1/summarize-community-meeting` | Community meeting note summaries with quality scores |
-| `POST` | `/v1/summarize-bulk` | Single bulk summary with judge score |
+| `POST` | `/v1/summarize-bulk` | Single bulk summary over feedback and/or community meeting records, with judge score |
 | `POST` | `/v1/assign-codes` | Hierarchical code assignment |
 | `POST` | `/v1/detect-sensitive` | Per-record sensitivity rating with judge confidence |
 | `GET` | `/v1/usage` | Aggregate stats for the caller's tenant |
@@ -112,9 +112,12 @@ These explanations are English only, regardless of the language of the feedback.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `feedback_records` | list | — | Non-empty list of `{id, content, metadata?, url_id?}` records. Records with empty `content` are dropped. |
+| `feedback_records` | list | — | Same record list and rules as `/v1/analyze-bulk` above: feedback and/or community meeting records, `record_type` required on every item in a mixed batch, blank `content`/`meetingNotes` dropped, non-empty IDs unique (else 422). Record text and metadata are both sent to the model. |
 | `output_language` | string or null | `null` | Free-text target language for the summary (e.g. `"Dutch"`). Sets the language of the generated text; `pretty_output` carries no localized headers. Omit to mirror the input records' language. |
 | `espo_feedback_base_url` | string or null | `null` | See [Hyperlinking records](#hyperlinking-records). |
+| `espo_meeting_base_url` | string or null | `null` | Base URL for community meeting record details. Used only for meeting links. |
+
+Input over the token cap returns 413 `payload_too_large`.
 
 ### Response (200 OK)
 
@@ -160,7 +163,7 @@ Empty `content` short-circuits to a 200 with blank `title`/`summary` and every s
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `community_meeting_record` | object | — | A single `{id, meetingNotes, metadata?, url_id?}` record. `meetingNotes` may be empty and may contain HTML — see below. |
-| `espo_feedback_base_url` | string or null | `null` | Base URL for the EspoCRM community-meeting detail view. Mentions of the record id in the summary become markdown links when both this and `url_id` are present. |
+| `espo_meeting_base_url` | string or null | `null` | Base URL for the EspoCRM community-meeting detail view. Mentions of the record id in the summary become markdown links when both this and `url_id` are present. |
 
 ### Response (200 OK)
 
@@ -177,7 +180,7 @@ Empty `content` short-circuits to a 200 with blank `title`/`summary` and every s
 
 ## Hyperlinking records
 
-`/v1/analyze-bulk` accepts optional `espo_feedback_base_url` and `espo_meeting_base_url` values alongside `feedback_records`. `/v1/summarize-bulk` accepts `espo_feedback_base_url` for its feedback records. Matching record mentions are rewritten as markdown hyperlinks:
+`/v1/analyze-bulk` and `/v1/summarize-bulk` accept optional `espo_feedback_base_url` and `espo_meeting_base_url` values alongside `feedback_records`; `/v1/summarize-community-meeting` accepts `espo_meeting_base_url`. Matching record mentions are rewritten as markdown hyperlinks:
 
 ```
 [Form-07762](espo_feedback_base_url/url_id)

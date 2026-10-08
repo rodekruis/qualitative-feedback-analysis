@@ -30,7 +30,6 @@ from qfa.api.schemas import (
     ApiCommunityMeetingRecordMetadata,
     ApiDetectSensitiveRequest,
     ApiDetectSensitiveResponse,
-    ApiFeedbackRecordInput,
     ApiFeedbackRecordMetadata,
     ApiHealthResponse,
     ApiSummarizeBulkRequest,
@@ -101,20 +100,6 @@ def _to_domain_community_meeting_metadata(
     metadata: ApiCommunityMeetingRecordMetadata,
 ) -> CommunityMeetingRecordMetadataModel:
     return CommunityMeetingRecordMetadataModel.model_validate(metadata.model_dump())
-
-
-def _drop_empty_feedback_records(
-    records: Sequence[ApiFeedbackRecordInput],
-) -> list[ApiFeedbackRecordInput]:
-    """Return only feedback records with non-empty ``content``."""
-    kept = [record for record in records if record.content]
-    dropped = len(records) - len(kept)
-    if dropped:
-        logger.info(
-            "Dropped %d feedback record(s) with empty content before processing.",
-            dropped,
-        )
-    return kept
 
 
 def _drop_empty_analysis_records(
@@ -317,13 +302,14 @@ async def summarize_bulk(
     summarize_service: SummarizeService = Depends(get_summarize_service),
     _scope: CallContext = Depends(call_scope_for(Operation.SUMMARIZE_AGGREGATE)),
 ) -> ApiSummarizeBulkResponse:
-    """Summarize all submitted feedback records as a single aggregate summary.
+    """Summarize feedback and/or community meeting records as one aggregate summary.
 
-    Records with empty ``content`` are dropped before summarization (a blank
-    EspoCRM description must not fail the whole batch — issue #138). If
-    *every* record is empty the response is a 200 empty aggregate (blank
-    ``title``, a fallback ``summary`` explaining that no analysis was
-    performed, ``quality_score=null``).
+    Records with empty ``content`` or ``meetingNotes`` are dropped before
+    summarization (a blank EspoCRM description must not fail the whole batch —
+    issue #138). If *every* record is empty the response is a 200 empty
+    aggregate (blank ``title``, a fallback ``summary`` explaining that no
+    analysis was performed, ``quality_score=null``). Oversized batches return
+    413 ``payload_too_large``.
 
     Parameters
     ----------
@@ -340,11 +326,11 @@ async def summarize_bulk(
     -------
     ApiSummarizeBulkResponse
         A single summary with themes ordered by frequency across all
-        feedback records, and request ID.
+        records, and request ID.
     """
     deadline = datetime.now(UTC) + timedelta(seconds=240)
 
-    records = _drop_empty_feedback_records(body.feedback_records)
+    records = _drop_empty_analysis_records(body.feedback_records)
     if not records:
         # All records were empty: nothing to summarize. Return a 200 empty
         # aggregate rather than failing the request.
@@ -358,20 +344,14 @@ async def summarize_bulk(
             request_id=request.state.request_id,
         )
 
-    feedback_records = tuple(
-        FeedbackRecordModel(
-            id=record.id,
-            content=record.content,
-            metadata=_to_domain_metadata(record.metadata),
-            url_id=record.url_id,
-        )
-        for record in records
-    )
     domain_request = SummaryRequestModel(
-        feedback_records=feedback_records,
+        feedback_records=tuple(
+            _to_domain_analysis_record(record) for record in records
+        ),
         output_language=body.output_language,
         tenant_id=tenant.tenant_id,
         espo_feedback_base_url=body.espo_feedback_base_url,
+        espo_meeting_base_url=body.espo_meeting_base_url,
     )
 
     result = await summarize_service.summarize_bulk(domain_request, deadline)
@@ -502,7 +482,7 @@ async def summarize_community_meeting(
             url_id=record.url_id,
         ),
         tenant_id=tenant.tenant_id,
-        espo_feedback_base_url=body.espo_feedback_base_url,
+        espo_meeting_base_url=body.espo_meeting_base_url,
     )
     result = await summarize_service.summarize_community_meeting(
         domain_request, deadline

@@ -13,8 +13,8 @@ LLM-call scaffolding arrives as an injected
 :class:`~qfa.services.llm_call_executor.LLMCallExecutor` collaborator, and
 inheritance in this codebase means port↔adapter conformance and nothing
 else. The constructor names exactly the dependencies these two use cases
-need — no embedder, no analyze settings, no token ceiling (neither path
-runs the pre-flight budget guard).
+need — no embedder, no analyze settings, no token ceiling of its own
+(``summarize_bulk`` uses the executor's pre-flight budget guard).
 
 Two module-level helpers these methods use are deliberately **not** defined
 here: ``hyperlink_form_references`` (also used by ``analyze_bulk`` and the
@@ -87,20 +87,21 @@ _DEFAULT_SUMMARIZATION_COMMUNITY_MEETING_PROMPT = (
 
 _DEFAULT_AGGREGATE_SUMMARIZATION_PROMPT = (
     "You are an analytical assistant for a humanitarian organisation (Red Cross).\n"
-    "You are given multiple feedback records from community members collected during humanitarian operations.\n"
-    "Identify the key themes and issues raised across the feedback records.\n"
+    "You are given multiple feedback records and/or community meeting notes collected from community members during humanitarian operations.\n"
+    "Identify the key themes and issues raised across the records.\n"
     "Write one section per theme. Order the sections from most to least frequently mentioned, so the most important problems are shown first.\n"
     "Start each section with a markdown header (###) that names the theme.\n"
     "Under each header, describe the theme in one to three short sentences.\n"
     "Put the key words of each section in bold (**like this**), so a reader can skim the bold words and still get the main points. Bold only a few words per section.\n"
     "Scale the number of sections to the size and diversity of the input — use judgement.\n"
-    'End with a final section with a header that means "Conclusion" in the output language. In two or three sentences, say what the feedback means overall.\n'
-    "Base every statement, including the conclusion, on the feedback records only.\n"
+    'End with a final section with a header that means "Conclusion" in the output language. In two or three sentences, say what the records mean overall.\n'
+    "Base every statement, including the conclusion, on the records only.\n"
     "You may suggest what to analyse or investigate further. Do not recommend humanitarian, operational or programme actions, such as what aid to give or which service to change.\n"
     "Also create a short, 3-5 word descriptive title reflecting the dominant theme.\n"
+    "Definition of common abbreviations: fgd means focus group discussion and kii means key informant interview.\n"
     "Do not include markdown code fences.\n"
     "Do not end with a question, an offer of further help, or an invitation for follow-up input.\n"
-    "Use the same language as the input feedback records unless a target language is specified."
+    "Use the same language as the input records unless a target language is specified."
 )
 
 _JUDGE_PROMPT = """
@@ -185,8 +186,8 @@ class SummarizeService:
         and to restore it in the result.
     executor : LLMCallExecutor
         The shared LLM-call scaffolding (ADR-017): an injected collaborator,
-        never a base class. These two use cases consult it for the
-        deadline→timeout derivation; the composition root
+        never a base class. These use cases consult it for the
+        deadline→timeout derivation and the bulk token guard; the composition root
         (:func:`qfa.api.composition.build_services`) hands over the
         *same* instance every other service holds.
     judge_llm : LLMPort | None
@@ -238,12 +239,12 @@ class SummarizeService:
         request: SummaryRequestModel,
         deadline: datetime,
     ) -> AggregateSummaryResultModel:
-        """Summarize multiple feedback records as a single aggregate summary.
+        """Summarize feedback and/or community meeting records as one aggregate summary.
 
         Parameters
         ----------
         request : SummaryRequest
-            The summarization request containing feedback records and options.
+            The summarization request containing the records and options.
         deadline : datetime
             Absolute UTC deadline by which summarization must complete.
 
@@ -251,6 +252,11 @@ class SummarizeService:
         -------
         AggregateSummaryResult
             A single aggregate summary with themes ordered by frequency.
+
+        Raises
+        ------
+        FeedbackTooLargeError
+            When the un-anonymised prompt exceeds the token cap.
         """
         system_message = _DEFAULT_AGGREGATE_SUMMARIZATION_PROMPT
         system_message += build_output_language_instruction(
@@ -259,9 +265,9 @@ class SummarizeService:
         if request.prompt:
             system_message += f"\nAdditional instructions: {request.prompt}"
 
-        user_message = build_feedback_records_envelope(
-            request.feedback_records, include_metadata=False
-        )
+        user_message = build_feedback_records_envelope(request.feedback_records)
+        # Fail before paying for Presidio on a batch the adapter would reject anyway.
+        self._executor.check_token_limit(system_message, user_message)
 
         anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
             user_message
@@ -311,6 +317,7 @@ class SummarizeService:
                     result.summary,
                     request.feedback_records,
                     request.espo_feedback_base_url,
+                    espo_meeting_base_url=request.espo_meeting_base_url,
                 )
             }
         )
@@ -484,7 +491,7 @@ class SummarizeService:
                     result.community_meeting_record_summaries[0].summary,
                     (request.community_meeting_record,),
                     None,
-                    espo_meeting_base_url=request.espo_feedback_base_url,
+                    espo_meeting_base_url=request.espo_meeting_base_url,
                 ),
                 "quality_score": components.quality_score,
                 "components": components,
