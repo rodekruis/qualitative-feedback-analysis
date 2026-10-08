@@ -130,25 +130,6 @@ def build_coding_messages(
     return SYSTEM_PROMPT, user_message
 
 
-class JudgeResponse(BaseModel):
-    """Score + explanation for one hierarchy level's judge call.
-
-    Populated by parsing the judge LLM's free-text reply (see
-    ``_JUDGE_SYSTEM``'s output-format instruction and
-    ``coding._parse_judge_response``) rather than schema-enforced structured
-    output: the judge connection can point at a model/deployment that
-    rejects a ``json_schema`` response format outright regardless of its
-    contents (confirmed against ``azure_ai/mistral-medium-3-5`` — its
-    serving backend has grammar-constrained decoding disabled), so this
-    call site cannot rely on the provider to enforce the shape.
-    """
-
-    score: float = Field(description="Confidence score between 0 and 1.")
-    explanation: str = Field(
-        description="Reason for this score, in at most two sentences."
-    )
-
-
 _JUDGE_SYSTEM = """You are evaluating whether a code assignment fits a feedback record.
 
 Context:

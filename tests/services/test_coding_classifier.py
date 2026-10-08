@@ -5,10 +5,10 @@ from qfa.services.coding_classifier import (
     _JUDGE_SYSTEM,
     SYSTEM_PROMPT,
     CodingResponse,
-    JudgeResponse,
     build_coding_messages,
     flatten_coding_nodes,
 )
+from qfa.services.judge_scoring import JudgeResponse
 
 
 def _make_feedback_record():

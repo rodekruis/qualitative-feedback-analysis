@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import re
 
-from pydantic import ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from qfa.domain.errors import AnalysisError
 from qfa.domain.models import JudgeComponents
@@ -27,6 +27,50 @@ _COMPONENTS_PATTERN = re.compile(
 )
 
 _MISSING_CALL_ID = "-"
+
+_SCORE_PATTERN = re.compile(
+    r"score:\s*(?P<score>-?[0-9.]+)\s*\n\s*explanation:\s*(?P<explanation>.+)",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+class JudgeResponse(BaseModel):
+    """One judge call's ``SCORE:``/``EXPLANATION:`` reply, parsed.
+
+    Populated by parsing free text (see :func:`parse_judge_response`)
+    rather than schema-enforced structured output: the judge connection
+    can point at a model/deployment that rejects a ``json_schema``
+    response format outright regardless of its contents (confirmed
+    against ``azure_ai/mistral-medium-3-5`` — its serving backend has
+    grammar-constrained decoding disabled), so these call sites cannot
+    rely on the provider to enforce the shape.
+    """
+
+    score: float = Field(description="Confidence score between 0 and 1.")
+    explanation: str = Field(
+        description="Reason for this score, in at most two sentences."
+    )
+
+
+def parse_judge_response(raw: str) -> JudgeResponse:
+    """Parse a judge reply of the form ``SCORE: <float>`` / ``EXPLANATION: <text>``.
+
+    Used by the coding judge, whose prompt specifies this two-line output
+    format. Raises
+    :class:`~qfa.domain.errors.AnalysisError` — the class and message shape
+    summarise already uses for a malformed judge reply — on anything that
+    does not match, so no caller sees a ``pydantic.ValidationError``. The
+    score is *not* range-checked here; callers that need ``[0, 1]``
+    enforced check it themselves.
+    """
+    match = _SCORE_PATTERN.search(raw)
+    if match is None:
+        raise AnalysisError("LLM judge returned an unparsable response")
+    try:
+        score = float(match.group("score"))
+    except ValueError as exc:
+        raise AnalysisError("LLM judge returned an unparsable response") from exc
+    return JudgeResponse(score=score, explanation=match.group("explanation").strip())
 
 
 def parse_judge_components(raw: str) -> JudgeComponents:
