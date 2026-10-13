@@ -229,6 +229,46 @@ async def test_hierarchical_covers_all_records_and_returns_confidence():
 
 
 @pytest.mark.asyncio
+async def test_hierarchical_final_answer_folds_a_long_records_line():
+    """The reduce answer goes through the same citation folding as ``analyze_bulk``."""
+    records = tuple(
+        r.model_copy(update={"url_id": f"id-{r.id}"})
+        for r in _records(4, "water access was limited " * 5, "w")
+        + _records(4, "health clinic medicine " * 5, "h")
+    )
+    synthesis = "### All\nText.\nRecords: " + ", ".join(r.id for r in records)
+
+    class ReduceAnswersWithRecords(RecordingLLM):
+        async def complete(self, system_message, user_message, *args, **kwargs):
+            response = await super().complete(
+                system_message, user_message, *args, **kwargs
+            )
+            if "<partial_analyses>" in user_message:
+                return response.model_copy(update={"structured": synthesis})
+            return response
+
+    request = AnalysisRequestModel(
+        feedback_records=records,
+        prompt="trends?",
+        tenant_id=TENANT_ID,
+        mode="hierarchical",
+        espo_feedback_base_url="https://espo.example.com/feedback",
+    )
+    service = _build_analyze_service(
+        ReduceAnswersWithRecords(),
+        RecordingAnonymizer(),
+        FakeEmbeddingPort(),
+        max_total_tokens=100_000,
+    )
+    deadline = datetime.now(UTC) + timedelta(seconds=120)
+
+    result = await service.analyze_hierarchical(request, deadline, anonymize=True)
+
+    assert "<details><summary>8 records</summary>" in result.result
+    assert "[w0](https://espo.example.com/feedback/id-w0)" in result.result
+
+
+@pytest.mark.asyncio
 async def test_hierarchical_calls_carry_their_own_prompt_ref():
     """Map, leaf-judge, and reduce calls each carry their own prompt name (#398).
 

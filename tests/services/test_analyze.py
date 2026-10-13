@@ -720,6 +720,29 @@ class TestAnalyzeHappyPath:
             in result.result
         )
 
+    @pytest.mark.asyncio
+    async def test_long_records_line_is_folded_but_the_judge_sees_the_raw_answer(
+        self, settings
+    ):
+        """A ``Records:`` line over the limit comes back folded; the judge scores the raw text."""
+        records = tuple(
+            _make_feedback_record(doc_id=f"Form-{n}", content="a", url_id=f"id-{n}")
+            for n in range(1, 8)
+        )
+        raw = "### Water\nLong queues.\nRecords: " + ", ".join(r.id for r in records)
+        fake_llm = _judging_llm(analysis=raw)
+        service = _build_analyze_service(fake_llm, FakeAnonymizer(), settings)
+        request = _make_request(feedback_records=records).model_copy(
+            update={"espo_feedback_base_url": "https://espo.example.com/feedback"}
+        )
+
+        result = await service.analyze_bulk(request, _future_deadline())
+
+        assert "<details><summary>7 records</summary>" in result.result
+        assert "[Form-1](https://espo.example.com/feedback/id-1)" in result.result
+        assert raw in fake_llm.calls[1]["system_message"]
+        assert "<details>" not in fake_llm.calls[1]["system_message"]
+
 
 class TestAnalyzePromptVersions:
     """Each generation/judge call in ``analyze_bulk`` carries its own prompt name/version (#398)."""

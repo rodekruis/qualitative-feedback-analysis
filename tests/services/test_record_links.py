@@ -6,7 +6,10 @@ from qfa.domain.models import (
     FeedbackRecordMetadataModel,
     FeedbackRecordModel,
 )
-from qfa.services.record_links import hyperlink_form_references
+from qfa.services.record_links import (
+    format_record_citations,
+    hyperlink_form_references,
+)
 
 
 def test_links_full_feedback_ids_without_rewriting_matching_bare_numbers():
@@ -81,3 +84,149 @@ def test_does_not_wrap_an_existing_markdown_link_again():
     )
 
     assert result == text
+
+
+FEEDBACK_URL = "https://example/#CFeedbackData/view"
+MEETING_URL = "https://example/#CCommunityMeetingData/view"
+
+
+def _feedback(n: int) -> FeedbackRecordModel:
+    return FeedbackRecordModel(
+        id=f"Form-{n:05d}",
+        content="feedback",
+        metadata=FeedbackRecordMetadataModel(),
+        url_id=f"fb-{n}",
+    )
+
+
+def _meeting(n: int) -> CommunityMeetingRecordModel:
+    return CommunityMeetingRecordModel(
+        id=f"MTG-{n:04d}",
+        meetingNotes="meeting",
+        metadata=CommunityMeetingRecordMetadataModel(),
+        url_id=f"mt-{n}",
+    )
+
+
+def _ids(records) -> str:
+    return ", ".join(record.id for record in records)
+
+
+class TestFormatRecordCitations:
+    def test_short_line_stays_inline_with_links(self):
+        records = tuple(_feedback(n) for n in range(1, 6))
+        text = f"### Water\nLong queues.\nRecords: {_ids(records)}"
+
+        result = format_record_citations(text, records, FEEDBACK_URL)
+
+        assert "<details>" not in result
+        assert result.startswith("### Water\nLong queues.\nRecords: [Form-00001](")
+        assert f"[Form-00005]({FEEDBACK_URL}/fb-5)" in result
+
+    def test_long_line_is_folded_with_a_count_label(self):
+        records = tuple(_feedback(n) for n in range(1, 7))
+        text = f"### Water\nLong queues.\nRecords: {_ids(records)}"
+
+        result = format_record_citations(text, records, FEEDBACK_URL)
+
+        assert result.startswith("### Water\nLong queues.\n<details>")
+        assert "<summary>6 records</summary>" in result
+        assert "Records:" not in result
+        assert f"[Form-00001]({FEEDBACK_URL}/fb-1)" in result
+        assert f"[Form-00006]({FEEDBACK_URL}/fb-6)" in result
+        assert result.endswith("</details>")
+
+    def test_mixed_types_get_a_label_per_type_and_their_own_base_url(self):
+        records = (*(_feedback(n) for n in range(1, 5)), _meeting(1), _meeting(2))
+        text = f"Records: {_ids(records)}"
+
+        result = format_record_citations(text, records, FEEDBACK_URL, MEETING_URL)
+
+        assert "<summary>4 feedback records, 2 community meetings</summary>" in result
+        assert f"[Form-00001]({FEEDBACK_URL}/fb-1)" in result
+        assert f"[MTG-0001]({MEETING_URL}/mt-1)" in result
+
+    def test_unknown_id_stays_plain_text_in_the_folded_list(self):
+        records = tuple(_feedback(n) for n in range(1, 7))
+        text = f"Records: {_ids(records)}, Form-99999"
+
+        result = format_record_citations(text, records, FEEDBACK_URL)
+
+        assert "<summary>6 feedback records, 1 unmatched id</summary>" in result
+        assert ", Form-99999" in result
+        assert "[Form-99999]" not in result
+
+    def test_summary_never_contains_ids(self):
+        records = tuple(_feedback(n) for n in range(1, 8))
+
+        result = format_record_citations(
+            f"Records: {_ids(records)}", records, FEEDBACK_URL
+        )
+
+        summary = result.split("<summary>")[1].split("</summary>")[0]
+        assert summary == "7 records"
+
+    def test_translated_or_decorated_labels_are_still_found(self):
+        records = tuple(_feedback(n) for n in range(1, 7))
+        for line in (
+            f"Registros: {_ids(records)}",
+            f"**Records:** {_ids(records)}",
+            f"**Records**: {_ids(records)}",
+            f"- Records: {_ids(records)}",
+        ):
+            result = format_record_citations(line, records, FEEDBACK_URL)
+
+            assert "<summary>6 records</summary>" in result, line
+
+    def test_without_base_url_the_list_still_folds_and_ids_stay_plain(self):
+        records = tuple(_feedback(n) for n in range(1, 7))
+
+        result = format_record_citations(f"Records: {_ids(records)}", records, None)
+
+        assert "<summary>6 records</summary>" in result
+        assert "Form-00001, Form-00002" in result
+        assert "](" not in result
+
+    def test_ids_in_a_normal_sentence_are_linked_but_never_folded(self):
+        records = tuple(_feedback(n) for n in range(1, 8))
+        text = f"Queues were long ({_ids(records)}) in the morning."
+
+        result = format_record_citations(text, records, FEEDBACK_URL)
+
+        assert "<details>" not in result
+        assert f"[Form-00001]({FEEDBACK_URL}/fb-1)" in result
+
+    def test_a_colon_line_without_ids_is_left_alone(self):
+        records = tuple(_feedback(n) for n in range(1, 3))
+        text = "Note: water was scarce, and people waited."
+
+        assert format_record_citations(text, records, FEEDBACK_URL) == text
+
+    def test_a_line_that_mixes_prose_and_ids_is_not_a_citation_line(self):
+        records = tuple(_feedback(n) for n in range(1, 8))
+        text = f"Examples: {_ids(records)} and many others waited."
+
+        result = format_record_citations(text, records, FEEDBACK_URL)
+
+        assert "<details>" not in result
+
+    def test_each_point_folds_on_its_own_line(self):
+        records = tuple(_feedback(n) for n in range(1, 13))
+        first, second = records[:6], records[6:]
+        text = (
+            f"### A\nText.\nRecords: {_ids(first)}\n\n"
+            f"### B\nText.\nRecords: {_ids(second)}"
+        )
+
+        result = format_record_citations(text, records, FEEDBACK_URL)
+
+        assert result.count("<details>") == 2
+        assert "### B" in result
+
+    def test_repeated_ids_count_once(self):
+        records = tuple(_feedback(n) for n in range(1, 4))
+        text = f"Records: {_ids(records)}, {_ids(records)}"
+
+        result = format_record_citations(text, records, FEEDBACK_URL)
+
+        assert "<details>" not in result

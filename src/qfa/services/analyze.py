@@ -69,7 +69,7 @@ from qfa.services.prompts import (
     build_analyze_user_message,
     build_single_pass_system_message,
 )
-from qfa.services.record_links import hyperlink_form_references
+from qfa.services.record_links import format_record_citations
 from qfa.settings import AnalyzeSettings, OrchestratorSettings
 from qfa.utils import timed
 
@@ -349,7 +349,7 @@ class AnalyzeService:
                 analysis_text, restorable_mapping
             )
 
-        analysis_text = hyperlink_form_references(
+        analysis_text = format_record_citations(
             analysis_text,
             request.feedback_records,
             request.espo_feedback_base_url,
@@ -742,7 +742,7 @@ class AnalyzeService:
             }
             analysis_text = self._anonymizer.deanonymize(analysis_text, restorable)
 
-        analysis_text = hyperlink_form_references(
+        analysis_text = format_record_citations(
             analysis_text,
             request.feedback_records,
             request.espo_feedback_base_url,
