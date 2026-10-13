@@ -190,3 +190,35 @@ def test_only_the_protection_key_gets_urgent_ids_cited() -> None:
     assert score.value == pytest.approx(0.5)
     assert score.comment == "1/2, missed: en-0002"
     assert "urgent_ids_cited" not in _names(score_answer(text, needs, ["en-0001"]))
+
+
+def test_an_answer_with_its_long_list_moved_to_the_end_scores_the_same() -> None:
+    """The service moves a list of more than 5 ids to ``Records per point``.
+
+    Why: the scores must describe the production answer. The moved ids sit
+    in their own block, so each point keeps the same ids and the same label.
+    """
+    food = [f"en-{n:04d}" for n in range(1, 8)]
+    labels = {record_id: "Food" for record_id in food} | {"en-0008": "Shelter"}
+    key = _key(labels=labels, required=["Food", "Shelter"])
+    sent = [*food, "en-0008"]
+    inline = (
+        "### Food runs out\nFamilies say rations are too small.\n"
+        f"Records: {', '.join(food)}\n\n"
+        "### Shelter is leaking\nTents leak in the rain.\nRecords: en-0008"
+    )
+    moved = (
+        "### Food runs out\nFamilies say rations are too small.\n"
+        '**Records:** 7 records. *See "Records per point" at the end.*\n\n'
+        "### Shelter is leaking\nTents leak in the rain.\nRecords: en-0008\n\n"
+        "---\n\n### Records per point\n\n"
+        f"#### Food runs out (7 records)\n{', '.join(food)}"
+    )
+
+    def plain(text: str) -> list[tuple[Any, ...]]:
+        return [
+            (e.name, e.value, e.comment, e.metadata)
+            for e in score_answer(text, key, sent)
+        ]
+
+    assert plain(moved) == plain(inline)
