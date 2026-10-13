@@ -193,7 +193,7 @@ This is presentational only — it rewrites the already-generated `analysis`/`su
 
 | Case | What the `analysis` holds |
 |---|---|
-| 5 ids or fewer | The `Records:` line stays in the point. Each id is linked as above. |
+| 5 ids or fewer | The `Records:` line stays in the point, with a bold label. Each id is linked as above. |
 | More than 5 ids | The line becomes `**Records:** 46 records. *See "Records per point" at the end.*`. The linked ids go in a `#### <point title> (46 records)` block under `### Records per point`, after a `---` rule. |
 | Both record types | One list for both. The count reads `40 feedback records, 6 community meetings`, and each link uses the base URL of its own type. |
 | An id that is not in the request | Stays plain text. The count shows it as `unmatched`. |

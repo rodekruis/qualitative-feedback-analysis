@@ -14,6 +14,7 @@ long ``Records:`` lists to the end of the answer. Summaries keep calling
 
 import re
 from collections.abc import Callable
+from typing import NamedTuple
 
 from qfa.domain.models import CommunityMeetingRecordModel, FeedbackRecordModel
 
@@ -26,8 +27,8 @@ OVERFLOW_HEADING = "Records per point"
 """Title of the closing section that holds the long lists (English in every language)."""
 
 _CITATION_LINE = re.compile(
-    r"^\s*(?:[-*+]\s+)?(?:\*\*|__)?[^\W\d_][^:\uff1a\n]{0,39}?(?:\*\*|__)?"
-    r"\s*[:\uff1a]\s*(?:\*\*|__)?\s*(?P<ids>\S.*?)\s*$"
+    r"^(?P<lead>\s*(?:[-*+]\s+)?)(?:\*\*|__)?(?P<label>[^\W\d_][^:\uff1a\n]{0,39}?)"
+    r"(?:\*\*|__)?\s*(?P<colon>[:\uff1a])\s*(?:\*\*|__)?\s*(?P<ids>\S.*?)\s*$"
 )
 
 
@@ -100,8 +101,9 @@ def format_record_citations(
     ``**Records:**`` count too. A line with more than
     :data:`MAX_INLINE_RECORD_IDS` ids is replaced by a pointer line with the
     count, and its linked list goes under ``### Records per point`` at the end
-    (see :func:`_pointer_line`). Shorter lines and ids in normal sentences are
-    only linked. Unknown ids stay plain text, so an invented id stays visible.
+    (see :func:`_pointer_line`). Shorter lines keep their ids inline. Every
+    citation line gets a bold label, and ids in normal sentences are only
+    linked. Unknown ids stay plain text, so an invented id stays visible.
 
     Plain Markdown only: EspoCRM escapes raw HTML in Text fields, so a
     ``<details>`` fold shows as literal text. Counts are in English in every
@@ -120,40 +122,57 @@ def format_record_citations(
     for line in text.split("\n"):
         if heading_match := _HEADING.match(line):
             heading = heading_match["title"]
-        long_list = _long_citation_list(line, kinds)
-        if long_list is None:
+        citation = _parse_citation_line(line, kinds)
+        if citation is None:
             lines.append(apply_links(line))
-            continue
-        label, ids = long_list
-        lines.append(_pointer_line(label))
-        moved.append((heading or "Records", label, apply_links(", ".join(ids))))
+        elif len(citation.ids) <= MAX_INLINE_RECORD_IDS:
+            lines.append(
+                f"{citation.lead}**{citation.label}{citation.colon}** "
+                f"{apply_links(citation.rest)}"
+            )
+        else:
+            count = _count_label(*_count_by_kind(citation.ids, kinds))
+            lines.append(_pointer_line(count))
+            moved.append(
+                (heading or "Records", count, apply_links(", ".join(citation.ids)))
+            )
     if moved:
         lines.append(_overflow_section(moved))
     return "\n".join(lines)
 
 
-def _long_citation_list(
-    line: str, kinds: dict[str, bool]
-) -> tuple[str, list[str]] | None:
-    """Return the count label and ids of a long citation line, else ``None``.
+class _CitationLine(NamedTuple):
+    lead: str
+    label: str
+    colon: str
+    rest: str
+    ids: list[str]
+
+
+def _parse_citation_line(line: str, kinds: dict[str, bool]) -> _CitationLine | None:
+    """Parse a citation line, or return ``None`` if ``line`` is not one.
 
     ``kinds`` maps each request record id to ``True`` for a community meeting.
+    ``ids`` is deduplicated, in order of first appearance.
     """
     match = _CITATION_LINE.match(line)
     if match is None:
         return None
-    items = list(dict.fromkeys(i.strip() for i in match["ids"].rstrip(".").split(",")))
-    if not all(item and len(item.split()) == 1 for item in items):
+    ids = list(dict.fromkeys(i.strip() for i in match["ids"].rstrip(".").split(",")))
+    if not all(item and len(item.split()) == 1 for item in ids):
         return None
-    if not any(item in kinds for item in items):
+    if not any(item in kinds for item in ids):
         return None
-    if len(items) <= MAX_INLINE_RECORD_IDS:
-        return None
+    return _CitationLine(
+        match["lead"], match["label"].strip("*_ "), match["colon"], match["ids"], ids
+    )
 
-    meetings = sum(1 for item in items if kinds.get(item) is True)
-    feedback = sum(1 for item in items if kinds.get(item) is False)
-    unmatched = len(items) - meetings - feedback
-    return _count_label(feedback, meetings, unmatched), items
+
+def _count_by_kind(ids: list[str], kinds: dict[str, bool]) -> tuple[int, int, int]:
+    """Count ``ids`` as ``(feedback, meetings, unmatched)``."""
+    meetings = sum(1 for item in ids if kinds.get(item) is True)
+    feedback = sum(1 for item in ids if kinds.get(item) is False)
+    return feedback, meetings, len(ids) - meetings - feedback
 
 
 def _count_label(feedback: int, meetings: int, unmatched: int) -> str:

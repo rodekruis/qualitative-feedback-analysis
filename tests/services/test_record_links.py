@@ -123,8 +123,19 @@ class TestFormatRecordCitations:
         result = format_record_citations(text, records, FEEDBACK_URL)
 
         assert SECTION not in result
-        assert result.startswith("### Water\nLong queues.\nRecords: [Form-00001](")
+        assert result.startswith("### Water\nLong queues.\n**Records:** [Form-00001](")
         assert f"[Form-00005]({FEEDBACK_URL}/fb-5)" in result
+
+    def test_short_line_label_is_bold_however_the_model_wrote_it(self):
+        records = tuple(_feedback(n) for n in range(1, 4))
+        for line, expected in (
+            ("Records: Form-00001, Form-00002", "**Records:** Form-00001, Form-00002"),
+            ("**Records:** Form-00001", "**Records:** Form-00001"),
+            ("**Records**: Form-00001", "**Records:** Form-00001"),
+            ("Registros: Form-00001", "**Registros:** Form-00001"),
+            ("- Records: Form-00001.", "- **Records:** Form-00001."),
+        ):
+            assert format_record_citations(line, records, None) == expected, line
 
     def test_long_line_moves_to_the_end_and_leaves_a_pointer(self):
         records = tuple(_feedback(n) for n in range(1, 7))
