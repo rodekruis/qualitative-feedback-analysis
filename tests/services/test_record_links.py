@@ -132,10 +132,10 @@ class TestFormatRecordCitations:
 
         result = format_record_citations(text, records, FEEDBACK_URL)
 
-        head, _, tail = result.partition(f"\n{SECTION}\n")
+        head, _, tail = result.partition(f"\n---\n\n{SECTION}\n")
         assert head == (
-            '### Water\nLong queues.\nRecords: 6 records. See "Records per point" '
-            "at the end.\n"
+            '### Water\nLong queues.\n**Records:** 6 records. *See "Records per point" '
+            "at the end.*\n"
         )
         assert tail.startswith("\n#### Water (6 records)\n[Form-00001](")
         assert f"[Form-00006]({FEEDBACK_URL}/fb-6)" in tail
@@ -187,7 +187,9 @@ class TestFormatRecordCitations:
         )
 
         pointer = next(line for line in result.split("\n") if "See " in line)
-        assert pointer == 'Records: 7 records. See "Records per point" at the end.'
+        assert pointer == (
+            '**Records:** 7 records. *See "Records per point" at the end.*'
+        )
 
     def test_translated_or_decorated_labels_are_still_found(self):
         records = tuple(_feedback(n) for n in range(1, 7))
@@ -262,3 +264,11 @@ class TestFormatRecordCitations:
         result = format_record_citations(text, records, FEEDBACK_URL)
 
         assert SECTION not in result
+
+    def test_a_pointer_line_is_left_alone_when_processed_again(self):
+        records = tuple(_feedback(n) for n in range(1, 8))
+        once = format_record_citations(
+            f"### A\nRecords: {_ids(records)}", records, FEEDBACK_URL
+        )
+
+        assert format_record_citations(once, records, FEEDBACK_URL) == once

@@ -176,15 +176,17 @@ def _pointer_line(label: str) -> str:
     With :func:`_overflow_section`, the only place that knows the shape of a
     moved list, so a change of shape touches only these two functions.
     """
-    return f'Records: {label}. See "{OVERFLOW_HEADING}" at the end.'
+    return f'**Records:** {label}. *See "{OVERFLOW_HEADING}" at the end.*'
 
 
 def _overflow_section(moved: list[tuple[str, str, str]]) -> str:
     """Closing section with one ``####`` block per moved list.
+
+    A ``---`` rule sets it apart: Markdown collapses extra blank lines.
 
     Each entry is ``(point heading, count label, linked ids)``.
     """
     blocks = "".join(
         f"\n#### {heading} ({label})\n{ids}\n" for heading, label, ids in moved
     )
-    return f"\n### {OVERFLOW_HEADING}\n{blocks}".rstrip("\n")
+    return f"\n---\n\n### {OVERFLOW_HEADING}\n{blocks}".rstrip("\n")
