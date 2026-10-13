@@ -279,11 +279,10 @@ class SensitivityService:
         :class:`~qfa.services.judge_scoring.JudgeResponse`'s docstring for
         why the judge connection cannot rely on the provider to enforce a
         response schema. Every failure mode the judge can have — a provider
-        error, a reply that does not parse, a score outside 0.0-1.0 —
-        returns ``None`` rather than raising, so a working classification is
-        never thrown away because its grader fell over. A deadline that has
-        already passed still raises, because that is the whole request
-        running out of time, not the judge failing.
+        error or timeout, too little of the request deadline left to make
+        the call, a reply that does not parse, a score outside 0.0-1.0 —
+        returns ``None`` rather than raising, so a finished classification
+        is never thrown away because its grader could not run.
         """
         anonymized_user_message = build_sensitivity_judge_user_message(
             feedback_record,

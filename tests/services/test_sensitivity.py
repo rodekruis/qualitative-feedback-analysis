@@ -13,7 +13,7 @@ from uuid import uuid4
 
 import pytest
 
-from qfa.domain.errors import LLMError
+from qfa.domain.errors import LLMError, LLMTimeoutError
 from qfa.domain.models import (
     FeedbackRecordMetadataModel,
     FeedbackRecordModel,
@@ -366,6 +366,55 @@ class TestJudgeCall:
         assert result.is_sensitive is True
         assert result.explanation == "Contains a corruption allegation."
         assert result.confidence is None
+
+    @pytest.mark.asyncio
+    async def test_judge_timeout_yields_no_confidence(self, settings):
+        fake_llm = FakeLLMPort(
+            responses=[_make_llm_response(structured=_make_sensitivity_result())],
+            errors=[None, LLMTimeoutError("judge took too long")],
+        )
+        service = _make_service(fake_llm, settings)
+
+        result = await service.detect_sensitive_content(
+            _make_sensitivity_request(), _future_deadline()
+        )
+
+        assert result.is_sensitive is True
+        assert result.confidence is None
+
+    @pytest.mark.asyncio
+    async def test_deadline_running_out_before_the_judge_yields_no_confidence(
+        self, settings, monkeypatch
+    ):
+        """The classification is finished; no time left to grade it is not a failure."""
+        deadline = _future_deadline()
+        clock = {"now": datetime.now(tz=UTC)}
+
+        class FakeClock(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return clock["now"]
+
+        monkeypatch.setattr("qfa.services.llm_call_executor.datetime", FakeClock)
+
+        class DeadlineConsumingLLM(FakeLLMPort):
+            async def complete(self, *args, **kwargs):
+                response = await super().complete(*args, **kwargs)
+                clock["now"] = deadline
+                return response
+
+        fake_llm = DeadlineConsumingLLM(
+            responses=[_make_llm_response(structured=_make_sensitivity_result())]
+        )
+        service = _make_service(fake_llm, settings)
+
+        result = await service.detect_sensitive_content(
+            _make_sensitivity_request(), deadline
+        )
+
+        assert result.is_sensitive is True
+        assert result.confidence is None
+        assert len(fake_llm.calls) == 1
 
     @pytest.mark.asyncio
     async def test_unparsable_judge_reply_yields_no_confidence(self, settings):
