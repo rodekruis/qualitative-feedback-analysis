@@ -20,12 +20,7 @@ from datetime import datetime
 
 from pydantic import ValidationError
 
-from qfa.domain.errors import (
-    AnalysisError,
-    LLMError,
-    LLMRateLimitError,
-    LLMTimeoutError,
-)
+from qfa.domain.errors import AnalysisError, LLMError
 from qfa.domain.models import (
     FeedbackRecordModel,
     SensitivityAnalysisRequestModel,
@@ -303,13 +298,7 @@ class SensitivityService:
                     ),
                 )
             judged = parse_judge_response(response.structured)
-        except (
-            LLMError,
-            LLMTimeoutError,
-            LLMRateLimitError,
-            ValidationError,
-            AnalysisError,
-        ) as exc:
+        except (LLMError, AnalysisError, ValidationError) as exc:
             logger.warning(
                 "Sensitivity judge call failed: error_class=%s",
                 type(exc).__name__,
