@@ -537,17 +537,19 @@ async def test_recursion_fires_on_corpus_at_least_five_times_token_cap():
     when the cluster's total tokens exceed the budget (many map sub-chunks).
     Trigger 2 fires when the combined large partials exceed the budget,
     causing recursive tree-reduce. A LargeOutputLLM returns ~250-char
-    partials. With a 700-token budget and a 442-token system message, 3
-    partials fit per reduce group but 4 do not, so 10 map chunks produce a
-    multi-level tree-reduce (several reduce calls, all >= 2).
+    partials. The 1000-token budget is sized against the ~790-token reduce
+    system message: it leaves room for only a few partials per reduce group,
+    so 10 map chunks produce a multi-level tree-reduce (several reduce
+    calls, all >= 2). If the system message grows, raise the budget, or the
+    "no progress" safeguard in ``_reduce_partials`` makes a single reduce call.
     """
-    # 20 records of ~1000 chars each (250 tokens). Budget=700 tokens = 2800 chars,
-    # so 2 records fit per map chunk → 10 map chunks (>= 3). Total = 20*250 = 5000
-    # tokens, which is ~7x the 700-token cap (>5x requirement).
+    # 30 records of ~1000 chars each (250 tokens). Budget=1000 tokens, so 3
+    # records fit per map chunk → 10 map chunks (>= 3). Total = 30*250 = 7500
+    # tokens, which is 7.5x the 1000-token cap (>5x requirement).
     per_record = (
         "water access was limited and people waited for hours. " * 19
     )  # ~1026 chars
-    records = _records(20, per_record, "w")
+    records = _records(30, per_record, "w")
     request = AnalysisRequestModel(
         feedback_records=records,
         prompt="trends?",
@@ -556,7 +558,7 @@ async def test_recursion_fires_on_corpus_at_least_five_times_token_cap():
     )
     llm = LargeOutputLLM()
     service = _build_analyze_service(
-        llm, RecordingAnonymizer(), FakeEmbeddingPort(), max_total_tokens=700
+        llm, RecordingAnonymizer(), FakeEmbeddingPort(), max_total_tokens=1000
     )
     deadline = datetime.now(UTC) + timedelta(seconds=120)
     result = await service.analyze_hierarchical(request, deadline, anonymize=True)

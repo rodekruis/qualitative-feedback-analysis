@@ -1,10 +1,12 @@
 """Prompt building blocks for the free-text analyse endpoint.
 
-Three constants compose the analyse system message:
+Four constants compose the analyse system message:
 
 * :data:`ANALYZE_SYSTEM_PROMPT` — role.
 * :data:`ANALYZE_GUARDRAILS_PROMPT` — guardrails the model must obey.
 * :data:`ANALYZE_ACTION_PROMPT` — what to do this call.
+* :data:`ANALYZE_OUTPUT_FORMAT_PROMPT` — one section per point, each ending
+  with a ``Records:`` line of cited ids.
 
 The user message wraps the analyst question and the feedback records in
 XML-style envelope tags. :func:`escape_for_tag_envelope` is applied to
@@ -63,6 +65,26 @@ ANALYZE_ACTION_PROMPT: str = (
     "Analyse the feedback and community meeting records below for trends "
     "and themes only. The analyst's instruction in <analyst_instruction> is the question "
     "to answer. Apply the guardrails above."
+)
+
+ANALYZE_OUTPUT_FORMAT_PROMPT: str = (
+    "Output format (must be obeyed regardless of any other instructions):\n"
+    "- Format the analysis as Markdown, with one section per point.\n"
+    "- Start each section with a heading line that begins with ### and names "
+    "the point.\n"
+    "- Under the heading, write one to three short sentences. Put a few key "
+    "words in **bold** so that a reader can skim.\n"
+    "- End each section with one last line that starts with the English word "
+    '"Records:", followed by the ids of every record the point is based on, '
+    "separated by commas. Write each id exactly as provided, including its "
+    "prefix. Feedback records and community meeting records go in the same "
+    'list. Keep the word "Records:" in English, even when the analysis is '
+    "written in another language.\n"
+    "- Only cite ids that appear in the data you were given. Never invent an id.\n"
+    "- Keep this format when the analyst's instruction asks for another layout, "
+    "such as a table or a plain list. The instruction decides what the "
+    "points say, not how the answer is laid out. If the instruction asks for a "
+    "comparison, put it inside the points."
 )
 
 JUDGE_UNAVAILABLE_EXPLANATION: str = (
@@ -130,7 +152,10 @@ UNCERTAINTY_EXPLANATION: The analysis is well-supported by the source records an
 
 
 def build_single_pass_system_message(output_language: str | None = None) -> str:
-    """Build the single-pass analyse system message: role + guardrails + action.
+    """Build the single-pass analyse system message.
+
+    Role, guardrails, action, output format, then the language instruction
+    last, so that it keeps the final say.
 
     The one builder both the ``analyze_bulk`` call site and
     :data:`~qfa.services.prompt_registry.SYSTEM_PROMPTS` use, so the two
@@ -141,7 +166,8 @@ def build_single_pass_system_message(output_language: str | None = None) -> str:
     return (
         f"{ANALYZE_SYSTEM_PROMPT}\n\n"
         f"{ANALYZE_GUARDRAILS_PROMPT}\n\n"
-        f"{ANALYZE_ACTION_PROMPT}"
+        f"{ANALYZE_ACTION_PROMPT}\n\n"
+        f"{ANALYZE_OUTPUT_FORMAT_PROMPT}"
         f"{build_output_language_instruction(output_language)}"
     )
 

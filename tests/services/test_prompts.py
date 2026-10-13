@@ -8,9 +8,11 @@ from qfa.domain.models import (
 )
 from qfa.services.prompts import (
     ANALYZE_GUARDRAILS_PROMPT,
+    ANALYZE_OUTPUT_FORMAT_PROMPT,
     build_analyze_judge_system_message,
     build_analyze_user_message,
     build_output_language_instruction,
+    build_single_pass_system_message,
     escape_for_tag_envelope,
 )
 
@@ -25,6 +27,21 @@ def test_guardrails_forbid_trailing_questions():
     verbatim), so a fix here covers all three at once.
     """
     assert "Do not end with a question" in ANALYZE_GUARDRAILS_PROMPT
+
+
+class TestBuildSinglePassSystemMessage:
+    def test_contains_the_output_format_block(self):
+        """The single-pass message carries the one-section-per-point format."""
+        assert ANALYZE_OUTPUT_FORMAT_PROMPT in build_single_pass_system_message()
+
+    def test_language_instruction_stays_last(self):
+        """The language directive comes after the format block, so it keeps the final say."""
+        language = build_output_language_instruction("Spanish")
+
+        message = build_single_pass_system_message("Spanish")
+
+        assert message.endswith(language)
+        assert message.index(ANALYZE_OUTPUT_FORMAT_PROMPT) < message.index(language)
 
 
 class TestBuildOutputLanguageInstruction:
