@@ -721,10 +721,10 @@ class TestAnalyzeHappyPath:
         )
 
     @pytest.mark.asyncio
-    async def test_long_records_line_is_folded_but_the_judge_sees_the_raw_answer(
+    async def test_long_records_line_moves_to_the_end_but_the_judge_sees_the_raw_answer(
         self, settings
     ):
-        """A ``Records:`` line over the limit comes back folded; the judge scores the raw text."""
+        """A ``Records:`` line over the limit moves to the end; the judge scores the raw text."""
         records = tuple(
             _make_feedback_record(doc_id=f"Form-{n}", content="a", url_id=f"id-{n}")
             for n in range(1, 8)
@@ -738,10 +738,10 @@ class TestAnalyzeHappyPath:
 
         result = await service.analyze_bulk(request, _future_deadline())
 
-        assert "<details><summary>7 records</summary>" in result.result
+        assert "### Records per point\n\n#### Water (7 records)" in result.result
         assert "[Form-1](https://espo.example.com/feedback/id-1)" in result.result
         assert raw in fake_llm.calls[1]["system_message"]
-        assert "<details>" not in fake_llm.calls[1]["system_message"]
+        assert "Records per point" not in fake_llm.calls[1]["system_message"]
 
 
 class TestAnalyzePromptVersions:

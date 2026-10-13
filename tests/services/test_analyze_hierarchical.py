@@ -229,8 +229,8 @@ async def test_hierarchical_covers_all_records_and_returns_confidence():
 
 
 @pytest.mark.asyncio
-async def test_hierarchical_final_answer_folds_a_long_records_line():
-    """The reduce answer goes through the same citation folding as ``analyze_bulk``."""
+async def test_hierarchical_final_answer_moves_a_long_records_line():
+    """The reduce answer goes through the same citation handling as ``analyze_bulk``."""
     records = tuple(
         r.model_copy(update={"url_id": f"id-{r.id}"})
         for r in _records(4, "water access was limited " * 5, "w")
@@ -264,7 +264,7 @@ async def test_hierarchical_final_answer_folds_a_long_records_line():
 
     result = await service.analyze_hierarchical(request, deadline, anonymize=True)
 
-    assert "<details><summary>8 records</summary>" in result.result
+    assert "#### All (8 records)" in result.result
     assert "[w0](https://espo.example.com/feedback/id-w0)" in result.result
 
 

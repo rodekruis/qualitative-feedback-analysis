@@ -7,8 +7,8 @@ than one use case needs it — the analyse result and the aggregate summary
 both go back to EspoCRM — and neither of those services should have to
 import the other to reach it.
 
-:func:`format_record_citations` is the analyse entry point: it also folds
-long ``Records:`` lines. Summaries keep calling
+:func:`format_record_citations` is the analyse entry point: it also moves
+long ``Records:`` lists to the end of the answer. Summaries keep calling
 :func:`hyperlink_form_references`.
 """
 
@@ -18,7 +18,12 @@ from collections.abc import Callable
 from qfa.domain.models import CommunityMeetingRecordModel, FeedbackRecordModel
 
 MAX_INLINE_RECORD_IDS = 5
-"""A ``Records:`` line with more ids than this is folded."""
+"""A ``Records:`` line with more ids than this moves to the end of the answer."""
+
+_HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(?P<title>.*?)\s*#*\s*$")
+
+OVERFLOW_HEADING = "Records per point"
+"""Title of the closing section that holds the long lists (English in every language)."""
 
 _CITATION_LINE = re.compile(
     r"^\s*(?:[-*+]\s+)?(?:\*\*|__)?[^\W\d_][^:\uff1a\n]{0,39}?(?:\*\*|__)?"
@@ -87,18 +92,21 @@ def format_record_citations(
     espo_feedback_base_url: str | None,
     espo_meeting_base_url: str | None = None,
 ) -> str:
-    """Link record ids in an analysis and fold long ``Records:`` lines.
+    """Link record ids in an analysis and move long ``Records:`` lists to the end.
 
     A citation line is a short label, a colon, and a comma-separated list of
     single-token items, at least one of which is the ``id`` of a request
     record. The label word is not checked, so ``Registros:`` and
     ``**Records:**`` count too. A line with more than
-    :data:`MAX_INLINE_RECORD_IDS` ids is folded (see :func:`_fold_markup`);
-    shorter lines and ids in normal sentences are only linked. Unknown ids
-    stay plain text, so an invented id stays visible.
+    :data:`MAX_INLINE_RECORD_IDS` ids is replaced by a pointer line with the
+    count, and its linked list goes under ``### Records per point`` at the end
+    (see :func:`_pointer_line`). Shorter lines and ids in normal sentences are
+    only linked. Unknown ids stay plain text, so an invented id stays visible.
 
-    The fold summary is built from counts only, in English in every output
-    language, never from record text or ids.
+    Plain Markdown only: EspoCRM escapes raw HTML in Text fields, so a
+    ``<details>`` fold shows as literal text. Counts are in English in every
+    output language and never contain record text or ids. Each id appears once
+    in the answer.
     """
     apply_links = _link_applier(records, espo_feedback_base_url, espo_meeting_base_url)
     kinds = {
@@ -106,19 +114,28 @@ def format_record_citations(
         for record in records
         if record.id
     }
-    lines = []
+    lines: list[str] = []
+    moved: list[tuple[str, str, str]] = []
+    heading = ""
     for line in text.split("\n"):
-        folded = _fold_citation_line(line, kinds, apply_links)
-        lines.append(apply_links(line) if folded is None else folded)
+        if heading_match := _HEADING.match(line):
+            heading = heading_match["title"]
+        long_list = _long_citation_list(line, kinds)
+        if long_list is None:
+            lines.append(apply_links(line))
+            continue
+        label, ids = long_list
+        lines.append(_pointer_line(label))
+        moved.append((heading or "Records", label, apply_links(", ".join(ids))))
+    if moved:
+        lines.append(_overflow_section(moved))
     return "\n".join(lines)
 
 
-def _fold_citation_line(
-    line: str,
-    kinds: dict[str, bool],
-    apply_links: Callable[[str], str],
-) -> str | None:
-    """Return the folded form of a long citation line, or ``None`` to keep it.
+def _long_citation_list(
+    line: str, kinds: dict[str, bool]
+) -> tuple[str, list[str]] | None:
+    """Return the count label and ids of a long citation line, else ``None``.
 
     ``kinds`` maps each request record id to ``True`` for a community meeting.
     """
@@ -136,13 +153,11 @@ def _fold_citation_line(
     meetings = sum(1 for item in items if kinds.get(item) is True)
     feedback = sum(1 for item in items if kinds.get(item) is False)
     unmatched = len(items) - meetings - feedback
-    return _fold_markup(
-        _count_label(feedback, meetings, unmatched), apply_links(", ".join(items))
-    )
+    return _count_label(feedback, meetings, unmatched), items
 
 
 def _count_label(feedback: int, meetings: int, unmatched: int) -> str:
-    """Count text for the fold summary, e.g. ``4 feedback records, 2 community meetings``."""
+    """Count text, e.g. ``4 feedback records, 2 community meetings``."""
     if not unmatched and not (feedback and meetings):
         return f"{feedback + meetings} records"
     parts = [
@@ -155,10 +170,21 @@ def _count_label(feedback: int, meetings: int, unmatched: int) -> str:
     )
 
 
-def _fold_markup(summary: str, linked_ids: str) -> str:
-    """Wrap ``linked_ids`` in a collapsible block.
+def _pointer_line(label: str) -> str:
+    """Line that replaces a long ``Records:`` list inside its point.
 
-    The one place that knows the fold shape, so a change of shape touches only
-    this function.
+    With :func:`_overflow_section`, the only place that knows the shape of a
+    moved list, so a change of shape touches only these two functions.
     """
-    return f"<details><summary>{summary}</summary>\n\n{linked_ids}\n\n</details>"
+    return f'Records: {label}. See "{OVERFLOW_HEADING}" at the end.'
+
+
+def _overflow_section(moved: list[tuple[str, str, str]]) -> str:
+    """Closing section with one ``####`` block per moved list.
+
+    Each entry is ``(point heading, count label, linked ids)``.
+    """
+    blocks = "".join(
+        f"\n#### {heading} ({label})\n{ids}\n" for heading, label, ids in moved
+    )
+    return f"\n### {OVERFLOW_HEADING}\n{blocks}".rstrip("\n")
