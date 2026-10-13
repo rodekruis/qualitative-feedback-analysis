@@ -305,6 +305,34 @@ class TestJudgeCall:
         assert "Contains a corruption allegation." in judge_user_message
 
     @pytest.mark.asyncio
+    async def test_type_labels_are_not_anonymised(self, settings):
+        """Presidio reads some labels as entities; the judge must still see them."""
+
+        class LabelRedactingAnonymizer(FakeAnonymizer):
+            def anonymize(self, text):
+                return text.replace(
+                    SensitivityType.CORRUPTION.value, "<LOCATION_0>"
+                ), {}
+
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=_make_sensitivity_result()),
+                _judge_reply(),
+            ]
+        )
+        service = _make_service(
+            fake_llm, settings, anonymizer=LabelRedactingAnonymizer()
+        )
+
+        await service.detect_sensitive_content(
+            _make_sensitivity_request(), _future_deadline()
+        )
+
+        judge_user_message = fake_llm.calls[1]["user_message"]
+        assert SensitivityType.CORRUPTION.value in judge_user_message
+        assert "<LOCATION_0>" not in judge_user_message
+
+    @pytest.mark.asyncio
     async def test_not_sensitive_is_labelled_rather_than_left_blank(self, settings):
         """An empty type list must read as a decision, not as a missing field."""
         fake_llm = FakeLLMPort(

@@ -15,6 +15,7 @@ not a superclass it inherits from.
 """
 
 import logging
+from collections.abc import Callable
 from datetime import datetime
 
 from pydantic import ValidationError
@@ -117,8 +118,16 @@ _NO_TYPES_LABEL = "none (not sensitive)"
 def build_sensitivity_judge_user_message(
     feedback_record: FeedbackRecordModel,
     classification: SensitivityClassificationModel,
+    *,
+    redact: Callable[[str], str],
 ) -> str:
     """Assemble the judge's user message: the record plus the classification.
+
+    Only the record text and the explanation pass through *redact*, in one
+    call so their placeholders stay consistent. The sensitivity types are a
+    closed vocabulary with no personal data, and Presidio misreads several
+    of them as entities (``THREATS_AND_PHYSICAL_VIOLENCE`` → ``<LOCATION_0>``),
+    which would hide the very label being judged.
 
     Metadata and the record id are left out — the judge scores the fit
     between text and labels, and neither helps with that.
@@ -129,12 +138,15 @@ def build_sensitivity_judge_user_message(
     envelope = build_feedback_record_envelope(
         feedback_record, include_metadata=False, include_id=False
     )
-    return (
+    redacted = redact(
         f"{envelope}\n"
-        f"<classification>\n"
-        f"sensitivity_types: {types}\n"
-        f"explanation: {classification.explanation}\n"
-        f"</classification>\n\n"
+        f"<classification_explanation>\n"
+        f"{classification.explanation}\n"
+        f"</classification_explanation>"
+    )
+    return (
+        f"{redacted}\n"
+        f"<sensitivity_types>\n{types}\n</sensitivity_types>\n\n"
         f"<instruction>\nEvaluate this classification.\n</instruction>"
     )
 
@@ -273,10 +285,11 @@ class SensitivityService:
         already passed still raises, because that is the whole request
         running out of time, not the judge failing.
         """
-        user_message = build_sensitivity_judge_user_message(
-            feedback_record, classification
+        anonymized_user_message = build_sensitivity_judge_user_message(
+            feedback_record,
+            classification,
+            redact=lambda text: self._executor.anonymize_text(text)[0],
         )
-        anonymized_user_message, _ = self._executor.anonymize_text(user_message)
         try:
             with judge_call():
                 response = await self._executor.complete(
