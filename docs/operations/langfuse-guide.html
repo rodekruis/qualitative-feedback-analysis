@@ -68,6 +68,10 @@ header { display: grid; gap: 18px; }
 .privacy h2 { font-size: 1.3rem; }
 .privacy ul { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; }
 
+/* Start-here note */
+.tip { background: var(--surface); border: 1px solid var(--accent); border-radius: 10px; padding: 18px 22px; display: grid; gap: 6px; }
+.tip h2 { font-size: 1.15rem; }
+
 /* Glossary */
 .terms { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0 32px; margin: 0; }
 .terms div { border-top: 1px solid var(--line); padding-block: 12px; display: grid; gap: 2px; }
@@ -141,6 +145,11 @@ footer { border-top: 1px solid var(--line); padding-top: 18px; font-size: 0.85re
   </dl>
 </header>
 
+<section class="tip" aria-labelledby="tip-h">
+  <h2 id="tip-h">Start with the default Home dashboard</h2>
+  <p>When you open a project in Langfuse, the Home page already shows most of what you need: cost, number of traces, usage per model, and scores over time. Look there first. Use the rest of this page when you need more detail.</p>
+</section>
+
 <section class="privacy" aria-labelledby="privacy-h">
   <h2 id="privacy-h">You will not see feedback text here, by design</h2>
   <p>Langfuse receives only facts about each call: what kind of task, for which organization, with which model, how many tokens, the cost and the time. If you open a call, the Input and Output boxes are empty. This is correct, and nothing is broken.</p>
@@ -208,7 +217,7 @@ footer { border-top: 1px solid var(--line); padding-top: 18px; font-size: 0.85re
     <div><dt>Generation</dt><dd>The Langfuse type for an observation that is a model call.</dd></div>
     <div><dt>Token</dt><dd>A piece of text, about three quarters of a word. Models charge per token.</dd></div>
     <div><dt>Score</dt><dd>A number from 0 to 1 for the quality of a result, from a person or a second model.</dd></div>
-    <div><dt>User</dt><dd>In QFA, the organization (tenant) that sent the request. It is not a person.</dd></div>
+    <div><dt>User</dt><dd>In QFA, the organization (tenant) that sent the request, shown as a random string. It is not a person.</dd></div>
     <div><dt>Tag</dt><dd>A label on a trace. QFA tags each trace with the task name, and adds <code>judge</code> for checks.</dd></div>
     <div><dt>Prompt</dt><dd>The fixed instructions that QFA gives the model for a task. Langfuse keeps each version.</dd></div>
   </dl>
@@ -223,7 +232,7 @@ footer { border-top: 1px solid var(--line); padding-top: 18px; font-size: 0.85re
     <div class="mock-bar">
       <strong>Trace</strong>
       <span class="mono">7f3c9a2e-41d8-4b0e-9c55-2a1e6b8d0f13</span>
-      <span>User <span class="mono">tenant-ukraine-pilot</span></span>
+      <span>User <span class="mono">b81e5d2c-0a47-4c39-8f6e-d3a97c1f5e20</span></span>
       <span class="example-tag">Invented example</span>
     </div>
     <div class="mock-body">
@@ -269,7 +278,7 @@ footer { border-top: 1px solid var(--line); padding-top: 18px; font-size: 0.85re
       <tbody>
         <tr><td>What happened in one request</td><td>Tracing, then Traces</td><td>Search by request ID. Each trace shows its calls, time, cost and scores.</td></tr>
         <tr><td>How busy the service is</td><td>Dashboards</td><td>Number of traces and calls per day, and the time that calls take.</td></tr>
-        <tr><td>Which organizations use QFA</td><td>Users</td><td>Each tenant with its number of calls, tokens and cost.</td></tr>
+        <tr><td>Which organizations use QFA</td><td>Users</td><td>Each tenant ID with its number of calls, tokens and cost. The ID is a random string, so you must look up the country in another system.</td></tr>
         <tr><td>What it costs</td><td>Dashboards or Users</td><td>Cost per call, per day, per model and per tenant.</td></tr>
         <tr><td>How good the output is</td><td>Scores</td><td>User ratings and judge scores over time, per task.</td></tr>
         <tr><td>Which instructions the model got</td><td>Prompts</td><td>The 11 QFA prompts, each with its full text and version history.</td></tr>
@@ -286,6 +295,7 @@ footer { border-top: 1px solid var(--line); padding-top: 18px; font-size: 0.85re
     <div>
       <h3>Users are organizations</h3>
       <p>The Users page lists every tenant that called QFA. A tenant is an organization with its own API key. Select a tenant to see all its traces, its token use and its cost.</p>
+      <p>Langfuse shows each tenant as a random string, not as a name. Langfuse also does not know the country. To link a string to a country, look up the tenant ID in the system that manages the API keys, for example the QFA tenant records or EspoCRM.</p>
     </div>
     <div>
       <h3>Cost</h3>
@@ -311,6 +321,56 @@ footer { border-top: 1px solid var(--line); padding-top: 18px; font-size: 0.85re
   </div>
 </section>
 
+<section aria-labelledby="use-h">
+  <div class="eyebrow">Using it for QFA</div>
+  <h2 id="use-h">Ways to use Langfuse</h2>
+  <p class="prose">Each row names the question, where to look, and an example. Use the <span class="mono">dev</span> project for tests and the <span class="mono">prd</span> project for live monitoring.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Use</th><th>Question it answers</th><th>How</th><th>Example</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Release testing</td>
+          <td>Is the new version as good as the old one?</td>
+          <td>Run the quality test set on the new version in <span class="mono">dev</span>. Open Datasets and compare the scores with the last run. Each trace carries the version and commit in its metadata.</td>
+          <td><code>recall_sensitive</code> drops from 0.96 to 0.88 after a prompt change. The team stops the release and fixes the prompt first.</td>
+        </tr>
+        <tr>
+          <td>Health monitoring</td>
+          <td>Is production running well today?</td>
+          <td>In <span class="mono">prd</span>, read the Home dashboard each week. Watch the error count, cost per day, traces per day, and the scores over time.</td>
+          <td>Cost per day doubles with the same number of traces. Open the expensive traces, find the model or task that changed, and act on it.</td>
+        </tr>
+        <tr>
+          <td>Model comparison</td>
+          <td>Which model gives the best result for the price?</td>
+          <td>Run the same test set with each model in <span class="mono">dev</span>. Compare the scores and the cost per model in Datasets and on the dashboard.</td>
+          <td>Model B scores 0.02 lower on <code>faithfulness</code> than model A but costs half as much. The team decides if that loss is acceptable.</td>
+        </tr>
+        <tr>
+          <td>Prompt changes</td>
+          <td>Did the new instructions help?</td>
+          <td>Each call shows its prompt version. Group the scores by prompt version on the dashboard, or compare two test runs.</td>
+          <td><code>clarity</code> rises from 0.78 to 0.85 for <code>summarize-single-system</code> version 4.</td>
+        </tr>
+        <tr>
+          <td>User feedback</td>
+          <td>Do people agree with the judge scores?</td>
+          <td>Compare <code>user_quality_score</code> from EspoCRM with the judge scores. If they disagree, the judge needs work.</td>
+          <td>The judge gives 0.9 for coverage, but people rate the same results low. The team reviews the judge prompt.</td>
+        </tr>
+        <tr>
+          <td>Per-tenant checks</td>
+          <td>Does one organization see worse results?</td>
+          <td>Filter by user (the tenant ID) and compare scores and errors with the rest. Then look up the country in another system.</td>
+          <td>One tenant has twice the error rate of the others. The team finds that its feedback is in a language that the prompt handles badly.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="caption">All numbers in this table are invented examples.</p>
+</section>
+
 <section aria-labelledby="tests-h">
   <div class="eyebrow">Quality tests</div>
   <h2 id="tests-h">Datasets and test runs</h2>
@@ -322,7 +382,8 @@ footer { border-top: 1px solid var(--line); padding-top: 18px; font-size: 0.85re
   <h2 id="not-h">What Langfuse does not show</h2>
   <ul class="plain prose">
     <li>The feedback text, and the answers that the model wrote.</li>
-    <li>Which person sent a request. Langfuse knows only the organization.</li>
+    <li>Which person sent a request. Langfuse knows only the tenant ID.</li>
+    <li>The name or country of a tenant. You must derive these from another system.</li>
     <li>Sessions. Each request is a separate trace.</li>
     <li>Calls from before Langfuse was switched on for a project.</li>
   </ul>
