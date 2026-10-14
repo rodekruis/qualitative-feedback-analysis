@@ -229,6 +229,46 @@ async def test_hierarchical_covers_all_records_and_returns_confidence():
 
 
 @pytest.mark.asyncio
+async def test_hierarchical_final_answer_moves_a_long_records_line():
+    """The reduce answer goes through the same citation handling as ``analyze_bulk``."""
+    records = tuple(
+        r.model_copy(update={"url_id": f"id-{r.id}"})
+        for r in _records(4, "water access was limited " * 5, "w")
+        + _records(4, "health clinic medicine " * 5, "h")
+    )
+    synthesis = "### All\nText.\nRecords: " + ", ".join(r.id for r in records)
+
+    class ReduceAnswersWithRecords(RecordingLLM):
+        async def complete(self, system_message, user_message, *args, **kwargs):
+            response = await super().complete(
+                system_message, user_message, *args, **kwargs
+            )
+            if "<partial_analyses>" in user_message:
+                return response.model_copy(update={"structured": synthesis})
+            return response
+
+    request = AnalysisRequestModel(
+        feedback_records=records,
+        prompt="trends?",
+        tenant_id=TENANT_ID,
+        mode="hierarchical",
+        espo_feedback_base_url="https://espo.example.com/feedback",
+    )
+    service = _build_analyze_service(
+        ReduceAnswersWithRecords(),
+        RecordingAnonymizer(),
+        FakeEmbeddingPort(),
+        max_total_tokens=100_000,
+    )
+    deadline = datetime.now(UTC) + timedelta(seconds=120)
+
+    result = await service.analyze_hierarchical(request, deadline, anonymize=True)
+
+    assert "#### All (8 records)" in result.result
+    assert "[w0](https://espo.example.com/feedback/id-w0)" in result.result
+
+
+@pytest.mark.asyncio
 async def test_hierarchical_calls_carry_their_own_prompt_ref():
     """Map, leaf-judge, and reduce calls each carry their own prompt name (#398).
 
@@ -537,17 +577,19 @@ async def test_recursion_fires_on_corpus_at_least_five_times_token_cap():
     when the cluster's total tokens exceed the budget (many map sub-chunks).
     Trigger 2 fires when the combined large partials exceed the budget,
     causing recursive tree-reduce. A LargeOutputLLM returns ~250-char
-    partials. With a 700-token budget and a 442-token system message, 3
-    partials fit per reduce group but 4 do not, so 10 map chunks produce a
-    multi-level tree-reduce (several reduce calls, all >= 2).
+    partials. The 1000-token budget is sized against the ~790-token reduce
+    system message: it leaves room for only a few partials per reduce group,
+    so 10 map chunks produce a multi-level tree-reduce (several reduce
+    calls, all >= 2). If the system message grows, raise the budget, or the
+    "no progress" safeguard in ``_reduce_partials`` makes a single reduce call.
     """
-    # 20 records of ~1000 chars each (250 tokens). Budget=700 tokens = 2800 chars,
-    # so 2 records fit per map chunk → 10 map chunks (>= 3). Total = 20*250 = 5000
-    # tokens, which is ~7x the 700-token cap (>5x requirement).
+    # 30 records of ~1000 chars each (250 tokens). Budget=1000 tokens, so 3
+    # records fit per map chunk → 10 map chunks (>= 3). Total = 30*250 = 7500
+    # tokens, which is 7.5x the 1000-token cap (>5x requirement).
     per_record = (
         "water access was limited and people waited for hours. " * 19
     )  # ~1026 chars
-    records = _records(20, per_record, "w")
+    records = _records(30, per_record, "w")
     request = AnalysisRequestModel(
         feedback_records=records,
         prompt="trends?",
@@ -556,7 +598,7 @@ async def test_recursion_fires_on_corpus_at_least_five_times_token_cap():
     )
     llm = LargeOutputLLM()
     service = _build_analyze_service(
-        llm, RecordingAnonymizer(), FakeEmbeddingPort(), max_total_tokens=700
+        llm, RecordingAnonymizer(), FakeEmbeddingPort(), max_total_tokens=1000
     )
     deadline = datetime.now(UTC) + timedelta(seconds=120)
     result = await service.analyze_hierarchical(request, deadline, anonymize=True)

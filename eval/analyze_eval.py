@@ -80,17 +80,6 @@ DATASET_METADATA_KEYS = (
 # tried on them again without paying for a new run. Git ignores it.
 ANSWERS_DIR = Path(".corpus_work/analyze-runs")
 
-# Neither the service nor the analyst prompts ask the model to name the
-# records behind a finding, so an answer cites record ids only by chance:
-# one smoke answer over 111 records cited none, which scores every
-# reference score 0 however good the answer is. The harness therefore
-# asks. It names no theme, need or group, so it cannot tell the model
-# what to find, and it gives no example id, so it cannot seed a citation.
-CITE_RECORDS_INSTRUCTION = (
-    "\n\nFor each point you report, list the ids of the feedback records it "
-    "is based on, written exactly as the id attribute of those records."
-)
-
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -169,8 +158,8 @@ def build_request_body(
 ) -> dict[str, Any]:
     """The ``/v1/analyze-bulk`` request body: only the keys the service accepts.
 
-    ``prompt`` is the analyst prompt plus ``CITE_RECORDS_INSTRUCTION``,
-    because the reference scores read the record ids an answer cites.
+    ``prompt`` goes through as given: the service's own prompt asks for
+    the record ids behind each point, which the reference scores read.
     Each record sends only ``id``, ``content`` and ``metadata.created``.
     ``ApiFeedbackRecordMetadata`` rejects any other metadata key with a
     422 for the whole request, and the ``coding_level_*`` codes would
@@ -179,7 +168,7 @@ def build_request_body(
     or ``url_id`` (together they turn cited ids into links).
     """
     return {
-        "prompt": prompt + CITE_RECORDS_INSTRUCTION,
+        "prompt": prompt,
         "mode": mode,
         "output_language": output_language,
         "feedback_records": [

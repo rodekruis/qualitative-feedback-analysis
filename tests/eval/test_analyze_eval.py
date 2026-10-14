@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import inspect
 import json
-import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -111,7 +110,7 @@ def test_build_request_body_sends_only_the_allowed_keys() -> None:
     body = build_request_body("Summarise", "single_pass", "English", records)
 
     assert body == {
-        "prompt": "Summarise" + analyze_eval.CITE_RECORDS_INSTRUCTION,
+        "prompt": "Summarise",
         "mode": "single_pass",
         "output_language": "English",
         "feedback_records": [
@@ -126,14 +125,6 @@ def test_build_request_body_sends_only_the_allowed_keys() -> None:
     assert "espo_feedback_base_url" not in body
     assert "url_id" not in body
     assert "coding_level_1" not in body["feedback_records"][0]["metadata"]
-
-
-def test_the_citation_instruction_names_no_label_and_no_example_id() -> None:
-    """It must not tell the model what to find, nor seed a record id."""
-    instruction = analyze_eval.CITE_RECORDS_INSTRUCTION.lower()
-
-    assert not re.search(r"\b[a-z]{2}-\d{4}\b", instruction)
-    assert not any(word in instruction for word in ("food", "shelter", "theme", "need"))
 
 
 @pytest.mark.parametrize(
