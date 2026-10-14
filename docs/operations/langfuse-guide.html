@@ -281,7 +281,7 @@ footer { border-top: 1px solid var(--line); padding-top: 18px; font-size: 0.85re
         <tr><td>Which organizations use QFA</td><td>Users</td><td>Each tenant ID with its number of calls, tokens and cost. The ID is a random string, so you must look up the country in another system.</td></tr>
         <tr><td>What it costs</td><td>Dashboards or Users</td><td>Cost per call, per day, per model and per tenant.</td></tr>
         <tr><td>How good the output is</td><td>Scores</td><td>User ratings and judge scores over time, per task.</td></tr>
-        <tr><td>Which instructions the model got</td><td>Prompts</td><td>The 11 QFA prompts, each with its full text and version history.</td></tr>
+        <tr><td>Which instructions the model got</td><td>Prompts</td><td>The 12 QFA prompts, each with its full text and version history.</td></tr>
         <tr><td>How a test run went</td><td>Datasets</td><td>Test sets and the results of each test run.</td></tr>
       </tbody>
     </table>
@@ -312,10 +312,11 @@ footer { border-top: 1px solid var(--line); padding-top: 18px; font-size: 0.85re
         <li><code>quality_score</code>: one overall score from these three.</li>
       </ul>
       <p class="muted">For <code>assign_codes</code>, the scores are <code>confidence_level_1</code> to <code>confidence_level_3</code>, one per level of the coding framework.</p>
+      <p class="muted">For <code>detect_sensitive</code>, the score is <code>sensitivity_confidence</code>: how sure the second model is that the sensitivity rating is right. If the check fails or does not run, the trace has no score.</p>
     </div>
     <div>
       <h3>Prompts and versions</h3>
-      <p>The Prompts page shows the 11 instructions that QFA gives the model, for example <code>summarize-single-system</code>. When the team changes an instruction, a new version appears at the next start of the service. Each call shows which prompt and which version it used, so you can compare results before and after a change.</p>
+      <p>The Prompts page shows the 12 instructions that QFA gives the model, for example <code>summarize-single-system</code>. When the team changes an instruction, a new version appears at the next start of the service. Each call shows which prompt and which version it used, so you can compare results before and after a change.</p>
       <p class="muted">These prompts are fixed text from the code. They never contain feedback.</p>
     </div>
   </div>

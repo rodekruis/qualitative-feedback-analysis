@@ -255,7 +255,7 @@ def build_prompt_versions(settings: LangfuseSettings) -> dict[str, int]:
     traffic — never on the request path (#398). Synchronous and blocking:
     :class:`~qfa.adapters.prompts.LangfusePromptAdapter` keeps each round
     trip to a short, fixed timeout with no retry, so the worst case across
-    all 11 prompts stays well inside gunicorn's worker startup deadline.
+    all 12 prompts stays well inside gunicorn's worker startup deadline.
 
     Parameters
     ----------
@@ -491,8 +491,13 @@ def build_services(
     )
 
     return ServiceGraph(
+        # The classification stays on the primary connection; only the
+        # judge follows judge_llm, as in coding and analyse.
         sensitivity=SensitivityService(
-            executor=executor, prompt_versions=prompt_versions
+            executor=executor,
+            judge_llm=judge_llm,
+            evaluator=evaluator,
+            prompt_versions=prompt_versions,
         ),
         # The one-shot pick stays on the primary connection; only the
         # per-level judge follows judge_llm (#310).

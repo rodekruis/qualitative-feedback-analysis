@@ -32,8 +32,8 @@ from qfa.domain.models import (
     LLMResponse,
     PromptRef,
     SensitivityAnalysisRequestModel,
-    SensitivityAnalysisResultModel,
-    SensitivityAnalysisResultModelList,
+    SensitivityClassificationModel,
+    SensitivityClassificationModelList,
     SingleSummaryCommunityMeetingRequestModel,
     SingleSummaryRequestModel,
     SummaryCommunityMeetingResultModel,
@@ -287,20 +287,21 @@ async def _assign_codes_calls() -> list[tuple[PromptRef | None, str]]:
 
 
 async def _detect_sensitive_content_calls() -> list[tuple[PromptRef | None, str]]:
-    """Drive ``detect_sensitive_content``: tags ``sensitivity-detection-system``."""
+    """Drive it: tags ``sensitivity-detection-system``/``sensitivity-detection-judge``."""
     fake_llm = FakeLLMPort(
         responses=[
             _llm_response(
-                SensitivityAnalysisResultModelList(
+                SensitivityClassificationModelList(
                     results=(
-                        SensitivityAnalysisResultModel(
+                        SensitivityClassificationModel(
                             feedback_record_id="doc-1",
                             sensitivity_types=(SensitivityType.CORRUPTION,),
                             explanation="Alleges bribery.",
                         ),
                     )
                 )
-            )
+            ),
+            _llm_response("SCORE: 0.9\nEXPLANATION: correct"),
         ]
     )
     service = SensitivityService(

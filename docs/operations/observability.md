@@ -41,7 +41,8 @@ Everything that's not in the prohibition list above is fine, especially:
 - HTTP status codes
 - Azure content-filter `category`/`severity` on `LLMContentPolicyViolationError` (a closed annotation, e.g. `violence`/`high` — never the flagged text itself)
 - The provider-rejection diagnostic's `model`, `response_format`, `schema_name`, `schema_keys` and `rejected_keyword` — the first four describe a schema this repo built, the last is drawn from a closed vocabulary of JSON-Schema token names (never the provider's message)
-- Judge component scores (`faithfulness`, `coverage`, `clarity`, `quality_score`) — never the `uncertainty_explanation`
+- Judge scores (`faithfulness`, `coverage`, `clarity`, `quality_score`,
+  `confidence_level_*`, `sensitivity_confidence`) — never the `uncertainty_explanation`
 
 ## Diagnosing a provider 400
 
@@ -165,6 +166,15 @@ falls below `confidence_threshold`. A trace can therefore carry fewer
 `confidence_level_*` scores than the path depth. When the request judges
 several candidate paths, a trace can carry more than one set of these
 scores.
+
+`detect_sensitive_content` sends a single score named
+`sensitivity_confidence`, via
+`qfa.services.judge_scoring.record_sensitivity_judge_score`. The name
+matches `SensitivityAnalysisResultModel.confidence`. One score per request:
+the judge runs once per record whether or not the record was rated
+sensitive, so a low-scoring not-sensitive trace is how a suspected false
+negative surfaces. A failed or unparsable judge reply records nothing, so
+a missing score and a low score mean different things.
 
 `qfa.adapters.evaluation.LangfuseEvaluationAdapter` sends the scores through
 the `langfuse` Python client. `NoOpEvaluationAdapter` discards them instead.

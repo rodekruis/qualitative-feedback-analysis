@@ -2,12 +2,12 @@
 
 :data:`SYSTEM_PROMPTS` is what
 :func:`qfa.api.composition.build_prompt_versions` pushes to Langfuse at
-startup, and what the tests check against. Adding a twelfth prompt later
+startup, and what the tests check against. Adding a thirteenth prompt later
 means adding one entry here — every value is imported from its owning
 module, never copied as a duplicate literal, so this registry cannot drift
 from the text an LLM call actually sends.
 
-Each of the 11 names maps to one combined, static prompt. Two rules for
+Each of the 12 names maps to one combined, static prompt. Two rules for
 what is versioned:
 
 * Where a real call site appends request-specific text to a prompt — the
@@ -33,6 +33,7 @@ from qfa.services.prompt_names import (
     ANALYZE_SINGLE_PASS_SYSTEM,
     CODING_CLASSIFIER_JUDGE,
     CODING_CLASSIFIER_SYSTEM,
+    SENSITIVITY_DETECTION_JUDGE,
     SENSITIVITY_DETECTION_SYSTEM,
     SUMMARIZE_AGGREGATE_SYSTEM,
     SUMMARIZE_COMMUNITY_MEETING_SYSTEM,
@@ -40,7 +41,12 @@ from qfa.services.prompt_names import (
     SUMMARIZE_SINGLE_SYSTEM,
 )
 from qfa.services.prompts import ANALYZE_JUDGE_PROMPT, build_single_pass_system_message
-from qfa.services.sensitivity import _DEFAULT_SENSITIVITY_DETECTION_PROMPT
+from qfa.services.sensitivity import (
+    _DEFAULT_SENSITIVITY_DETECTION_PROMPT,
+)
+from qfa.services.sensitivity import (
+    _JUDGE_PROMPT as _SENSITIVITY_JUDGE_PROMPT,
+)
 from qfa.services.summarize import (
     _DEFAULT_AGGREGATE_SUMMARIZATION_PROMPT,
     _DEFAULT_SUMMARIZATION_COMMUNITY_MEETING_PROMPT,
@@ -68,4 +74,5 @@ SYSTEM_PROMPTS: dict[str, str] = {
     CODING_CLASSIFIER_SYSTEM: SYSTEM_PROMPT,
     CODING_CLASSIFIER_JUDGE: _JUDGE_SYSTEM,
     SENSITIVITY_DETECTION_SYSTEM: _DEFAULT_SENSITIVITY_DETECTION_PROMPT,
+    SENSITIVITY_DETECTION_JUDGE: _SENSITIVITY_JUDGE_PROMPT,
 }

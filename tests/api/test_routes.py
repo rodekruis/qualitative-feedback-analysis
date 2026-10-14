@@ -23,7 +23,9 @@ from qfa.domain.models import (
     CommunityMeetingRecordModel,
     FeedbackRecordModel,
     FeedbackRecordSummaryModel,
+    SensitivityAnalysisResultModel,
 )
+from qfa.domain.sensitivity_types import SensitivityType
 from qfa.services.coding import NO_CODING_EMPTY_CONTENT_EXPLANATION
 
 from .conftest import FAKE_API_KEY, FakeService
@@ -537,6 +539,25 @@ class TestDetectSensitiveSuccess:
         record = test_app.state.sensitivity_service.last_detect_sensitive_request.feedback_record
         assert record.metadata.coding_level_1 == "North"
 
+    @pytest.mark.asyncio
+    async def test_response_contains_judge_confidence(self, test_app):
+        test_app.state.sensitivity_service = FakeService(
+            detect_sensitive_result=SensitivityAnalysisResultModel(
+                feedback_record_id="doc-1",
+                sensitivity_types=(SensitivityType.CORRUPTION,),
+                explanation="Contains a bribery allegation.",
+                confidence=0.42,
+            )
+        )
+        async with _make_client(test_app) as c:
+            resp = await c.post(
+                "/v1/detect-sensitive",
+                json=_valid_detect_sensitive_body(),
+                headers=_auth_header(),
+            )
+        assert resp.status_code == 200
+        assert resp.json()["confidence"] == 0.42
+
 
 # ------------------------------------------------------------------ #
 # Authentication
@@ -955,6 +976,21 @@ class TestEmptyFeedbackContent:
         assert body["id"] == "doc-1"
         assert body["is_sensitive"] is False
         assert body["sensitivity_types"] == []
+
+    @pytest.mark.asyncio
+    async def test_detect_sensitive_empty_content_has_null_confidence(self, client):
+        """No LLM call is made for blank content, so there is no judge score."""
+        resp = await client.post(
+            "/v1/detect-sensitive",
+            json=_valid_detect_sensitive_body(
+                feedback_record={"id": "doc-1", "content": ""}
+            ),
+            headers=_auth_header(),
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "confidence" in body
+        assert body["confidence"] is None
 
 
 # ------------------------------------------------------------------ #

@@ -27,11 +27,12 @@ written.
 ## Decision
 
 `azure_ai/mistral-medium-3-5`, on the existing Azure Foundry resource, serves
-all five judge call sites in every deployed environment: the `analyze` judge,
+every judge call site in every deployed environment: the `analyze` judge,
 the hierarchical leaf judge, the judges in `summarize` and `summarize_bulk`,
-and the per-level judge in `assign_codes` (added by #310 after this ADR was
+the per-level judge in `assign_codes` (added by #310 after this ADR was
 accepted — #258's exclusion of the coding path was scope-only, no
-coding-specific concern was ever recorded). Configured via `JUDGE_LLM_MODEL`
+coding-specific concern was ever recorded), and the classification judge in
+`detect_sensitive_content` (added later still, on the same terms). Configured via `JUDGE_LLM_MODEL`
 + `JUDGE_LLM_API_BASE` (`var.judge_llm_model`, `var.judge_llm_api_base` in
 `infra/variables.tf`), no
 new credential — the judge connection inherits `LLM_API_KEY` from the primary
@@ -61,17 +62,19 @@ not on a discrimination or agreement benchmark. -->
   judge inputs from bad ones as reliably as `azure/gpt-5.4` did. The staged
   rollout and rollback conditions below are the mitigation for shipping
   without that evidence, not a substitute for it.
-- All five judge call sites parse free text via regex (`parse_judge_components`
-  for `analyze`/`summarize`, a separate `SCORE:`/`EXPLANATION:` parser for
-  `assign_codes`) and raise `AnalysisError` on anything unparseable or out of
-  range — a weaker or differently-tuned model is more likely to break that
-  contract than a schema-enforced response would be. See the follow-up issue
-  below.
+- Every judge call site parses free text via regex (`parse_judge_components`
+  for `analyze`/`summarize`, `parse_judge_response` for the
+  `SCORE:`/`EXPLANATION:` replies that `assign_codes` and
+  `detect_sensitive_content` share) and treats anything unparseable or out of
+  range as a failure — a weaker or differently-tuned model is more likely to
+  break that contract than a schema-enforced response would be. See the
+  follow-up issue below.
 - The `assign_codes` per-level judge has **no degradation path**: an
   out-of-range score raises `AnalysisError` and an unparseable structured
   response raises `LLMResponseParseError`, either of which fails the
   `/v1/assign-codes` request — unlike the two `analyze` judges, which fall
-  back to `quality_score=None`. Same theme as #299.
+  back to `quality_score=None`, and unlike the `detect_sensitive_content`
+  judge, which falls back to `confidence=None`. Same theme as #299.
 - That call site issues `complete()` without a `timeout`, so it runs on
   `LiteLLMClient`'s default per-attempt budget rather than a deadline-derived
   one. Pre-existing, but the budget now applies to a different model.

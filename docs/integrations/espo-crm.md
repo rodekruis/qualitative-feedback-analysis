@@ -59,6 +59,10 @@ Each of the three calls tracks its own status field on the feedback record, movi
 
 The `assign-codes` step copies `assigned_codes.0.explanation` into `autoCodingExplanation`. A record can legitimately come back with no code applied while `autoCodingStatus` is still `completed` — that is a successful call, not an error, so it sets none of the error fields. The API guarantees that `assigned_codes` is never empty, so in that case `autoCodingExplanation` holds a message beginning with `NO CODING APPLIED.` explaining why. See the [REST API reference](../rest-api/index.md) for the exact wording.
 
+The `detect-sensitive` step copies `is_sensitive`, `explanation` and the judge's `confidence` into `autoSensitive`, `autoSensitiveExplanation` and `autoSensitiveConfidence`. When `confidence` is null (the judge call failed) or below 0.80, it sets `autoSensitiveStatus` to `human_review_required` instead of `completed`. The score covers the whole classification, flag and types together, so a correct flag with poorly chosen types also scores low. The 0.80 threshold mirrors `assign-codes` and has not been calibrated for sensitivity yet.
+
+`autoSensitiveConfidence` is an entity field, not part of the flowchart export: add it (type Float, on Feedback Data) by hand on each EspoCRM instance before importing the flowchart.
+
 ### Insight saving flow
 
 The insight call tracks a single status field, `autoInsightStatus`, moving through the same `processing` → `completed` (or `failed`) states, alongside `autoInsightErrorCode` and `autoInsightErrorMessage` on failure.
