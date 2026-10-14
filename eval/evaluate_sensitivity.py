@@ -336,6 +336,8 @@ def main() -> None:
     print(f"Run:     {run_name}")
     print()
 
+    versions = prompt_versions(base_url)
+
     result = langfuse.run_experiment(
         name=EXPERIMENT_NAME,
         run_name=run_name,
@@ -359,9 +361,9 @@ def main() -> None:
             evaluation="baseline",
             run_kind=run_kind,
             smoke_limit=args.smoke_limit,
-            prompt_version=prompt_versions(base_url).get(
-                "sensitivity-detection-system"
-            ),
+            prompt_version=versions.get("sensitivity-detection-system"),
+            # None while the deployed backend has no judge call.
+            judge_prompt_version=versions.get("sensitivity-detection-judge"),
         ),
     )
 

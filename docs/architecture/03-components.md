@@ -124,7 +124,7 @@ Each use case is one async method backing one HTTP endpoint:
 | {py:class}`~qfa.services.summarize.SummarizeService` | `summarize` | `POST /v1/summarize` | `get_summarize_service` | One LLM call plus a judge call. Per-record summary with a quality score. |
 | {py:class}`~qfa.services.summarize.SummarizeService` | `summarize_bulk` | `POST /v1/summarize-bulk` | `get_summarize_service` | One LLM call plus a judge call. One aggregate summary, themes ordered by frequency. |
 | {py:class}`~qfa.services.coding.CodingService` | `assign_codes` | `POST /v1/assign-codes` | `get_coding_service` | One LLM call picks the best-fitting code path(s) directly from the whole flattened coding framework, then a separate judge call per level scores each selected path, root to leaf. |
-| {py:class}`~qfa.services.sensitivity.SensitivityService` | `detect_sensitive_content` | `POST /v1/detect-sensitive` | `get_sensitivity_service` | One LLM call per record. Detects sensitive content and categorizes sensitivity types. |
+| {py:class}`~qfa.services.sensitivity.SensitivityService` | `detect_sensitive_content` | `POST /v1/detect-sensitive` | `get_sensitivity_service` | Two LLM calls per record: classify, then judge the classification. Detects sensitive content and categorizes sensitivity types. |
 
 `/v1/summarize`, `/v1/assign-codes`, and `/v1/detect-sensitive` are non-bulk endpoints with per-record outputs. `/v1/analyze-bulk` and `/v1/summarize-bulk` are bulk endpoints and return one aggregate result per request (for `/v1/analyze-bulk`, in both `mode=single_pass` and `mode=hierarchical`).
 

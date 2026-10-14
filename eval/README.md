@@ -387,14 +387,13 @@ backend's Postgres pool is small. The task is `async`, because the
 Langfuse SDK runs a sync task inside its own event loop one case at a
 time, whatever `max_concurrency` says.
 
-The harness appends one sentence to each analyst prompt, asking the model
-to list the ids of the records behind each point it reports
-(`CITE_RECORDS_INSTRUCTION`). Neither the service nor the analyst prompts
-ask for this, so an answer cites ids only by chance — the first smoke
-answer cited none, which scored every reference score 0. The sentence
-names no theme, need or group and gives no example id, so it cannot tell
-the model what to find. It does mean the scores describe the prompt *plus*
-that sentence, not the production prompt on its own.
+The harness sends the analyst prompt as it is. The service's own prompt
+asks the model for one `###` section per point, each ending with a
+`Records:` line of the ids behind it, and the reference scores read those
+ids. A point with more than 5 ids leaves a pointer line, and its ids move
+to a block under `### Records per point` at the end. Each id still appears
+once, so the scores are the same as for an inline answer
+(`test_analyze_scorers.py`).
 
 A 413 becomes the outcome `payload_too_large`, and a content-filter 422
 becomes `content_filtered`; both let the run continue. Any other failure
@@ -429,3 +428,36 @@ The answers are saved to `.corpus_work/analyze-runs/<run name>.jsonl`,
 one line per case with the answer, its key and the ids that were sent, so
 a changed scorer can be tried on a finished run at no cost. Git ignores
 that folder.
+
+### Running it in CI
+
+The **evaluate-analyze** workflow, in
+`.github/workflows/evaluate-analyze.yaml`, runs this script against the
+dev backend. Open the Actions tab, select **evaluate-analyze**, and click
+Run workflow. It has two inputs:
+
+| Input         | Default                        | Use |
+| ------------- | ------------------------------ | --- |
+| `dataset`     | `analyze/cases-frequent-en-v1` | The case set to score. |
+| `smoke_limit` | empty                          | Run only the first N cases. Empty runs all of them. |
+
+The **evaluate** workflow runs it with the default case set, together
+with the other evals. It reuses the secrets and variables listed above
+for `assign_codes_eval.py`.
+
+The job may run for up to 130 minutes, not 60 as the other eval jobs do,
+because one analyze call can take up to 20 minutes.
+
+A CI runner is deleted when the job ends, so the workflow uploads the
+answers file as the `analyze-answers` artifact. It keeps it for 90 days,
+also when the eval step fails. To fetch it:
+
+```bash
+gh run download <run id> --name analyze-answers
+```
+
+A run that stops before all cases finish has no answers file, because the
+script writes it at the end.
+
+The repository is public, so any signed-in GitHub user can download an
+artifact. Run only synthetic case sets from CI.

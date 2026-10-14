@@ -59,6 +59,10 @@ Each of the three calls tracks its own status field on the feedback record, movi
 
 The `assign-codes` step copies `assigned_codes.0.explanation` into `autoCodingExplanation`. A record can legitimately come back with no code applied while `autoCodingStatus` is still `completed` — that is a successful call, not an error, so it sets none of the error fields. The API guarantees that `assigned_codes` is never empty, so in that case `autoCodingExplanation` holds a message beginning with `NO CODING APPLIED.` explaining why. See the [REST API reference](../rest-api/index.md) for the exact wording.
 
+The `detect-sensitive` step copies `is_sensitive`, `explanation` and the judge's `confidence` into `autoSensitive`, `autoSensitiveExplanation` and `autoSensitiveConfidence`. When `confidence` is null (the judge call failed) or below 0.80, it sets `autoSensitiveStatus` to `human_review_required` instead of `completed`. The score covers the whole classification, flag and types together, so a correct flag with poorly chosen types also scores low. The 0.80 threshold mirrors `assign-codes` and has not been calibrated for sensitivity yet.
+
+`autoSensitiveConfidence` is an entity field, not part of the flowchart export: add it (type Float, on Feedback Data) by hand on each EspoCRM instance before importing the flowchart.
+
 ### Insight saving flow
 
 The insight call tracks a single status field, `autoInsightStatus`, moving through the same `processing` → `completed` (or `failed`) states, alongside `autoInsightErrorCode` and `autoInsightErrorMessage` on failure.
@@ -112,6 +116,10 @@ Both bulk endpoints return the same four fields for EspoCRM to write to separate
 ### Hyperlinking records in insight text
 
 The `motherPayload` sends `espo_feedback_base_url` and `espo_meeting_base_url` to both bulk endpoints; each record also needs its `url_id`. Matching full record IDs in the generated text are rewritten as markdown hyperlinks — see [REST API § Hyperlinking records](../rest-api/index.md#hyperlinking-records). This flows through `pretty_output` automatically, so a markdown-aware EspoCRM field renders it as a clickable link. Bare numbers are not linked. Older flowcharts that omit these fields leave the output as plain text.
+
+### Long record lists in analyses
+
+`modelResponse` is a Text field. EspoCRM shows it as Markdown and escapes raw HTML, so a `<details>` fold shows as literal text (checked on dev). For a point with more than 5 records, `analyze-bulk` therefore leaves a pointer line in the point and lists the records under `### Records per point` at the end. See [REST API § Record lists in analyses](../rest-api/index.md#record-lists-in-analyses). The pointer cannot be a link: EspoCRM headings have no anchors. A collapsible list needs a separate EspoCRM field.
 
 ## Authentication
 

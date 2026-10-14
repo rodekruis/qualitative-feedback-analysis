@@ -20,6 +20,7 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 | `POST` | `/v1/summarize-community-meeting` | Community meeting note summaries with quality scores |
 | `POST` | `/v1/summarize-bulk` | Single bulk summary over feedback and/or community meeting records, with judge score |
 | `POST` | `/v1/assign-codes` | Hierarchical code assignment |
+| `POST` | `/v1/detect-sensitive` | Per-record sensitivity rating with judge confidence |
 | `GET` | `/v1/usage` | Aggregate stats for the caller's tenant |
 | `GET` | `/v1/usage/all/by-tenant` | Cross-tenant stats, tenants top-level with per-operation nested (requires `is_superuser=true`) |
 | `GET` | `/v1/usage/all/by-operation` | Cross-tenant stats, operations top-level with per-tenant nested (requires `is_superuser=true`) |
@@ -43,7 +44,7 @@ All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
 
 | Field | Type | Notes |
 |---|---|---|
-| `analysis` | string | Model output. |
+| `analysis` | string | Markdown: one `###` section per point, each ending with the ids of its records. See [Record lists in analyses](#record-lists-in-analyses). |
 | `title` | string | `"Analysis"` — currently a constant (English only). |
 | `quality_score` | float or null | Weighted composite of `faithfulness`, `coverage` and `clarity`, computed in Python. `null` when the judge call failed (not an error — see `uncertainty_explanation`). |
 | `faithfulness` | float or null | How well the analysis is supported by the source records, in [0, 1]. `null` when the judge failed, and for `mode=hierarchical`. |
@@ -102,6 +103,8 @@ Water — 3%
 ```
 
 These explanations are English only, regardless of the language of the feedback.
+
+`POST /v1/detect-sensitive` classifies the record in one LLM call, then scores that classification in a second judge call and returns the score as `confidence` (0-1). The judge runs on **every** record, not only the ones rated sensitive, because a sensitive record wrongly let through is the error that costs most — on a `is_sensitive: false` result a high `confidence` means nothing was likely missed, and a low one marks the record for human review. `confidence` is `null` when the judge call failed or when the record's `content` was empty, so the endpoint never fails because its grader did.
 
 ## POST /v1/summarize-bulk — field reference
 
@@ -186,6 +189,21 @@ Empty `content` short-circuits to a 200 with blank `title`/`summary` and every s
 `url_id` is a separate, optional field on each record — the EspoCRM URL path segment for that record (distinct from `id`, which is the citation-friendly identifier the model sees and may repeat in prose). Feedback records are hyperlinked only when `espo_feedback_base_url` and that record's `url_id` are non-empty. Community meeting records are hyperlinked only when `espo_meeting_base_url` and their `url_id` are non-empty. Otherwise the ID stays plain text. Only complete IDs are linked; bare numbers are left untouched to avoid turning ordinary quantities into links. Existing Markdown links are not wrapped again.
 
 This is presentational only — it rewrites the already-generated `analysis`/`summary` text before it's returned, including the `pretty_output` block, so no extra rendering step is needed on the EspoCRM side beyond the flowchart's existing markdown-aware field display.
+
+### Record lists in analyses
+
+`/v1/analyze-bulk` (both modes) always answers in the same shape, even when the prompt asks for a table or another layout. Each point is a `###` heading, one to three sentences, and a last line that starts with `Records:`.
+
+| Case | What the `analysis` holds |
+|---|---|
+| 5 ids or fewer | The `Records:` line stays in the point, with a bold label. Each id is linked as above. |
+| More than 5 ids | The line becomes `**Records:** 46 records. *See "Records per point" at the end.*`. The linked ids go in a `#### <point title> (46 records)` block under `### Records per point`, after a `---` rule. |
+| Both record types | One list for both. The count reads `40 feedback records, 6 community meetings`, and each link uses the base URL of its own type. |
+| An id that is not in the request | Stays plain text. The count shows it as `unmatched`. |
+
+- The word `Records`, the counts and the section title stay in English in every output language.
+- Plain Markdown only. EspoCRM shows raw HTML in a Text field as text, so there is no `<details>` fold, and EspoCRM headings have no anchors to link to.
+- `/v1/summarize-bulk` does not change.
 
 ## Usage endpoint response shape
 

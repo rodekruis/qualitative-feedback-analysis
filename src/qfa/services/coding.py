@@ -27,7 +27,6 @@ cover. With no ``JUDGE_LLM_MODEL`` configured the two are the same client.
 
 import asyncio
 import logging
-import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -43,13 +42,16 @@ from qfa.domain.ports import AnonymizationPort, EvaluationPort, LLMPort
 from qfa.services.call_context import judge_call
 from qfa.services.coding_classifier import (
     CodingResponse,
-    JudgeResponse,
     build_coding_messages,
     build_judge_messages,
     flatten_coding_nodes,
     format_code_path,
 )
-from qfa.services.judge_scoring import record_coding_judge_score
+from qfa.services.judge_scoring import (
+    JudgeResponse,
+    parse_judge_response,
+    record_coding_judge_score,
+)
 from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.services.prompt_names import (
     CODING_CLASSIFIER_JUDGE,
@@ -156,33 +158,6 @@ def _combine_rejected_explanations(
         blocks.append(f"{remainder} further {noun} scored below {cutoff}.")
 
     return "\n\n".join(blocks)
-
-
-_JUDGE_RESPONSE_PATTERN = re.compile(
-    r"score:\s*(?P<score>-?[0-9.]+)\s*\n\s*explanation:\s*(?P<explanation>.+)",
-    re.IGNORECASE | re.DOTALL,
-)
-
-
-def _parse_judge_response(raw: str) -> JudgeResponse:
-    """Parse the judge LLM's free-text ``SCORE:``/``EXPLANATION:`` reply.
-
-    Mirrors ``summarize._parse_judge_quality_score``'s pattern (a provider
-    that cannot be asked to enforce a response schema, see
-    :class:`~qfa.services.coding_classifier.JudgeResponse`), extended to
-    the two fields this judge reports. Raises ``AnalysisError``, same class
-    and message-shape summarize already uses for a malformed judge reply,
-    on anything that doesn't match ``_JUDGE_SYSTEM``'s output-format
-    instruction.
-    """
-    match = _JUDGE_RESPONSE_PATTERN.search(raw)
-    if match is None:
-        raise AnalysisError("LLM judge returned an unparsable response")
-    try:
-        score = float(match.group("score"))
-    except ValueError as exc:
-        raise AnalysisError("LLM judge returned an unparsable response") from exc
-    return JudgeResponse(score=score, explanation=match.group("explanation").strip())
 
 
 class CodingService:
@@ -478,7 +453,7 @@ class CodingService:
         """Call the judge LLM for one hierarchy level; return score and explanation.
 
         Free-text, not schema-enforced structured output — see
-        :class:`~qfa.services.coding_classifier.JudgeResponse`'s docstring
+        :class:`~qfa.services.judge_scoring.JudgeResponse`'s docstring
         for why the judge connection cannot rely on the provider to enforce
         a response schema here.
         """
@@ -498,7 +473,7 @@ class CodingService:
                 response_model=str,
                 prompt=prompt_ref(self._prompt_versions, CODING_CLASSIFIER_JUDGE),
             )
-        judged = _parse_judge_response(response.structured)
+        judged = parse_judge_response(response.structured)
         if not 0.0 <= judged.score <= 1.0:
             raise AnalysisError("LLM judge returned score outside 0.0-1.0")
         record_coding_judge_score(
