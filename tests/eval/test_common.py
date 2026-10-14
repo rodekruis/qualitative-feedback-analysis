@@ -7,6 +7,7 @@ regardless of where pytest is invoked from (mirrors
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import json
 import sys
@@ -17,6 +18,7 @@ from typing import Any
 
 import httpx
 import pytest
+from langfuse import Evaluation
 from langfuse.api import NotFoundError
 
 _SCRIPT_PATH = Path(__file__).resolve().parents[2] / "eval" / "_common.py"
@@ -28,6 +30,9 @@ _spec.loader.exec_module(_common)
 
 DEFAULT_BASE_URL = _common.DEFAULT_BASE_URL
 deployed_info = _common.deployed_info
+eval_environment = _common.eval_environment
+langfuse_client = _common.langfuse_client
+with_score_metadata = _common.with_score_metadata
 git_metadata = _common.git_metadata
 prompt_versions = _common.prompt_versions
 resolve_api_key = _common.resolve_api_key
@@ -161,6 +166,61 @@ def test_run_metadata_carries_contract_keys_and_merges_extras(
     assert meta["deployed_commit"] == "deploy-sha"
     assert meta["dataset"] == "sensitivity/foo"
     assert meta["limit"] == 2
+
+
+@pytest.mark.parametrize(
+    ("version", "run_kind", "expected"),
+    [
+        ("2.11.0", "full", "eval-2-11-0"),
+        ("unknown", "full", "eval-unknown"),
+        ("2.11.0", "smoke", "eval-smoke"),
+    ],
+)
+def test_eval_environment(version: str, run_kind: str, expected: str) -> None:
+    assert eval_environment(version, run_kind) == expected
+
+
+def test_langfuse_client_tags_environment_and_release(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        _common,
+        "deployed_info",
+        lambda _base_url: {"deployed_version": "2.11.0", "deployed_commit": "x"},
+    )
+    captured: dict[str, Any] = {}
+    monkeypatch.setattr(
+        _common, "Langfuse", lambda **kwargs: captured.update(kwargs) or "client"
+    )
+
+    assert langfuse_client("https://example.invalid", run_kind="full") == "client"
+    assert captured == {"environment": "eval-2-11-0", "release": "2.11.0"}
+
+
+def test_with_score_metadata_adds_keys_to_every_evaluation() -> None:
+    def single(**_kwargs: Any) -> Evaluation:
+        return Evaluation(name="a", value=1.0, metadata={"TP": 3})
+
+    def many(**_kwargs: Any) -> list[Evaluation]:
+        return [Evaluation(name="b", value=0.0), Evaluation(name="c", value=1.0)]
+
+    wrapped_single, wrapped_many = with_score_metadata([single, many], dataset="d/x")
+
+    assert wrapped_single(output=None).metadata == {"dataset": "d/x", "TP": 3}
+    assert [e.metadata for e in wrapped_many(output=None)] == [
+        {"dataset": "d/x"},
+        {"dataset": "d/x"},
+    ]
+    assert wrapped_single.__name__ == "single"
+
+
+def test_with_score_metadata_awaits_an_async_evaluator() -> None:
+    async def run(**_kwargs: Any) -> Evaluation:
+        return Evaluation(name="a", value=1.0)
+
+    (wrapped,) = with_score_metadata([run], dataset="d/x")
+
+    assert asyncio.run(wrapped()).metadata == {"dataset": "d/x"}
 
 
 def test_deployed_info_unknown_when_health_raises(

@@ -7,16 +7,20 @@ puts ``eval/`` on ``sys.path[0]``, so scripts import this as
 
 from __future__ import annotations
 
+import functools
+import inspect
 import json
 import os
+import re
 import subprocess
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import httpx
 from dotenv import load_dotenv
+from langfuse import Evaluation, Langfuse
 from langfuse.api import NotFoundError
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -166,6 +170,67 @@ def run_metadata(base_url: str, **extra: Any) -> dict[str, Any]:
     Langfuse views filter, and unifying them would break those views.
     """
     return {**git_metadata(), **deployed_info(base_url), **extra}
+
+
+def eval_environment(deployed_version: str, run_kind: str) -> str:
+    """The Langfuse environment for a run: ``eval-<version>``, or ``eval-smoke``.
+
+    Langfuse environments allow only ``[a-z0-9_-]``, so ``2.11.0`` becomes
+    ``eval-2-11-0``. Every smoke run shares ``eval-smoke``, so the
+    version-comparison dashboard can leave smoke runs out with one filter
+    (``eval/README.md``, "Comparing versions").
+    """
+    if run_kind != "full":
+        return "eval-smoke"
+    return "eval-" + re.sub(r"[^a-z0-9_]", "-", deployed_version.lower())
+
+
+def langfuse_client(base_url: str, *, run_kind: str) -> Langfuse:
+    """A Langfuse client whose traces and scores carry the deployed version.
+
+    Sets ``environment`` (see :func:`eval_environment`) and ``release`` to
+    the version ``base_url`` reports. Run-level scores have no trace, so
+    only ``environment`` reaches them. Use this instead of ``get_client()``
+    in a script that writes a Dataset Run.
+    """
+    version = deployed_info(base_url)["deployed_version"]
+    return Langfuse(environment=eval_environment(version, run_kind), release=version)
+
+
+def _add_metadata(result: Any, extra: Mapping[str, Any]) -> Any:
+    evaluations = result if isinstance(result, list) else [result]
+    for evaluation in evaluations:
+        if isinstance(evaluation, Evaluation):
+            evaluation.metadata = {**extra, **(evaluation.metadata or {})}
+    return result
+
+
+def with_score_metadata(
+    evaluators: Sequence[Callable[..., Any]], **extra: Any
+) -> list[Callable[..., Any]]:
+    """Wrap ``evaluators`` so every score they write also carries ``extra``.
+
+    Dashboard widgets can filter scores on score metadata, but not on the
+    run's metadata or, for run-level scores, on the run name. Pass
+    ``dataset=`` so a widget can keep datasets apart. A key that the
+    evaluator sets itself wins over ``extra``.
+    """
+
+    def wrap(evaluator: Callable[..., Any]) -> Callable[..., Any]:
+        @functools.wraps(evaluator)
+        def wrapped(**kwargs: Any) -> Any:
+            result = evaluator(**kwargs)
+            if inspect.isawaitable(result):
+
+                async def finish() -> Any:
+                    return _add_metadata(await result, extra)
+
+                return finish()
+            return _add_metadata(result, extra)
+
+        return wrapped
+
+    return [wrap(evaluator) for evaluator in evaluators]
 
 
 @dataclass
