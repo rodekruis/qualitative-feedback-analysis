@@ -78,8 +78,8 @@ class TestLangfusePromptAdapter:
         """A blocking call at startup must not risk gunicorn's worker deadline.
 
         See ``LangfusePromptAdapter``'s module docstring for the arithmetic:
-        the SDK's own defaults (5s timeout, 2 retries) cost up to ~187s for
-        all 11 prompts in the worst case.
+        the SDK's own defaults (5s timeout, 2 retries) cost up to ~204s for
+        all 12 prompts in the worst case.
         """
         with patch("qfa.adapters.prompts.Langfuse") as mock_langfuse:
             LangfusePromptAdapter(_settings())

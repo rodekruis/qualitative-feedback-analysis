@@ -2,12 +2,12 @@
 
 :data:`SYSTEM_PROMPTS` is what
 :func:`qfa.api.composition.build_prompt_versions` pushes to Langfuse at
-startup, and what the tests check against. Adding a twelfth prompt later
+startup, and what the tests check against. Adding a thirteenth prompt later
 means adding one entry here — every value is imported from its owning
 module, never copied as a duplicate literal, so this registry cannot drift
 from the text an LLM call actually sends.
 
-Each of the 11 names maps to one combined, static prompt. Two rules for
+Each of the 12 names maps to one combined, static prompt. Two rules for
 what is versioned:
 
 * Where a real call site appends request-specific text to a prompt — the

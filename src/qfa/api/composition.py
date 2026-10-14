@@ -255,7 +255,7 @@ def build_prompt_versions(settings: LangfuseSettings) -> dict[str, int]:
     traffic — never on the request path (#398). Synchronous and blocking:
     :class:`~qfa.adapters.prompts.LangfusePromptAdapter` keeps each round
     trip to a short, fixed timeout with no retry, so the worst case across
-    all 11 prompts stays well inside gunicorn's worker startup deadline.
+    all 12 prompts stays well inside gunicorn's worker startup deadline.
 
     Parameters
     ----------
