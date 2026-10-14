@@ -188,12 +188,13 @@ def eval_environment(deployed_version: str, deployed_commit: str, run_kind: str)
 
 
 def langfuse_client(base_url: str, *, run_kind: str) -> Langfuse:
-    """A Langfuse client whose traces and scores carry the deployed version.
+    """A Langfuse client whose scores carry the deployed version as environment.
 
     Sets ``environment`` (see :func:`eval_environment`), and ``release`` to
-    the version ``base_url`` reports. Run-level scores have no trace, so
-    only ``environment`` reaches them. Use this instead of ``get_client()``
-    in a script that writes a Dataset Run.
+    the version ``base_url`` reports. Only scores get ``environment``: the
+    SDK always puts experiment traces in ``sdk-experiment``, so a dashboard
+    can split scores by version, but not traces. Use this instead of
+    ``get_client()`` in a script that writes a Dataset Run.
     """
     deployed = deployed_info(base_url)
     version = deployed["deployed_version"]

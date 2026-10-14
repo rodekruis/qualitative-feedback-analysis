@@ -74,6 +74,10 @@ runs shows their mean. The pivot tables show `count` next to the mean, so
 you can see how many scores went into each mean. Langfuse cannot calculate the
 difference between two versions. Read the numbers next to each other.
 
+Only scores get the `eval-*` environment. The Langfuse SDK always puts
+experiment traces in `sdk-experiment`, so the dashboard cannot compare
+latency or cost per version.
+
 If you add a dataset or a script, add widgets for it to the dashboard
 by hand. Runs from before this change have environment `default`. They
 stay visible in the Datasets view, but not on the dashboard.
