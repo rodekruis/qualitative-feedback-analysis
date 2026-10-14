@@ -39,7 +39,9 @@ class EvaluationPort(Protocol):
     variant can be added then.
     """
 
-    def record_score(self, *, trace_id: str, name: str, value: float) -> None:
+    def record_score(
+        self, *, trace_id: str, name: str, value: float, endpoint: str
+    ) -> None:
         """Record one named score against ``trace_id``.
 
         Parameters
@@ -54,6 +56,9 @@ class EvaluationPort(Protocol):
             ``"clarity"``, ``"quality_score"``.
         value : float
             The score value, in ``[0, 1]``.
+        endpoint : str
+            Operation that produced the score, e.g. ``"summarize"``. Stored
+            on the score itself so dashboards can filter scores by endpoint.
         """
         ...
 

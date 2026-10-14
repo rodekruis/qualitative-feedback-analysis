@@ -17,7 +17,9 @@ class TestNoOpEvaluationAdapter:
     def test_record_score_returns_none(self) -> None:
         adapter = NoOpEvaluationAdapter()
 
-        result = adapter.record_score(trace_id="a" * 32, name="faithfulness", value=0.9)
+        result = adapter.record_score(
+            trace_id="a" * 32, name="faithfulness", value=0.9, endpoint="summarize"
+        )
 
         assert result is None
 
@@ -92,11 +94,17 @@ class TestLangfuseEvaluationAdapter:
             adapter = LangfuseEvaluationAdapter(settings)
             client = mock_langfuse.return_value
 
-            adapter.record_score(trace_id="a" * 32, name="quality_score", value=0.87)
+            adapter.record_score(
+                trace_id="a" * 32,
+                name="quality_score",
+                value=0.87,
+                endpoint="summarize",
+            )
 
         client.create_score.assert_called_once_with(
             trace_id="a" * 32,
             name="quality_score",
             value=0.87,
             data_type="NUMERIC",
+            metadata={"endpoint": "summarize"},
         )
