@@ -60,16 +60,16 @@ QFA_API_BASE_URL=http://localhost:8000 uv run python eval/evaluate_sensitivity.p
 
 The Langfuse dashboard
 [Evaluation comparison by version](https://langfuse.510.global/project/cmtlny8oi0001t807r9xv8exn/dashboards/cmv84hkr5000ppg06kjudp70h)
-shows the scores of each deployed version next to each other. It works
+shows the scores of each deployed version and commit next to each other. It works
 because each script writes a Dataset Run with two helpers from `_common.py`:
 
 | Helper                  | What it sets | Why the dashboard needs it |
 | ----------------------- | ------------ | -------------------------- |
-| `langfuse_client()`     | Langfuse `environment` `eval-<version>` (for example `eval-2-11-0`), or `eval-smoke` for a smoke run. Also sets `release` to the version. | Widgets group by environment. Run metadata such as `deployed_version` cannot be grouped. |
+| `langfuse_client()`     | Langfuse `environment` `eval-<version>-<commit>` (for example `eval-2-11-0-89e6482`), or `eval-smoke` for a smoke run. Also sets `release` to the version. | Widgets group by environment. Run metadata such as `deployed_version` cannot be grouped. The commit gives each `dev` deploy its own column, also without a version bump. |
 | `with_score_metadata()` | `dataset` in the metadata of every score. | Widgets cannot select run-level scores, such as `f1_sensitive`, by run name. They can filter on score metadata. |
 
 Each widget includes environments that start with `eval-`, leaves out
-`eval-smoke`, and filters on one `dataset`. A version with several full
+`eval-smoke`, and filters on one `dataset`. A deploy with several full
 runs shows their mean. The pivot tables show `count` next to the mean, so
 you can see how many scores went into each mean. Langfuse cannot calculate the
 difference between two versions. Read the numbers next to each other.

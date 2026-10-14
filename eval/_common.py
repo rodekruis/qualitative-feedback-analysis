@@ -172,29 +172,35 @@ def run_metadata(base_url: str, **extra: Any) -> dict[str, Any]:
     return {**git_metadata(), **deployed_info(base_url), **extra}
 
 
-def eval_environment(deployed_version: str, run_kind: str) -> str:
-    """The Langfuse environment for a run: ``eval-<version>``, or ``eval-smoke``.
+def eval_environment(deployed_version: str, deployed_commit: str, run_kind: str) -> str:
+    """The Langfuse environment for a run: ``eval-<version>-<commit>``, or ``eval-smoke``.
 
-    Langfuse environments allow only ``[a-z0-9_-]``, so ``2.11.0`` becomes
-    ``eval-2-11-0``. Every smoke run shares ``eval-smoke``, so the
-    version-comparison dashboard can leave smoke runs out with one filter
-    (``eval/README.md``, "Comparing versions").
+    The 7-character commit keeps two ``dev`` deploys of one version apart.
+    Langfuse environments allow only ``[a-z0-9_-]``, so version ``2.11.0``
+    at ``89e6482`` becomes ``eval-2-11-0-89e6482``. Every smoke run shares
+    ``eval-smoke``, so the version-comparison dashboard can leave smoke
+    runs out with one filter (``eval/README.md``, "Comparing versions").
     """
     if run_kind != "full":
         return "eval-smoke"
-    return "eval-" + re.sub(r"[^a-z0-9_]", "-", deployed_version.lower())
+    name = f"{deployed_version}-{deployed_commit[:7]}".lower()
+    return "eval-" + re.sub(r"[^a-z0-9_]", "-", name)
 
 
 def langfuse_client(base_url: str, *, run_kind: str) -> Langfuse:
     """A Langfuse client whose traces and scores carry the deployed version.
 
-    Sets ``environment`` (see :func:`eval_environment`) and ``release`` to
+    Sets ``environment`` (see :func:`eval_environment`), and ``release`` to
     the version ``base_url`` reports. Run-level scores have no trace, so
     only ``environment`` reaches them. Use this instead of ``get_client()``
     in a script that writes a Dataset Run.
     """
-    version = deployed_info(base_url)["deployed_version"]
-    return Langfuse(environment=eval_environment(version, run_kind), release=version)
+    deployed = deployed_info(base_url)
+    version = deployed["deployed_version"]
+    return Langfuse(
+        environment=eval_environment(version, deployed["deployed_commit"], run_kind),
+        release=version,
+    )
 
 
 def _add_metadata(result: Any, extra: Mapping[str, Any]) -> Any:

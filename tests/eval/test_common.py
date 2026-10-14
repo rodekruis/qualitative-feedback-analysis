@@ -169,15 +169,17 @@ def test_run_metadata_carries_contract_keys_and_merges_extras(
 
 
 @pytest.mark.parametrize(
-    ("version", "run_kind", "expected"),
+    ("version", "commit", "run_kind", "expected"),
     [
-        ("2.11.0", "full", "eval-2-11-0"),
-        ("unknown", "full", "eval-unknown"),
-        ("2.11.0", "smoke", "eval-smoke"),
+        ("2.11.0", "89E64820dfa5acdc", "full", "eval-2-11-0-89e6482"),
+        ("unknown", "unknown", "full", "eval-unknown-unknown"),
+        ("2.11.0", "89e64820dfa5acdc", "smoke", "eval-smoke"),
     ],
 )
-def test_eval_environment(version: str, run_kind: str, expected: str) -> None:
-    assert eval_environment(version, run_kind) == expected
+def test_eval_environment(
+    version: str, commit: str, run_kind: str, expected: str
+) -> None:
+    assert eval_environment(version, commit, run_kind) == expected
 
 
 def test_langfuse_client_tags_environment_and_release(
@@ -186,7 +188,10 @@ def test_langfuse_client_tags_environment_and_release(
     monkeypatch.setattr(
         _common,
         "deployed_info",
-        lambda _base_url: {"deployed_version": "2.11.0", "deployed_commit": "x"},
+        lambda _base_url: {
+            "deployed_version": "2.11.0",
+            "deployed_commit": "89e64820dfa5acdc",
+        },
     )
     captured: dict[str, Any] = {}
     monkeypatch.setattr(
@@ -194,7 +199,7 @@ def test_langfuse_client_tags_environment_and_release(
     )
 
     assert langfuse_client("https://example.invalid", run_kind="full") == "client"
-    assert captured == {"environment": "eval-2-11-0", "release": "2.11.0"}
+    assert captured == {"environment": "eval-2-11-0-89e6482", "release": "2.11.0"}
 
 
 def test_with_score_metadata_adds_keys_to_every_evaluation() -> None:
