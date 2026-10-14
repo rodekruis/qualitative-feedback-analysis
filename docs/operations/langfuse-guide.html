@@ -126,7 +126,9 @@ td:first-child { white-space: nowrap; }
 
 .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px 40px; }
 .two > div { display: grid; gap: 10px; align-content: start; min-width: 0; }
-ul.plain { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; }
+ul.plain, ol.plain { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; }
+.shot { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+.shot img { display: block; width: 100%; max-width: 645px; height: auto; border-radius: 6px; }
 
 footer { border-top: 1px solid var(--line); padding-top: 18px; font-size: 0.85rem; color: var(--muted); display: grid; gap: 6px; }
 </style>
@@ -319,6 +321,24 @@ footer { border-top: 1px solid var(--line); padding-top: 18px; font-size: 0.85re
       <p class="muted">These prompts are fixed text from the code. They never contain feedback.</p>
     </div>
   </div>
+</section>
+
+<section aria-labelledby="filter-h">
+  <div class="eyebrow">Scores per task</div>
+  <h2 id="filter-h">Filter the scores by endpoint</h2>
+  <p class="prose">Each judge score carries the endpoint that made it, in the metadata key <code>endpoint</code>. To see the scores of one endpoint on a dashboard, add a filter:</p>
+  <ol class="plain prose">
+    <li>Open the dashboard and click Filter.</li>
+    <li>Select <code>Metadata</code> as the column.</li>
+    <li>Type <code>endpoint</code> as the key.</li>
+    <li>Select <code>=</code> as the operator.</li>
+    <li>Type the endpoint: <code>summarize</code>, <code>analyze</code>, <code>assign_codes</code> or <code>summarize_aggregate</code>.</li>
+  </ol>
+  <div class="shot">
+    <img src="../assets/langfuse-endpoint-filter.png" width="645" height="98" alt="Langfuse filter row: Where Metadata, key endpoint, operator =, value analyze.">
+  </div>
+  <p class="caption">The filter that shows only the scores of <code>analyze</code>.</p>
+  <p class="prose muted">Type the value exactly, because Langfuse shows no list of values. The filter acts on the whole dashboard. While it is on, widgets without <code>endpoint</code> show no data, for example the error count, <code>user_quality_score</code>, and scores from before this change.</p>
 </section>
 
 <section aria-labelledby="use-h">
