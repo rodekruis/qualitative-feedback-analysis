@@ -117,6 +117,10 @@ Both bulk endpoints return the same four fields for EspoCRM to write to separate
 
 The `motherPayload` sends `espo_feedback_base_url` and `espo_meeting_base_url` to both bulk endpoints; each record also needs its `url_id`. Matching full record IDs in the generated text are rewritten as markdown hyperlinks — see [REST API § Hyperlinking records](../rest-api/index.md#hyperlinking-records). This flows through `pretty_output` automatically, so a markdown-aware EspoCRM field renders it as a clickable link. Bare numbers are not linked. Older flowcharts that omit these fields leave the output as plain text.
 
+### Long record lists in analyses
+
+`modelResponse` is a Text field. EspoCRM shows it as Markdown and escapes raw HTML, so a `<details>` fold shows as literal text (checked on dev). For a point with more than 5 records, `analyze-bulk` therefore leaves a pointer line in the point and lists the records under `### Records per point` at the end. See [REST API § Record lists in analyses](../rest-api/index.md#record-lists-in-analyses). The pointer cannot be a link: EspoCRM headings have no anchors. A collapsible list needs a separate EspoCRM field.
+
 ## Authentication
 
 EspoCRM stores the bearer token as a server-side secret. Provisioning and rotation use the standard flow in [API key management](../operations/auth-management.md).

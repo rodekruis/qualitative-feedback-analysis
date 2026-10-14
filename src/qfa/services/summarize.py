@@ -17,8 +17,8 @@ need — no embedder, no analyze settings, no token ceiling of its own
 (``summarize_bulk`` uses the executor's pre-flight budget guard).
 
 Two module-level helpers these methods use are deliberately **not** defined
-here: ``hyperlink_form_references`` (also used by ``analyze_bulk`` and the
-hierarchical reduce) and ``JUDGE_USER_MESSAGE`` (also used by the analyse
+here: ``hyperlink_form_references`` (the analyse paths build on it in
+``format_record_citations``) and ``JUDGE_USER_MESSAGE`` (also used by the analyse
 and hierarchical leaf judges). They live in :mod:`qfa.services.record_links`
 and :mod:`qfa.services.prompts` respectively, shared with their other users.
 """

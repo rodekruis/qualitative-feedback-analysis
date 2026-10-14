@@ -387,14 +387,13 @@ backend's Postgres pool is small. The task is `async`, because the
 Langfuse SDK runs a sync task inside its own event loop one case at a
 time, whatever `max_concurrency` says.
 
-The harness appends one sentence to each analyst prompt, asking the model
-to list the ids of the records behind each point it reports
-(`CITE_RECORDS_INSTRUCTION`). Neither the service nor the analyst prompts
-ask for this, so an answer cites ids only by chance — the first smoke
-answer cited none, which scored every reference score 0. The sentence
-names no theme, need or group and gives no example id, so it cannot tell
-the model what to find. It does mean the scores describe the prompt *plus*
-that sentence, not the production prompt on its own.
+The harness sends the analyst prompt as it is. The service's own prompt
+asks the model for one `###` section per point, each ending with a
+`Records:` line of the ids behind it, and the reference scores read those
+ids. A point with more than 5 ids leaves a pointer line, and its ids move
+to a block under `### Records per point` at the end. Each id still appears
+once, so the scores are the same as for an inline answer
+(`test_analyze_scorers.py`).
 
 A 413 becomes the outcome `payload_too_large`, and a content-filter 422
 becomes `content_filtered`; both let the run continue. Any other failure

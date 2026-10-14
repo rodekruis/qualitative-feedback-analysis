@@ -215,6 +215,8 @@ This is a fourth channel, next to Postgres usage and the two Azure signals below
 
 This channel is for browsing individual calls, including the map, reduce, and judge calls of hierarchical analysis. Postgres (`GET /v1/usage`) remains the source of truth for total cost and token counts.
 
+For a plain-English tour of what Langfuse shows, written for non-developers, see [QFA in Langfuse](langfuse-guide.html).
+
 Every call made inside one request shares one trace id, taken from `call_id`. `qfa.services.call_context.call_scope` sets it. A request with both a generation call and a judge call therefore shows as one trace with two observations, not two separate traces. This is what lets a live judge score (see below) land next to the call it graded.
 
 The tracer's span processor is attached only when `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` are set. It stays detached in local dev, the same pattern as `APPLICATIONINSIGHTS_CONNECTION_STRING` below. If you set the keys, you must also set `LANGFUSE_HOST`. This deployment always self-hosts Langfuse, so it has no cloud fallback. `LangfuseSettings` rejects a key that has no host.
