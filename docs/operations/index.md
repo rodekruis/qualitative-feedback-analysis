@@ -12,6 +12,7 @@ Running, deploying, and observing the service.
 | [API key management](auth-management.md) | Adding, rotating, and revoking API keys |
 | [Settings reference](settings-reference.md) | Every environment variable the app reads |
 | [Observability](observability.md) | What gets logged, request tracing, usage queries |
+| [QFA in Langfuse](langfuse-guide.html) | Plain-English guide for managers to what Langfuse shows and where to find it |
 | [Operational how-tos](how-to.md) | Copy-pasteable runbooks (e.g. force-refresh changed Key Vault values) |
 
 For first-time setup, follow [Infrastructure bootstrap](bootstrap.md) → [Set up a new environment](setup-new-env.md) in that order.
