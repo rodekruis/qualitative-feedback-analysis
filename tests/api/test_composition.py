@@ -65,7 +65,7 @@ class _StubEmbedder:
 class _StubEvaluator:
     """Minimal EvaluationPort stand-in for identity-check tests."""
 
-    def record_score(self, *, trace_id, name, value):  # pragma: no cover
+    def record_score(self, *, trace_id, name, value, endpoint):  # pragma: no cover
         raise AssertionError("Evaluator should not be called during construction")
 
 

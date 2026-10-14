@@ -245,8 +245,10 @@ class FakeEvaluationPort(EvaluationPort):
     def __init__(self) -> None:
         self.calls: list[dict] = []
 
-    def record_score(self, *, trace_id, name, value):
-        self.calls.append({"trace_id": trace_id, "name": name, "value": value})
+    def record_score(self, *, trace_id, name, value, endpoint):
+        self.calls.append(
+            {"trace_id": trace_id, "name": name, "value": value, "endpoint": endpoint}
+        )
 
 
 @pytest.fixture
@@ -987,6 +989,7 @@ class TestSummarizeJudgeScores:
         names = {call["name"] for call in evaluator.calls}
         assert names == {"faithfulness", "coverage", "clarity", "quality_score"}
         assert all(call["trace_id"] == request_id.hex for call in evaluator.calls)
+        assert all(call["endpoint"] == "summarize" for call in evaluator.calls)
 
     @pytest.mark.asyncio
     async def test_no_evaluator_means_no_scores_and_no_error(self, settings):

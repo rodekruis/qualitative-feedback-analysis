@@ -144,17 +144,18 @@ def record_judge_scores(
     ctx = current_call_context.get()
     if ctx is None:
         return
-    trace_id = ctx.call_id.hex
-    evaluator.record_score(
-        trace_id=trace_id, name="faithfulness", value=components.faithfulness
-    )
-    evaluator.record_score(
-        trace_id=trace_id, name="coverage", value=components.coverage
-    )
-    evaluator.record_score(trace_id=trace_id, name="clarity", value=components.clarity)
-    evaluator.record_score(
-        trace_id=trace_id, name="quality_score", value=components.quality_score
-    )
+    for name, value in (
+        ("faithfulness", components.faithfulness),
+        ("coverage", components.coverage),
+        ("clarity", components.clarity),
+        ("quality_score", components.quality_score),
+    ):
+        evaluator.record_score(
+            trace_id=ctx.call_id.hex,
+            name=name,
+            value=value,
+            endpoint=ctx.operation,
+        )
 
 
 def record_coding_judge_score(
@@ -185,6 +186,7 @@ def record_coding_judge_score(
         trace_id=ctx.call_id.hex,
         name=f"confidence_level_{level_num}",
         value=score,
+        endpoint=ctx.operation,
     )
 
 
@@ -209,5 +211,8 @@ def record_sensitivity_judge_score(
     if ctx is None:
         return
     evaluator.record_score(
-        trace_id=ctx.call_id.hex, name="sensitivity_confidence", value=score
+        trace_id=ctx.call_id.hex,
+        name="sensitivity_confidence",
+        value=score,
+        endpoint=ctx.operation,
     )

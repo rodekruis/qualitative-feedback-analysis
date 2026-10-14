@@ -60,19 +60,24 @@ class LangfuseEvaluationAdapter(EvaluationPort):
             tracer_provider=TracerProvider(),
         )
 
-    def record_score(self, *, trace_id: str, name: str, value: float) -> None:
+    def record_score(
+        self, *, trace_id: str, name: str, value: float, endpoint: str
+    ) -> None:
         """Record one named score against ``trace_id`` in Langfuse."""
         self._client.create_score(
             trace_id=trace_id,
             name=name,
             value=value,
             data_type="NUMERIC",
+            metadata={"endpoint": endpoint},
         )
 
 
 class NoOpEvaluationAdapter(EvaluationPort):
     """Discards every score. The default when Langfuse is not configured."""
 
-    def record_score(self, *, trace_id: str, name: str, value: float) -> None:
-        """Discard the score; ``trace_id``/``name``/``value`` are unused."""
+    def record_score(
+        self, *, trace_id: str, name: str, value: float, endpoint: str
+    ) -> None:
+        """Discard the score; every argument is unused."""
         return None

@@ -455,6 +455,7 @@ class TestAssignCodesLiveScores:
             "confidence_level_3": pytest.approx(0.8),
         }
         assert all(call["trace_id"] == request_id.hex for call in evaluator.calls)
+        assert all(call["endpoint"] == "assign_codes" for call in evaluator.calls)
 
     @pytest.mark.asyncio
     async def test_rejected_level_sends_its_own_score_but_no_further_levels(
