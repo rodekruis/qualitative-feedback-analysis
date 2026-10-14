@@ -35,10 +35,17 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from langfuse import Evaluation, get_client
+from langfuse import Evaluation
 from langfuse.api import NotFoundError
 
-from _common import load_env, prompt_versions, resolve_config, run_metadata
+from _common import (
+    langfuse_client,
+    load_env,
+    prompt_versions,
+    resolve_config,
+    run_metadata,
+    with_score_metadata,
+)
 from analyze_scorers import judge_scores, score_answer
 
 EXPERIMENT_NAME = "analyze-bulk"
@@ -376,7 +383,8 @@ def main() -> None:
     load_env()
     base_url, api_key = resolve_config()
 
-    langfuse = get_client()
+    run_kind = "smoke" if args.smoke_limit else "full"
+    langfuse = langfuse_client(base_url, run_kind=run_kind)
     cases_version = datetime.now(UTC)
     dataset = langfuse.get_dataset(args.dataset, version=cases_version)
 
@@ -392,7 +400,6 @@ def main() -> None:
     records_by_version = load_records(langfuse, items)
 
     timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-    run_kind = "smoke" if args.smoke_limit else "full"
     dataset_label = args.dataset.rsplit("/", 1)[-1]
     if args.run_name:
         run_name = args.run_name
@@ -418,11 +425,14 @@ def main() -> None:
         name=EXPERIMENT_NAME,
         run_name=run_name,
         task=_make_analyze(base_url, api_key, records_by_version),
-        evaluators=[
-            _judge_scores_evaluator,
-            _outcome_evaluator,
-            _reference_scores_evaluator,
-        ],
+        evaluators=with_score_metadata(
+            [
+                _judge_scores_evaluator,
+                _outcome_evaluator,
+                _reference_scores_evaluator,
+            ],
+            dataset=args.dataset,
+        ),
         max_concurrency=MAX_CONCURRENCY,
         metadata=run_metadata(
             base_url,
@@ -456,6 +466,7 @@ def main() -> None:
         value=judge_model,
         dataset_run_id=result.dataset_run_id,
         data_type="CATEGORICAL",
+        metadata={"dataset": args.dataset},
     )
 
     failed = len(items) - len(result.item_results)

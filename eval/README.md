@@ -38,7 +38,14 @@ A local run reads `git`.
 Start a new script from `_common` (`uv run python eval/x.py`):
 
 ```python
-from _common import MAX_CONCURRENCY, load_env, resolve_config, run_metadata
+from _common import (
+    MAX_CONCURRENCY,
+    langfuse_client,
+    load_env,
+    resolve_config,
+    run_metadata,
+    with_score_metadata,
+)
 ```
 
 Local server: set `QFA_API_BASE_URL=http://localhost:8000`, reuse
@@ -48,6 +55,32 @@ Local server: set `QFA_API_BASE_URL=http://localhost:8000`, reuse
 QFA_API_BASE_URL=http://localhost:8000 uv run python eval/evaluate_sensitivity.py \
   --dataset sensitivity/SubsetIFRCBorderlineSensitiveRecords --smoke-limit 2
 ```
+
+## Comparing versions
+
+The Langfuse dashboard
+[Evaluation comparison by version](https://langfuse.510.global/project/cmtlny8oi0001t807r9xv8exn/dashboards/cmv84hkr5000ppg06kjudp70h)
+shows the scores of each deployed version and commit next to each other. It works
+because each script writes a Dataset Run with two helpers from `_common.py`:
+
+| Helper                  | What it sets | Why the dashboard needs it |
+| ----------------------- | ------------ | -------------------------- |
+| `langfuse_client()`     | Langfuse `environment` `eval-<version>-<commit>` (for example `eval-2-11-0-89e6482`), or `eval-smoke` for a smoke run. Also sets `release` to the version. | Widgets group by environment. Run metadata such as `deployed_version` cannot be grouped. The commit gives each `dev` deploy its own column, also without a version bump. |
+| `with_score_metadata()` | `dataset` in the metadata of every score. | Widgets cannot select run-level scores, such as `f1_sensitive`, by run name. They can filter on score metadata. |
+
+Each widget includes environments that start with `eval-`, leaves out
+`eval-smoke`, and filters on one `dataset`. A deploy with several full
+runs shows their mean. The pivot tables show `count` next to the mean, so
+you can see how many scores went into each mean. Langfuse cannot calculate the
+difference between two versions. Read the numbers next to each other.
+
+Only scores get the `eval-*` environment. The Langfuse SDK always puts
+experiment traces in `sdk-experiment`, so the dashboard cannot compare
+latency or cost per version.
+
+If you add a dataset or a script, add widgets for it to the dashboard
+by hand. Runs from before this change have environment `default`. They
+stay visible in the Datasets view, but not on the dashboard.
 
 ## Running `assign_codes_eval.py`
 

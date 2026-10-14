@@ -36,14 +36,16 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 import httpx
-from langfuse import Evaluation, get_client
+from langfuse import Evaluation
 
 from _common import (
     MAX_CONCURRENCY,
+    langfuse_client,
     load_env,
     prompt_versions,
     resolve_config,
     run_metadata,
+    with_score_metadata,
 )
 
 DATASET_NAME = "assign-codes/ukrain"
@@ -161,7 +163,7 @@ def main() -> None:
         prompt_version=prompt_versions(base_url).get("coding-classifier-system"),
     )
 
-    langfuse = get_client()
+    langfuse = langfuse_client(base_url, run_kind="full")
     dataset = langfuse.get_dataset(DATASET_NAME)
     result = dataset.run_experiment(
         name="assign-codes eval",
@@ -172,7 +174,10 @@ def main() -> None:
         ),
         description="Per-level accuracy of POST /v1/assign-codes against ground truth.",
         task=_make_run_assign_codes(base_url, api_key),
-        evaluators=[level_1_correct, level_2_correct, level_3_correct],
+        evaluators=with_score_metadata(
+            [level_1_correct, level_2_correct, level_3_correct],
+            dataset=DATASET_NAME,
+        ),
         max_concurrency=MAX_CONCURRENCY,
         metadata=metadata,
     )
