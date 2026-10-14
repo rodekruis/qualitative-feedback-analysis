@@ -211,5 +211,8 @@ def record_sensitivity_judge_score(
     if ctx is None:
         return
     evaluator.record_score(
-        trace_id=ctx.call_id.hex, name="sensitivity_confidence", value=score
+        trace_id=ctx.call_id.hex,
+        name="sensitivity_confidence",
+        value=score,
+        endpoint=ctx.operation,
     )

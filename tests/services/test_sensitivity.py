@@ -40,13 +40,15 @@ MAX_TOKENS = 10_000
 
 
 class _RecordingEvaluator(EvaluationPort):
-    """Captures ``(name, value)`` per recorded score instead of calling Langfuse."""
+    """Captures ``(name, value, endpoint)`` per score instead of calling Langfuse."""
 
     def __init__(self):
-        self.scores: list[tuple[str, float]] = []
+        self.scores: list[tuple[str, float, str]] = []
 
-    def record_score(self, *, trace_id: str, name: str, value: float) -> None:
-        self.scores.append((name, value))
+    def record_score(
+        self, *, trace_id: str, name: str, value: float, endpoint: str
+    ) -> None:
+        self.scores.append((name, value, endpoint))
 
 
 @pytest.fixture
@@ -481,7 +483,9 @@ class TestJudgeCall:
                 _make_sensitivity_request(), _future_deadline()
             )
 
-        assert evaluator.scores == [("sensitivity_confidence", 0.77)]
+        assert evaluator.scores == [
+            ("sensitivity_confidence", 0.77, "detect_sensitive")
+        ]
 
     @pytest.mark.asyncio
     async def test_no_live_score_when_the_judge_failed(self, settings):
