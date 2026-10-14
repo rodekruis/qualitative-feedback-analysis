@@ -78,6 +78,7 @@ The three workflows above are implemented as EspoCRM flowcharts, built and maint
 - `Feedback_saving_flowchart.csv` — feedback record save trigger
 - `Insight_creation_flowchart.csv` — insight creation trigger
 - `Community_meeting_summary_flowchart.csv` — community meeting record save trigger
+- `user-feedback-to-Langfuse.csv` — sends a user's insight rating to Langfuse as `user_quality_score`, with `metadata.endpoint` set from the insight's `method` (`analyze`, otherwise `summarize_aggregate`, the same choice as the insight flow). Ratings sent before this flowchart was imported have no endpoint.
 
 These CSV files serve as the versioning mechanism: whenever a flowchart is updated in the EspoCRM UI, export a fresh copy and commit it. Promoting a flowchart to staging or production is then a matter of importing the CSV through the EspoCRM UI. The CSV is the only maintained copy of a flow's formula script — do not add a separate `.php` mirror, since the flowchart's `data` column already embeds the same script and a second copy would drift out of sync.
 

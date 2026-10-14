@@ -148,7 +148,10 @@ them through the `EvaluationPort` each judged service holds. Every score
 carries `call_id` as its key, so you can join it to that request's
 `llm_calls` rows and to its Langfuse trace (see below). Every score also
 carries `metadata.endpoint`, set to the operation (for example `summarize`).
-Use it to filter scores by endpoint in a Langfuse dashboard.
+Use it to filter scores by endpoint in a Langfuse dashboard. The
+`user_quality_score` that EspoCRM sends also carries `metadata.endpoint`,
+`analyze` or `summarize_aggregate` (see
+[EspoCRM integration](../integrations/espo-crm.md#flowcharts)).
 
 `single_pass` sends one set of four scores per request, from
 `AnalyzeService.analyze_bulk`. Hierarchical sends one set per chunk, from
