@@ -101,6 +101,16 @@ uv run pytest tests/integration/test_db_postgres.py   # specific file
 - **Every class that implements a port explicitly inherits from it — production adapters *and* test doubles.** Even though Python `Protocol`s support structural typing, we require `class LiteLLMClient(LLMPort):`, `class PresidioAnonymizer(AnonymizationPort):`, and `class FakeLLMPort(LLMPort):` so that "go to definition" in an IDE jumps from any port impl to its contract. Skipping the inheritance is reserved for genuinely ad-hoc cases (e.g. one-shot `MagicMock(spec=Port)` instances, where `spec=` already enforces conformance). See [Components](../architecture/03-components.md) for the full ports/adapters layout.
 - **Import directions are enforced.** `qfa.domain` must not import third-party infra (`litellm`, `presidio_*`, `fastapi`, ...); `qfa.services` may only import `qfa.domain`; the composition root in `qfa.api.app` is the only place that wires concrete adapters into ports. `make lint` runs `lint-imports` to enforce this.
 
+## Dependency updates
+
+Dependabot opens a PR for each `uv` dependency update. It waits 3 days after a release before it opens a version-update PR. The cooldown does not apply to security updates.
+
+| Update type | Review |
+|-------------|--------|
+| Patch or minor, opened and last pushed by Dependabot | `.github/workflows/dependabot-auto-merge.yaml` approves it. It merges when the required checks pass. |
+| Major | A person must approve it. |
+| Any PR that a person opened or pushed to | A person must approve it. |
+
 ## How-to guides
 
 Task-oriented guides for common development work, walking through a change end
