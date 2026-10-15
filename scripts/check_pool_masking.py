@@ -15,10 +15,20 @@ record's text — the same call shape the service makes — and prints which
 original words got replaced with a placeholder, in the prompt or in a
 record. It writes nothing back to either file.
 
+The prompts file holds every language, so ``--language`` narrows it to
+the prompts that go with the pool being checked — a Spanish pool is sent
+with the Spanish prompts, which is the batch the service really builds.
+Results differ by language: the Spanish spaCy model has no NRP
+recogniser, so nationality and religion words that English masks come
+through.
+
 Run::
 
     uv run python scripts/check_pool_masking.py \\
       --input .corpus_work/analyze-pool/records-en-v1.yaml \\
+      --prompts .corpus_work/analyze-pool/prompts-v1.yaml
+    uv run python scripts/check_pool_masking.py --language es \\
+      --input .corpus_work/analyze-pool/records-es-v1.yaml \\
       --prompts .corpus_work/analyze-pool/prompts-v1.yaml
 """
 
@@ -47,12 +57,36 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         help="YAML file of prompt records (the shape upload_prompts.py reads).",
     )
+    parser.add_argument(
+        "--language",
+        default=None,
+        help="Only use the prompts in this language. Default: every prompt.",
+    )
     return parser.parse_args(argv)
 
 
 def _load_yaml_list(path: Path) -> list[dict[str, Any]]:
     """Read a YAML file holding a list of records or prompts."""
     return yaml.safe_load(path.read_text()) or []
+
+
+def _select_prompts(
+    prompts: list[dict[str, Any]], language: str | None
+) -> list[dict[str, Any]]:
+    """``prompts``, narrowed to ``language`` — or all of them when it is ``None``.
+
+    Raises
+    ------
+    SystemExit
+        ``language`` matches no prompt, which would otherwise print
+        "No masked words found." and look like a clean result.
+    """
+    if language is None:
+        return prompts
+    selected = [p for p in prompts if p["metadata"]["language"] == language]
+    if not selected:
+        raise SystemExit(f"no prompt in {language}")
+    return selected
 
 
 def _masked_words(redacted_text: str, mapping: dict[str, str]) -> list[str]:
@@ -74,7 +108,7 @@ def main(argv: list[str] | None = None) -> int:
 
     args = _parse_args(argv)
     records = _load_yaml_list(args.input)
-    prompts = _load_yaml_list(args.prompts)
+    prompts = _select_prompts(_load_yaml_list(args.prompts), args.language)
 
     anonymizer = PresidioAnonymizer()
     masked_by_record: dict[str, set[str]] = {}
