@@ -37,7 +37,6 @@ from _common import load_env, upload_items
 from pool_spec import (
     BANNED_WORDS,
     CREATED_FORMAT,
-    DECOYS,
     PLANTED,
     RECORDS_DATASET,
     WINDOW_END,
@@ -55,7 +54,6 @@ EXPECTED_METADATA_KEYS = (
     "praise_about",
     "info_request",
     "urgent_kind",
-    "decoy",
     "promise_gap",
     "access_barrier",
     "groups",
@@ -113,33 +111,30 @@ def _parse_created(value: str) -> datetime:
 
 
 def _needs_reviewed(metadata: Mapping[str, Any]) -> bool:
-    return bool(
-        metadata.get("urgent_kind") or metadata.get("decoy") or metadata.get("groups")
-    )
+    return bool(metadata.get("urgent_kind") or metadata.get("groups"))
 
 
 def validate_pool(
     records: list[dict[str, Any]],
     *,
     planted: Mapping[str, Mapping[str, int]] = PLANTED,
-    decoys: int = DECOYS,
     final: bool = False,
 ) -> None:
     """Check the pool records before any upload.
 
-    ``planted`` and ``decoys`` default to the real distribution; tests pass
-    smaller values. ``final=False`` skips text checks on records with no
+    ``planted`` defaults to the real distribution; tests pass smaller
+    values. ``final=False`` skips text checks on records with no
     text and prints how many those are. ``final=True`` requires text and
     ``review_status`` on every record, and ``review_status: "reviewed"``
-    on every urgent, decoy or group record.
+    on every urgent or group record.
 
     Raises
     ------
     SystemExit
         An id is not shaped ``en-NNNN``, or repeats; a record is missing a
-        metadata field; a ``planted`` count is wrong; the decoy count is
-        wrong, two urgent records share an ``urgent_kind``, or one is not
-        themed ``protection``; a ``created`` falls outside the window; a
+        metadata field; a ``planted`` count is wrong; two urgent records
+        share an ``urgent_kind``, or one is not themed ``protection``; a
+        ``created`` falls outside the window; a
         record with text has a bad length, no ``facts``, a banned word,
         or too few keywords; or ``final`` is set and a record lacks text,
         ``review_status``, or a required ``reviewed`` value.
@@ -173,20 +168,13 @@ def validate_pool(
             )
 
     urgent = [r for r in records if r["metadata"].get("urgent_kind")]
-    decoy_records = [r for r in records if r["metadata"].get("decoy")]
-    if len(decoy_records) != decoys:
-        raise SystemExit(f"Expected {decoys} decoys, got {len(decoy_records)}")
     kinds = [r["metadata"]["urgent_kind"] for r in urgent]
     if len(set(kinds)) != len(kinds):
         raise SystemExit("Two urgent records share the same urgent_kind")
-    mislabeled = [
-        r["id"]
-        for r in urgent + decoy_records
-        if r["metadata"]["theme"] != "protection"
-    ]
+    mislabeled = [r["id"] for r in urgent if r["metadata"]["theme"] != "protection"]
     if mislabeled:
         raise SystemExit(
-            f"Urgent/decoy record(s) not themed protection: {', '.join(mislabeled)}"
+            f"Urgent record(s) not themed protection: {', '.join(mislabeled)}"
         )
 
     out_of_window = [
@@ -218,7 +206,7 @@ def validate_pool(
         ]
         if not_reviewed:
             raise SystemExit(
-                "urgent/decoy/group record(s) need "
+                "urgent/group record(s) need "
                 f'review_status: "reviewed": {", ".join(not_reviewed)}'
             )
     elif empty_text:

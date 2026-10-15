@@ -3,8 +3,8 @@
 No test here touches Langfuse: ``main()`` needs real credentials and
 writes to a shared dataset, so it is exercised manually (a dry run, then a
 real upload), never in ``make test``. Each test uses a short, hand-made
-record list rather than the real ~110-record pool, so ``planted`` and
-``decoys`` are passed in to match.
+record list rather than the real ~110-record pool, so ``planted`` is
+passed in to match.
 """
 
 from __future__ import annotations
@@ -31,7 +31,6 @@ def _metadata(**overrides: Any) -> dict[str, Any]:
         "praise_about": None,
         "info_request": None,
         "urgent_kind": None,
-        "decoy": False,
         "promise_gap": None,
         "access_barrier": None,
         "groups": [],
@@ -63,64 +62,58 @@ def _missing_facts() -> dict[str, Any]:
     [
         pytest.param(
             [_record("bad-id")],
-            {"planted": {}, "decoys": 0},
+            {"planted": {}},
             "en-NNNN",
             id="ill-shaped-id",
         ),
         pytest.param(
             [_record("en-0001"), _record("en-0001")],
-            {"planted": {}, "decoys": 0},
+            {"planted": {}},
             "en-0001",
             id="duplicate-id",
         ),
         pytest.param(
             [_missing_facts()],
-            {"planted": {}, "decoys": 0},
+            {"planted": {}},
             "facts",
             id="missing-metadata-field",
         ),
         pytest.param(
             [_record("en-0001", theme="food"), _record("en-0002", theme="food")],
-            {"planted": {"theme": {"food": 1}}, "decoys": 0},
+            {"planted": {"theme": {"food": 1}}},
             "theme",
             id="planted-count",
-        ),
-        pytest.param(
-            [_record("en-0001")],
-            {"planted": {}, "decoys": 1},
-            "decoys",
-            id="decoy-count",
         ),
         pytest.param(
             [
                 _record("en-0001", theme="protection", urgent_kind="sex_for_aid"),
                 _record("en-0002", theme="protection", urgent_kind="sex_for_aid"),
             ],
-            {"planted": {}, "decoys": 0},
+            {"planted": {}},
             "share the same urgent_kind",
             id="shared-urgent-kind",
         ),
         pytest.param(
             [_record("en-0001", theme="food", urgent_kind="sex_for_aid")],
-            {"planted": {"urgent_kind": {"sex_for_aid": 1}}, "decoys": 0},
+            {"planted": {"urgent_kind": {"sex_for_aid": 1}}},
             "protection",
             id="urgent-not-protection-theme",
         ),
         pytest.param(
             [_record("en-0001", created="2026-01-01T00:00:00Z")],
-            {"planted": {}, "decoys": 0},
+            {"planted": {}},
             "en-0001",
             id="created-outside-window",
         ),
         pytest.param(
             [_record("en-0001", content="short", facts=["one fact"])],
-            {"planted": {}, "decoys": 0},
+            {"planted": {}},
             "60-1200",
             id="text-too-short",
         ),
         pytest.param(
             [_record("en-0001", content=_TEXT, facts=[])],
-            {"planted": {}, "decoys": 0},
+            {"planted": {}},
             "facts",
             id="text-without-facts",
         ),
@@ -132,19 +125,19 @@ def _missing_facts() -> dict[str, Any]:
                     facts=["f"],
                 )
             ],
-            {"planted": {}, "decoys": 0},
+            {"planted": {}},
             "referral",
             id="banned-word",
         ),
         pytest.param(
             [_record("en-0001")],
-            {"planted": {}, "decoys": 0, "final": True},
+            {"planted": {}, "final": True},
             "no text",
             id="final-missing-text",
         ),
         pytest.param(
             [_record("en-0001", content=_TEXT, facts=["f"])],
-            {"planted": {}, "decoys": 0, "final": True},
+            {"planted": {}, "final": True},
             "review_status",
             id="final-missing-review-status",
         ),
@@ -161,26 +154,10 @@ def _missing_facts() -> dict[str, Any]:
             ],
             {
                 "planted": {"urgent_kind": {"sex_for_aid": 1}},
-                "decoys": 0,
                 "final": True,
             },
             r'review_status: "reviewed"',
             id="final-urgent-not-reviewed",
-        ),
-        pytest.param(
-            [
-                _record(
-                    "en-0001",
-                    theme="protection",
-                    decoy=True,
-                    content=_TEXT,
-                    facts=["f"],
-                    review_status="not_reviewed",
-                )
-            ],
-            {"planted": {}, "decoys": 1, "final": True},
-            r'review_status: "reviewed"',
-            id="final-decoy-not-reviewed",
         ),
         pytest.param(
             [
@@ -192,7 +169,7 @@ def _missing_facts() -> dict[str, Any]:
                     review_status="not_reviewed",
                 )
             ],
-            {"planted": {"groups": {"children": 1}}, "decoys": 0, "final": True},
+            {"planted": {"groups": {"children": 1}}, "final": True},
             r'review_status: "reviewed"',
             id="final-group-not-reviewed",
         ),
@@ -212,7 +189,7 @@ def test_validate_pool_passes_for_a_well_formed_minimal_pool(
         _record(f"en-{i:04d}", theme="shelter") for i in range(6, 11)
     ]
 
-    validate_pool(records, planted={"theme": {"food": 5, "shelter": 5}}, decoys=0)
+    validate_pool(records, planted={"theme": {"food": 5, "shelter": 5}})
 
     assert "10 records have no text yet" in capsys.readouterr().out
 
@@ -229,7 +206,7 @@ def test_validate_pool_final_accepts_text_and_review_status() -> None:
         for i in range(1, 3)
     ]
 
-    validate_pool(records, planted={"theme": {"food": 2}}, decoys=0, final=True)
+    validate_pool(records, planted={"theme": {"food": 2}}, final=True)
 
 
 def test_validate_pool_final_accepts_a_reviewed_urgent_record() -> None:
@@ -247,7 +224,6 @@ def test_validate_pool_final_accepts_a_reviewed_urgent_record() -> None:
     validate_pool(
         records,
         planted={"theme": {"protection": 1}, "urgent_kind": {"sex_for_aid": 1}},
-        decoys=0,
         final=True,
     )
 

@@ -272,8 +272,8 @@ uv run python eval/upload_pool.py \
 
 `--dry-run` runs every check and reports what would change, but writes
 nothing. It also prints how many records have no text yet. A real upload
-stops if any record has no text or no `review_status`, or if an urgent,
-decoy or group record is not `review_status: reviewed`. If an item
+stops if any record has no text or no `review_status`, or if an urgent
+or group record is not `review_status: reviewed`. If an item
 already exists and its content changed, the script updates that item.
 Langfuse keeps the old version.
 
@@ -291,7 +291,6 @@ Each record in the input file is one feedback record:
     praise_about: null
     info_request: null
     urgent_kind: null # set only on the 6 urgent protection records
-    decoy: false # true on the 4 protection decoys
     promise_gap: null
     access_barrier: null
     groups: [] # the vulnerable groups this record is about
@@ -305,8 +304,8 @@ Each record in the input file is one feedback record:
 
 The script stops before uploading anything if an id is not shaped
 `en-NNNN` or repeats, a record is missing one of the metadata fields
-above, a planted count (`PLANTED` in `pool_spec.py`) is wrong, the decoy
-count or the `urgent_kind`s are wrong, a `created` falls outside the
+above, a planted count (`PLANTED` in `pool_spec.py`) is wrong, the
+`urgent_kind`s are wrong, a `created` falls outside the
 window, or — once a record has text — its length is outside 60–1,200
 characters, it has no `facts`, or its text uses a banned word (`PSEA`,
 `safeguarding`, `exploitation`, `referral`).
