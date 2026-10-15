@@ -21,6 +21,8 @@ import pytest
 
 import analyze_eval
 from analyze_eval import (
+    _judge_scores_evaluator,
+    _language_match_evaluator,
     _make_analyze,
     build_request_body,
     load_records,
@@ -199,3 +201,43 @@ def test_save_answers_writes_one_line_per_case(
     # A case with no answer still gets a line, so every case is accounted for.
     assert lines[1]["case"] == "P03-en"
     assert lines[1]["analysis"] is None
+
+
+def test_judge_scores_evaluator_stays_silent_when_no_judge_ran() -> None:
+    """A timed-out case has no judge verdict, so it must not report one."""
+    output = {"outcome": "error", "quality_score": None, "faithfulness": 0.9}
+
+    assert _judge_scores_evaluator(output=output) == []
+
+
+def test_judge_scores_evaluator_flags_a_failed_judge_on_an_ok_case() -> None:
+    output = {"outcome": "ok", "quality_score": None}
+
+    assert [(e.name, e.value) for e in _judge_scores_evaluator(output=output)] == [
+        ("judge_failed", 1.0)
+    ]
+
+
+def test_language_match_evaluator_reads_the_cases_own_language() -> None:
+    output = {
+        "outcome": "ok",
+        "analysis": (
+            "Las familias dicen que el reparto de alimentos llega tarde y que "
+            "no hay suficiente agua potable en el campamento."
+        ),
+    }
+
+    [evaluation] = _language_match_evaluator(output=output, metadata={"language": "es"})
+
+    assert evaluation.name == "language_match"
+    assert evaluation.value == 1.0
+
+
+def test_language_match_evaluator_skips_a_case_with_no_answer() -> None:
+    assert (
+        _language_match_evaluator(
+            output={"outcome": "error", "analysis": None},
+            metadata={"language": "es"},
+        )
+        == []
+    )
