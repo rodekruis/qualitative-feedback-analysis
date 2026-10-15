@@ -160,12 +160,14 @@ not gate anything. A summary prints to the console along with a link to
 the run, and the full results land in Langfuse as a Dataset Run under the
 experiment `sensitivity-baseline`.
 
-Every record there carries two scores. `correct` is 1 when the label
+Every record there carries two scores, plus a third when the judge ran. `correct` is 1 when the label
 matched the human's and 0 when it did not. `classification_case` says
 which kind of outcome it was: `TP` and `TN` are the correct ones, `FP` is
 a record that was flagged when it should not have been, and `FN` is a
 sensitive record that was missed. Filtering a run on `FN` shows you
-everything that slipped through.
+everything that slipped through. `sensitivity_confidence` is the judge's
+confidence (0-1) that the rating is right, so filtering on `FP` or `FN`
+shows how sure the judge was about each mistake.
 
 A flagged record carries one further pair of scores per sensitivity type
 the model returned: `sensitivity_type`, and `sensitivity_type_tp` or

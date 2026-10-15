@@ -110,6 +110,7 @@ def _make_detect_sensitive(
             "is_sensitive": result["is_sensitive"],
             "sensitivity_types": result["sensitivity_types"],
             "explanation": result["explanation"],
+            "confidence": result["confidence"],
         }
 
     return detect_sensitive
@@ -159,6 +160,15 @@ def classification_case_evaluator(
         value=case,
         data_type="CATEGORICAL",
     )
+
+
+def confidence_evaluator(*, output: dict[str, Any], **kwargs: Any) -> list[Evaluation]:
+    """Record the judge's confidence; no score when the judge call failed."""
+    confidence = output.get("confidence")
+    if confidence is None:
+        return []
+
+    return [Evaluation(name="sensitivity_confidence", value=confidence)]
 
 
 def _get_predictions(item_results: Any) -> list[tuple[bool, bool, dict[str, Any]]]:
@@ -349,6 +359,7 @@ def main() -> None:
             [
                 correctness_evaluator,
                 classification_case_evaluator,
+                confidence_evaluator,
                 sensitivity_type_item_evaluator,
             ],
             dataset=args.dataset,
