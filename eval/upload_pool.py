@@ -135,8 +135,8 @@ def validate_pool(
         metadata field; a ``planted`` count is wrong; two urgent records
         share an ``urgent_kind``, or one is not themed ``protection``; a
         ``created`` falls outside the window; a
-        record with text has a bad length, no ``facts``, a banned word,
-        or too few keywords; or ``final`` is set and a record lacks text,
+        record with text has a bad length, no ``facts`` or a banned word;
+        or ``final`` is set and a record lacks text,
         ``review_status``, or a required ``reviewed`` value.
     """
     ids = [r["id"] for r in records]
