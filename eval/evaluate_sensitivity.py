@@ -110,7 +110,7 @@ def _make_detect_sensitive(
             "is_sensitive": result["is_sensitive"],
             "sensitivity_types": result["sensitivity_types"],
             "explanation": result["explanation"],
-            "confidence": result["confidence"],
+            "confidence": result.get("confidence"),
         }
 
     return detect_sensitive
@@ -163,7 +163,10 @@ def classification_case_evaluator(
 
 
 def confidence_evaluator(*, output: dict[str, Any], **kwargs: Any) -> list[Evaluation]:
-    """Record the judge's confidence; no score when the judge call failed."""
+    """Record the judge's confidence.
+
+    No score when the judge call failed or the backend predates v2.12.0.
+    """
     confidence = output.get("confidence")
     if confidence is None:
         return []
