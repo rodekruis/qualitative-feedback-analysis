@@ -52,6 +52,8 @@ jobs:
   # _deploy-release.yaml (ADR-025), which this path inherits regardless.
   verify:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Reject drafts
         env:
