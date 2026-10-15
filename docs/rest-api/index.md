@@ -152,7 +152,6 @@ Input over the token cap returns 413 `payload_too_large`.
 | `faithfulness` | float or null | How well the summary is supported by the source record, in [0, 1]. `null` only when `content` was empty. |
 | `coverage` | float or null | How thoroughly the summary captures the record's own key points, in [0, 1]. `null` only when `content` was empty. |
 | `clarity` | float or null | How clear and concise the summary is, in [0, 1]. `null` only when `content` was empty. |
-| `pretty_output` | string | Human-readable formatted output string, built from `id`/`title`/`summary`/`quality_score`. |
 
 Empty `content` short-circuits to a 200 with blank `title`/`summary` and every score `null`, without calling the LLM (issue #138).
 
@@ -176,7 +175,6 @@ Empty `content` short-circuits to a 200 with blank `title`/`summary` and every s
 | `faithfulness` | float or null | How well the summary is supported by the source notes, in [0, 1]. `null` only when `meetingNotes` was empty. |
 | `coverage` | float or null | How thoroughly the summary captures the meeting's key points, in [0, 1]. `null` only when `meetingNotes` was empty. |
 | `clarity` | float or null | How clear and concise the summary is, in [0, 1]. `null` only when `meetingNotes` was empty. |
-| `pretty_output` | string | Human-readable formatted output string, built from `id`/`title`/`summary`/`quality_score`. |
 
 ## Hyperlinking records
 
@@ -188,7 +186,7 @@ Empty `content` short-circuits to a 200 with blank `title`/`summary` and every s
 
 `url_id` is a separate, optional field on each record — the EspoCRM URL path segment for that record (distinct from `id`, which is the citation-friendly identifier the model sees and may repeat in prose). Feedback records are hyperlinked only when `espo_feedback_base_url` and that record's `url_id` are non-empty. Community meeting records are hyperlinked only when `espo_meeting_base_url` and their `url_id` are non-empty. Otherwise the ID stays plain text. Only complete IDs are linked; bare numbers are left untouched to avoid turning ordinary quantities into links. Existing Markdown links are not wrapped again.
 
-This is presentational only — it rewrites the already-generated `analysis`/`summary` text before it's returned, including the `pretty_output` block, so no extra rendering step is needed on the EspoCRM side beyond the flowchart's existing markdown-aware field display.
+This is presentational only — it rewrites the already-generated `analysis`/`summary` text before it's returned, including the bulk endpoints' `pretty_output`, so no extra rendering step is needed on the EspoCRM side beyond the flowchart's existing markdown-aware field display.
 
 ### Record lists in analyses
 
