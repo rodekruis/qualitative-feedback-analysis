@@ -17,12 +17,14 @@ from typing import Any
 import pytest
 
 from make_analyze_cases import (
+    _relabel_key,
     build_answer_key,
     build_cases,
+    check_translation,
     record_from_item,
     send_order,
 )
-from pool_spec import PROMPTS_DATASET, RECORDS_DATASET
+from pool_spec import PROMPTS_DATASET, RECORDS_DATASETS
 
 
 def _record(record_id: str, **metadata: Any) -> dict[str, Any]:
@@ -175,7 +177,7 @@ def test_build_cases_builds_one_case_per_english_prompt() -> None:
     }
     assert case["expected_output"] == build_answer_key(records, "themes")
     assert case["metadata"] == {
-        "records_dataset": RECORDS_DATASET,
+        "records_dataset": RECORDS_DATASETS["en"],
         "records_version": read_at.isoformat(),
         "prompt_dataset": PROMPTS_DATASET,
         "prompt_id": "P01",
@@ -198,3 +200,141 @@ def test_build_cases_stops_when_a_family_has_no_required_item() -> None:
 
     with pytest.raises(SystemExit, match="themes"):
         build_cases(records, prompts, datetime.now(UTC))
+
+
+def _es_record(record_id: str, base_id: str, **metadata: Any) -> dict[str, Any]:
+    return _record(
+        record_id, base_id=base_id, created="2026-07-01T00:00:00Z", **metadata
+    )
+
+
+def _pair() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """A three-record English pool and its Spanish translation."""
+    base = [
+        _record("en-0001", created="2026-07-01T00:00:00Z", theme="food", need="food"),
+        _record(
+            "en-0002",
+            created="2026-07-02T00:00:00Z",
+            theme="food",
+            need="food",
+            groups=["children", "women"],
+        ),
+        _record(
+            "en-0003",
+            created="2026-07-03T00:00:00Z",
+            theme="protection",
+            urgent_kind="sex_for_aid",
+        ),
+    ]
+    translated = [
+        _es_record("es-0001", "en-0001", theme="food", need="food"),
+        _es_record(
+            "es-0002",
+            "en-0002",
+            theme="food",
+            need="food",
+            groups=["women", "children"],
+        ),
+        _es_record("es-0003", "en-0003", theme="protection", urgent_kind="sex_for_aid"),
+    ]
+    return translated, base
+
+
+def test_check_translation_passes_when_every_label_is_copied() -> None:
+    """Also covers the per-family key comparison, protection's ``urgent`` included."""
+    translated, base = _pair()
+
+    assert check_translation(translated, base) is None
+
+
+@pytest.mark.parametrize(
+    ("change", "match"),
+    [
+        pytest.param(
+            lambda rs: rs[0]["metadata"].pop("base_id"), "es-0001", id="missing-base-id"
+        ),
+        pytest.param(
+            lambda rs: rs[0]["metadata"].update(base_id="en-9999"),
+            "en-9999",
+            id="unknown-base-id",
+        ),
+        pytest.param(
+            lambda rs: rs[1]["metadata"].update(base_id="en-0001"),
+            "used twice",
+            id="shared-base-id",
+        ),
+        pytest.param(
+            lambda rs: rs.pop(), "en-0003", id="base-record-with-no-translation"
+        ),
+        pytest.param(
+            lambda rs: rs[0]["metadata"].update(theme="shelter"),
+            "es-0001: theme",
+            id="changed-label",
+        ),
+        pytest.param(
+            lambda rs: rs[1]["metadata"].update(groups=["children"]),
+            "es-0002: groups",
+            id="changed-groups",
+        ),
+    ],
+)
+def test_check_translation_stops_on_a_broken_pair(change: Any, match: str) -> None:
+    translated, base = _pair()
+    change(translated)
+
+    with pytest.raises(SystemExit, match=match):
+        check_translation(translated, base)
+
+
+def test_relabel_key_maps_labels_groups_and_urgent() -> None:
+    key = {
+        "family": "needs",
+        "labels": {"es-0001": "food", "es-0002": None},
+        "required": ["food"],
+        "groups": {"children": ["es-0002", "es-0001"]},
+        "urgent": ["es-0002"],
+    }
+
+    assert _relabel_key(key, {"es-0001": "en-0001", "es-0002": "en-0002"}) == {
+        "family": "needs",
+        "labels": {"en-0001": "food", "en-0002": None},
+        "required": ["food"],
+        "groups": {"children": ["en-0001", "en-0002"]},
+        "urgent": ["en-0002"],
+    }
+
+
+def test_build_cases_builds_the_spanish_case_set_from_the_spanish_prompts() -> None:
+    records = _records_with("theme", {"food": 5, "shelter": 3})
+    prompts = [
+        _prompt("P01", "themes", text="Summarise the themes"),
+        _prompt("P01", "themes", language="es", text="Resuma los temas"),
+    ]
+    read_at = datetime(2026, 9, 29, 9, 12, 44, 512000, tzinfo=UTC)
+
+    [case] = build_cases(records, prompts, read_at, "es")
+
+    assert case["id"] == "P01-es"
+    assert case["input"]["prompt"] == "Resuma los temas"
+    assert case["input"]["output_language"] == "Spanish"
+    assert case["metadata"]["records_dataset"] == RECORDS_DATASETS["es"]
+    assert case["metadata"]["language"] == "es"
+
+
+def test_build_cases_stops_when_no_prompt_is_in_the_language() -> None:
+    records = _records_with("theme", {"food": 5})
+
+    with pytest.raises(SystemExit, match="no prompt in es"):
+        build_cases(records, [_prompt("P01", "themes")], datetime.now(UTC), "es")
+
+
+def test_build_cases_stops_on_a_half_translated_prompt_set() -> None:
+    records = _records_with("theme", {"food": 5})
+    prompts = [
+        _prompt("P01", "themes"),
+        _prompt("P02", "themes"),
+        _prompt("P01", "themes", language="es"),
+    ]
+
+    with pytest.raises(SystemExit, match="missing P02"):
+        build_cases(records, prompts, datetime.now(UTC), "es")

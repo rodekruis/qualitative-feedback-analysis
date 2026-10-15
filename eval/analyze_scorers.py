@@ -17,7 +17,13 @@ from collections import Counter
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from langdetect import DetectorFactory, LangDetectException, detect
 from langfuse import Evaluation
+
+# langdetect samples at random, so without a fixed seed the same answer
+# scores differently on a re-score. ``eval/`` must not import ``qfa``
+# (ADR-023), so ``qfa.services.language`` is not reusable here.
+DetectorFactory.seed = 0
 
 # The share of an item's records that the sections carrying its label
 # must hold for the answer to count as reporting that item.
@@ -68,16 +74,44 @@ def cited_ids(text: str) -> set[str]:
 
 
 def judge_scores(output: Mapping[str, Any]) -> list[Evaluation]:
-    """The service's own judge scores.
+    """The service's own judge scores, plus whether the judge failed at all.
 
     A score missing or explicitly null in ``output`` is left out, never
     turned into a 0, so a failed judge shows as a missing score.
+    ``judge_failed`` is always recorded, 1 or 0: a missing score cannot
+    be averaged, so it cannot be compared between two runs, and #356
+    needs exactly that comparison between languages — the judge parser
+    reads English labels, so a Spanish judge failure is a product bug
+    rather than a quality gap.
     """
-    return [
+    scores = [
         Evaluation(name=name, value=output[name])
         for name in JUDGE_SCORE_NAMES
         if output.get(name) is not None
     ]
+    failed = output.get("quality_score") is None
+    scores.append(Evaluation(name="judge_failed", value=1.0 if failed else 0.0))
+    return scores
+
+
+def language_match(text: str, expected: str) -> Evaluation:
+    """Whether ``text`` reads as ``expected`` (an ISO code such as ``es``).
+
+    Numeric rather than categorical, so a run's average is the share of
+    cases answered in the language the case asked for. Never raises:
+    text the detector cannot read scores 0 with ``detected`` as
+    ``"unknown"``.
+    """
+    try:
+        detected = detect(text)
+    except LangDetectException:
+        detected = "unknown"
+    return Evaluation(
+        name="language_match",
+        value=1.0 if detected == expected else 0.0,
+        comment=f"{detected}, expected {expected}",
+        metadata={"detected": detected, "expected": expected},
+    )
 
 
 def _section_label(ids: Sequence[str], labels: Mapping[str, Any]) -> Any:

@@ -8,21 +8,41 @@ that family reads. ``created`` timestamps must fall inside
 ``WINDOW_START`` and ``WINDOW_END`` so a newest-first sort does not
 group planted records by date. The time part of ``created`` also
 prevents ties in that sort.
+
+A pool is one language, so ``RECORDS_DATASETS``, ``FREQUENT_CASES_DATASETS``
+and ``BANNED_WORDS`` are keyed by ISO language code: a translated pool is a
+separate dataset (ADR-023 reserves a new name for a different language), and
+a banned word only ever appears in the language it belongs to. The prompts
+are the exception — ``PROMPTS_DATASET`` holds every language in one dataset,
+with ``metadata["language"]`` telling them apart.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
 
-RECORDS_DATASET = "feedback/records-en-v1"
+RECORDS_DATASETS = {
+    "en": "feedback/records-en-v1",
+    "es": "feedback/records-es-v1",
+}
 PROMPTS_DATASET = "analyze/prompts-v1"
-FREQUENT_CASES_DATASET = "analyze/cases-frequent-en-v1"
+FREQUENT_CASES_DATASETS = {
+    "en": "analyze/cases-frequent-en-v1",
+    "es": "analyze/cases-frequent-es-v1",
+}
 
 WINDOW_START = datetime(2026, 6, 1, 0, 0, 0)
 WINDOW_END = datetime(2026, 8, 31, 23, 59, 59)
 CREATED_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 
-BANNED_WORDS = ("PSEA", "safeguarding", "exploitation", "referral")
+# Words a record must not use: they are the aid-sector terms a model
+# would echo back, so a planted record using one tells the model what to
+# report. Per language, because the check is a word match on the record's
+# own text.
+BANNED_WORDS: dict[str, tuple[str, ...]] = {
+    "en": ("PSEA", "safeguarding", "exploitation", "referral"),
+    "es": ("PEAS", "salvaguarda", "explotación", "derivación"),
+}
 
 DECOYS = 4
 
@@ -42,6 +62,13 @@ FAMILY_LABEL: dict[str, tuple[str, ...]] = {
     "suggestions": ("suggestion",),
     "information": ("info_request",),
 }
+
+# Every label a translated record must copy from its English original,
+# derived from FAMILY_LABEL so a new family cannot leave it stale.
+# ``groups`` is read by every family, so it is never in FAMILY_LABEL.
+LABEL_KEYS: tuple[str, ...] = tuple(
+    sorted({label for labels in FAMILY_LABEL.values() for label in labels} | {"groups"})
+)
 
 # How many records carry each label value. ``groups`` counts a record
 # once per group it lists, because ``groups`` is a list. Each

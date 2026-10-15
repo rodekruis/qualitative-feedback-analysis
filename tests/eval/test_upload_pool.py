@@ -58,6 +58,16 @@ def _missing_facts() -> dict[str, Any]:
     return record
 
 
+def _es_record(
+    record_id: str = "es-0001", base_id: str | None = "en-0001", **meta: Any
+) -> dict[str, Any]:
+    """A Spanish pool record: its own id, ``language: es`` and a ``base_id``."""
+    record = _record(record_id, language="es", base_id=base_id, **meta)
+    if base_id is None:
+        del record["metadata"]["base_id"]
+    return record
+
+
 @pytest.mark.parametrize(
     ("records", "kwargs", "match"),
     [
@@ -203,6 +213,83 @@ def test_validate_pool_rejects(
 ) -> None:
     with pytest.raises(SystemExit, match=match):
         validate_pool(records, **kwargs)
+
+
+@pytest.mark.parametrize(
+    ("records", "match"),
+    [
+        pytest.param(
+            [_record("en-0001", language="es")],
+            r"es-NNNN",
+            id="english-id-in-a-spanish-pool",
+        ),
+        pytest.param(
+            [_es_record("es-0001", base_id=None)],
+            "no base_id",
+            id="missing-base-id",
+        ),
+        pytest.param(
+            [_es_record("es-0001", base_id="es-0001")],
+            "en-NNNN",
+            id="base-id-not-english",
+        ),
+        pytest.param(
+            [_es_record("es-0001"), _es_record("es-0002")],
+            "share the base_id en-0001",
+            id="shared-base-id",
+        ),
+        pytest.param(
+            [_record("es-0001", base_id="en-0001")],
+            "language is 'en'",
+            id="metadata-language-does-not-match",
+        ),
+        pytest.param(
+            [
+                _es_record(
+                    "es-0001",
+                    content="Iniciamos la derivación de la familia al servicio. " * 2,
+                    facts=["un hecho"],
+                )
+            ],
+            "derivación",
+            id="spanish-banned-word",
+        ),
+    ],
+)
+def test_validate_pool_rejects_a_bad_spanish_pool(
+    records: list[dict[str, Any]], match: str
+) -> None:
+    with pytest.raises(SystemExit, match=match):
+        validate_pool(records, planted={}, decoys=0, language="es")
+
+
+def test_validate_pool_accepts_a_well_formed_spanish_pool() -> None:
+    records = [
+        _es_record(f"es-{i:04d}", base_id=f"en-{i:04d}", theme="food")
+        for i in range(1, 3)
+    ]
+
+    validate_pool(records, planted={"theme": {"food": 2}}, decoys=0, language="es")
+
+
+def test_validate_pool_does_not_ask_an_english_record_for_a_base_id() -> None:
+    validate_pool([_record("en-0001")], planted={}, decoys=0)
+
+
+def test_validate_pool_warns_but_does_not_exit_on_an_untranslated_record(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    records = [
+        _es_record(
+            "es-0001",
+            content="The water point by the school has been dry for three days now.",
+            facts=["one fact"],
+        )
+    ]
+
+    validate_pool(records, planted={}, decoys=0, language="es")
+
+    assert "es-0001 reads as en, not es" in capsys.readouterr().out
 
 
 def test_validate_pool_passes_for_a_well_formed_minimal_pool(

@@ -44,6 +44,8 @@ Publish `feedback/records-en-v1`, then `-v2`, then `-v3`, and so on, each time t
 
 - `eval/upload_prompts.py` and `eval/upload_pool.py` import nothing from `qfa`. `scripts/check_pool_masking.py` does, and lives outside `eval/` for that reason.
 - `feedback/records-en-v1`, `feedback/vocab-v1`, and `analyze/prompts-v1` are the three Langfuse datasets a future evaluation script reads. No local fixture copy needs to stay in sync with them.
+- The keyword vocabulary was later dropped (`cac0ae8`): the answer key is computed from record ids and labels alone, and nothing reads `feedback/vocab-v1`. Decision 2 holds, minus the keywords.
+- A translated pool is a new dataset name under decision 3, because a different language is a real break: `feedback/records-es-v1` (#356). Its records carry `base_id`, the id of the English record each one says again, and `make_analyze_cases.py` checks that the labels — the ground truth — are identical across the pair.
 - An upload script is safe to run again. It skips unchanged items, updates changed items with the old version kept, and deletes nothing.
 - A dataset name changes only for a language, a setting, or an item shape that an existing reader cannot handle the same way as before.
 

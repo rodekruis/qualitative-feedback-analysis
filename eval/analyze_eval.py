@@ -46,7 +46,7 @@ from _common import (
     run_metadata,
     with_score_metadata,
 )
-from analyze_scorers import judge_scores, score_answer
+from analyze_scorers import judge_scores, language_match, score_answer
 
 EXPERIMENT_NAME = "analyze-bulk"
 
@@ -269,7 +269,21 @@ def _make_analyze(
 
 
 def _judge_scores_evaluator(*, output: Any, **kwargs: Any) -> list[Evaluation]:
+    # No judge ran on a case that never got an answer, so recording
+    # judge_failed = 1 for it would be false.
+    if output.get("outcome") != "ok":
+        return []
     return judge_scores(output)
+
+
+def _language_match_evaluator(
+    *, output: Any, metadata: Any, **kwargs: Any
+) -> list[Evaluation]:
+    # metadata is the case's own metadata, so language is the ISO code
+    # langdetect returns, not the English language name the request carries.
+    if output.get("outcome") != "ok":
+        return []
+    return [language_match(output["analysis"], metadata["language"])]
 
 
 def _outcome_evaluator(*, output: Any, **kwargs: Any) -> list[Evaluation]:
@@ -430,6 +444,7 @@ def main() -> None:
                 _judge_scores_evaluator,
                 _outcome_evaluator,
                 _reference_scores_evaluator,
+                _language_match_evaluator,
             ],
             dataset=args.dataset,
         ),

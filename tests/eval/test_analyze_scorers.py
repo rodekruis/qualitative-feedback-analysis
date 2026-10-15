@@ -12,7 +12,13 @@ from typing import Any
 import pytest
 from langfuse import Evaluation
 
-from analyze_scorers import cited_ids, judge_scores, score_answer, sections
+from analyze_scorers import (
+    cited_ids,
+    judge_scores,
+    language_match,
+    score_answer,
+    sections,
+)
 
 
 def _key(
@@ -81,7 +87,17 @@ def test_cited_ids_matches_bold_and_uppercase_but_not_a_longer_number() -> None:
     assert cited_ids(text) == {"en-0042"}
 
 
-def test_judge_scores_leave_out_a_null_value() -> None:
+_SPANISH = (
+    "Las familias dicen que el reparto de alimentos llega tarde y que no hay "
+    "suficiente agua potable en el campamento."
+)
+_ENGLISH = (
+    "Families say the food distribution arrives late and that there is not "
+    "enough drinking water in the camp."
+)
+
+
+def test_judge_scores_leave_out_a_null_value_but_always_flag_a_failure() -> None:
     full_output = {
         "quality_score": 0.8,
         "faithfulness": 0.9,
@@ -89,8 +105,39 @@ def test_judge_scores_leave_out_a_null_value() -> None:
         "clarity": 0.6,
     }
 
-    assert {e.name: e.value for e in judge_scores(full_output)} == full_output
-    assert judge_scores(dict.fromkeys(full_output)) == []
+    assert {e.name: e.value for e in judge_scores(full_output)} == {
+        **full_output,
+        "judge_failed": 0.0,
+    }
+    assert {e.name: e.value for e in judge_scores(dict.fromkeys(full_output))} == {
+        "judge_failed": 1.0
+    }
+
+
+@pytest.mark.parametrize(
+    ("text", "expected", "value", "detected"),
+    [
+        pytest.param(_SPANISH, "es", 1.0, "es", id="spanish-answer-asked-for-spanish"),
+        pytest.param(_SPANISH, "en", 0.0, "es", id="spanish-answer-asked-for-english"),
+        pytest.param(_ENGLISH, "es", 0.0, "en", id="english-answer-asked-for-spanish"),
+        pytest.param("12345 !!!", "es", 0.0, "unknown", id="unreadable-answer"),
+    ],
+)
+def test_language_match(text: str, expected: str, value: float, detected: str) -> None:
+    evaluation = language_match(text, expected)
+
+    assert evaluation.value == value
+    assert evaluation.comment == f"{detected}, expected {expected}"
+    assert evaluation.metadata == {"detected": detected, "expected": expected}
+
+
+def test_language_match_is_repeatable_because_the_detector_seed_is_pinned() -> None:
+    """A short, ambiguous answer: unseeded, langdetect can read it either way."""
+    short = "No hay agua."
+
+    assert [language_match(short, "es").value for _ in range(5)] == [
+        language_match(short, "es").value
+    ] * 5
 
 
 def test_item_recall_counts_an_item_found_when_its_sections_hold_half_its_records() -> (
