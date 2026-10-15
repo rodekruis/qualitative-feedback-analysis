@@ -13,6 +13,7 @@ no linked pull request. This ADR answers #353's questions, scoped to what
 #354 needs. #353 also asked where `eval/` sits in the architecture, and
 where the analyze corpus's ground truth lives. #354 does not touch either
 question, so this ADR leaves both open.
+[ADR-023](023-eval-black-box-and-langfuse-ground-truth.md) answers them.
 
 #351 and #352 already give every judge call a `JudgeComponents` value:
 `faithfulness`, `coverage`, `clarity`, and a derived `quality_score`. Both

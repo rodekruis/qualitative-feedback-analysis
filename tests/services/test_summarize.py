@@ -12,20 +12,23 @@ is no fake executor.
 
 import logging
 from datetime import UTC, datetime, timedelta
+from typing import ClassVar
 from uuid import uuid4
 
 import pytest
 
-from qfa.domain.errors import AnalysisError, LLMError
+from qfa.domain.errors import AnalysisError, FeedbackTooLargeError, LLMError
 from qfa.domain.models import (
     QUALITY_SCORE_WEIGHTS,
     AggregateSummaryResultModel,
+    CommunityMeetingRecordMetadataModel,
     CommunityMeetingRecordModel,
     CommunityMeetingRecordSummaryModel,
     FeedbackRecordMetadataModel,
     FeedbackRecordModel,
     FeedbackRecordSummaryModel,
     LLMResponse,
+    PromptRef,
     SingleSummaryCommunityMeetingRequestModel,
     SingleSummaryRequestModel,
     SummaryCommunityMeetingResultModel,
@@ -105,7 +108,7 @@ def _make_community_meeting_summary_result(
 
 
 def _make_community_meeting_request(
-    tenant_id=TENANT_ID, url_id="", espo_feedback_base_url=None
+    tenant_id=TENANT_ID, url_id="", espo_meeting_base_url=None
 ):
     return SingleSummaryCommunityMeetingRequestModel(
         community_meeting_record=CommunityMeetingRecordModel(
@@ -114,7 +117,7 @@ def _make_community_meeting_request(
             url_id=url_id,
         ),
         tenant_id=tenant_id,
-        espo_feedback_base_url=espo_feedback_base_url,
+        espo_meeting_base_url=espo_meeting_base_url,
     )
 
 
@@ -199,6 +202,7 @@ class FakeLLMPort(LLMPort):
         tenant_id,
         response_model=str,
         timeout=40.0,
+        prompt=None,
     ):
         self.calls.append(
             {
@@ -207,6 +211,7 @@ class FakeLLMPort(LLMPort):
                 "tenant_id": tenant_id,
                 "response_model": response_model,
                 "timeout": timeout,
+                "prompt": prompt,
             }
         )
         idx = self._call_count
@@ -240,8 +245,10 @@ class FakeEvaluationPort(EvaluationPort):
     def __init__(self) -> None:
         self.calls: list[dict] = []
 
-    def record_score(self, *, trace_id, name, value):
-        self.calls.append({"trace_id": trace_id, "name": name, "value": value})
+    def record_score(self, *, trace_id, name, value, endpoint):
+        self.calls.append(
+            {"trace_id": trace_id, "name": name, "value": value, "endpoint": endpoint}
+        )
 
 
 @pytest.fixture
@@ -256,12 +263,12 @@ def _build_service(
     judge_llm=None,
     max_total_tokens=MAX_TOKENS,
     evaluator=None,
+    prompt_versions=None,
 ):
     """Build a ``SummarizeService`` over the real executor.
 
-    ``max_total_tokens`` is threaded through to the executor even though
-    neither summarisation path runs the token-budget guard: the tests that
-    set it low assert precisely that a large payload is *still* forwarded.
+    ``max_total_tokens`` feeds the executor's budget guard, which only
+    ``summarize_bulk`` runs.
     """
     anonymizer = anonymizer if anonymizer is not None else FakeAnonymizer()
     return SummarizeService(
@@ -269,6 +276,7 @@ def _build_service(
         anonymizer=anonymizer,
         judge_llm=judge_llm,
         evaluator=evaluator,
+        prompt_versions=prompt_versions,
         executor=LLMCallExecutor(
             llm=llm,
             anonymizer=anonymizer,
@@ -300,6 +308,94 @@ class TestTokenLimit:
         await service.summarize(request, _future_deadline())
 
         assert len(fake_llm.calls) == 2
+
+    @pytest.mark.asyncio
+    async def test_oversized_bulk_request_fails_before_anonymisation(self, settings):
+        anonymize_calls = []
+
+        class SpyAnonymizer(FakeAnonymizer):
+            def anonymize(self, text):
+                anonymize_calls.append(text)
+                return super().anonymize(text)
+
+        fake_llm = FakeLLMPort()
+        service = _build_service(
+            fake_llm, settings, anonymizer=SpyAnonymizer(), max_total_tokens=100
+        )
+        request = _make_aggregate_request(
+            feedback_records=(_make_feedback_record(content="word " * 1_000),)
+        )
+
+        with pytest.raises(FeedbackTooLargeError):
+            await service.summarize_bulk(request, _future_deadline())
+
+        assert anonymize_calls == []
+        assert fake_llm.calls == []
+
+
+class TestSummarizeBulkCommunityMeetingRecords:
+    @staticmethod
+    def _mixed_request(**updates):
+        meeting = CommunityMeetingRecordModel(
+            id="meeting-1",
+            meetingNotes="Participants requested safer water points.",
+            metadata=CommunityMeetingRecordMetadataModel(location="Camp A"),
+            url_id="m-url",
+        )
+        feedback = _make_feedback_record(
+            doc_id="Form-1", metadata={"coding_level_1": "Water"}
+        )
+        return _make_aggregate_request(feedback_records=(feedback, meeting)).model_copy(
+            update=updates
+        )
+
+    @staticmethod
+    def _fake_llm(summary="- Point"):
+        return FakeLLMPort(
+            responses=[
+                _make_llm_response(
+                    structured=_make_aggregate_summary_result(summary=summary)
+                ),
+                _make_llm_response(structured=_judge_text()),
+            ]
+        )
+
+    @pytest.mark.asyncio
+    async def test_envelope_carries_both_record_types_with_metadata(self, settings):
+        fake_llm = self._fake_llm()
+        service = _build_service(fake_llm, settings)
+
+        await service.summarize_bulk(self._mixed_request(), _future_deadline())
+
+        user_message = fake_llm.calls[0]["user_message"]
+        assert '<feedback_record id="Form-1">' in user_message
+        assert '<community_meeting_record id="meeting-1">' in user_message
+        assert "coding_level_1=Water" in user_message
+        assert "location=Camp A" in user_message
+
+    @pytest.mark.asyncio
+    async def test_system_message_covers_meeting_notes(self, settings):
+        fake_llm = self._fake_llm()
+        service = _build_service(fake_llm, settings)
+
+        await service.summarize_bulk(self._mixed_request(), _future_deadline())
+
+        system_message = fake_llm.calls[0]["system_message"]
+        assert "community meeting notes" in system_message
+        assert "fgd means focus group discussion" in system_message
+
+    @pytest.mark.asyncio
+    async def test_meeting_mentions_link_to_meeting_base_url(self, settings):
+        fake_llm = self._fake_llm(summary="- Raised in Form-1 and meeting-1")
+        service = _build_service(fake_llm, settings)
+        request = self._mixed_request(
+            espo_feedback_base_url="https://espo/fb",
+            espo_meeting_base_url="https://espo/mt",
+        )
+
+        result = await service.summarize_bulk(request, _future_deadline())
+
+        assert "[meeting-1](https://espo/mt/m-url)" in result.summary
 
 
 class TestNonTransientError:
@@ -379,7 +475,7 @@ class TestNonTransientError:
         result = await service.summarize_community_meeting(
             _make_community_meeting_request(
                 url_id="meeting-url-1",
-                espo_feedback_base_url="https://espo.example.com/meetings/",
+                espo_meeting_base_url="https://espo.example.com/meetings/",
             ),
             _future_deadline(),
         )
@@ -893,6 +989,7 @@ class TestSummarizeJudgeScores:
         names = {call["name"] for call in evaluator.calls}
         assert names == {"faithfulness", "coverage", "clarity", "quality_score"}
         assert all(call["trace_id"] == request_id.hex for call in evaluator.calls)
+        assert all(call["endpoint"] == "summarize" for call in evaluator.calls)
 
     @pytest.mark.asyncio
     async def test_no_evaluator_means_no_scores_and_no_error(self, settings):
@@ -911,3 +1008,106 @@ class TestSummarizeJudgeScores:
             )
 
         assert result.components is not None
+
+
+class TestSummarizePromptVersions:
+    """Each of the three summarisation flows tags its calls with its own name (#398).
+
+    All three share one ``summarize-judge`` prompt (see ``_JUDGE_PROMPT``),
+    so its version is the same across every ``calls[1]`` below; only the
+    generation call's name/version differs per flow.
+    """
+
+    _PROMPT_VERSIONS: ClassVar[dict[str, int]] = {
+        "summarize-aggregate-system": 2,
+        "summarize-single-system": 4,
+        "summarize-community-meeting-system": 6,
+        "summarize-judge": 9,
+    }
+
+    @pytest.mark.asyncio
+    async def test_summarize_bulk_tags_aggregate_system_and_judge(self, settings):
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=_make_aggregate_summary_result()),
+                _make_llm_response(structured=_judge_text()),
+            ]
+        )
+        service = _build_service(
+            fake_llm, settings, prompt_versions=self._PROMPT_VERSIONS
+        )
+
+        await service.summarize_bulk(_make_aggregate_request(), _future_deadline())
+
+        assert fake_llm.calls[0]["prompt"] == PromptRef(
+            name="summarize-aggregate-system", version=2
+        )
+        assert fake_llm.calls[1]["prompt"] == PromptRef(
+            name="summarize-judge", version=9
+        )
+
+    @pytest.mark.asyncio
+    async def test_summarize_tags_single_system_and_judge(self, settings):
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=_make_summary_result()),
+                _make_llm_response(structured=_judge_text()),
+            ]
+        )
+        service = _build_service(
+            fake_llm, settings, prompt_versions=self._PROMPT_VERSIONS
+        )
+
+        await service.summarize(_make_summary_request(), _future_deadline())
+
+        assert fake_llm.calls[0]["prompt"] == PromptRef(
+            name="summarize-single-system", version=4
+        )
+        assert fake_llm.calls[1]["prompt"] == PromptRef(
+            name="summarize-judge", version=9
+        )
+
+    @pytest.mark.asyncio
+    async def test_summarize_community_meeting_tags_its_system_and_judge(
+        self, settings
+    ):
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=_make_community_meeting_summary_result()),
+                _make_llm_response(structured=_judge_text()),
+            ]
+        )
+        service = _build_service(
+            fake_llm, settings, prompt_versions=self._PROMPT_VERSIONS
+        )
+
+        await service.summarize_community_meeting(
+            _make_community_meeting_request(), _future_deadline()
+        )
+
+        assert fake_llm.calls[0]["prompt"] == PromptRef(
+            name="summarize-community-meeting-system", version=6
+        )
+        assert fake_llm.calls[1]["prompt"] == PromptRef(
+            name="summarize-judge", version=9
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_prompt_versions_means_no_prompt_is_tagged(self, settings):
+        """Without ``prompt_versions`` (the default), neither name nor version is sent.
+
+        ``PromptRef`` requires both fields, so a call site that has no
+        version for a name cannot tag the call with the name alone.
+        """
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=_make_summary_result()),
+                _make_llm_response(structured=_judge_text()),
+            ]
+        )
+        service = _build_service(fake_llm, settings)
+
+        await service.summarize(_make_summary_request(), _future_deadline())
+
+        assert fake_llm.calls[0]["prompt"] is None
+        assert fake_llm.calls[1]["prompt"] is None

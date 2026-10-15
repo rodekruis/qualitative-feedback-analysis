@@ -10,9 +10,18 @@ import logging
 import re
 import unicodedata
 from abc import ABC, abstractmethod
-from typing import Any, Literal, override
+from typing import Annotated, Any, Literal, Self, override
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Discriminator,
+    Field,
+    Tag,
+    computed_field,
+    field_validator,
+    model_validator,
+)
 
 from qfa.api.html_text import html_to_text
 from qfa.domain.clustering_models import TrendPeriod
@@ -457,9 +466,9 @@ class ApiCommunityMeetingRecordInput(BaseModel):
         default="",
         description=(
             "EspoCRM URL path segment for this record. When the request"
-            " also sets `espo_feedback_base_url`, mentions of this"
+            " also sets `espo_meeting_base_url`, mentions of this"
             " record's `id` in the output are hyperlinked to"
-            " `{espo_feedback_base_url}/{url_id}`. Omit if hyperlinking"
+            " `{espo_meeting_base_url}/{url_id}`. Omit if hyperlinking"
             " isn't needed."
         ),
     )
@@ -471,15 +480,55 @@ class ApiCommunityMeetingRecordInput(BaseModel):
         return html_to_text(value) if isinstance(value, str) else value
 
 
+class ApiAnalyzeFeedbackRecordInput(ApiFeedbackRecordInput):
+    """Feedback record variant accepted by the bulk endpoints."""
+
+    record_type: Literal["feedback"] | None = Field(
+        default=None,
+        description=(
+            "Optional record discriminator. Omit for backwards-compatible"
+            " feedback-only requests; send ``feedback`` in mixed requests."
+        ),
+    )
+
+
+class ApiAnalyzeCommunityMeetingRecordInput(ApiCommunityMeetingRecordInput):
+    """Community meeting record variant accepted by the bulk endpoints."""
+
+    record_type: Literal["community_meeting"] = Field(
+        description="Discriminator identifying this as a community meeting record."
+    )
+
+
+def _analyze_record_type(value: Any) -> str:
+    """Select the feedback variant for legacy items without a type field."""
+    if isinstance(value, dict):
+        return value.get("record_type") or "feedback"
+    return getattr(value, "record_type", None) or "feedback"
+
+
+ApiAnalyzeRecordInput = Annotated[
+    Annotated[ApiAnalyzeFeedbackRecordInput, Tag("feedback")]
+    | Annotated[
+        ApiAnalyzeCommunityMeetingRecordInput,
+        Tag("community_meeting"),
+    ],
+    Discriminator(_analyze_record_type),
+]
+
+
 ##### Bulk requests Base Model #####
 
 
 class ApiBulkInferenceRequestBase(BaseModel, ABC):
-    """Base request for inference endpoints that process bulk feedback records."""
+    """Base request for bulk endpoints over feedback and/or community meeting records."""
 
-    feedback_records: list[ApiFeedbackRecordInput] = Field(
+    feedback_records: list[ApiAnalyzeRecordInput] = Field(
         min_length=1,
-        description="Non-empty list of feedback records to process.",
+        description=(
+            "Non-empty list of feedback and/or community meeting records."
+            " Legacy feedback-only requests may omit ``record_type``."
+        ),
     )
 
     output_language: str | None = Field(
@@ -507,6 +556,14 @@ class ApiBulkInferenceRequestBase(BaseModel, ABC):
             " Omit to disable hyperlinking."
         ),
     )
+    espo_meeting_base_url: str | None = Field(
+        default=None,
+        description=(
+            "Base URL for community meeting record details. When set, meeting"
+            " record mentions use this URL and feedback record mentions use"
+            " ``espo_feedback_base_url``."
+        ),
+    )
 
     @field_validator("output_language", mode="after")
     @classmethod
@@ -518,6 +575,28 @@ class ApiBulkInferenceRequestBase(BaseModel, ABC):
         never reject the value, only clean it.
         """
         return sanitize_output_language(value)
+
+    @model_validator(mode="after")
+    def _validate_record_identity_and_types(self) -> Self:
+        """Require unambiguous kinds and identifiers in mixed batches."""
+        ids = [record.id for record in self.feedback_records if record.id]
+        if len(ids) != len(set(ids)):
+            raise ValueError("record ids must be unique across the batch")
+
+        has_meeting = any(
+            isinstance(record, ApiAnalyzeCommunityMeetingRecordInput)
+            for record in self.feedback_records
+        )
+        has_legacy_feedback = any(
+            isinstance(record, ApiAnalyzeFeedbackRecordInput)
+            and record.record_type is None
+            for record in self.feedback_records
+        )
+        if has_meeting and has_legacy_feedback:
+            raise ValueError(
+                "record_type is required for every record in a mixed batch"
+            )
+        return self
 
 
 class ApiBulkInferenceResponseBase(BaseModel, ABC):
@@ -556,6 +635,7 @@ class ApiAnalyzeRequest(ApiBulkInferenceRequestBase):
                 {
                     "feedback_records": [
                         {
+                            "record_type": "feedback",
                             "id": "doc-001",
                             "content": "The water distribution was well organized but we had to wait for three hours.",
                             "metadata": {
@@ -564,6 +644,7 @@ class ApiAnalyzeRequest(ApiBulkInferenceRequestBase):
                             },
                         },
                         {
+                            "record_type": "feedback",
                             "id": "doc-002",
                             "content": "Medical staff were very professional. Medicine supply was insufficient.",
                             "metadata": {
@@ -692,7 +773,10 @@ class ApiAnalyzeBulkResponse(ApiBulkInferenceResponseBase):
         ),
     )
     feedback_record_count: int = Field(
-        description="Number of feedback records that were analyzed.",
+        description=(
+            "Number of feedback and community meeting records that were"
+            " analyzed; retained as a legacy field name."
+        ),
     )
     request_id: str = Field(description="Unique identifier for this request.")
     confidence: float | None = Field(
@@ -709,7 +793,8 @@ class ApiAnalyzeBulkResponse(ApiBulkInferenceResponseBase):
         default=None,
         description=(
             "Deterministic code-by-period frequency table. Populated for"
-            " both modes whenever metadata contains parseable date+code fields."
+            " both modes from feedback records whenever metadata contains"
+            " parseable date+code fields; meeting-only requests return null."
         ),
     )
 
@@ -757,7 +842,7 @@ class ApiSummarizeBulkResponse(ApiBulkInferenceResponseBase):
 
     title: str = Field(description="Generated short title for the aggregate summary.")
     summary: str = Field(
-        description="Generated bullet-point summary ordered by theme frequency."
+        description="Generated markdown summary ordered by theme frequency."
     )
     quality_score: float | None = Field(
         default=None,
@@ -800,6 +885,7 @@ class ApiSummarizeBulkResponse(ApiBulkInferenceResponseBase):
             " used to localize the pretty_output headers."
         ),
     )
+    request_id: str = Field(description="Unique identifier for this request.")
 
     @override
     @computed_field(description="Human-readable formatted output string.")
@@ -921,7 +1007,7 @@ class ApiSummarizeCommunityMeetingRequest(BaseModel):
     community_meeting_record: ApiCommunityMeetingRecordInput = Field(
         description="Community meeting record to summarize."
     )
-    espo_feedback_base_url: str | None = Field(
+    espo_meeting_base_url: str | None = Field(
         default=None,
         description=(
             "Base URL for the community meeting record detail view. When set,"
@@ -1127,6 +1213,8 @@ class ApiDetectSensitiveResponse(BaseModel):
         Explanation for the sensitivity rating.
     sensitivity_types : list[str]
         Sensitivity categories detected for the feedback item.
+    confidence : float | None
+        Judge confidence that the rating is correct.
     """
 
     id: str = Field(description="Identifier of the source feedback item.")
@@ -1136,6 +1224,17 @@ class ApiDetectSensitiveResponse(BaseModel):
     explanation: str = Field(description="Explanation for the sensitivity rating.")
     sensitivity_types: list[str] = Field(
         description="Sensitivity categories detected for the feedback item."
+    )
+    confidence: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Judge confidence that this rating is correct (0-1), whether or "
+            "not the item was rated sensitive: a high value on a "
+            "not-sensitive item means nothing was likely missed. Null when "
+            "the judge call failed or was not run (empty content)."
+        ),
     )
 
 
@@ -1236,6 +1335,13 @@ class ApiHealthResponse(BaseModel):
             " the image was built without one. Unlike `version`, this changes"
             " on every build, including an ephemeral dev deploy that carries no"
             " package version bump."
+        ),
+    )
+    prompts: dict[str, int] = Field(
+        description=(
+            "Current Langfuse prompt version for each system prompt name. "
+            "Never the prompt text itself. Empty when Langfuse is not "
+            "configured, or when a name's push to Langfuse failed."
         ),
     )
 

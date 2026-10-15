@@ -13,7 +13,7 @@ from qfa.services.hierarchical_prompts import (
     build_reduce_system_message,
     build_reduce_user_message,
 )
-from qfa.services.prompts import ANALYZE_GUARDRAILS_PROMPT
+from qfa.services.prompts import ANALYZE_GUARDRAILS_PROMPT, ANALYZE_OUTPUT_FORMAT_PROMPT
 
 
 def test_map_system_message_contains_guardrails() -> None:
@@ -32,6 +32,16 @@ def test_reduce_system_message_contains_guardrails() -> None:
     requires guardrails at the reduce level too.
     """
     assert ANALYZE_GUARDRAILS_PROMPT in build_reduce_system_message()
+
+
+def test_map_and_reduce_system_messages_contain_the_output_format() -> None:
+    """Map and reduce carry the same format block as the single-pass message.
+
+    Why: the reduce step only sees partials, so the ``Records:`` lines must
+    be written at map time and kept at reduce time.
+    """
+    assert ANALYZE_OUTPUT_FORMAT_PROMPT in build_map_system_message()
+    assert ANALYZE_OUTPUT_FORMAT_PROMPT in build_reduce_system_message()
 
 
 def test_map_system_message_honours_output_language() -> None:

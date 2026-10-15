@@ -90,6 +90,9 @@ review than code drift.
 
 If anything security-related changes, update `docs/security-brief.html`.
 
+If anything changes in what the service sends to Langfuse (traces, scores, prompts,
+datasets), update `docs/operations/langfuse-guide.html`.
+
 - Section indexes live at `docs/<section>/index.md` (with thin `README.md` stubs as
   github.com folder landing pages).
 - The Sphinx site is built via `make docs` at the repo root; output lands at

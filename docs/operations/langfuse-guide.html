@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QFA in Langfuse</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@500;600;700&family=Public+Sans:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column with wide inserts for the mock screen, the diagram and the tables. */
+:root {
+  --bg: #f6f7f8;
+  --surface: #ffffff;
+  --sunken: #eceff1;
+  --fg: #1b2328;
+  --muted: #56636b;
+  --line: #d5dbdf;
+  --accent: #0b6b6f;
+  --accent-soft: #dcefee;
+  --warn-soft: #fbf1dc;
+  --warn-fg: #6b4a07;
+  --bar-gen: #0b6b6f;
+  --bar-judge: #9a5b13;
+  --font-display: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Public Sans", "Segoe UI", Roboto, Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12171a; --surface: #1a2125; --sunken: #232b30; --fg: #e3e8eb; --muted: #9aa8b0;
+    --line: #313b41; --accent: #5cc3c4; --accent-soft: #173a3c; --warn-soft: #3a2e14; --warn-fg: #f1cf8a;
+    --bar-gen: #4fb3b4; --bar-judge: #d79a50; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12171a; --surface: #1a2125; --sunken: #232b30; --fg: #e3e8eb; --muted: #9aa8b0;
+  --line: #313b41; --accent: #5cc3c4; --accent-soft: #173a3c; --warn-soft: #3a2e14; --warn-fg: #f1cf8a;
+  --bar-gen: #4fb3b4; --bar-judge: #d79a50; color-scheme: dark;
+}
+
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 16px; line-height: 1.6; }
+.wrap { max-width: 980px; margin: 0 auto; padding-inline: 20px; padding-block: 40px 80px; display: grid; gap: 56px; }
+.prose { max-width: 66ch; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; line-height: 1.2; margin: 0; }
+h1 { font-size: clamp(2rem, 5vw, 2.9rem); font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 1.6rem; font-weight: 600; }
+h3 { font-size: 1.1rem; font-weight: 600; }
+p { margin: 0; }
+section { display: grid; gap: 16px; }
+.eyebrow { font-family: var(--font-mono); font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+code, .mono { font-family: var(--font-mono); font-size: 0.88em; }
+code { background: var(--sunken); padding: 1px 5px; border-radius: 4px; }
+a { color: var(--accent); }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.muted { color: var(--muted); }
+
+/* Header */
+header { display: grid; gap: 18px; }
+.lede { font-size: 1.15rem; color: var(--muted); max-width: 62ch; }
+.facts { display: flex; flex-wrap: wrap; gap: 10px 28px; font-size: 0.95rem; }
+.facts div { display: grid; }
+.facts dt { font-family: var(--font-mono); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.facts dd { margin: 0; font-weight: 600; }
+
+/* Privacy note */
+.privacy { background: var(--accent-soft); border-radius: 10px; padding: 22px 24px; display: grid; gap: 10px; }
+.privacy h2 { font-size: 1.3rem; }
+.privacy ul { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; }
+
+/* Start-here note */
+.tip { background: var(--surface); border: 1px solid var(--accent); border-radius: 10px; padding: 18px 22px; display: grid; gap: 6px; }
+.tip h2 { font-size: 1.15rem; }
+
+/* Glossary */
+.terms { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0 32px; margin: 0; }
+.terms div { border-top: 1px solid var(--line); padding-block: 12px; display: grid; gap: 2px; }
+.terms dt { font-family: var(--font-mono); font-weight: 500; color: var(--accent); }
+.terms dd { margin: 0; }
+
+/* Diagram */
+.figure { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; overflow-x: auto; }
+.figure svg { display: block; min-width: 640px; width: 100%; height: auto; }
+.figure .box { fill: var(--sunken); stroke: var(--line); }
+.figure .box-accent { fill: var(--accent-soft); stroke: var(--accent); }
+.figure .lbl { fill: var(--fg); font-family: var(--font-display); font-size: 15px; font-weight: 600; }
+.figure .sub { fill: var(--muted); font-family: var(--font-body); font-size: 12px; }
+.figure .edge { stroke: var(--muted); stroke-width: 1.5; fill: none; }
+.figure .edge-accent { stroke: var(--accent); stroke-width: 1.5; fill: none; stroke-dasharray: 5 4; }
+.figure .arrow { fill: var(--muted); }
+.figure .arrow-accent { fill: var(--accent); }
+.figure .elbl { fill: var(--muted); font-family: var(--font-mono); font-size: 11px; }
+.caption { font-size: 0.9rem; color: var(--muted); margin-top: 10px; }
+
+/* Mock trace screen */
+.mock { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.mock-bar { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--sunken); font-size: 0.85rem; }
+.mock-bar .mono { color: var(--muted); }
+.example-tag { font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; background: var(--warn-soft); color: var(--warn-fg); padding: 2px 8px; border-radius: 999px; margin-left: auto; }
+.mock-body { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
+@media (max-width: 760px) { .mock-body { grid-template-columns: 1fr; } }
+.waterfall { padding: 12px 16px; border-right: 1px solid var(--line); display: grid; gap: 4px; align-content: start; }
+@media (max-width: 760px) { .waterfall { border-right: 0; border-bottom: 1px solid var(--line); } }
+.obs { display: grid; grid-template-columns: minmax(0, 1fr) 4.5em 4.5em; gap: 10px; align-items: center; font-family: var(--font-mono); font-size: 0.82rem; font-variant-numeric: tabular-nums; padding: 5px 8px; border-radius: 6px; }
+.obs span:not(.name) { text-align: right; }
+.obs.head { font-family: var(--font-body); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.obs.sel { background: var(--accent-soft); }
+.obs .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.detail { padding: 14px 16px; display: grid; gap: 12px; align-content: start; }
+.detail h3 { font-family: var(--font-mono); font-size: 0.95rem; font-weight: 500; }
+.kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; margin: 0; font-size: 0.85rem; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; font-family: var(--font-mono); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.empty-box { border: 1px dashed var(--line); border-radius: 6px; padding: 8px 10px; font-size: 0.8rem; color: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-family: var(--font-mono); font-size: 0.75rem; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); }
+.chip.score { border-color: var(--bar-judge); color: var(--fg); }
+
+/* Tables */
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 0.93rem; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-family: var(--font-display); font-weight: 600; background: var(--sunken); white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td:first-child { white-space: nowrap; }
+
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px 40px; }
+.two > div { display: grid; gap: 10px; align-content: start; min-width: 0; }
+ul.plain, ol.plain { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; }
+.shot { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+.shot img { display: block; width: 100%; max-width: 645px; height: auto; border-radius: 6px; }
+
+footer { border-top: 1px solid var(--line); padding-top: 18px; font-size: 0.85rem; color: var(--muted); display: grid; gap: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Qualitative Feedback Analysis · observability guide</div>
+  <h1>QFA in Langfuse</h1>
+  <p class="lede">Langfuse is the tool that records every call that the QFA service makes to the language model (the AI model that reads and writes text). This page tells you what you can find in Langfuse, what you will not find, and where to look.</p>
+  <dl class="facts">
+    <div><dt>Address</dt><dd class="mono">langfuse.510.global</dd></div>
+    <div><dt>Hosting</dt><dd>Self-hosted by 510</dd></div>
+    <div><dt>Projects</dt><dd><span class="mono">prd</span> (production) and <span class="mono">dev</span> (development)</dd></div>
+  </dl>
+</header>
+
+<section class="tip" aria-labelledby="tip-h">
+  <h2 id="tip-h">Start with the default Home dashboard</h2>
+  <p>When you open a project in Langfuse, the Home page already shows most of what you need: cost, number of traces, usage per model, and scores over time. Look there first. Use the rest of this page when you need more detail.</p>
+</section>
+
+<section class="privacy" aria-labelledby="privacy-h">
+  <h2 id="privacy-h">You will not see feedback text here, by design</h2>
+  <p>Langfuse receives only facts about each call: what kind of task, for which organization, with which model, how many tokens, the cost and the time. If you open a call, the Input and Output boxes are empty. This is correct, and nothing is broken.</p>
+  <ul>
+    <li>Langfuse never receives the feedback text that a user sends.</li>
+    <li>Langfuse never receives the answer that the model writes.</li>
+    <li>The analysis results go back only to the system that called QFA.</li>
+  </ul>
+  <p>The one exception is the quality tests at the end of this page. They use invented or anonymized test text, not real feedback.</p>
+</section>
+
+<section aria-labelledby="flow-h">
+  <div class="eyebrow">How data gets there</div>
+  <h2 id="flow-h">Four things go to Langfuse</h2>
+  <p class="prose">A request comes in from a calling system, for example EspoCRM. QFA calls the language model one or more times. After each call, QFA sends a short record to Langfuse. When a check by a second model runs, QFA also sends its scores. At startup, QFA sends a copy of its instructions to the model. When a person rates a result in EspoCRM, EspoCRM sends that rating.</p>
+  <div class="figure">
+    <svg viewBox="0 0 900 300" role="img" aria-label="A calling system sends a request to the QFA service. QFA calls the language model. QFA sends call records, quality scores and prompt versions to Langfuse.">
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrow"/></marker>
+        <marker id="aha" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrow-accent"/></marker>
+      </defs>
+      <rect class="box" x="20" y="40" width="190" height="80" rx="8"/>
+      <text class="lbl" x="115" y="76" text-anchor="middle">Calling system</text>
+      <text class="sub" x="115" y="97" text-anchor="middle">for example EspoCRM</text>
+
+      <rect class="box" x="355" y="40" width="190" height="80" rx="8"/>
+      <text class="lbl" x="450" y="76" text-anchor="middle">QFA service</text>
+      <text class="sub" x="450" y="97" text-anchor="middle">removes personal data first</text>
+
+      <rect class="box" x="690" y="40" width="190" height="80" rx="8"/>
+      <text class="lbl" x="785" y="76" text-anchor="middle">Language model</text>
+      <text class="sub" x="785" y="97" text-anchor="middle">writes the analysis</text>
+
+      <rect class="box-accent" x="355" y="200" width="190" height="80" rx="8"/>
+      <text class="lbl" x="450" y="236" text-anchor="middle">Langfuse</text>
+      <text class="sub" x="450" y="257" text-anchor="middle">prd and dev projects</text>
+
+      <path class="edge" d="M210,68 H353" marker-end="url(#ah)"/>
+      <text class="elbl" x="282" y="60" text-anchor="middle">feedback</text>
+      <path class="edge" d="M353,96 H212" marker-end="url(#ah)"/>
+      <text class="elbl" x="282" y="114" text-anchor="middle">results</text>
+
+      <path class="edge" d="M545,68 H688" marker-end="url(#ah)"/>
+      <text class="elbl" x="617" y="60" text-anchor="middle">anonymized text</text>
+      <path class="edge" d="M688,96 H547" marker-end="url(#ah)"/>
+      <text class="elbl" x="617" y="114" text-anchor="middle">answer</text>
+
+      <path class="edge-accent" d="M115,120 V240 H353" marker-end="url(#aha)"/>
+      <text class="elbl" x="127" y="230">4 user ratings</text>
+      <path class="edge-accent" d="M450,120 V198" marker-end="url(#aha)"/>
+      <text class="elbl" x="462" y="146">1 call records (no text)</text>
+      <text class="elbl" x="462" y="164">2 quality scores</text>
+      <text class="elbl" x="462" y="182">3 prompt versions</text>
+    </svg>
+  </div>
+  <p class="caption">Feedback text and model answers travel only on the top row. The dashed line to Langfuse carries no feedback text.</p>
+</section>
+
+<section aria-labelledby="terms-h">
+  <div class="eyebrow">Words you will see</div>
+  <h2 id="terms-h">The Langfuse vocabulary</h2>
+  <dl class="terms">
+    <div><dt>Trace</dt><dd>One request to QFA. Its ID is the same as the request ID that the caller receives.</dd></div>
+    <div><dt>Observation</dt><dd>One step inside a trace. In QFA, every observation is one call to the model.</dd></div>
+    <div><dt>Generation</dt><dd>The Langfuse type for an observation that is a model call.</dd></div>
+    <div><dt>Token</dt><dd>A piece of text, about three quarters of a word. Models charge per token.</dd></div>
+    <div><dt>Score</dt><dd>A number from 0 to 1 for the quality of a result, from a person or a second model.</dd></div>
+    <div><dt>User</dt><dd>In QFA, the organization (tenant) that sent the request, shown as a random string. It is not a person.</dd></div>
+    <div><dt>Tag</dt><dd>A label on a trace. QFA tags each trace with the task name, and adds <code>judge</code> for checks.</dd></div>
+    <div><dt>Prompt</dt><dd>The fixed instructions that QFA gives the model for a task. Langfuse keeps each version.</dd></div>
+  </dl>
+</section>
+
+<section aria-labelledby="trace-h">
+  <div class="eyebrow">One request, opened</div>
+  <h2 id="trace-h">What a trace looks like</h2>
+  <p class="prose">Below is a simplified picture of one trace. It is an analysis of a large set of feedback, so QFA splits the work. The model first reads three parts, then combines them, and then a judge model checks the result. All values are invented.</p>
+
+  <div class="mock" aria-label="Example trace screen with invented values">
+    <div class="mock-bar">
+      <strong>Trace</strong>
+      <span class="mono">7f3c9a2e-41d8-4b0e-9c55-2a1e6b8d0f13</span>
+      <span>User <span class="mono">b81e5d2c-0a47-4c39-8f6e-d3a97c1f5e20</span></span>
+      <span class="example-tag">Invented example</span>
+    </div>
+    <div class="mock-body">
+      <div class="waterfall">
+        <div class="obs head"><span>Observation</span><span>Time</span><span>Cost</span></div>
+        <div class="obs"><span class="name">analyze</span><span>7.1 s</span><span>$0.011</span></div>
+        <div class="obs"><span class="name">analyze</span><span>8.2 s</span><span>$0.012</span></div>
+        <div class="obs"><span class="name">analyze</span><span>6.5 s</span><span>$0.010</span></div>
+        <div class="obs sel"><span class="name">analyze</span><span>9.6 s</span><span>$0.027</span></div>
+        <div class="obs"><span class="name">analyze:judge</span><span>4.8 s</span><span>$0.006</span></div>
+      </div>
+      <div class="detail">
+        <h3>analyze · generation</h3>
+        <dl class="kv">
+          <dt>Model</dt><dd>gpt-4o</dd>
+          <dt>Prompt</dt><dd>analyze-hierarchical-reduce-system v3</dd>
+          <dt>Tokens</dt><dd>6,412 in · 1,108 out</dd>
+          <dt>Cost</dt><dd>$0.027</dd>
+          <dt>Latency</dt><dd>9.6 s</dd>
+          <dt>Tags</dt><dd>analyze</dd>
+          <dt>Metadata</dt><dd>version 2.11.0 · commit 610a80d</dd>
+        </dl>
+        <div class="empty-box">Input: empty · Output: empty. QFA never sends the text.</div>
+        <div class="chips" aria-label="Scores on this trace">
+          <span class="chip score">faithfulness 0.90</span>
+          <span class="chip score">coverage 0.80</span>
+          <span class="chip score">clarity 0.85</span>
+          <span class="chip score">user_quality_score 1</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="caption">The selected call is the one that combines the three parts. A name that ends in <code>:judge</code> is the quality check.</p>
+</section>
+
+<section aria-labelledby="where-h">
+  <div class="eyebrow">Where to look</div>
+  <h2 id="where-h">Find what you need</h2>
+  <p class="prose">Open the <span class="mono">prd</span> project for real use and the <span class="mono">dev</span> project for tests by the team. Then use the menu on the left.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>You want to know</th><th>Go to</th><th>What you see</th></tr></thead>
+      <tbody>
+        <tr><td>What happened in one request</td><td>Tracing, then Traces</td><td>Search by request ID. Each trace shows its calls, time, cost and scores.</td></tr>
+        <tr><td>How busy the service is</td><td>Dashboards</td><td>Number of traces and calls per day, and the time that calls take.</td></tr>
+        <tr><td>Which organizations use QFA</td><td>Users</td><td>Each tenant ID with its number of calls, tokens and cost. The ID is a random string, so you must look up the country in another system.</td></tr>
+        <tr><td>What it costs</td><td>Dashboards or Users</td><td>Cost per call, per day, per model and per tenant.</td></tr>
+        <tr><td>How good the output is</td><td>Scores</td><td>User ratings and judge scores over time, per task.</td></tr>
+        <tr><td>Which instructions the model got</td><td>Prompts</td><td>The 12 QFA prompts, each with its full text and version history.</td></tr>
+        <tr><td>How a test run went</td><td>Datasets</td><td>Test sets and the results of each test run.</td></tr>
+        <tr><td>How a deploy compares to earlier ones</td><td>Dashboards, in <span class="mono">dev</span></td><td>The <em>Evaluation comparison by version</em> dashboard: test scores per deploy, side by side.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section aria-labelledby="detail-h">
+  <div class="eyebrow">In more detail</div>
+  <h2 id="detail-h">Users, cost, scores and prompts</h2>
+  <div class="two">
+    <div>
+      <h3>Users are organizations</h3>
+      <p>The Users page lists every tenant that called QFA. A tenant is an organization with its own API key. Select a tenant to see all its traces, its token use and its cost.</p>
+      <p>Langfuse shows each tenant as a random string, not as a name. Langfuse also does not know the country. To link a string to a country, look up the tenant ID in the system that manages the API keys, for example the QFA tenant records or EspoCRM.</p>
+    </div>
+    <div>
+      <h3>Cost</h3>
+      <p>Each call shows its token count and its cost in US dollars. The dashboards add these up per day, per model and per tenant. QFA also keeps the same figures in its own database, and its usage report gives the official totals.</p>
+    </div>
+    <div>
+      <h3>Scores</h3>
+      <p>A person in EspoCRM can rate an AI result. EspoCRM sends this rating to the trace of that request as <code>user_quality_score</code>, from 0 (bad) to 1 (good). The rating carries the endpoint of the rated result: <code>analyze</code> or <code>summarize_aggregate</code>.</p>
+      <p>For most tasks, a second model also checks the first model's work. It gives scores from 0 (poor) to 1 (excellent):</p>
+      <ul class="plain">
+        <li><code>faithfulness</code>: the result agrees with the feedback.</li>
+        <li><code>coverage</code>: the result covers the main themes.</li>
+        <li><code>clarity</code>: the result is easy to read.</li>
+        <li><code>quality_score</code>: one overall score from these three.</li>
+      </ul>
+      <p class="muted">For <code>assign_codes</code>, the scores are <code>confidence_level_1</code> to <code>confidence_level_3</code>, one per level of the coding framework.</p>
+      <p class="muted">For <code>detect_sensitive</code>, the score is <code>sensitivity_confidence</code>: how sure the second model is that the sensitivity rating is right. If the check fails or does not run, the trace has no score.</p>
+    </div>
+    <div>
+      <h3>Prompts and versions</h3>
+      <p>The Prompts page shows the 12 instructions that QFA gives the model, for example <code>summarize-single-system</code>. When the team changes an instruction, a new version appears at the next start of the service. Each call shows which prompt and which version it used, so you can compare results before and after a change.</p>
+      <p class="muted">These prompts are fixed text from the code. They never contain feedback.</p>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="filter-h">
+  <div class="eyebrow">Scores per task</div>
+  <h2 id="filter-h">Filter the scores by endpoint</h2>
+  <p class="prose">Each judge score and each user rating carries the endpoint that made it, in the metadata key <code>endpoint</code>. To see the scores of one endpoint on a dashboard, add a filter:</p>
+  <ol class="plain prose">
+    <li>Open the dashboard and click Filter.</li>
+    <li>Select <code>Metadata</code> as the column.</li>
+    <li>Type <code>endpoint</code> as the key.</li>
+    <li>Select <code>=</code> as the operator.</li>
+    <li>Type the endpoint: <code>summarize</code>, <code>analyze</code>, <code>assign_codes</code>, <code>summarize_aggregate</code> or <code>detect_sensitive</code>.</li>
+  </ol>
+  <div class="shot">
+    <img src="../assets/langfuse-endpoint-filter.png" width="645" height="98" alt="Langfuse filter row: Where Metadata, key endpoint, operator =, value analyze.">
+  </div>
+  <p class="caption">The filter that shows only the scores of <code>analyze</code>.</p>
+  <p class="prose muted">Type the value exactly, because Langfuse shows no list of values. The filter acts on the whole dashboard. While it is on, widgets without <code>endpoint</code> show no data, for example the error count and scores from before this change.</p>
+</section>
+
+<section aria-labelledby="use-h">
+  <div class="eyebrow">Using it for QFA</div>
+  <h2 id="use-h">Ways to use Langfuse</h2>
+  <p class="prose">Each row names the question, where to look, and an example. Use the <span class="mono">dev</span> project for tests and the <span class="mono">prd</span> project for live monitoring.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Use</th><th>Question it answers</th><th>How</th><th>Example</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Release testing</td>
+          <td>Is the new version as good as the old one?</td>
+          <td>Run the quality test set on the new version in <span class="mono">dev</span>. Open Datasets and compare the scores with the last run. Each trace carries the version and commit in its metadata.</td>
+          <td><code>recall_sensitive</code> drops from 0.96 to 0.88 after a prompt change. The team stops the release and fixes the prompt first.</td>
+        </tr>
+        <tr>
+          <td>Health monitoring</td>
+          <td>Is production running well today?</td>
+          <td>In <span class="mono">prd</span>, read the Home dashboard each week. Watch the error count, cost per day, traces per day, and the scores over time.</td>
+          <td>Cost per day doubles with the same number of traces. Open the expensive traces, find the model or task that changed, and act on it.</td>
+        </tr>
+        <tr>
+          <td>Model comparison</td>
+          <td>Which model gives the best result for the price?</td>
+          <td>Run the same test set with each model in <span class="mono">dev</span>. Compare the scores and the cost per model in Datasets and on the dashboard.</td>
+          <td>Model B scores 0.02 lower on <code>faithfulness</code> than model A but costs half as much. The team decides if that loss is acceptable.</td>
+        </tr>
+        <tr>
+          <td>Prompt changes</td>
+          <td>Did the new instructions help?</td>
+          <td>Each call shows its prompt version. Group the scores by prompt version on the dashboard, or compare two test runs.</td>
+          <td><code>clarity</code> rises from 0.78 to 0.85 for <code>summarize-single-system</code> version 4.</td>
+        </tr>
+        <tr>
+          <td>User feedback</td>
+          <td>Are people satisfied with the results?</td>
+          <td>Check with the users why they are not happy with particular results.</td>
+          <td>The score <code>user_quality_score</code> is below 0.6. Users seem not to be quite happy.</td>
+        </tr>
+        <tr>
+          <td>Per-tenant checks</td>
+          <td>Does one organization see worse results?</td>
+          <td>Filter by user (the tenant ID) and compare scores and errors with the rest. Then look up the country in another system.</td>
+          <td>One tenant has twice the error rate of the others. The team finds that its feedback is in a language that the prompt handles badly.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="caption">All numbers in this table are invented examples.</p>
+</section>
+
+<section aria-labelledby="tests-h">
+  <div class="eyebrow">Quality tests</div>
+  <h2 id="tests-h">Datasets and test runs</h2>
+  <p class="prose">The team also uses Langfuse to test QFA before a release. A dataset is a fixed set of test feedback with the correct answers, for example which records are sensitive. A test run sends this set to QFA and compares each answer with the correct answer. The result appears under Datasets, with scores such as <code>accuracy</code> (share of correct answers) and <code>recall_sensitive</code> (share of sensitive records that QFA found). Here you do see text, but it is invented or anonymized test data.</p>
+  <p class="prose">In <span class="mono">dev</span>, the <a href="https://langfuse.510.global/project/cmtlny8oi0001t807r9xv8exn/dashboards/cmv84hkr5000ppg06kjudp70h">Evaluation comparison by version</a> dashboard shows the scores of each deploy side by side. Each column is one deploy, named <code>eval-&lt;version&gt;-&lt;commit&gt;</code>. If a deploy has several test runs, the column shows their mean. Short smoke runs are not included. See <code>eval/README.md</code> for how it works.</p>
+</section>
+
+<section aria-labelledby="not-h">
+  <div class="eyebrow">Limits</div>
+  <h2 id="not-h">What Langfuse does not show</h2>
+  <ul class="plain prose">
+    <li>The feedback text, and the answers that the model wrote.</li>
+    <li>Which person sent a request. Langfuse knows only the tenant ID.</li>
+    <li>The name or country of a tenant. You must derive these from another system.</li>
+    <li>Sessions. Each request is a separate trace.</li>
+    <li>Calls from before Langfuse was switched on for a project.</li>
+  </ul>
+</section>
+
+<footer>
+  <p>Based on the QFA code on the <span class="mono">main</span> branch, October 2026. All example values on this page are invented.</p>
+  <p>For technical detail, see <span class="mono">docs/operations/observability.md</span> in the repository.</p>
+</footer>
+
+</div>
+</body>
+</html>

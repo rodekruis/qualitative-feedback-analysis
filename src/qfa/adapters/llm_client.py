@@ -31,7 +31,7 @@ from qfa.domain.errors import (
     LLMResponseParseError,
     LLMTimeoutError,
 )
-from qfa.domain.models import LLMResponse, T_Response
+from qfa.domain.models import LLMResponse, PromptRef, T_Response
 from qfa.domain.ports import LLMPort
 from qfa.services.call_context import (
     current_call_context,
@@ -442,6 +442,7 @@ class LiteLLMClient(LLMPort):
         tenant_id: str,
         response_model: type[T_Response],
         timeout: float = 40.0,
+        prompt: PromptRef | None = None,
     ) -> LLMResponse[T_Response]:
         """Send a completion request via LiteLLM, retrying transient failures.
 
@@ -496,6 +497,16 @@ class LiteLLMClient(LLMPort):
             Maximum time in seconds to wait for a single attempt.
         tenant_id : str
             Tenant identifier passed as ``user`` for audit trail.
+        prompt : PromptRef | None
+            The Langfuse prompt name and version the caller built
+            ``system_message`` from (#398). When not ``None``, the span
+            gains ``langfuse.observation.prompt.name`` and
+            ``langfuse.observation.prompt.version`` — the SDK's own
+            attribute names for linking a generation back to its Langfuse
+            Prompt version. This client holds no prompt-version state of
+            its own; it only tags whatever the caller passes. ``None``
+            when Langfuse is unconfigured or that name's push failed, in
+            which case neither attribute is set.
 
         Returns
         -------
@@ -540,6 +551,11 @@ class LiteLLMClient(LLMPort):
         ) as span:
             span.set_attribute("langfuse.observation.type", "generation")
             span.set_attribute("langfuse.user.id", tenant_id)
+            if prompt is not None:
+                span.set_attribute("langfuse.observation.prompt.name", prompt.name)
+                span.set_attribute(
+                    "langfuse.observation.prompt.version", prompt.version
+                )
             if ctx is not None:
                 tags = [ctx.operation, "judge"] if is_judge else [ctx.operation]
                 span.set_attribute("langfuse.trace.tags", json.dumps(tags))

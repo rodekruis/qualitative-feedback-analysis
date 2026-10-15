@@ -11,13 +11,15 @@ from qfa.domain.clustering_models import CodingTrendTable
 from qfa.services.coding_trends import render_coding_trend_table
 from qfa.services.prompts import (
     ANALYZE_GUARDRAILS_PROMPT,
+    ANALYZE_OUTPUT_FORMAT_PROMPT,
     ANALYZE_SYSTEM_PROMPT,
     build_output_language_instruction,
     escape_for_tag_envelope,
 )
 
 _MAP_ACTION_PROMPT = (
-    "Analyse the feedback records below for trends and themes only. This is"
+    "Analyse the feedback and community meeting records below for trends and"
+    " themes only. This is"
     " one chunk of a larger corpus; produce a faithful partial analysis of"
     " THIS chunk that a later synthesis step can combine with others."
     " The analyst's instruction in <analyst_instruction> is the question to"
@@ -33,11 +35,17 @@ _REDUCE_ACTION_PROMPT = (
     " faithfulness anchor — the prose must not contradict these counts."
     " Answer the analyst's instruction in <analyst_instruction>."
     " Apply the guardrails above."
+    " When you combine points from different partial analyses, the Records:"
+    " line of the combined point lists every id from the Records: lines of the"
+    " points you combined. Cite only ids that appear in the partial analyses."
 )
 
 
 def build_map_system_message(output_language: str | None = None) -> str:
-    """Build the leaf (map) system message: role + guardrails + map action.
+    """Build the leaf (map) system message.
+
+    Role, guardrails, map action, then the output format. Each partial cites
+    the ids of its own chunk, so the reduce step can merge them.
 
     ``output_language``, when given, is appended here too, so each partial is
     already produced in the target language rather than leaving translation
@@ -46,13 +54,16 @@ def build_map_system_message(output_language: str | None = None) -> str:
     return (
         f"{ANALYZE_SYSTEM_PROMPT}\n\n"
         f"{ANALYZE_GUARDRAILS_PROMPT}\n\n"
-        f"{_MAP_ACTION_PROMPT}"
+        f"{_MAP_ACTION_PROMPT}\n\n"
+        f"{ANALYZE_OUTPUT_FORMAT_PROMPT}"
         f"{build_output_language_instruction(output_language)}"
     )
 
 
 def build_reduce_system_message(output_language: str | None = None) -> str:
-    """Build the synthesis (reduce) system message: role + guardrails + reduce action.
+    """Build the synthesis (reduce) system message.
+
+    Role, guardrails, reduce action, then the output format.
 
     The reduce step produces the final, user-facing analysis, so the optional
     ``output_language`` directive is appended here too, to honour
@@ -62,7 +73,8 @@ def build_reduce_system_message(output_language: str | None = None) -> str:
     return (
         f"{ANALYZE_SYSTEM_PROMPT}\n\n"
         f"{ANALYZE_GUARDRAILS_PROMPT}\n\n"
-        f"{_REDUCE_ACTION_PROMPT}"
+        f"{_REDUCE_ACTION_PROMPT}\n\n"
+        f"{ANALYZE_OUTPUT_FORMAT_PROMPT}"
         f"{build_output_language_instruction(output_language)}"
     )
 

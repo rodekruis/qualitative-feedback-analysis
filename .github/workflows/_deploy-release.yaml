@@ -12,7 +12,7 @@
 #      (.github/scripts/verify_release_digest.py). The release body is
 #      editable Markdown, so a disagreement aborts the deploy: forging one
 #      now needs both GitHub release-edit access and ACR push access, not
-#      either alone. See ADR-023.
+#      either alone. See ADR-025.
 #   3. Update the target App Service to run the verified digest.
 #
 # The registry is the source of truth for "which bytes does this tag name";

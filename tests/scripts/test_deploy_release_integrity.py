@@ -4,7 +4,7 @@
 funnel through (release -> dev, promote-to-dev/staging/prd, auto-staging-on-
 publish). None of this logic runs in CI -- only in anger, on the exact event
 #173 is about -- so a step reorder, a dropped `needs`, or a reintroduced grep
-on the release body would otherwise land silently. See ADR-023.
+on the release body would otherwise land silently. See ADR-025.
 """
 
 from __future__ import annotations

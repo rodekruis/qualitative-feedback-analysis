@@ -15,6 +15,7 @@ executor and no fake service.
 
 import logging
 from datetime import UTC, datetime, timedelta
+from typing import ClassVar
 from uuid import uuid4
 
 import pytest
@@ -27,6 +28,7 @@ from qfa.domain.models import (
     FeedbackRecordMetadataModel,
     FeedbackRecordModel,
     LLMResponse,
+    PromptRef,
 )
 from qfa.domain.usage_models import Operation
 from qfa.services.call_context import call_scope
@@ -34,7 +36,6 @@ from qfa.services.coding import (
     NO_CODING_NOTHING_RELEVANT_EXPLANATION,
     CodingService,
     _combine_rejected_explanations,
-    _parse_judge_response,
     _ScoredCode,
 )
 from qfa.services.coding_classifier import CodingResponse
@@ -91,7 +92,7 @@ def _judge_text(score, explanation):
     return f"SCORE: {score}\nEXPLANATION: {explanation}"
 
 
-def _make_coding_service(fake_llm, settings, evaluator=None):
+def _make_coding_service(fake_llm, settings, evaluator=None, prompt_versions=None):
     """Build the service over the *real* executor, as ADR-017 prescribes."""
     anonymizer = FakeAnonymizer()
     executor = LLMCallExecutor(
@@ -102,7 +103,11 @@ def _make_coding_service(fake_llm, settings, evaluator=None):
         max_total_tokens=MAX_TOKENS,
     )
     return CodingService(
-        llm=fake_llm, anonymizer=anonymizer, executor=executor, evaluator=evaluator
+        llm=fake_llm,
+        anonymizer=anonymizer,
+        executor=executor,
+        evaluator=evaluator,
+        prompt_versions=prompt_versions,
     )
 
 
@@ -356,6 +361,58 @@ class TestAssignCodesOneShot:
         assert "Weak fit." in assigned[0].explanation
 
 
+class TestCodingPromptVersions:
+    """The pick call and every per-level judge call tag their own name (#398)."""
+
+    _PROMPT_VERSIONS: ClassVar[dict[str, int]] = {
+        "coding-classifier-system": 3,
+        "coding-classifier-judge": 5,
+    }
+
+    @pytest.mark.asyncio
+    async def test_pick_and_judge_calls_tag_their_own_prompt(self, settings):
+        root_codes = [CodingNode(id="code-1", name="Code A")]
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=CodingResponse(selected=[0])),
+                _make_llm_response(structured=_judge_text(0.9, "Fits.")),
+            ]
+        )
+        service = _make_coding_service(
+            fake_llm, settings, prompt_versions=self._PROMPT_VERSIONS
+        )
+
+        await service.assign_codes(
+            _make_coding_request(root_codes=root_codes), _future_deadline()
+        )
+
+        assert fake_llm.calls[0]["prompt"] == PromptRef(
+            name="coding-classifier-system", version=3
+        )
+        assert fake_llm.calls[1]["prompt"] == PromptRef(
+            name="coding-classifier-judge", version=5
+        )
+
+    @pytest.mark.asyncio
+    async def test_missing_version_leaves_calls_untagged(self, settings):
+        """``PromptRef`` requires both fields, so a missing version tags neither."""
+        root_codes = [CodingNode(id="code-1", name="Code A")]
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=CodingResponse(selected=[0])),
+                _make_llm_response(structured=_judge_text(0.9, "Fits.")),
+            ]
+        )
+        service = _make_coding_service(fake_llm, settings)
+
+        await service.assign_codes(
+            _make_coding_request(root_codes=root_codes), _future_deadline()
+        )
+
+        assert fake_llm.calls[0]["prompt"] is None
+        assert fake_llm.calls[1]["prompt"] is None
+
+
 class TestAssignCodesLiveScores:
     """Each judged level's score also goes to Langfuse via ``EvaluationPort``."""
 
@@ -398,6 +455,7 @@ class TestAssignCodesLiveScores:
             "confidence_level_3": pytest.approx(0.8),
         }
         assert all(call["trace_id"] == request_id.hex for call in evaluator.calls)
+        assert all(call["endpoint"] == "assign_codes" for call in evaluator.calls)
 
     @pytest.mark.asyncio
     async def test_rejected_level_sends_its_own_score_but_no_further_levels(
@@ -449,36 +507,6 @@ class TestAssignCodesLiveScores:
         assert result.coded_feedback_records[0].assigned_codes[0].coding_level_1_id == (
             "code-1"
         )
-
-
-class TestParseJudgeResponse:
-    """Unit coverage for the SCORE:/EXPLANATION: free-text parser itself."""
-
-    def test_parses_well_formed_reply(self):
-        judged = _parse_judge_response("SCORE: 0.72\nEXPLANATION: Clear fit.")
-        assert judged.score == 0.72
-        assert judged.explanation == "Clear fit."
-
-    def test_tolerates_case_and_surrounding_whitespace(self):
-        judged = _parse_judge_response("  score:  0.5  \n  explanation:  Plausible.  ")
-        assert judged.score == 0.5
-        assert judged.explanation == "Plausible."
-
-    def test_multiline_explanation_is_kept_in_full(self):
-        judged = _parse_judge_response(
-            "SCORE: 0.4\nEXPLANATION: Weak on the first point.\nAlso weak on the second."
-        )
-        assert judged.explanation == (
-            "Weak on the first point.\nAlso weak on the second."
-        )
-
-    def test_missing_score_line_raises_analysis_error(self):
-        with pytest.raises(AnalysisError, match="unparsable response"):
-            _parse_judge_response("EXPLANATION: No score given.")
-
-    def test_non_numeric_score_raises_analysis_error(self):
-        with pytest.raises(AnalysisError, match="unparsable response"):
-            _parse_judge_response("SCORE: high\nEXPLANATION: Confident.")
 
 
 def _make_scored_code(names, scores, explanations):

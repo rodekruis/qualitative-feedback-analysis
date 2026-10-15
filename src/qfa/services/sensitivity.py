@@ -1,10 +1,11 @@
 """Sensitivity-detection use case.
 
-One LLM call per feedback record, classifying it against the
-:class:`~qfa.domain.sensitivity_types.SensitivityType` vocabulary. This is
-the smallest of the use cases extracted from ``Orchestrator`` by epic #112:
-no embedder, no judge connection, no chunking — which is why its
-constructor names exactly one dependency.
+Two LLM calls per feedback record: a classifier call against the
+:class:`~qfa.domain.sensitivity_types.SensitivityType` vocabulary, then an
+LLM-as-judge call scoring how confident it is that the classification is
+right. The judge runs on *every* record, not only the flagged ones — a
+sensitive record wrongly let through is the expensive error here, and a
+judge that only sees flags can never catch it.
 
 Per ADR-017 this class has **no base class**: the LLM-call scaffolding it
 shares with the other use cases (anonymise, deadline→timeout, the call
@@ -13,16 +14,36 @@ itself, deanonymise) is the injected
 not a superclass it inherits from.
 """
 
+import logging
+from collections.abc import Callable
 from datetime import datetime
 
+from pydantic import ValidationError
+
+from qfa.domain.errors import AnalysisError, LLMError
 from qfa.domain.models import (
+    FeedbackRecordModel,
     SensitivityAnalysisRequestModel,
     SensitivityAnalysisResultModel,
-    SensitivityAnalysisResultModelList,
+    SensitivityClassificationModel,
+    SensitivityClassificationModelList,
 )
+from qfa.domain.ports import EvaluationPort, LLMPort
 from qfa.domain.sensitivity_types import SENSITIVITY_TYPE_DESCRIPTIONS
+from qfa.services.call_context import judge_call
+from qfa.services.judge_scoring import (
+    parse_judge_response,
+    record_sensitivity_judge_score,
+)
 from qfa.services.llm_call_executor import LLMCallExecutor
+from qfa.services.prompt_names import (
+    SENSITIVITY_DETECTION_JUDGE,
+    SENSITIVITY_DETECTION_SYSTEM,
+    prompt_ref,
+)
 from qfa.services.prompts import build_feedback_record_envelope
+
+logger = logging.getLogger(__name__)
 
 _SENSITIVITY_TYPE_GUIDANCE = "\n".join(
     f"- {sensitivity_type.value}: {description}"
@@ -44,6 +65,87 @@ _DEFAULT_SENSITIVITY_DETECTION_PROMPT = (
 )
 
 
+_JUDGE_PROMPT = (
+    "You are evaluating whether a sensitivity classification of a community "
+    "feedback record is correct.\n\n"
+    "Context:\n"
+    "These feedback records are collected from community members by Red Cross / "
+    "Red Crescent National Societies as part of humanitarian programs. Feedback "
+    "is qualitative and unstructured: often short, indirect, emotionally "
+    "expressed, or translated from a local language.\n\n"
+    "Your task:\n"
+    "A classifier has labelled the record with zero or more sensitivity types "
+    "and given a reason. Score how confident you are that the classification is "
+    "correct. A label of no sensitive content is a classification like any "
+    "other: score it the same way, where a high score means you are confident "
+    "nothing sensitive was missed.\n\n"
+    f"SensitivityType guidance:\n{_SENSITIVITY_TYPE_GUIDANCE}\n\n"
+    "Important:\n"
+    "- Judge the classification, not how well the explanation is written.\n"
+    "- Do not penalise the record for being brief or colloquial.\n"
+    "- This service deliberately prefers false positives over false negatives, "
+    "so a defensible flag on ambiguous feedback is not wrong; a missed "
+    "sensitive record is.\n"
+    "- Names and places may appear as placeholders such as ``<PERSON_0>``. "
+    "Treat them as if the real value were present.\n\n"
+    "Scoring:\n"
+    "Assign a score from 0.0 to 1.0. Use the full continuous range — do not "
+    "round to fixed values.\n\n"
+    "Reference anchors:\n"
+    "- 1.0: the classification is clearly correct\n"
+    "- 0.75: the classification is reasonable\n"
+    "- 0.5: the classification is plausible but uncertain\n"
+    "- 0.25: the classification is probably wrong\n"
+    "- 0.0: the classification is clearly wrong\n\n"
+    "Output format:\n"
+    "Respond with exactly two lines and nothing else, in this exact format:\n"
+    "SCORE: <a number between 0.0 and 1.0>\n"
+    "EXPLANATION: <at most two sentences>\n\n"
+    "Example:\n"
+    "SCORE: 0.9\n"
+    "EXPLANATION: The record describes a staff member demanding payment in "
+    "exchange for aid, which the corruption label captures directly."
+)
+
+_NO_TYPES_LABEL = "none (not sensitive)"
+
+
+def build_sensitivity_judge_user_message(
+    feedback_record: FeedbackRecordModel,
+    classification: SensitivityClassificationModel,
+    *,
+    redact: Callable[[str], str],
+) -> str:
+    """Assemble the judge's user message: the record plus the classification.
+
+    Only the record text and the explanation pass through *redact*, in one
+    call so their placeholders stay consistent. The sensitivity types are a
+    closed vocabulary with no personal data, and Presidio misreads several
+    of them as entities (``THREATS_AND_PHYSICAL_VIOLENCE`` → ``<LOCATION_0>``),
+    which would hide the very label being judged.
+
+    Metadata and the record id are left out — the judge scores the fit
+    between text and labels, and neither helps with that.
+    """
+    types = (
+        ", ".join(t.value for t in classification.sensitivity_types) or _NO_TYPES_LABEL
+    )
+    envelope = build_feedback_record_envelope(
+        feedback_record, include_metadata=False, include_id=False
+    )
+    redacted = redact(
+        f"{envelope}\n"
+        f"<classification_explanation>\n"
+        f"{classification.explanation}\n"
+        f"</classification_explanation>"
+    )
+    return (
+        f"{redacted}\n"
+        f"<sensitivity_types>\n{types}\n</sensitivity_types>\n\n"
+        f"<instruction>\nEvaluate this classification.\n</instruction>"
+    )
+
+
 class SensitivityService:
     """Detect sensitive content in a single feedback record.
 
@@ -55,10 +157,36 @@ class SensitivityService:
         itself, and restoration of the redacted values in the response. The
         composition root (:func:`qfa.api.composition.build_services`) hands
         over the same instance the other services use.
+    judge_llm : LLMPort | None
+        Optional separate adapter for the judge call, so judging can run on
+        a different model than the classification. ``None`` (the default)
+        routes the judge call to the executor's own client, which is the
+        behaviour when no ``JUDGE_LLM_MODEL`` is configured. Configured via
+        ``JUDGE_LLM_*`` and resolved in
+        :func:`qfa.api.composition.resolve_judge_llm_settings`.
+    evaluator : EvaluationPort | None
+        Where the judge's confidence is sent as a live Langfuse score, via
+        :func:`~qfa.services.judge_scoring.record_sensitivity_judge_score`.
+        ``None`` (the default) means the score is simply not recorded.
+    prompt_versions : dict[str, int] | None
+        Current Langfuse version per name in
+        :data:`~qfa.services.prompt_registry.SYSTEM_PROMPTS` (#398). ``None``
+        (the default) is treated as ``{}``, so the LLM calls this service
+        makes simply carry no prompt-version span attribute, the same as a
+        name absent because Langfuse is unconfigured or its push failed.
     """
 
-    def __init__(self, executor: LLMCallExecutor) -> None:
+    def __init__(
+        self,
+        executor: LLMCallExecutor,
+        judge_llm: LLMPort | None = None,
+        evaluator: EvaluationPort | None = None,
+        prompt_versions: dict[str, int] | None = None,
+    ) -> None:
         self._executor = executor
+        self._judge_llm = judge_llm
+        self._evaluator = evaluator
+        self._prompt_versions: dict[str, int] = prompt_versions or {}
 
     async def detect_sensitive_content(
         self,
@@ -67,12 +195,17 @@ class SensitivityService:
     ) -> SensitivityAnalysisResultModel:
         """Detect sensitive content in a single feedback record.
 
+        Two LLM calls are issued: the classification itself, then a judge
+        call scoring it. The judge runs whether or not the record was
+        flagged. If the judge call fails the result is still returned, with
+        ``confidence=None``.
+
         Parameters
         ----------
         request : SensitivityAnalysisRequestModel
             The sensitivity analysis request containing a single feedback record.
         deadline : datetime
-            The wall-clock deadline for the whole request; the LLM call is
+            The wall-clock deadline for the whole request; both LLM calls are
             timed out against whatever remains of it.
 
         Returns
@@ -93,21 +226,91 @@ class SensitivityService:
             system_message=system_message,
             user_message=anonymized_user_message,
             tenant_id=request.tenant_id,
-            response_model=SensitivityAnalysisResultModelList,
+            response_model=SensitivityClassificationModelList,
             deadline=deadline,
+            prompt=prompt_ref(self._prompt_versions, SENSITIVITY_DETECTION_SYSTEM),
         )
 
         return_model_as_string = response.structured.model_dump_json()
         unanonymized_return_model_as_string = self._executor.deanonymize_json(
             return_model_as_string, anonymization_mapping
         )
-        structured = SensitivityAnalysisResultModelList.model_validate_json(
+        structured = SensitivityClassificationModelList.model_validate_json(
             unanonymized_return_model_as_string
         )
 
         raw = structured.results[0] if structured.results else None
-        return SensitivityAnalysisResultModel(
+        classification = SensitivityClassificationModel(
             feedback_record_id=request.feedback_record.id,
             sensitivity_types=raw.sensitivity_types if raw else (),
             explanation=raw.explanation if raw else "No sensitive content detected.",
         )
+
+        confidence = await self._judge_classification(
+            feedback_record=request.feedback_record,
+            classification=classification,
+            tenant_id=request.tenant_id,
+            deadline=deadline,
+        )
+
+        return SensitivityAnalysisResultModel(
+            feedback_record_id=classification.feedback_record_id,
+            sensitivity_types=classification.sensitivity_types,
+            explanation=classification.explanation,
+            confidence=confidence,
+        )
+
+    async def _judge_classification(
+        self,
+        *,
+        feedback_record: FeedbackRecordModel,
+        classification: SensitivityClassificationModel,
+        tenant_id: str,
+        deadline: datetime,
+    ) -> float | None:
+        """Score *classification* with the judge LLM; ``None`` when unavailable.
+
+        Free-text, not schema-enforced structured output — see
+        :class:`~qfa.services.judge_scoring.JudgeResponse`'s docstring for
+        why the judge connection cannot rely on the provider to enforce a
+        response schema. Every failure mode the judge can have — a provider
+        error or timeout, too little of the request deadline left to make
+        the call, a reply that does not parse, a score outside 0.0-1.0 —
+        returns ``None`` rather than raising, so a finished classification
+        is never thrown away because its grader could not run.
+        """
+        anonymized_user_message = build_sensitivity_judge_user_message(
+            feedback_record,
+            classification,
+            redact=lambda text: self._executor.anonymize_text(text)[0],
+        )
+        try:
+            with judge_call():
+                response = await self._executor.complete(
+                    llm=self._judge_llm,
+                    system_message=_JUDGE_PROMPT,
+                    user_message=anonymized_user_message,
+                    tenant_id=tenant_id,
+                    response_model=str,
+                    deadline=deadline,
+                    prompt=prompt_ref(
+                        self._prompt_versions, SENSITIVITY_DETECTION_JUDGE
+                    ),
+                )
+            judged = parse_judge_response(response.structured)
+        except (LLMError, AnalysisError, ValidationError) as exc:
+            logger.warning(
+                "Sensitivity judge call failed: error_class=%s",
+                type(exc).__name__,
+            )
+            return None
+
+        if not 0.0 <= judged.score <= 1.0:
+            logger.warning(
+                "Sensitivity judge returned score outside 0.0-1.0: score=%s",
+                judged.score,
+            )
+            return None
+
+        record_sensitivity_judge_score(self._evaluator, score=judged.score)
+        return judged.score

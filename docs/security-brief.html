@@ -304,6 +304,7 @@
         <li>The database stores <strong>only call metadata</strong> — tenant ID, operation type, token counts, cost, latency, error class — never feedback text, prompts or model output. Queryable via a tenant-scoped usage/audit API.</li>
         <li>Application telemetry — request records, outbound-call records, exceptions and log lines — is exported to <strong>Azure Application Insights inside the same Azure subscription and region</strong>, not to any third-party log analytics service. Outbound-call records carry the parameterised database statement and the destination endpoint only, never parameter values, feedback text, prompts or model output.</li>
         <li>Every LLM call is also traced to a <strong>self-hosted Langfuse instance</strong> for call-level debugging. These traces carry the same call metadata as the database — model, tenant ID, operation, token counts, cost, latency — and, like the database, never the feedback text, prompt or model output.</li>
+        <li>At startup, the service also stores the text of each system prompt in Langfuse, to keep a version history. These prompts are fixed text from the code. They never contain feedback data.</li>
       </ul>
     </div>
 

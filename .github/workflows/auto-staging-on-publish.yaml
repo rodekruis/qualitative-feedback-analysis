@@ -49,7 +49,7 @@ jobs:
   # release is published — so it exists for gate uniformity across all three
   # staging/prd entry points, not as the substantive integrity check for this
   # path. That check is the ACR/release-body digest cross-check inside
-  # _deploy-release.yaml (ADR-023), which this path inherits regardless.
+  # _deploy-release.yaml (ADR-025), which this path inherits regardless.
   verify:
     runs-on: ubuntu-latest
     steps:

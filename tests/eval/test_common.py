@@ -7,13 +7,19 @@ regardless of where pytest is invoked from (mirrors
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import json
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 import httpx
 import pytest
+from langfuse import Evaluation
+from langfuse.api import NotFoundError
 
 _SCRIPT_PATH = Path(__file__).resolve().parents[2] / "eval" / "_common.py"
 _spec = importlib.util.spec_from_file_location("_common", _SCRIPT_PATH)
@@ -24,10 +30,16 @@ _spec.loader.exec_module(_common)
 
 DEFAULT_BASE_URL = _common.DEFAULT_BASE_URL
 deployed_info = _common.deployed_info
+eval_environment = _common.eval_environment
+langfuse_client = _common.langfuse_client
+with_score_metadata = _common.with_score_metadata
 git_metadata = _common.git_metadata
+prompt_versions = _common.prompt_versions
 resolve_api_key = _common.resolve_api_key
 resolve_config = _common.resolve_config
 run_metadata = _common.run_metadata
+upload_items = _common.upload_items
+item_id = _common._item_id
 
 _EVAL_ENV = (
     "QFA_DEV_API_KEY",
@@ -156,6 +168,66 @@ def test_run_metadata_carries_contract_keys_and_merges_extras(
     assert meta["limit"] == 2
 
 
+@pytest.mark.parametrize(
+    ("version", "commit", "run_kind", "expected"),
+    [
+        ("2.11.0", "89E64820dfa5acdc", "full", "eval-2-11-0-89e6482"),
+        ("unknown", "unknown", "full", "eval-unknown-unknown"),
+        ("2.11.0", "89e64820dfa5acdc", "smoke", "eval-smoke"),
+    ],
+)
+def test_eval_environment(
+    version: str, commit: str, run_kind: str, expected: str
+) -> None:
+    assert eval_environment(version, commit, run_kind) == expected
+
+
+def test_langfuse_client_tags_environment_and_release(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        _common,
+        "deployed_info",
+        lambda _base_url: {
+            "deployed_version": "2.11.0",
+            "deployed_commit": "89e64820dfa5acdc",
+        },
+    )
+    captured: dict[str, Any] = {}
+    monkeypatch.setattr(
+        _common, "Langfuse", lambda **kwargs: captured.update(kwargs) or "client"
+    )
+
+    assert langfuse_client("https://example.invalid", run_kind="full") == "client"
+    assert captured == {"environment": "eval-2-11-0-89e6482", "release": "2.11.0"}
+
+
+def test_with_score_metadata_adds_keys_to_every_evaluation() -> None:
+    def single(**_kwargs: Any) -> Evaluation:
+        return Evaluation(name="a", value=1.0, metadata={"TP": 3})
+
+    def many(**_kwargs: Any) -> list[Evaluation]:
+        return [Evaluation(name="b", value=0.0), Evaluation(name="c", value=1.0)]
+
+    wrapped_single, wrapped_many = with_score_metadata([single, many], dataset="d/x")
+
+    assert wrapped_single(output=None).metadata == {"dataset": "d/x", "TP": 3}
+    assert [e.metadata for e in wrapped_many(output=None)] == [
+        {"dataset": "d/x"},
+        {"dataset": "d/x"},
+    ]
+    assert wrapped_single.__name__ == "single"
+
+
+def test_with_score_metadata_awaits_an_async_evaluator() -> None:
+    async def run(**_kwargs: Any) -> Evaluation:
+        return Evaluation(name="a", value=1.0)
+
+    (wrapped,) = with_score_metadata([run], dataset="d/x")
+
+    assert asyncio.run(wrapped()).metadata == {"dataset": "d/x"}
+
+
 def test_deployed_info_unknown_when_health_raises(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -168,3 +240,193 @@ def test_deployed_info_unknown_when_health_raises(
         "deployed_version": "unknown",
         "deployed_commit": "unknown",
     }
+
+
+def test_prompt_versions_reads_prompts_field(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _fake_get(url: str, timeout: float) -> httpx.Response:
+        return httpx.Response(
+            200,
+            request=httpx.Request("GET", url),
+            json={"status": "ok", "prompts": {"analyze-single-pass-system": 3}},
+        )
+
+    monkeypatch.setattr(_common.httpx, "get", _fake_get)
+
+    assert prompt_versions("http://localhost:8000") == {"analyze-single-pass-system": 3}
+
+
+def test_prompt_versions_empty_when_health_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _boom(*_args: object, **_kwargs: object) -> object:
+        raise httpx.ConnectError("refused")
+
+    monkeypatch.setattr(_common.httpx, "get", _boom)
+
+    assert prompt_versions("http://localhost:8000") == {}
+
+
+def test_prompt_versions_empty_when_health_predates_the_field(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _fake_get(url: str, timeout: float) -> httpx.Response:
+        return httpx.Response(
+            200, request=httpx.Request("GET", url), json={"status": "ok"}
+        )
+
+    monkeypatch.setattr(_common.httpx, "get", _fake_get)
+
+    assert prompt_versions("http://localhost:8000") == {}
+
+
+@dataclass
+class _FakeItem:
+    """A minimal stand-in for a Langfuse ``DatasetItem``."""
+
+    id: str
+    input: Any
+    expected_output: Any = None
+    metadata: Any = None
+
+
+class FakeLangfuseClient:
+    """A duck-typed double for the Langfuse SDK client, for :func:`upload_items`.
+
+    ``datasets`` seeds existing dataset items, keyed by dataset name (used
+    here as the fake's dataset id too).
+    """
+
+    def __init__(
+        self,
+        datasets: dict[str, list[_FakeItem]] | None = None,
+    ) -> None:
+        self._datasets = datasets or {}
+        self.created_datasets: list[str] = []
+        self.written_items: list[dict[str, Any]] = []
+
+    def get_dataset(self, name: str) -> SimpleNamespace:
+        if name not in self._datasets:
+            raise NotFoundError(body={"message": "not found"})
+        return SimpleNamespace(id=name, items=self._datasets[name])
+
+    def create_dataset(self, *, name: str, **_kwargs: Any) -> None:
+        self.created_datasets.append(name)
+        self._datasets.setdefault(name, [])
+
+    def create_dataset_item(
+        self,
+        *,
+        dataset_name: str,
+        id: str,
+        input: Any,
+        expected_output: Any,
+        metadata: Any,
+    ) -> None:
+        self.written_items.append({"dataset_name": dataset_name, "id": id})
+        items = self._datasets.setdefault(dataset_name, [])
+        items[:] = [i for i in items if i.id != id]
+        items.append(
+            _FakeItem(
+                id=id, input=input, expected_output=expected_output, metadata=metadata
+            )
+        )
+
+
+def test_upload_items_creates_the_dataset_when_it_does_not_exist() -> None:
+    client = FakeLangfuseClient()
+
+    upload_items(client, "analyze/prompts-v1", [{"id": "P01-en", "input": "hi"}])
+
+    assert client.created_datasets == ["analyze/prompts-v1"]
+
+
+def test_upload_items_builds_an_id_with_no_slash_or_hyphen() -> None:
+    """Langfuse's item page 404s on a raw "/" or "-" in the id (langfuse/langfuse#17259)."""
+    full_id = item_id("feedback/records-en-v1", "en-0001")
+
+    assert full_id == "feedback_records_en_v1:en_0001"
+    assert "/" not in full_id
+    assert "-" not in full_id
+
+
+def test_upload_items_creates_a_new_item_with_a_url_safe_id() -> None:
+    client = FakeLangfuseClient(datasets={"analyze/prompts-v1": []})
+
+    report = upload_items(
+        client,
+        "analyze/prompts-v1",
+        [{"id": "P01-en", "input": "hi", "metadata": {"family": "themes"}}],
+    )
+
+    full_id = item_id("analyze/prompts-v1", "P01-en")
+    assert report.created == [full_id]
+    assert client.written_items == [
+        {"dataset_name": "analyze/prompts-v1", "id": full_id}
+    ]
+
+
+def test_upload_items_skips_an_item_with_unchanged_content() -> None:
+    full_id = item_id("analyze/prompts-v1", "P01-en")
+    existing = _FakeItem(
+        id=full_id,
+        input="hi",
+        expected_output=None,
+        metadata={"family": "themes"},
+    )
+    client = FakeLangfuseClient(datasets={"analyze/prompts-v1": [existing]})
+
+    report = upload_items(
+        client,
+        "analyze/prompts-v1",
+        [{"id": "P01-en", "input": "hi", "metadata": {"family": "themes"}}],
+    )
+
+    assert report.unchanged == [full_id]
+    assert report.created == []
+    assert client.written_items == []
+
+
+def test_upload_items_updates_a_changed_item() -> None:
+    full_id = item_id("analyze/prompts-v1", "P01-en")
+    existing = _FakeItem(id=full_id, input="old text")
+    client = FakeLangfuseClient(datasets={"analyze/prompts-v1": [existing]})
+
+    report = upload_items(
+        client,
+        "analyze/prompts-v1",
+        [{"id": "P01-en", "input": "new text"}],
+    )
+
+    assert report.updated == [full_id]
+    assert client.written_items == [
+        {"dataset_name": "analyze/prompts-v1", "id": full_id}
+    ]
+
+
+def test_upload_items_prints_and_reports_an_id_missing_from_the_file(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    stale_id = item_id("analyze/prompts-v1", "P99-en")
+    stale = _FakeItem(id=stale_id, input="orphaned")
+    client = FakeLangfuseClient(datasets={"analyze/prompts-v1": [stale]})
+
+    report = upload_items(
+        client, "analyze/prompts-v1", [{"id": "P01-en", "input": "hi"}]
+    )
+
+    assert report.extra == [stale_id]
+    assert stale_id in capsys.readouterr().out
+    # Deletes nothing: the stale item is still in the fake store.
+    assert any(i.id == stale_id for i in client._datasets["analyze/prompts-v1"])
+
+
+def test_upload_items_dry_run_writes_nothing() -> None:
+    client = FakeLangfuseClient()
+
+    report = upload_items(
+        client, "analyze/prompts-v1", [{"id": "P01-en", "input": "hi"}], dry_run=True
+    )
+
+    assert report.created == [item_id("analyze/prompts-v1", "P01-en")]
+    assert client.created_datasets == []
+    assert client.written_items == []

@@ -1,0 +1,80 @@
+name: evaluate-analyze
+run-name: "Analyze evaluation: ${{ inputs.dataset }}"
+
+on:
+  workflow_call:
+    inputs:
+      dataset:
+        description: "Langfuse case set to evaluate"
+        required: false
+        type: string
+        default: "analyze/cases-frequent-en-v1"
+      smoke_limit:
+        description: "Run only the first N cases. Empty runs the full case set."
+        required: false
+        type: string
+        default: ""
+
+  workflow_dispatch:
+    inputs:
+      dataset:
+        description: "Langfuse case set to evaluate"
+        required: true
+        type: string
+        default: "analyze/cases-frequent-en-v1"
+      smoke_limit:
+        description: "Run only the first N cases. Empty runs the full case set."
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    environment: dev
+    # The default case set has 10 cases, sent 2 at a time. One call can wait up
+    # to 1,300 seconds (about 22 minutes), so the worst case is 5 x 22 = 110
+    # minutes. The rest is for the install and the Langfuse calls.
+    timeout-minutes: 130
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - name: Install dependencies
+        run: uv sync
+      - name: Run analyze evaluation
+        run: |
+          args=(--dataset "$DATASET")
+          if [ -n "$SMOKE_LIMIT" ]; then
+            args+=(--smoke-limit "$SMOKE_LIMIT")
+          fi
+          uv run python eval/analyze_eval.py "${args[@]}"
+        env:
+          # Passed through the environment rather than interpolated into the
+          # run script, so an input can't be read as shell syntax.
+          DATASET: ${{ inputs.dataset }}
+          SMOKE_LIMIT: ${{ inputs.smoke_limit }}
+          QFA_DEV_API_KEY: ${{ secrets.QFA_DEV_API_KEY }}
+          LANGFUSE_PUBLIC_KEY: ${{ vars.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+          LANGFUSE_HOST: ${{ vars.LANGFUSE_HOST }}
+          GIT_SHA: ${{ github.sha }}
+          GIT_REF_NAME: ${{ github.ref_name }}
+      - name: Upload answers
+        # Runs also when the eval step fails. The file is written only after
+        # all cases finish, so a run that dies earlier has none.
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: analyze-answers
+          path: .corpus_work/analyze-runs/
+          # The path starts with a dot, which the action skips by default.
+          include-hidden-files: true
+          if-no-files-found: warn

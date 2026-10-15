@@ -29,6 +29,7 @@ from qfa.domain.models import (
     FeedbackRecordModel,
     JudgeComponents,
     LLMResponse,
+    PromptRef,
 )
 from qfa.domain.ports import AnonymizationPort
 from qfa.domain.usage_models import Operation
@@ -719,6 +720,69 @@ class TestAnalyzeHappyPath:
             in result.result
         )
 
+    @pytest.mark.asyncio
+    async def test_long_records_line_moves_to_the_end_but_the_judge_sees_the_raw_answer(
+        self, settings
+    ):
+        """A ``Records:`` line over the limit moves to the end; the judge scores the raw text."""
+        records = tuple(
+            _make_feedback_record(doc_id=f"Form-{n}", content="a", url_id=f"id-{n}")
+            for n in range(1, 8)
+        )
+        raw = "### Water\nLong queues.\nRecords: " + ", ".join(r.id for r in records)
+        fake_llm = _judging_llm(analysis=raw)
+        service = _build_analyze_service(fake_llm, FakeAnonymizer(), settings)
+        request = _make_request(feedback_records=records).model_copy(
+            update={"espo_feedback_base_url": "https://espo.example.com/feedback"}
+        )
+
+        result = await service.analyze_bulk(request, _future_deadline())
+
+        assert "### Records per point\n\n#### Water (7 records)" in result.result
+        assert "[Form-1](https://espo.example.com/feedback/id-1)" in result.result
+        assert raw in fake_llm.calls[1]["system_message"]
+        assert "Records per point" not in fake_llm.calls[1]["system_message"]
+
+
+class TestAnalyzePromptVersions:
+    """Each generation/judge call in ``analyze_bulk`` carries its own prompt name/version (#398)."""
+
+    @pytest.mark.asyncio
+    async def test_single_pass_call_carries_its_prompt_name_and_version(self, settings):
+        fake_llm = _judging_llm(analysis="analysis text")
+        service = _build_analyze_service(
+            fake_llm,
+            FakeAnonymizer(),
+            settings,
+            prompt_versions={
+                "analyze-single-pass-system": 3,
+                "analyze-judge": 7,
+            },
+        )
+
+        await service.analyze_bulk(_make_request(), _future_deadline())
+
+        assert fake_llm.calls[0]["prompt"] == PromptRef(
+            name="analyze-single-pass-system", version=3
+        )
+        assert fake_llm.calls[1]["prompt"] == PromptRef(name="analyze-judge", version=7)
+
+    @pytest.mark.asyncio
+    async def test_no_prompt_versions_means_no_prompt_is_tagged(self, settings):
+        """Without ``prompt_versions`` (the default), no call is tagged at all.
+
+        ``PromptRef`` requires both a name and a version, so a call site
+        with no looked-up version for a name cannot tag the call with the
+        name alone — it passes ``prompt=None``.
+        """
+        fake_llm = _judging_llm(analysis="analysis text")
+        service = _build_analyze_service(fake_llm, FakeAnonymizer(), settings)
+
+        await service.analyze_bulk(_make_request(), _future_deadline())
+
+        assert fake_llm.calls[0]["prompt"] is None
+        assert fake_llm.calls[1]["prompt"] is None
+
 
 class TestAnalyzeJudgeFailure:
     @pytest.mark.asyncio
@@ -917,15 +981,14 @@ class TestAnalyzeAnonymizationOrdering:
 
     @pytest.mark.asyncio
     async def test_person_and_nrp_placeholders_are_retained_in_output(self, settings):
-        """Analyze leaves ``<PERSON_*>`` and ``<NRP_*>`` placeholders un-restored.
+        """Analyze retains person and NRP placeholders in its output.
 
         Defense in depth for the "do not identify individuals" guardrail
         in ``ANALYZE_GUARDRAILS_PROMPT``: if the LLM echoes a retained
         placeholder we supplied back into its analysis, the analyst must
-        not see the underlying value. NRP joins PERSON because it's where
-        the per-language NER model's misread names land. Other entity
-        types (here, ``LOCATION`` and ``EMAIL_ADDRESS``) are still
-        deanonymised as before.
+        not see the underlying value. NRP is included because per-language
+        NER models can label given names as NRP. Other entity types (here,
+        ``LOCATION`` and ``EMAIL_ADDRESS``) are still deanonymised.
         """
         placeholders = {
             "<PERSON_0>": "Alice",
@@ -957,7 +1020,7 @@ class TestAnalyzeAnonymizationOrdering:
 
         result = await service.analyze_bulk(_make_request(), _future_deadline())
 
-        # Retained placeholders remain — analyst never sees the underlying value.
+        # Person placeholders remain — analyst never sees the underlying value.
         assert "<PERSON_0>" in result.result
         assert "Alice" not in result.result
         assert "<NRP_0>" in result.result

@@ -43,6 +43,7 @@ class FakeLLMPort(LLMPort):
         tenant_id: str,
         response_model=str,
         timeout: float = 20.0,
+        prompt=None,
     ) -> LLMResponse:
         self.calls.append(
             (system_message, user_message, tenant_id, response_model, timeout)

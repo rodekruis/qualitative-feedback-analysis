@@ -20,16 +20,14 @@ import hdbscan
 import numpy as np
 
 from qfa.domain.chunk_models import Chunk
-from qfa.domain.models import FeedbackRecordModel
+from qfa.domain.models import AnalysisRecord, record_date, record_text
 
 logger = logging.getLogger(__name__)
 
 
-def _estimate_tokens(
-    records: tuple[FeedbackRecordModel, ...], chars_per_token: int
-) -> int:
+def _estimate_tokens(records: tuple[AnalysisRecord, ...], chars_per_token: int) -> int:
     """Estimate tokens for a group of records by total text length."""
-    return sum(len(r.content) for r in records) // chars_per_token
+    return sum(len(record_text(r)) for r in records) // chars_per_token
 
 
 def _iso_date_prefix(raw: object) -> str | None:
@@ -52,9 +50,9 @@ def _iso_date_prefix(raw: object) -> str | None:
 
 
 def _sort_by_date(
-    records: tuple[FeedbackRecordModel, ...],
-) -> tuple[FeedbackRecordModel, ...]:
-    """Order records chronologically by their ``created`` metadata.
+    records: tuple[AnalysisRecord, ...],
+) -> tuple[AnalysisRecord, ...]:
+    """Order records chronologically by their applicable date metadata.
 
     Dated records come first, ascending; undated or unparseable-date records
     sort last. Sorting is stable, so records sharing a key (and all the
@@ -62,16 +60,16 @@ def _sort_by_date(
     chunk membership deterministic and runs reproducible.
     """
 
-    def key(record: FeedbackRecordModel) -> tuple[bool, str]:
-        prefix = _iso_date_prefix(record.metadata.created)
+    def key(record: AnalysisRecord) -> tuple[bool, str]:
+        prefix = _iso_date_prefix(record_date(record))
         return (prefix is None, prefix or "")
 
     return tuple(sorted(records, key=key))
 
 
 def _balanced_contiguous_split(
-    records: tuple[FeedbackRecordModel, ...], n_parts: int
-) -> list[tuple[FeedbackRecordModel, ...]]:
+    records: tuple[AnalysisRecord, ...], n_parts: int
+) -> list[tuple[AnalysisRecord, ...]]:
     """Split records into ``n_parts`` contiguous, near-equal-count groups.
 
     The first ``len % n_parts`` groups get one extra record. Contiguity
@@ -79,7 +77,7 @@ def _balanced_contiguous_split(
     time-windows — a "lightest-bin" balancer would shuffle them out of order.
     """
     base, extra = divmod(len(records), n_parts)
-    groups: list[tuple[FeedbackRecordModel, ...]] = []
+    groups: list[tuple[AnalysisRecord, ...]] = []
     start = 0
     for part in range(n_parts):
         size = base + (1 if part < extra else 0)
@@ -91,11 +89,11 @@ def _balanced_contiguous_split(
 
 
 def _split_to_budget(
-    records: tuple[FeedbackRecordModel, ...],
+    records: tuple[AnalysisRecord, ...],
     *,
     max_total_tokens: int,
     chars_per_token: int,
-) -> list[tuple[FeedbackRecordModel, ...]]:
+) -> list[tuple[AnalysisRecord, ...]]:
     """Split records into roughly equal contiguous groups that fit the budget.
 
     Sizing is balanced, not greedy-fill-then-remainder: we start from the
@@ -108,19 +106,19 @@ def _split_to_budget(
     handles it), which is why the growth loop stops once parts hold one record.
     """
     budget_chars = max_total_tokens * chars_per_token
-    total_chars = sum(len(r.content) for r in records)
+    total_chars = sum(len(record_text(r)) for r in records)
     n_parts = max(1, math.ceil(total_chars / budget_chars)) if budget_chars else 1
 
     while True:
         groups = _balanced_contiguous_split(records, n_parts)
-        fits = all(sum(len(r.content) for r in g) <= budget_chars for g in groups)
+        fits = all(sum(len(record_text(r)) for r in g) <= budget_chars for g in groups)
         if fits or n_parts >= len(records):
             return groups
         n_parts += 1
 
 
 def _budgeted_chunks(
-    records: tuple[FeedbackRecordModel, ...],
+    records: tuple[AnalysisRecord, ...],
     *,
     label: int,
     is_uncategorised: bool,
@@ -142,7 +140,7 @@ def _budgeted_chunks(
 
 def cluster_records(
     *,
-    records: tuple[FeedbackRecordModel, ...],
+    records: tuple[AnalysisRecord, ...],
     vectors: tuple[tuple[float, ...], ...],
     min_cluster_size: int,
     max_total_tokens: int,
@@ -154,7 +152,7 @@ def cluster_records(
 
     Parameters
     ----------
-    records : tuple[FeedbackRecordModel, ...]
+    records : tuple[AnalysisRecord, ...]
         The records to cluster (same order/length as ``vectors``).
     vectors : tuple[tuple[float, ...], ...]
         Dense embedding vector per record.

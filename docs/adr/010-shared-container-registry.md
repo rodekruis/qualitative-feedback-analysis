@@ -103,7 +103,7 @@ via `az acr import`, preserving bit-identity.
   resolve the digest from the shared ACR at deploy time and check it
   against the digest in the release body. They then update the target App
   Service's image reference. No image copy or rebuild occurs. See
-  [ADR-023](023-registry-derived-deploy-digest.md).
+  [ADR-025](025-registry-derived-deploy-digest.md).
 - Rollback is symmetric with promotion: the same `az webapp config
   container set` command, pointing at a previous release's digest.
 - The App Service's system-assigned managed identity gets

@@ -29,7 +29,7 @@ Three human actions drive the whole flow: run the Release workflow, click Publis
 
 ### Normal release (e.g. v0.4.0)
 
-1. Human runs **Release** from the Actions tab. CI runs, version bumps to v0.4.0, image builds, gets pushed to Azure Container Registry (ACR) as `qfa-backend:v0.4.0`, registry digest captured, draft release v0.4.0 created with the digest in its body, dev App Service updated to run that digest. Total: one click. From here on, every deploy path re-resolves the digest from ACR at deploy time. It then checks that digest against the release body, instead of trusting the release body alone (see [ADR-023](../adr/023-registry-derived-deploy-digest.md)).
+1. Human runs **Release** from the Actions tab. CI runs, version bumps to v0.4.0, image builds, gets pushed to Azure Container Registry (ACR) as `qfa-backend:v0.4.0`, registry digest captured, draft release v0.4.0 created with the digest in its body, dev App Service updated to run that digest. Total: one click. From here on, every deploy path re-resolves the digest from ACR at deploy time. It then checks that digest against the release body, instead of trusting the release body alone (see [ADR-025](../adr/025-registry-derived-deploy-digest.md)).
 2. Human pokes around in dev. Finds nothing wrong.
 3. Human goes to the Releases page and clicks **Publish** on the v0.4.0 draft. Publishing the release automatically fires `auto-staging-on-publish.yaml` (deploys the same digest to staging) and `docs.yaml` (publishes the Sphinx docs to GitHub Pages) — the click is both the sign-off that dev validation passed *and* the trigger for those two auto-deploys. Because v0.4.0 is the latest release, the latest-release guard lets both proceed.
 4. Final smoke testing in staging.

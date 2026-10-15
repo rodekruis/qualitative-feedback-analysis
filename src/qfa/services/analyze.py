@@ -34,10 +34,11 @@ from qfa.domain.errors import (
     LLMTimeoutError,
 )
 from qfa.domain.models import (
+    AnalysisRecord,
     AnalysisRequestModel,
     AnalysisResultModel,
-    FeedbackRecordModel,
     JudgeComponents,
+    record_text,
 )
 from qfa.domain.ports import AnonymizationPort, EmbeddingPort, EvaluationPort, LLMPort
 from qfa.services.call_context import judge_call
@@ -54,17 +55,21 @@ from qfa.services.judge_scoring import (
     record_judge_scores,
 )
 from qfa.services.llm_call_executor import LLMCallExecutor, SlotTiming
+from qfa.services.prompt_names import (
+    ANALYZE_HIERARCHICAL_MAP_SYSTEM,
+    ANALYZE_HIERARCHICAL_REDUCE_SYSTEM,
+    ANALYZE_JUDGE,
+    ANALYZE_SINGLE_PASS_SYSTEM,
+    prompt_ref,
+)
 from qfa.services.prompts import (
-    ANALYZE_ACTION_PROMPT,
-    ANALYZE_GUARDRAILS_PROMPT,
-    ANALYZE_SYSTEM_PROMPT,
     JUDGE_UNAVAILABLE_EXPLANATION,
     JUDGE_USER_MESSAGE,
     build_analyze_judge_system_message,
     build_analyze_user_message,
-    build_output_language_instruction,
+    build_single_pass_system_message,
 )
-from qfa.services.record_links import hyperlink_form_references
+from qfa.services.record_links import format_record_citations
 from qfa.settings import AnalyzeSettings, OrchestratorSettings
 from qfa.utils import timed
 
@@ -179,13 +184,20 @@ class AnalyzeService:
         real port, a no-op one when Langfuse is unconfigured, so ``None``
         here is only ever a test/script default, never production
         behaviour.
+    prompt_versions : dict[str, int] | None
+        Current Langfuse version per name in
+        :data:`~qfa.services.prompt_registry.SYSTEM_PROMPTS` (#398). ``None``
+        (the default) is treated as ``{}``, so every generation and judge
+        call this service makes simply carries no prompt-version span
+        attribute — the same as a name absent because Langfuse is
+        unconfigured or its push failed.
     """
 
     # Entity types whose placeholders are NOT restored in `analyze` output.
     # Defense in depth for the "do not identify individuals" guardrail in
-    # `ANALYZE_GUARDRAILS_PROMPT`. NRP joins PERSON because it's where the
-    # per-language NER model's misread given names land; ORGANIZATION stays
-    # restored so findings keep useful context. Scoped to `analyze` only —
+    # `ANALYZE_GUARDRAILS_PROMPT`. NRP is included because per-language NER
+    # models can label given names as NRP; ORGANIZATION stays restored so
+    # findings keep useful context. Scoped to `analyze` only —
     # `summarize`/`assign_codes` still restore everything.
     _ANALYZE_RETAINED_PLACEHOLDER_TYPES: ClassVar[frozenset[str]] = frozenset(
         {"PERSON", "NRP"}
@@ -202,10 +214,16 @@ class AnalyzeService:
         embedder: EmbeddingPort | None = None,
         judge_llm: LLMPort | None = None,
         evaluator: EvaluationPort | None = None,
+        prompt_versions: dict[str, int] | None = None,
     ) -> None:
         self._executor = executor
         self._llm = llm
         self._evaluator = evaluator
+        # {} (never None) so every call site can .get(name) unconditionally;
+        # a name absent here (Langfuse unconfigured, or its push failed) just
+        # means that flow's LLM call carries no prompt-version span attribute
+        # (#398).
+        self._prompt_versions: dict[str, int] = prompt_versions or {}
         # Judge calls run on their own connection when one is configured, so
         # the generator does not grade its own output. Falling back to the
         # primary client keeps the default (no JUDGE_LLM_MODEL) behaviour
@@ -270,12 +288,7 @@ class AnalyzeService:
         - Existing regex prompt-injection tripwire still applies and
           returns 422 ``prompt_injection_detected``.
         """
-        system_message = (
-            f"{ANALYZE_SYSTEM_PROMPT}\n\n"
-            f"{ANALYZE_GUARDRAILS_PROMPT}\n\n"
-            f"{ANALYZE_ACTION_PROMPT}"
-            f"{build_output_language_instruction(request.output_language)}"
-        )
+        system_message = build_single_pass_system_message(request.output_language)
         user_message = build_analyze_user_message(
             request.prompt, request.feedback_records
         )
@@ -322,6 +335,7 @@ class AnalyzeService:
             tenant_id=request.tenant_id,
             response_model=str,
             timeout=analyse_timeout,
+            prompt=prompt_ref(self._prompt_versions, ANALYZE_SINGLE_PASS_SYSTEM),
         )
         analysis_text: str = analyse_response.structured
 
@@ -335,8 +349,11 @@ class AnalyzeService:
                 analysis_text, restorable_mapping
             )
 
-        analysis_text = hyperlink_form_references(
-            analysis_text, request.feedback_records, request.espo_feedback_base_url
+        analysis_text = format_record_citations(
+            analysis_text,
+            request.feedback_records,
+            request.espo_feedback_base_url,
+            request.espo_meeting_base_url,
         )
 
         quality_score: float | None
@@ -357,6 +374,7 @@ class AnalyzeService:
                     tenant_id=request.tenant_id,
                     response_model=str,
                     timeout=judge_timeout,
+                    prompt=prompt_ref(self._prompt_versions, ANALYZE_JUDGE),
                 )
             judged = _parse_analyze_judge_response(judge_response.structured)
             quality_score = judged.quality_score
@@ -484,7 +502,7 @@ class AnalyzeService:
         # above: onnxruntime releases the GIL during session.run(), so this
         # genuinely benefits rather than just avoiding the heartbeat stall
         # (#325).
-        texts = tuple(r.content for r in anonymized_records)
+        texts = tuple(record_text(record) for record in anonymized_records)
         logger.info("starting embedding of %d record(s)", len(texts))
         with timed() as embed_sw:
             vectors = await asyncio.to_thread(self._embedder.embed, texts)
@@ -724,8 +742,11 @@ class AnalyzeService:
             }
             analysis_text = self._anonymizer.deanonymize(analysis_text, restorable)
 
-        analysis_text = hyperlink_form_references(
-            analysis_text, request.feedback_records, request.espo_feedback_base_url
+        analysis_text = format_record_citations(
+            analysis_text,
+            request.feedback_records,
+            request.espo_feedback_base_url,
+            request.espo_meeting_base_url,
         )
 
         # One-line breakdown so a single log line answers "where did the time
@@ -759,7 +780,7 @@ class AnalyzeService:
     async def _map_chunk(
         self,
         analyst_prompt: str,
-        records: tuple[FeedbackRecordModel, ...],
+        records: tuple[AnalysisRecord, ...],
         tenant_id: str,
         deadline: datetime,
         semaphore: asyncio.Semaphore,
@@ -782,13 +803,14 @@ class AnalyzeService:
             response_model=str,
             deadline=deadline,
             timing=timing,
+            prompt=prompt_ref(self._prompt_versions, ANALYZE_HIERARCHICAL_MAP_SYSTEM),
         )
         return response.structured
 
     async def _judge_chunk(
         self,
         analyst_prompt: str,
-        records: tuple[FeedbackRecordModel, ...],
+        records: tuple[AnalysisRecord, ...],
         partial: Optional[str],
         tenant_id: str,
         deadline: datetime,
@@ -827,6 +849,7 @@ class AnalyzeService:
                     response_model=str,
                     deadline=deadline,
                     timing=timing,
+                    prompt=prompt_ref(self._prompt_versions, ANALYZE_JUDGE),
                 )
             judged = _parse_analyze_judge_response(judge_response.structured)
             # One score per chunk, not one aggregate for the whole
@@ -903,6 +926,9 @@ class AnalyzeService:
                 tenant_id=tenant_id,
                 response_model=str,
                 deadline=deadline,
+                prompt=prompt_ref(
+                    self._prompt_versions, ANALYZE_HIERARCHICAL_REDUCE_SYSTEM
+                ),
             )
             return response.structured
 

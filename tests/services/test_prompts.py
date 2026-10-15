@@ -1,11 +1,18 @@
 """Tests for the analyse prompt module: constants, escape helper, envelope builder."""
 
-from qfa.domain.models import FeedbackRecordMetadataModel, FeedbackRecordModel
+from qfa.domain.models import (
+    CommunityMeetingRecordMetadataModel,
+    CommunityMeetingRecordModel,
+    FeedbackRecordMetadataModel,
+    FeedbackRecordModel,
+)
 from qfa.services.prompts import (
     ANALYZE_GUARDRAILS_PROMPT,
+    ANALYZE_OUTPUT_FORMAT_PROMPT,
     build_analyze_judge_system_message,
     build_analyze_user_message,
     build_output_language_instruction,
+    build_single_pass_system_message,
     escape_for_tag_envelope,
 )
 
@@ -20,6 +27,21 @@ def test_guardrails_forbid_trailing_questions():
     verbatim), so a fix here covers all three at once.
     """
     assert "Do not end with a question" in ANALYZE_GUARDRAILS_PROMPT
+
+
+class TestBuildSinglePassSystemMessage:
+    def test_contains_the_output_format_block(self):
+        """The single-pass message carries the one-section-per-point format."""
+        assert ANALYZE_OUTPUT_FORMAT_PROMPT in build_single_pass_system_message()
+
+    def test_language_instruction_stays_last(self):
+        """The language directive comes after the format block, so it keeps the final say."""
+        language = build_output_language_instruction("Spanish")
+
+        message = build_single_pass_system_message("Spanish")
+
+        assert message.endswith(language)
+        assert message.index(ANALYZE_OUTPUT_FORMAT_PROMPT) < message.index(language)
 
 
 class TestBuildOutputLanguageInstruction:
@@ -160,6 +182,18 @@ class TestBuildAnalyzeUserMessage:
         assert "<feedback_records>" in out
         assert "</feedback_records>" in out
         assert out.index("<feedback_records>") < out.index("</feedback_records>")
+
+    def test_wraps_community_meeting_records_with_their_distinct_tag(self):
+        record = CommunityMeetingRecordModel(
+            id="meeting-1",
+            meetingNotes="Participants requested safer water points.",
+            metadata=CommunityMeetingRecordMetadataModel(),
+        )
+
+        out = build_analyze_user_message("q", (record,))
+
+        assert '<community_meeting_record id="meeting-1">' in out
+        assert '<feedback_record id="' not in out
 
     def test_includes_record_id_as_attribute(self):
         """Each record exposes its id as the ``id`` attribute on ``<feedback_record>``."""

@@ -10,7 +10,7 @@ Domain entities live in {py:mod}`qfa.domain.models`, with usage-tracking entitie
 |---|---|
 | {py:class}`~qfa.domain.models.FeedbackRecordModel` | A single beneficiary feedback record submitted by the CRM. |
 | {py:class}`~qfa.domain.models.AnalysisRequestModel` / {py:class}`~qfa.domain.models.AnalysisResultModel` | Request and result for `POST /v1/analyze-bulk`. |
-| {py:class}`~qfa.domain.models.SummaryRequestModel` / {py:class}`~qfa.domain.models.SummaryResultModel` | Bulk summarisation across multiple feedback records for `POST /v1/summarize-bulk`. |
+| {py:class}`~qfa.domain.models.SummaryRequestModel` / {py:class}`~qfa.domain.models.SummaryResultModel` | Bulk summarisation across feedback and/or community meeting records for `POST /v1/summarize-bulk`. |
 | {py:class}`~qfa.domain.models.SingleSummaryRequestModel` / {py:class}`~qfa.domain.models.FeedbackRecordSummaryModel` | Per-record summarisation for `POST /v1/summarize`. |
 | {py:class}`~qfa.domain.models.AggregateSummaryResultModel` | Single aggregate summary with judge score. |
 | {py:class}`~qfa.domain.models.CodingAssignmentRequestModel` / {py:class}`~qfa.domain.models.CodingAssignmentResultModel` | Hierarchical code assignment with typed {py:class}`~qfa.domain.models.CodingFramework` framework. |

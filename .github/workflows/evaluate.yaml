@@ -20,3 +20,11 @@ jobs:
     permissions:
       contents: read
     secrets: inherit
+
+  analyze:
+    uses: ./.github/workflows/evaluate-analyze.yaml
+    with:
+      dataset: analyze/cases-frequent-en-v1
+    permissions:
+      contents: read
+    secrets: inherit

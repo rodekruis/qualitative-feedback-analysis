@@ -1,4 +1,4 @@
-# ADR-023: Derive the deploy digest from the registry, cross-checked against the release body
+# ADR-025: Derive the deploy digest from the registry, cross-checked against the release body
 
 ## Status
 

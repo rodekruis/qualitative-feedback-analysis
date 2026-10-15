@@ -6,6 +6,7 @@ people ask about most: regenerating the `analyze_corpus.yaml` fixture.
 
 | Script                          | What it does                                                     |
 | ------------------------------- | ---------------------------------------------------------------- |
+| `check_pool_masking.py`         | Print which words the anonymizer masks in a records/prompts pair, for each analyst prompt. Writes nothing back. |
 | `fetch_embedding_model.py`      | Download an ONNX embedder (`--model` e5-base/e5-small/bge-m3; default e5-base) to a gitignored local path (dev). |
 | `generate_corpus.py`            | Build / regenerate `fixtures/analyze_corpus.yaml` (see below).   |
 | `generate_corpus.prompt.md`     | LLM prompt that fills in `text` during corpus generation.        |

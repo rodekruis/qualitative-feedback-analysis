@@ -7,14 +7,21 @@ puts ``eval/`` on ``sys.path[0]``, so scripts import this as
 
 from __future__ import annotations
 
+import functools
+import inspect
 import json
 import os
+import re
 import subprocess
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import httpx
 from dotenv import load_dotenv
+from langfuse import Evaluation, Langfuse
+from langfuse.api import NotFoundError
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -102,6 +109,27 @@ def deployed_info(base_url: str) -> dict[str, str]:
         return {"deployed_version": "unknown", "deployed_commit": "unknown"}
 
 
+def prompt_versions(base_url: str) -> dict[str, int]:
+    """Current Langfuse prompt version per name, read from ``base_url``'s ``/v1/health``.
+
+    Empty when the health check fails, or the running backend predates this
+    field, so a run still proceeds without exact prompt versions rather
+    than inventing any (#398).
+    """
+    try:
+        response = httpx.get(f"{base_url}/v1/health", timeout=HEALTH_TIMEOUT_SECONDS)
+        response.raise_for_status()
+        data = response.json()
+        return {
+            str(name): int(version) for name, version in data.get("prompts", {}).items()
+        }
+    except (httpx.HTTPError, KeyError, ValueError) as e:
+        print(
+            f"warning: could not read prompt versions from {base_url}/v1/health ({e})"
+        )
+        return {}
+
+
 def _git_output(*args: str) -> str:
     """Run a git command in the repo; empty string on any failure."""
     # Fixed executable, fixed-shape args from this file only — not user input.
@@ -142,3 +170,160 @@ def run_metadata(base_url: str, **extra: Any) -> dict[str, Any]:
     Langfuse views filter, and unifying them would break those views.
     """
     return {**git_metadata(), **deployed_info(base_url), **extra}
+
+
+def eval_environment(deployed_version: str, deployed_commit: str, run_kind: str) -> str:
+    """The Langfuse environment for a run: ``eval-<version>-<commit>``, or ``eval-smoke``.
+
+    The 7-character commit keeps two ``dev`` deploys of one version apart.
+    Langfuse environments allow only ``[a-z0-9_-]``, so version ``2.11.0``
+    at ``89e6482`` becomes ``eval-2-11-0-89e6482``. Every smoke run shares
+    ``eval-smoke``, so the version-comparison dashboard can leave smoke
+    runs out with one filter (``eval/README.md``, "Comparing versions").
+    """
+    if run_kind != "full":
+        return "eval-smoke"
+    name = f"{deployed_version}-{deployed_commit[:7]}".lower()
+    return "eval-" + re.sub(r"[^a-z0-9_]", "-", name)
+
+
+def langfuse_client(base_url: str, *, run_kind: str) -> Langfuse:
+    """A Langfuse client whose scores carry the deployed version as environment.
+
+    Sets ``environment`` (see :func:`eval_environment`), and ``release`` to
+    the version ``base_url`` reports. Only scores get ``environment``: the
+    SDK always puts experiment traces in ``sdk-experiment``, so a dashboard
+    can split scores by version, but not traces. Use this instead of
+    ``get_client()`` in a script that writes a Dataset Run.
+    """
+    deployed = deployed_info(base_url)
+    version = deployed["deployed_version"]
+    return Langfuse(
+        environment=eval_environment(version, deployed["deployed_commit"], run_kind),
+        release=version,
+    )
+
+
+def _add_metadata(result: Any, extra: Mapping[str, Any]) -> Any:
+    evaluations = result if isinstance(result, list) else [result]
+    for evaluation in evaluations:
+        if isinstance(evaluation, Evaluation):
+            evaluation.metadata = {**extra, **(evaluation.metadata or {})}
+    return result
+
+
+def with_score_metadata(
+    evaluators: Sequence[Callable[..., Any]], **extra: Any
+) -> list[Callable[..., Any]]:
+    """Wrap ``evaluators`` so every score they write also carries ``extra``.
+
+    Dashboard widgets can filter scores on score metadata, but not on the
+    run's metadata or, for run-level scores, on the run name. Pass
+    ``dataset=`` so a widget can keep datasets apart. A key that the
+    evaluator sets itself wins over ``extra``.
+    """
+
+    def wrap(evaluator: Callable[..., Any]) -> Callable[..., Any]:
+        @functools.wraps(evaluator)
+        def wrapped(**kwargs: Any) -> Any:
+            result = evaluator(**kwargs)
+            if inspect.isawaitable(result):
+
+                async def finish() -> Any:
+                    return _add_metadata(await result, extra)
+
+                return finish()
+            return _add_metadata(result, extra)
+
+        return wrapped
+
+    return [wrap(evaluator) for evaluator in evaluators]
+
+
+@dataclass
+class UploadReport:
+    """Full item ids, as :func:`_item_id` builds them, from one :func:`upload_items` call."""
+
+    created: list[str] = field(default_factory=list)
+    updated: list[str] = field(default_factory=list)
+    unchanged: list[str] = field(default_factory=list)
+    extra: list[str] = field(default_factory=list)
+
+
+def _item_id(dataset_name: str, bare_id: str) -> str:
+    """The Langfuse item id for ``bare_id`` in ``dataset_name``: unique across datasets.
+
+    Langfuse's dataset-item page builds its URL by interpolating this id
+    unencoded, so a literal ``/`` or ``-`` splits it into path segments the
+    router does not expect and 404s (langfuse/langfuse#17259). ``dataset_name``
+    itself keeps its ``/`` — that is Langfuse's own folder-style grouping for
+    dataset names, not part of this id.
+    """
+    return f"{dataset_name}:{bare_id}".replace("/", "_").replace("-", "_")
+
+
+def upload_items(
+    langfuse: Any,
+    dataset_name: str,
+    items: Sequence[Mapping[str, Any]],
+    *,
+    dry_run: bool = False,
+) -> UploadReport:
+    """Upsert ``items`` into the Langfuse dataset ``dataset_name``.
+
+    Creates the dataset first if it does not exist yet. Each item is a
+    mapping with a bare ``id``, ``input``, ``expected_output`` and
+    ``metadata``; the remote item id is built by :func:`_item_id`. An item
+    whose remote content is unchanged is skipped, never re-sent. An item
+    whose content changed is updated; Langfuse keeps the previous version.
+    An id that exists in the dataset but not in ``items`` is printed,
+    never deleted. ``dry_run`` runs every check below but calls no
+    Langfuse write.
+    """
+    try:
+        dataset = langfuse.get_dataset(dataset_name)
+        existing = {item.id: item for item in dataset.items}
+        is_new_dataset = False
+    except NotFoundError:
+        existing = {}
+        is_new_dataset = True
+
+    report = UploadReport()
+    to_write: list[tuple[str, Mapping[str, Any]]] = []
+
+    for item in items:
+        full_id = _item_id(dataset_name, item["id"])
+        current = existing.get(full_id)
+        if current is None:
+            report.created.append(full_id)
+            to_write.append((full_id, item))
+        elif (
+            current.input == item.get("input")
+            and current.expected_output == item.get("expected_output")
+            and current.metadata == item.get("metadata")
+        ):
+            report.unchanged.append(full_id)
+        else:
+            report.updated.append(full_id)
+            to_write.append((full_id, item))
+
+    report.updated.sort()
+
+    local_ids = {_item_id(dataset_name, item["id"]) for item in items}
+    for full_id in sorted(existing.keys() - local_ids):
+        print(f"in {dataset_name} but not in the file: {full_id}")
+        report.extra.append(full_id)
+
+    if not dry_run:
+        if is_new_dataset:
+            langfuse.create_dataset(name=dataset_name)
+        for full_id, item in to_write:
+            langfuse.create_dataset_item(
+                dataset_name=dataset_name,
+                id=full_id,
+                input=item.get("input"),
+                expected_output=item.get("expected_output"),
+                metadata=item.get("metadata"),
+            )
+
+    return report

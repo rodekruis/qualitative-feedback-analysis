@@ -1,6 +1,6 @@
 """Cross-check the ACR-resolved deploy digest against the release body.
 
-Used by `_deploy-release.yaml`'s digest-resolution step (see ADR-023): the
+Used by `_deploy-release.yaml`'s digest-resolution step (see ADR-025): the
 image identity deployed to an environment is resolved from Azure Container
 Registry (ACR), keyed by the release tag, not read out of the release body.
 That leaves the registry tag itself -- which the CI identity can push -- as

@@ -7,9 +7,21 @@ from datetime import UTC, datetime
 from typing import Any
 
 import httpx
-from langfuse import Evaluation, get_client
+from langfuse import Evaluation
 
-from _common import MAX_CONCURRENCY, load_env, resolve_config, run_metadata
+from _common import (
+    MAX_CONCURRENCY,
+    langfuse_client,
+    load_env,
+    prompt_versions,
+    resolve_config,
+    run_metadata,
+    with_score_metadata,
+)
+from sensitivity_type_analysis import (
+    sensitivity_type_fp_share_evaluator,
+    sensitivity_type_item_evaluator,
+)
 
 EXPERIMENT_NAME = "sensitivity-baseline"
 
@@ -296,7 +308,8 @@ def main() -> None:
     load_env()
     base_url, api_key = resolve_config()
 
-    langfuse = get_client()
+    run_kind = "smoke" if args.smoke_limit else "full"
+    langfuse = langfuse_client(base_url, run_kind=run_kind)
     dataset = langfuse.get_dataset(args.dataset)
 
     if args.smoke_limit is not None:
@@ -307,13 +320,17 @@ def main() -> None:
         items = dataset.items
 
     timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    # The Langfuse Experiments table lists runs from every dataset together,
+    # so the name has to say which one was scored. The leaf segment keeps it
+    # short; the full name stays in the run metadata.
+    dataset_label = args.dataset.rsplit("/", 1)[-1]
 
     if args.run_name:
         run_name = args.run_name
     elif args.smoke_limit:
-        run_name = f"smoke-{args.smoke_limit}-{timestamp}"
+        run_name = f"{dataset_label}-smoke-{args.smoke_limit}-{timestamp}"
     else:
-        run_name = f"baseline-full-{timestamp}"
+        run_name = f"{dataset_label}-baseline-full-{timestamp}"
 
     print(f"Dataset: {args.dataset}")
     print(f"Backend: {base_url}")
@@ -321,26 +338,40 @@ def main() -> None:
     print(f"Run:     {run_name}")
     print()
 
+    versions = prompt_versions(base_url)
+
     result = langfuse.run_experiment(
         name=EXPERIMENT_NAME,
         run_name=run_name,
         data=items,
         task=_make_detect_sensitive(base_url, api_key),
-        evaluators=[
-            correctness_evaluator,
-            classification_case_evaluator,
-        ],
-        run_evaluators=[
-            binary_metrics_evaluator,
-            sensitivity_type_distribution_evaluator,
-        ],
+        evaluators=with_score_metadata(
+            [
+                correctness_evaluator,
+                classification_case_evaluator,
+                sensitivity_type_item_evaluator,
+            ],
+            dataset=args.dataset,
+        ),
+        run_evaluators=with_score_metadata(
+            [
+                binary_metrics_evaluator,
+                sensitivity_type_distribution_evaluator,
+                sensitivity_type_fp_share_evaluator,
+            ],
+            dataset=args.dataset,
+        ),
         max_concurrency=MAX_CONCURRENCY,
         metadata=run_metadata(
             base_url,
             dataset=args.dataset,
             endpoint="/v1/detect-sensitive",
             evaluation="baseline",
+            run_kind=run_kind,
             smoke_limit=args.smoke_limit,
+            prompt_version=versions.get("sensitivity-detection-system"),
+            # None while the deployed backend has no judge call.
+            judge_prompt_version=versions.get("sensitivity-detection-judge"),
         ),
     )
 

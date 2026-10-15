@@ -23,6 +23,7 @@ from qfa.domain.models import (
     FeedbackRecordMetadataModel,
     FeedbackRecordModel,
     LLMResponse,
+    PromptRef,
 )
 from qfa.domain.ports import AnonymizationPort, EmbeddingPort, LLMPort
 from qfa.domain.usage_models import Operation
@@ -119,12 +120,23 @@ class RecordingLLM(LLMPort):
 
     def __init__(self):
         self.calls = []
+        # Parallel to `calls`, same index — kept separate so the many
+        # existing `for a, b, c in llm.calls` unpacks elsewhere in this file
+        # don't have to change shape for a #398-only concern.
+        self.prompt_calls: list[PromptRef | None] = []
 
     async def complete(
-        self, system_message, user_message, tenant_id, response_model=str, timeout=20.0
+        self,
+        system_message,
+        user_message,
+        tenant_id,
+        response_model=str,
+        timeout=20.0,
+        prompt=None,
     ):
         """Record the call and return a canned response."""
         self.calls.append((system_message, user_message, response_model))
+        self.prompt_calls.append(prompt)
         if _is_judge_call(system_message):
             return LLMResponse(
                 structured=_judge_text(),
@@ -154,7 +166,13 @@ def _records(n: int, text: str, prefix: str) -> tuple[FeedbackRecordModel, ...]:
 
 
 def _build_analyze_service(
-    llm, anonymizer, embedder, max_total_tokens, analyze_settings=None, evaluator=None
+    llm,
+    anonymizer,
+    embedder,
+    max_total_tokens,
+    analyze_settings=None,
+    evaluator=None,
+    prompt_versions=None,
 ):
     """Build an ``AnalyzeService`` over the *real* ``LLMCallExecutor``.
 
@@ -179,6 +197,7 @@ def _build_analyze_service(
         analyze_settings=analyze_settings or AnalyzeSettings(min_cluster_size=2),
         max_total_tokens=max_total_tokens,
         evaluator=evaluator,
+        prompt_versions=prompt_versions,
     )
 
 
@@ -207,6 +226,96 @@ async def test_hierarchical_covers_all_records_and_returns_confidence():
     assert result.confidence == pytest.approx(0.8)
     assert result.components is None
     assert result.result  # non-empty synthesis
+
+
+@pytest.mark.asyncio
+async def test_hierarchical_final_answer_moves_a_long_records_line():
+    """The reduce answer goes through the same citation handling as ``analyze_bulk``."""
+    records = tuple(
+        r.model_copy(update={"url_id": f"id-{r.id}"})
+        for r in _records(4, "water access was limited " * 5, "w")
+        + _records(4, "health clinic medicine " * 5, "h")
+    )
+    synthesis = "### All\nText.\nRecords: " + ", ".join(r.id for r in records)
+
+    class ReduceAnswersWithRecords(RecordingLLM):
+        async def complete(self, system_message, user_message, *args, **kwargs):
+            response = await super().complete(
+                system_message, user_message, *args, **kwargs
+            )
+            if "<partial_analyses>" in user_message:
+                return response.model_copy(update={"structured": synthesis})
+            return response
+
+    request = AnalysisRequestModel(
+        feedback_records=records,
+        prompt="trends?",
+        tenant_id=TENANT_ID,
+        mode="hierarchical",
+        espo_feedback_base_url="https://espo.example.com/feedback",
+    )
+    service = _build_analyze_service(
+        ReduceAnswersWithRecords(),
+        RecordingAnonymizer(),
+        FakeEmbeddingPort(),
+        max_total_tokens=100_000,
+    )
+    deadline = datetime.now(UTC) + timedelta(seconds=120)
+
+    result = await service.analyze_hierarchical(request, deadline, anonymize=True)
+
+    assert "#### All (8 records)" in result.result
+    assert "[w0](https://espo.example.com/feedback/id-w0)" in result.result
+
+
+@pytest.mark.asyncio
+async def test_hierarchical_calls_carry_their_own_prompt_ref():
+    """Map, leaf-judge, and reduce calls each carry their own prompt name (#398).
+
+    All three phases share one LLM connection in this test, so the only way
+    to tell them apart on the wire is the ``prompt`` ``PromptRef`` this
+    asserts — a regression here would silently tag every hierarchical call
+    with the wrong (or no) Langfuse prompt version.
+    """
+    water = _records(4, "water access was limited " * 5, "w")
+    health = _records(4, "health clinic medicine " * 5, "h")
+    records = water + health
+    request = AnalysisRequestModel(
+        feedback_records=records,
+        prompt="trends?",
+        tenant_id=TENANT_ID,
+        mode="hierarchical",
+    )
+    llm = RecordingLLM()
+    service = _build_analyze_service(
+        llm,
+        RecordingAnonymizer(),
+        FakeEmbeddingPort(),
+        max_total_tokens=100_000,
+        prompt_versions={
+            "analyze-hierarchical-map-system": 2,
+            "analyze-judge": 5,
+            "analyze-hierarchical-reduce-system": 9,
+        },
+    )
+    deadline = datetime.now(UTC) + timedelta(seconds=120)
+
+    await service.analyze_hierarchical(request, deadline, anonymize=True)
+
+    assert llm.calls, "expected at least one LLM call"
+    for (system_message, user_message, _response_model), prompt in zip(
+        llm.calls, llm.prompt_calls, strict=True
+    ):
+        if _is_judge_call(system_message):
+            assert prompt == PromptRef(name="analyze-judge", version=5)
+        elif "<partial_analyses>" in user_message:
+            assert prompt == PromptRef(
+                name="analyze-hierarchical-reduce-system", version=9
+            )
+        else:
+            assert prompt == PromptRef(
+                name="analyze-hierarchical-map-system", version=2
+            )
 
 
 @pytest.mark.asyncio
@@ -418,7 +527,13 @@ class LargeOutputLLM(LLMPort):
         self.calls = []
 
     async def complete(
-        self, system_message, user_message, tenant_id, response_model=str, timeout=20.0
+        self,
+        system_message,
+        user_message,
+        tenant_id,
+        response_model=str,
+        timeout=20.0,
+        prompt=None,
     ):
         """Return moderate output for map calls to trigger multi-level tree-reduce."""
         self.calls.append((system_message, user_message, response_model))
@@ -462,17 +577,19 @@ async def test_recursion_fires_on_corpus_at_least_five_times_token_cap():
     when the cluster's total tokens exceed the budget (many map sub-chunks).
     Trigger 2 fires when the combined large partials exceed the budget,
     causing recursive tree-reduce. A LargeOutputLLM returns ~250-char
-    partials. With a 700-token budget and a 442-token system message, 3
-    partials fit per reduce group but 4 do not, so 10 map chunks produce a
-    multi-level tree-reduce (several reduce calls, all >= 2).
+    partials. The 1000-token budget is sized against the ~790-token reduce
+    system message: it leaves room for only a few partials per reduce group,
+    so 10 map chunks produce a multi-level tree-reduce (several reduce
+    calls, all >= 2). If the system message grows, raise the budget, or the
+    "no progress" safeguard in ``_reduce_partials`` makes a single reduce call.
     """
-    # 20 records of ~1000 chars each (250 tokens). Budget=700 tokens = 2800 chars,
-    # so 2 records fit per map chunk → 10 map chunks (>= 3). Total = 20*250 = 5000
-    # tokens, which is ~7x the 700-token cap (>5x requirement).
+    # 30 records of ~1000 chars each (250 tokens). Budget=1000 tokens, so 3
+    # records fit per map chunk → 10 map chunks (>= 3). Total = 30*250 = 7500
+    # tokens, which is 7.5x the 1000-token cap (>5x requirement).
     per_record = (
         "water access was limited and people waited for hours. " * 19
     )  # ~1026 chars
-    records = _records(20, per_record, "w")
+    records = _records(30, per_record, "w")
     request = AnalysisRequestModel(
         feedback_records=records,
         prompt="trends?",
@@ -481,7 +598,7 @@ async def test_recursion_fires_on_corpus_at_least_five_times_token_cap():
     )
     llm = LargeOutputLLM()
     service = _build_analyze_service(
-        llm, RecordingAnonymizer(), FakeEmbeddingPort(), max_total_tokens=700
+        llm, RecordingAnonymizer(), FakeEmbeddingPort(), max_total_tokens=1000
     )
     deadline = datetime.now(UTC) + timedelta(seconds=120)
     result = await service.analyze_hierarchical(request, deadline, anonymize=True)
@@ -511,7 +628,13 @@ class ConcurrencyTrackingLLM(LLMPort):
         self.peak_in_flight = 0
 
     async def complete(
-        self, system_message, user_message, tenant_id, response_model=str, timeout=20.0
+        self,
+        system_message,
+        user_message,
+        tenant_id,
+        response_model=str,
+        timeout=20.0,
+        prompt=None,
     ):
         """Track in-flight depth around a single event-loop yield, then answer."""
         self.calls.append((system_message, user_message, response_model))
@@ -627,7 +750,13 @@ class OverlapTrackingLLM(LLMPort):
         self.judge_reduce_overlap = False
 
     async def complete(
-        self, system_message, user_message, tenant_id, response_model=str, timeout=20.0
+        self,
+        system_message,
+        user_message,
+        tenant_id,
+        response_model=str,
+        timeout=20.0,
+        prompt=None,
     ):
         """Track which call kinds coexist in flight, then return a canned answer."""
         self.calls.append((system_message, user_message, response_model))
@@ -675,7 +804,13 @@ class OneChunkMapFailsLLM(LLMPort):
         self.calls = []
 
     async def complete(
-        self, system_message, user_message, tenant_id, response_model=str, timeout=20.0
+        self,
+        system_message,
+        user_message,
+        tenant_id,
+        response_model=str,
+        timeout=20.0,
+        prompt=None,
     ):
         """Raise on the 'health' map chunk; return canned output otherwise."""
         self.calls.append((system_message, user_message, response_model))
@@ -752,7 +887,13 @@ class AllJudgesFailLLM(LLMPort):
         self.calls = []
 
     async def complete(
-        self, system_message, user_message, tenant_id, response_model=str, timeout=20.0
+        self,
+        system_message,
+        user_message,
+        tenant_id,
+        response_model=str,
+        timeout=20.0,
+        prompt=None,
     ):
         """Raise on judge calls; return canned output for map and reduce."""
         self.calls.append((system_message, user_message, response_model))
@@ -856,6 +997,7 @@ async def test_all_chunks_failing_raises_analysis_error():
             tenant_id,
             response_model=str,
             timeout=20.0,
+            prompt=None,
         ):
             """Raise on every map call regardless of cluster."""
             self.calls.append((system_message, user_message, response_model))
@@ -975,7 +1117,13 @@ class EchoingLLM(LLMPort):
         self.calls = []
 
     async def complete(
-        self, system_message, user_message, tenant_id, response_model=str, timeout=20.0
+        self,
+        system_message,
+        user_message,
+        tenant_id,
+        response_model=str,
+        timeout=20.0,
+        prompt=None,
     ):
         """Record the call; echo the user message, or serve a judge score."""
         self.calls.append((system_message, user_message, response_model))

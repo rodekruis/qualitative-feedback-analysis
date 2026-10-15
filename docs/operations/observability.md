@@ -41,7 +41,8 @@ Everything that's not in the prohibition list above is fine, especially:
 - HTTP status codes
 - Azure content-filter `category`/`severity` on `LLMContentPolicyViolationError` (a closed annotation, e.g. `violence`/`high` — never the flagged text itself)
 - The provider-rejection diagnostic's `model`, `response_format`, `schema_name`, `schema_keys` and `rejected_keyword` — the first four describe a schema this repo built, the last is drawn from a closed vocabulary of JSON-Schema token names (never the provider's message)
-- Judge component scores (`faithfulness`, `coverage`, `clarity`, `quality_score`) — never the `uncertainty_explanation`
+- Judge scores (`faithfulness`, `coverage`, `clarity`, `quality_score`,
+  `confidence_level_*`, `sensitivity_confidence`) — never the `uncertainty_explanation`
 
 ## Diagnosing a provider 400
 
@@ -145,7 +146,12 @@ log line above. Neither sink replaces the other.
 `coverage`, `clarity`, and `quality_score` as four named scores. It sends
 them through the `EvaluationPort` each judged service holds. Every score
 carries `call_id` as its key, so you can join it to that request's
-`llm_calls` rows and to its Langfuse trace (see below).
+`llm_calls` rows and to its Langfuse trace (see below). Every score also
+carries `metadata.endpoint`, set to the operation (for example `summarize`).
+Use it to filter scores by endpoint in a Langfuse dashboard. The
+`user_quality_score` that EspoCRM sends also carries `metadata.endpoint`,
+`analyze` or `summarize_aggregate` (see
+[EspoCRM integration](../integrations/espo-crm.md#flowcharts)).
 
 `single_pass` sends one set of four scores per request, from
 `AnalyzeService.analyze_bulk`. Hierarchical sends one set per chunk, from
@@ -165,6 +171,15 @@ falls below `confidence_threshold`. A trace can therefore carry fewer
 `confidence_level_*` scores than the path depth. When the request judges
 several candidate paths, a trace can carry more than one set of these
 scores.
+
+`detect_sensitive_content` sends a single score named
+`sensitivity_confidence`, via
+`qfa.services.judge_scoring.record_sensitivity_judge_score`. The name
+matches `SensitivityAnalysisResultModel.confidence`. One score per request:
+the judge runs once per record whether or not the record was rated
+sensitive, so a low-scoring not-sensitive trace is how a suspected false
+negative surfaces. A failed or unparsable judge reply records nothing, so
+a missing score and a low score mean different things.
 
 `qfa.adapters.evaluation.LangfuseEvaluationAdapter` sends the scores through
 the `langfuse` Python client. `NoOpEvaluationAdapter` discards them instead.
@@ -205,6 +220,8 @@ This is a fourth channel, next to Postgres usage and the two Azure signals below
 
 This channel is for browsing individual calls, including the map, reduce, and judge calls of hierarchical analysis. Postgres (`GET /v1/usage`) remains the source of truth for total cost and token counts.
 
+For a plain-English tour of what Langfuse shows, written for non-developers, see [QFA in Langfuse](langfuse-guide.html).
+
 Every call made inside one request shares one trace id, taken from `call_id`. `qfa.services.call_context.call_scope` sets it. A request with both a generation call and a judge call therefore shows as one trace with two observations, not two separate traces. This is what lets a live judge score (see below) land next to the call it graded.
 
 The tracer's span processor is attached only when `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` are set. It stays detached in local dev, the same pattern as `APPLICATIONINSIGHTS_CONNECTION_STRING` below. If you set the keys, you must also set `LANGFUSE_HOST`. This deployment always self-hosts Langfuse, so it has no cloud fallback. `LangfuseSettings` rejects a key that has no host.
@@ -218,6 +235,7 @@ Each span carries these attributes:
 - `langfuse.trace.tags`, set to the operation, inside an active request (unset for scripts and tests run outside one)
 - `langfuse.trace.metadata`, set to the deployed `version` and `commit` (JSON), inside an active request
 - `langfuse.observation.usage_details` and `langfuse.observation.cost_details` (JSON, holding token counts and cost)
+- `langfuse.observation.prompt.name` and `langfuse.observation.prompt.version`, set only when the call site named a prompt from `qfa.services.prompt_registry.SYSTEM_PROMPTS` and that name has a version in `GET /v1/health`'s `prompts` field (#398)
 
 A judge call is marked apart from the generation call it grades. This covers the leaf judges of hierarchical analysis, and the per-record and per-level judges in `summarize` and `coding`. Its span name gets a `:judge` suffix, for example `summarize:judge`, and its tags gain a `"judge"` entry. `qfa.services.call_context.judge_call` sets this. Every current judge call site wraps itself in it. A generation call's name and tags stay exactly as they were before this marker existed.
 

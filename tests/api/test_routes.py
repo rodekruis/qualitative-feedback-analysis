@@ -1,5 +1,7 @@
 """Tests for API route handlers."""
 
+from typing import ClassVar
+
 import httpx
 import pytest
 
@@ -17,7 +19,13 @@ from qfa.domain.errors import (
     LLMTimeoutError,
     PromptInjectionDetectedError,
 )
-from qfa.domain.models import FeedbackRecordSummaryModel
+from qfa.domain.models import (
+    CommunityMeetingRecordModel,
+    FeedbackRecordModel,
+    FeedbackRecordSummaryModel,
+    SensitivityAnalysisResultModel,
+)
+from qfa.domain.sensitivity_types import SensitivityType
 from qfa.services.coding import NO_CODING_EMPTY_CONTENT_EXPLANATION
 
 from .conftest import FAKE_API_KEY, FakeService
@@ -307,6 +315,32 @@ class TestSummarizeSuccess:
         assert "pretty_output" in data
 
     @pytest.mark.asyncio
+    async def test_community_meeting_summary_forwards_meeting_base_url(
+        self, client, test_app
+    ):
+        resp = await client.post(
+            "/v1/summarize-community-meeting",
+            json={
+                "community_meeting_record": {
+                    "id": "meeting-1",
+                    "meetingNotes": "Notes.",
+                    "url_id": "m-url",
+                },
+                "espo_meeting_base_url": "https://example/#CCommunityMeetingData/view",
+            },
+            headers=_auth_header(),
+        )
+
+        assert resp.status_code == 200
+        forwarded = (
+            test_app.state.summarize_service.last_summarize_community_meeting_request
+        )
+        assert (
+            forwarded.espo_meeting_base_url
+            == "https://example/#CCommunityMeetingData/view"
+        )
+
+    @pytest.mark.asyncio
     async def test_community_meeting_summary_empty_notes_returns_empty_result(
         self, client
     ):
@@ -357,6 +391,105 @@ class TestSummarizeSuccess:
         assert received.startswith("Water point 0 needs repair.")
 
 
+class TestSummarizeBulkSuccess:
+    """``/v1/summarize-bulk`` carries the same request-id contract as ``/v1/analyze-bulk``."""
+
+    @staticmethod
+    def _records():
+        return [
+            {
+                "id": "doc-1",
+                "content": "Great service!",
+                "metadata": _summary_metadata(),
+            }
+        ]
+
+    @pytest.mark.asyncio
+    async def test_200_on_valid_request(self, client):
+        resp = await client.post(
+            "/v1/summarize-bulk",
+            json={"feedback_records": self._records()},
+            headers=_auth_header(),
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "summary" in data
+        assert "request_id" in data
+
+    @pytest.mark.asyncio
+    async def test_request_id_is_canonical_uuid(self, client):
+        """``request_id`` in the response body is a canonical UUID string.
+
+        Mirrors ``TestAnalyzeSuccess.test_request_id_is_canonical_uuid``
+        (#173) so both bulk endpoints expose the same identifier format.
+        """
+        from uuid import UUID
+
+        resp = await client.post(
+            "/v1/summarize-bulk",
+            json={"feedback_records": self._records()},
+            headers=_auth_header(),
+        )
+        # Raises ValueError if the string isn't a valid UUID.
+        UUID(resp.json()["request_id"])
+
+    @pytest.mark.asyncio
+    async def test_x_request_id_header_present(self, client):
+        resp = await client.post(
+            "/v1/summarize-bulk",
+            json={"feedback_records": self._records()},
+            headers=_auth_header(),
+        )
+        assert "x-request-id" in resp.headers
+
+    @pytest.mark.asyncio
+    async def test_x_request_id_matches_body(self, client):
+        resp = await client.post(
+            "/v1/summarize-bulk",
+            json={"feedback_records": self._records()},
+            headers=_auth_header(),
+        )
+        assert resp.headers["x-request-id"] == resp.json()["request_id"]
+
+    @pytest.mark.asyncio
+    async def test_x_request_id_propagates_into_call_scope_as_call_id(self, test_app):
+        """The X-Request-ID UUID is the same value seen as ``ctx.call_id``.
+
+        Mirrors ``TestAnalyzeSuccess`` (#173): unit-level proof of the
+        unification across the full middleware -> dependency -> service
+        chain, this time through ``Depends(call_scope_for(Operation.SUMMARIZE_AGGREGATE))``.
+        """
+        from uuid import UUID
+
+        from qfa.domain.models import AggregateSummaryResultModel
+        from qfa.domain.usage_models import Operation
+        from qfa.services.call_context import current_call_context
+
+        captured: dict = {}
+
+        class CapturingService:
+            async def summarize_bulk(self, request, deadline):
+                ctx = current_call_context.get()
+                assert ctx is not None
+                captured["call_id"] = ctx.call_id
+                captured["operation"] = ctx.operation
+                return AggregateSummaryResultModel(
+                    title="ok", summary="ok", quality_score=0.9
+                )
+
+        test_app.state.summarize_service = CapturingService()
+        async with _make_client(test_app) as c:
+            resp = await c.post(
+                "/v1/summarize-bulk",
+                json={"feedback_records": self._records()},
+                headers=_auth_header(),
+            )
+        assert resp.status_code == 200
+        header_uuid = UUID(resp.headers["x-request-id"])
+        assert captured["call_id"] == header_uuid
+        assert captured["operation"] == Operation.SUMMARIZE_AGGREGATE
+
+
 class TestDetectSensitiveSuccess:
     @pytest.mark.asyncio
     async def test_200_on_valid_request(self, client):
@@ -405,6 +538,25 @@ class TestDetectSensitiveSuccess:
         )
         record = test_app.state.sensitivity_service.last_detect_sensitive_request.feedback_record
         assert record.metadata.coding_level_1 == "North"
+
+    @pytest.mark.asyncio
+    async def test_response_contains_judge_confidence(self, test_app):
+        test_app.state.sensitivity_service = FakeService(
+            detect_sensitive_result=SensitivityAnalysisResultModel(
+                feedback_record_id="doc-1",
+                sensitivity_types=(SensitivityType.CORRUPTION,),
+                explanation="Contains a bribery allegation.",
+                confidence=0.42,
+            )
+        )
+        async with _make_client(test_app) as c:
+            resp = await c.post(
+                "/v1/detect-sensitive",
+                json=_valid_detect_sensitive_body(),
+                headers=_auth_header(),
+            )
+        assert resp.status_code == 200
+        assert resp.json()["confidence"] == 0.42
 
 
 # ------------------------------------------------------------------ #
@@ -825,6 +977,21 @@ class TestEmptyFeedbackContent:
         assert body["is_sensitive"] is False
         assert body["sensitivity_types"] == []
 
+    @pytest.mark.asyncio
+    async def test_detect_sensitive_empty_content_has_null_confidence(self, client):
+        """No LLM call is made for blank content, so there is no judge score."""
+        resp = await client.post(
+            "/v1/detect-sensitive",
+            json=_valid_detect_sensitive_body(
+                feedback_record={"id": "doc-1", "content": ""}
+            ),
+            headers=_auth_header(),
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "confidence" in body
+        assert body["confidence"] is None
+
 
 # ------------------------------------------------------------------ #
 # EspoCRM hyperlink fields (url_id / espo_feedback_base_url)
@@ -876,6 +1043,80 @@ class TestFeedbackUrlFieldsForwarded:
         forwarded = test_app.state.summarize_service.last_summarize_bulk_request
         assert forwarded.feedback_records[0].url_id == "abc123"
         assert forwarded.espo_feedback_base_url == "https://espo.example.com/feedback"
+
+
+class TestSummarizeBulkCommunityMeetingRecords:
+    """summarize-bulk accepts the same typed record union as analyze-bulk."""
+
+    _FEEDBACK: ClassVar[dict] = {
+        "record_type": "feedback",
+        "id": "feedback-1",
+        "content": "Fb.",
+    }
+    _MEETING: ClassVar[dict] = {
+        "record_type": "community_meeting",
+        "id": "meeting-1",
+        "meetingNotes": "<p>Participants requested safer water points.</p>",
+    }
+
+    async def _post(self, client, records, **extra):
+        return await client.post(
+            "/v1/summarize-bulk",
+            json={"feedback_records": records} | extra,
+            headers=_auth_header(),
+        )
+
+    @pytest.mark.asyncio
+    async def test_meeting_only_batch_is_forwarded_with_markup_stripped(
+        self, client, test_app
+    ):
+        resp = await self._post(client, [self._MEETING])
+        assert resp.status_code == 200
+        forwarded = test_app.state.summarize_service.last_summarize_bulk_request
+        (record,) = forwarded.feedback_records
+        assert isinstance(record, CommunityMeetingRecordModel)
+        assert record.meetingNotes == "Participants requested safer water points."
+
+    @pytest.mark.asyncio
+    async def test_mixed_batch_preserves_order_types_and_base_urls(
+        self, client, test_app
+    ):
+        resp = await self._post(
+            client,
+            [self._FEEDBACK, self._MEETING],
+            espo_feedback_base_url="https://example/#CFeedbackData/view",
+            espo_meeting_base_url="https://example/#CCommunityMeetingData/view",
+        )
+        assert resp.status_code == 200
+        forwarded = test_app.state.summarize_service.last_summarize_bulk_request
+        assert isinstance(forwarded.feedback_records[0], FeedbackRecordModel)
+        assert isinstance(forwarded.feedback_records[1], CommunityMeetingRecordModel)
+        assert forwarded.espo_feedback_base_url == "https://example/#CFeedbackData/view"
+        assert (
+            forwarded.espo_meeting_base_url
+            == "https://example/#CCommunityMeetingData/view"
+        )
+
+    @pytest.mark.asyncio
+    async def test_empty_meeting_notes_are_dropped(self, client, test_app):
+        empty_meeting = self._MEETING | {"id": "meeting-2", "meetingNotes": ""}
+        resp = await self._post(client, [self._FEEDBACK, empty_meeting])
+        assert resp.status_code == 200
+        forwarded = test_app.state.summarize_service.last_summarize_bulk_request
+        assert [r.id for r in forwarded.feedback_records] == ["feedback-1"]
+
+    @pytest.mark.asyncio
+    async def test_untyped_feedback_cannot_be_mixed_with_meeting(self, client):
+        untyped = {"id": "feedback-1", "content": "Fb."}
+        resp = await self._post(client, [untyped, self._MEETING])
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_duplicate_ids_are_rejected(self, client):
+        resp = await self._post(
+            client, [self._FEEDBACK, self._FEEDBACK | {"content": "Other."}]
+        )
+        assert resp.status_code == 422
 
 
 # ------------------------------------------------------------------ #
@@ -1231,3 +1472,16 @@ class TestHealth:
         monkeypatch.delenv("GIT_SHA", raising=False)
         resp = await client.get("/v1/health")
         assert resp.json()["commit"] == "unknown"
+
+    @pytest.mark.asyncio
+    async def test_health_prompts_matches_app_state(self, test_app, client):
+        """``prompts`` is read straight from ``app.state.prompt_versions`` (#398).
+
+        Never invented here: whatever the composition root published at
+        startup is what this field echoes back, version numbers only.
+        """
+        test_app.state.prompt_versions = {"analyze-single-pass-system": 3}
+
+        resp = await client.get("/v1/health")
+
+        assert resp.json()["prompts"] == {"analyze-single-pass-system": 3}

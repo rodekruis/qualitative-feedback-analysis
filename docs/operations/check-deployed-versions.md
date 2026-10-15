@@ -32,7 +32,7 @@ When the app is up, every environment exposes its application version at
 `GET /v1/health`:
 
 ```bash
-curl https://<app-host>/v1/health   # → {"status":"ok","version":"2.0.0","commit":"23247174df94..."}
+curl https://<app-host>/v1/health   # → {"status":"ok","version":"2.0.0","commit":"23247174df94...","prompts":{"analyze-single-pass-system":3,...}}
 ```
 
 The version is `qfa.__version__`, read from the installed package. It is the

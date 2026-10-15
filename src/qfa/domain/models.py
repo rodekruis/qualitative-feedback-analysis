@@ -151,6 +151,30 @@ class CommunityMeetingRecordModel(BaseModel):
     )
 
 
+AnalysisRecord = FeedbackRecordModel | CommunityMeetingRecordModel
+
+
+def record_text(record: AnalysisRecord) -> str:
+    """Return the analyzable text from either supported record type."""
+    if isinstance(record, FeedbackRecordModel):
+        return record.content
+    return record.meetingNotes
+
+
+def record_date(record: AnalysisRecord) -> str:
+    """Return the date used to place a record in chronological order."""
+    if isinstance(record, CommunityMeetingRecordModel):
+        return record.metadata.dateOfMeeting or record.metadata.created
+    return record.metadata.created
+
+
+def with_record_text(record: AnalysisRecord, text: str) -> AnalysisRecord:
+    """Return a copy of ``record`` with its analyzable text replaced."""
+    if isinstance(record, FeedbackRecordModel):
+        return record.model_copy(update={"content": text})
+    return record.model_copy(update={"meetingNotes": text})
+
+
 class CodingNode(BaseModel):
     """A node in a hierarchical coding framework."""
 
@@ -182,9 +206,9 @@ class AnalysisRequestModel(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    feedback_records: tuple[FeedbackRecordModel, ...] = Field(
+    feedback_records: tuple[AnalysisRecord, ...] = Field(
         min_length=1,
-        description="Non-empty tuple of feedback records to analyze.",
+        description="Non-empty tuple of feedback and/or community meeting records to analyze.",
     )
     output_language: str | None = Field(
         default=None,
@@ -225,6 +249,14 @@ class AnalysisRequestModel(BaseModel):
             " output are rewritten as a markdown hyperlink"
             " `[id](espo_feedback_base_url/url_id)`, using that record's"
             " `url_id`. Records with no `url_id` are left as plain text."
+        ),
+    )
+    espo_meeting_base_url: str | None = Field(
+        default=None,
+        description=(
+            "Base URL for community meeting detail links in the analysis output."
+            " Used only for community meeting records; feedback records use"
+            " ``espo_feedback_base_url``."
         ),
     )
 
@@ -336,13 +368,13 @@ class AnalysisResultModel(BaseModel):
 
 
 class SummaryRequestModel(BaseModel):
-    """A request to summarize multiple feedback records (bulk path)."""
+    """A request to summarize multiple feedback and/or community meeting records (bulk path)."""
 
     model_config = ConfigDict(frozen=True)
 
-    feedback_records: tuple[FeedbackRecordModel, ...] = Field(
+    feedback_records: tuple[AnalysisRecord, ...] = Field(
         min_length=1,
-        description="Non-empty tuple of feedback records to summarize.",
+        description="Non-empty tuple of feedback and/or community meeting records to summarize.",
     )
     output_language: str | None = Field(
         default=None,
@@ -362,6 +394,14 @@ class SummaryRequestModel(BaseModel):
             " summary are rewritten as a markdown hyperlink"
             " `[id](espo_feedback_base_url/url_id)`, using that record's"
             " `url_id`. Records with no `url_id` are left as plain text."
+        ),
+    )
+    espo_meeting_base_url: str | None = Field(
+        default=None,
+        description=(
+            "Base URL for community meeting detail links in the aggregate summary."
+            " Used only for community meeting records; feedback records use"
+            " ``espo_feedback_base_url``."
         ),
     )
 
@@ -386,7 +426,7 @@ class SingleSummaryCommunityMeetingRequestModel(BaseModel):
         description="The community meeting record to summarize.",
     )
     tenant_id: str = Field(description="Tenant identifier injected by the auth layer.")
-    espo_feedback_base_url: str | None = Field(
+    espo_meeting_base_url: str | None = Field(
         default=None,
         description=(
             "Base URL for the community meeting record detail view. Mentions"
@@ -471,7 +511,7 @@ class AggregateSummaryResultModel(BaseModel):
 
     title: str = Field(description="Generated short title for the aggregate summary.")
     summary: str = Field(
-        description="Generated bullet-point summary ordered by theme frequency."
+        description="Generated markdown summary ordered by theme frequency."
     )
     quality_score: float = Field(
         description="Judge model score for summary quality in the range 0.0-1.0.",
@@ -608,8 +648,14 @@ class SensitivityAnalysisRequestModel(BaseModel):
     tenant_id: str = Field(description="Tenant identifier injected by the auth layer.")
 
 
-class SensitivityAnalysisResultModel(BaseModel):
-    """The result of analyzing feedback records for sensitivity."""
+class SensitivityClassificationModel(BaseModel):
+    """One record's sensitivity classification, as the classifier returns it.
+
+    Doubles as the classifier call's response schema, so every field here is
+    a field the LLM is asked to produce. The judge's ``confidence`` therefore
+    lives on :class:`SensitivityAnalysisResultModel` instead — asking the
+    classifier to score its own answer is what the judge exists to avoid.
+    """
 
     model_config = ConfigDict(frozen=True)
 
@@ -629,13 +675,30 @@ class SensitivityAnalysisResultModel(BaseModel):
         return len(self.sensitivity_types) > 0
 
 
-class SensitivityAnalysisResultModelList(BaseModel):
-    """The result of analyzing feedback records for sensitivity."""
+class SensitivityClassificationModelList(BaseModel):
+    """The classifier's reply: one classification per submitted record."""
 
     model_config = ConfigDict(frozen=True)
 
-    results: tuple[SensitivityAnalysisResultModel, ...] = Field(
+    results: tuple[SensitivityClassificationModel, ...] = Field(
         description="Sensitivity analysis results for each feedback record.",
+    )
+
+
+class SensitivityAnalysisResultModel(SensitivityClassificationModel):
+    """A classification plus the judge's confidence in it.
+
+    What :class:`~qfa.services.sensitivity.SensitivityService` returns.
+    """
+
+    confidence: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Judge confidence that this classification is correct (0-1); "
+            "null when the judge call failed or was not run."
+        ),
     )
 
 
@@ -657,6 +720,21 @@ class LLMResponse(BaseModel, Generic[T_Response]):
         description="Number of tokens in the completion.",
     )
     cost: float = Field(description="Estimated request cost in USD.")
+
+
+class PromptRef(BaseModel):
+    """Identifies the exact Langfuse prompt version an LLM call's system message came from.
+
+    Always both fields or neither: ``LLMPort.complete``'s ``prompt: PromptRef
+    | None`` keyword can tag a call with a name and a version together, or
+    tag it with neither — there is no longer a way to pass one without the
+    other (#398).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str = Field(description="Langfuse prompt name, e.g. 'analyze-judge'.")
+    version: int = Field(description="Current Langfuse version of that prompt.")
 
 
 class TenantApiKey(BaseModel):
