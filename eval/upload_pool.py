@@ -1,4 +1,4 @@
-r"""Check and upload the analyze feedback pool to ``feedback/records-en-v1``.
+r"""Check and upload one language's analyze feedback pool to its Langfuse dataset.
 
 Reads a working YAML file of pool records — domain data, not code, so it
 stays out of git (``.corpus_work/``) — checks it against the planted counts
@@ -9,6 +9,11 @@ records one known fact about the record — its theme, an unmet need it
 reports, a vulnerable group it is about, and so on — set by whoever wrote
 the record's text, never inferred later.
 
+``--language`` picks the dataset (``RECORDS_DATASETS``) and the id shape.
+A translated pool is the English pool said again in another language:
+same labels, same counts, a new id, and ``base_id`` naming the English
+record it translates.
+
 Prerequisites
 -------------
 - ``LANGFUSE_PUBLIC_KEY``, ``LANGFUSE_SECRET_KEY``, ``LANGFUSE_HOST`` — the
@@ -18,6 +23,8 @@ Run::
 
     uv run python eval/upload_pool.py \\
       --input .corpus_work/analyze-pool/records-en-v1.yaml --dry-run
+    uv run python eval/upload_pool.py --language es \\
+      --input .corpus_work/analyze-pool/records-es-v1.yaml --dry-run
 """
 
 from __future__ import annotations
@@ -31,6 +38,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from langdetect import DetectorFactory, LangDetectException, detect
 from langfuse import get_client
 
 from _common import load_env, upload_items
@@ -39,12 +47,16 @@ from pool_spec import (
     CREATED_FORMAT,
     DECOYS,
     PLANTED,
-    RECORDS_DATASET,
+    RECORDS_DATASETS,
     WINDOW_END,
     WINDOW_START,
 )
 
-ID_PATTERN = re.compile(r"^en-\d{4}$")
+# langdetect samples at random; without a fixed seed the same record can
+# warn on one run and not the next.
+DetectorFactory.seed = 0
+
+BASE_ID_PATTERN = re.compile(r"^en-\d{4}$")
 
 EXPECTED_METADATA_KEYS = (
     "theme",
@@ -85,6 +97,12 @@ def _parse_args() -> argparse.Namespace:
         help="YAML file of pool records.",
     )
     parser.add_argument(
+        "--language",
+        default="en",
+        choices=sorted(RECORDS_DATASETS),
+        help="Language of the pool, which picks the dataset. Default: en.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Run every check, but write nothing to Langfuse.",
@@ -118,12 +136,49 @@ def _needs_reviewed(metadata: Mapping[str, Any]) -> bool:
     )
 
 
+def _check_translation_links(records: list[dict[str, Any]]) -> None:
+    """Check that every record names exactly one English record in ``base_id``."""
+    seen: dict[str, str] = {}
+    for r in records:
+        base_id = r["metadata"].get("base_id")
+        if not base_id:
+            raise SystemExit(f"{r['id']}: no base_id")
+        if not BASE_ID_PATTERN.match(base_id):
+            raise SystemExit(f"{r['id']}: base_id {base_id!r} is not shaped en-NNNN")
+        if base_id in seen:
+            raise SystemExit(
+                f"{r['id']} and {seen[base_id]} share the base_id {base_id}"
+            )
+        seen[base_id] = r["id"]
+
+
+def _warn_on_wrong_language(records: list[dict[str, Any]], language: str) -> None:
+    """Print a warning for each record whose text does not read as ``language``.
+
+    A warning, never an exit: ``langdetect`` misfires on a short record
+    full of proper nouns, and a blocked upload with no override would be
+    worse than a false alarm. ``language_match`` in the eval harness is
+    the scored version of this question.
+    """
+    for r in records:
+        content = r.get("content") or ""
+        if not content:
+            continue
+        try:
+            detected = detect(content)
+        except LangDetectException:
+            detected = "unknown"
+        if detected != language:
+            print(f"warning: {r['id']} reads as {detected}, not {language}")
+
+
 def validate_pool(
     records: list[dict[str, Any]],
     *,
     planted: Mapping[str, Mapping[str, int]] = PLANTED,
     decoys: int = DECOYS,
     final: bool = False,
+    language: str = "en",
 ) -> None:
     """Check the pool records before any upload.
 
@@ -133,21 +188,30 @@ def validate_pool(
     ``review_status`` on every record, and ``review_status: "reviewed"``
     on every urgent, decoy or group record.
 
+    ``language`` sets the id shape, the banned words, and the value every
+    record's ``language`` must carry. A pool that is not ``en`` is a
+    translation, so every record must also name the English record it
+    translates in ``base_id``. Prints — never raises — for a record whose
+    text does not read as ``language``.
+
     Raises
     ------
     SystemExit
-        An id is not shaped ``en-NNNN``, or repeats; a record is missing a
-        metadata field; a ``planted`` count is wrong; the decoy count is
-        wrong, two urgent records share an ``urgent_kind``, or one is not
-        themed ``protection``; a ``created`` falls outside the window; a
-        record with text has a bad length, no ``facts``, a banned word,
-        or too few keywords; or ``final`` is set and a record lacks text,
+        An id is not shaped ``<language>-NNNN``, or repeats; a record is
+        missing a metadata field or carries the wrong ``language``; a
+        translated record has no ``base_id``, a misshapen one, or one
+        another record already uses; a ``planted`` count is wrong; the
+        decoy count is wrong, two urgent records share an ``urgent_kind``,
+        or one is not themed ``protection``; a ``created`` falls outside
+        the window; a record with text has a bad length, no ``facts``, or
+        a banned word; or ``final`` is set and a record lacks text,
         ``review_status``, or a required ``reviewed`` value.
     """
+    id_pattern = re.compile(rf"^{re.escape(language)}-\d{{4}}$")
     ids = [r["id"] for r in records]
-    bad_ids = sorted(i for i in set(ids) if not ID_PATTERN.match(i))
+    bad_ids = sorted(i for i in set(ids) if not id_pattern.match(i))
     if bad_ids:
-        raise SystemExit(f"Ids not shaped en-NNNN: {', '.join(bad_ids)}")
+        raise SystemExit(f"Ids not shaped {language}-NNNN: {', '.join(bad_ids)}")
     duplicates = sorted({i for i in ids if ids.count(i) > 1})
     if duplicates:
         raise SystemExit(f"Duplicate record ids: {', '.join(duplicates)}")
@@ -160,6 +224,13 @@ def validate_pool(
             raise SystemExit(
                 f"{r['id']}: missing metadata field(s): {', '.join(missing)}"
             )
+        if r["metadata"]["language"] != language:
+            raise SystemExit(
+                f"{r['id']}: language is {r['metadata']['language']!r}, want {language!r}"
+            )
+
+    if language != "en":
+        _check_translation_links(records)
 
     for field_name, counts in planted.items():
         actual = (
@@ -234,9 +305,11 @@ def validate_pool(
             )
         if not r["metadata"].get("facts"):
             raise SystemExit(f"{r['id']}: has text but no facts")
-        for word in BANNED_WORDS:
+        for word in BANNED_WORDS[language]:
             if re.search(rf"\b{re.escape(word)}\b", content, re.IGNORECASE):
                 raise SystemExit(f"{r['id']}: content uses the banned word {word!r}")
+
+    _warn_on_wrong_language(records, language)
 
 
 def build_items(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -284,10 +357,10 @@ def main() -> None:
     load_env()
 
     records = load_pool(args.input)
-    validate_pool(records, final=not args.dry_run)
+    validate_pool(records, final=not args.dry_run, language=args.language)
     items = build_items(records)
     langfuse = get_client()
-    _upload(langfuse, RECORDS_DATASET, items, dry_run=args.dry_run)
+    _upload(langfuse, RECORDS_DATASETS[args.language], items, dry_run=args.dry_run)
 
 
 if __name__ == "__main__":
