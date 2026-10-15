@@ -12,8 +12,8 @@ real money.
 | `assign_codes_eval.py`    | Scores `POST /v1/assign-codes` against the Langfuse `assign-codes/ukrain` dataset, per coding level.                |
 | `evaluate_sensitivity.py` | Scores `POST /v1/detect-sensitive` against any Langfuse dataset of labelled records, named on the command line.     |
 | `upload_prompts.py`       | Checks and uploads the analyze prompts to a Langfuse dataset, e.g. `analyze/prompts-v1`. Makes no LLM call.         |
-| `upload_pool.py`          | Checks and uploads the analyze feedback pool to a Langfuse dataset, e.g. `feedback/records-en-v1`. Makes no LLM call. |
-| `make_analyze_cases.py`   | Builds the analyze case set from the pool and the prompts, and uploads it to `analyze/cases-frequent-en-v1`. Makes no LLM call. |
+| `upload_pool.py`          | Checks and uploads one language's analyze feedback pool to the dataset for `--language`, e.g. `feedback/records-en-v1`. Makes no LLM call. |
+| `make_analyze_cases.py`   | Builds the analyze case set from the pool and the prompts for `--language`, and uploads it to that language's case set. Makes no LLM call. |
 | `analyze_eval.py`         | Scores `POST /v1/analyze-bulk` against a Langfuse analyze case set, named on the command line. |
 
 ## Shared helpers
@@ -78,9 +78,10 @@ Only scores get the `eval-*` environment. The Langfuse SDK always puts
 experiment traces in `sdk-experiment`, so the dashboard cannot compare
 latency or cost per version.
 
-If you add a dataset or a script, add widgets for it to the dashboard
-by hand. Runs from before this change have environment `default`. They
-stay visible in the Datasets view, but not on the dashboard.
+If you add a dataset, a script or a score, add widgets for it to the
+dashboard by hand — `judge_failed` and `language_match` need theirs.
+Runs from before this change have environment `default`. They stay
+visible in the Datasets view, but not on the dashboard.
 
 ## Running `assign_codes_eval.py`
 
@@ -253,7 +254,8 @@ missing one of the metadata fields above.
 
 This script checks and uploads the working YAML file behind the analyze
 feedback pool. It calls no endpoint, so it makes no LLM call and costs
-nothing. It always uploads to `feedback/records-en-v1`.
+nothing. `--language` picks the dataset: `en` (the default) uploads to
+`feedback/records-en-v1`, `es` to `feedback/records-es-v1`.
 
 Run `scripts/check_pool_masking.py` before uploading, so a planted word
 that the anonymizer masks gets reworded first, not discovered later as an
@@ -268,6 +270,10 @@ uv run python eval/upload_pool.py \
 
 uv run python eval/upload_pool.py \
   --input .corpus_work/analyze-pool/records-en-v1.yaml
+
+# the Spanish pool
+uv run python eval/upload_pool.py --language es \
+  --input .corpus_work/analyze-pool/records-es-v1.yaml --dry-run
 ```
 
 `--dry-run` runs every check and reports what would change, but writes
@@ -304,28 +310,53 @@ Each record in the input file is one feedback record:
 ```
 
 The script stops before uploading anything if an id is not shaped
-`en-NNNN` or repeats, a record is missing one of the metadata fields
-above, a planted count (`PLANTED` in `pool_spec.py`) is wrong, the decoy
-count or the `urgent_kind`s are wrong, a `created` falls outside the
-window, or — once a record has text — its length is outside 60–1,200
-characters, it has no `facts`, or its text uses a banned word (`PSEA`,
-`safeguarding`, `exploitation`, `referral`).
+`<language>-NNNN` or repeats, a record is missing one of the metadata
+fields above or carries the wrong `language`, a planted count (`PLANTED`
+in `pool_spec.py`) is wrong, the decoy count or the `urgent_kind`s are
+wrong, a `created` falls outside the window, or — once a record has text
+— its length is outside 60–1,200 characters, it has no `facts`, or its
+text uses a banned word for its language (`BANNED_WORDS` in
+`pool_spec.py`: `PSEA`, `safeguarding`, `exploitation`, `referral` in
+English).
+
+On a pool that is not `en`, a record carries one extra field, `base_id`,
+naming exactly one `en-NNNN` record. A translation is the English pool
+said again: every label is copied, only the text changes.
+
+```yaml
+- id: es-0001
+  content: "El reparto de alimentos llegó tarde otra vez."
+  metadata:
+    base_id: en-0001 # the English record this one says again
+    language: es
+    created: "2026-07-14T09:23:41Z" # copied, so both languages send in the same order
+    # every other label copied from en-0001; facts translated
+```
+
+A record whose text does not read as its own language only prints a
+warning — `langdetect` misfires on short text, and `language_match` in
+`analyze_eval.py` is the scored version of the same question.
 
 ## Running `make_analyze_cases.py`
 
 This script reads the live pool and prompts from Langfuse and builds the
-analyze case set: one call to score per English prompt. It calls no
-endpoint, so it makes no LLM call and costs nothing. It always uploads to
-`analyze/cases-frequent-en-v1`.
+analyze case set: one call to score per prompt in `--language`. It calls
+no endpoint, so it makes no LLM call and costs nothing. `--language`
+picks all three datasets: the pool to read, the prompts to use, and the
+case set to upload to (`en`, the default, builds
+`analyze/cases-frequent-en-v1` from `feedback/records-en-v1`).
 
 Set `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` for a Langfuse project
-at `LANGFUSE_HOST` that holds `feedback/records-en-v1` and
+at `LANGFUSE_HOST` that holds that language's pool and
 `analyze/prompts-v1`, then:
 
 ```bash
 uv run python eval/make_analyze_cases.py --dry-run
 
 uv run python eval/make_analyze_cases.py
+
+# the Spanish case set
+uv run python eval/make_analyze_cases.py --language es --dry-run
 ```
 
 `--dry-run` runs every check and prints what would change, but writes
@@ -382,9 +413,22 @@ scorers score an answer by the record ids it cites:
 | `urgent` | The ids of the records with an `urgent_kind`. The `protection` key has this instead of `labels` and `required`. |
 
 The script stops before uploading anything if a prompt is tagged
-`unplanted`, or if a family other than `protection` has no required value
-in its answer key — either would mean the case set no longer matches
-what the pool can support.
+`unplanted`, if a family other than `protection` has no required value
+in its answer key, if no prompt is in `--language`, or if that language's
+prompt ids are not the same set as English's — each would mean the case
+set no longer matches what the pool and the prompts can support.
+
+For a language other than `en` it also reads the English pool, at the
+same timestamp, and checks the translation before building anything:
+every record must name exactly one English record in `base_id`, every
+English record must be translated once, every label must be copied
+unchanged, and each family's answer key must therefore come out the same
+once the translated ids are mapped back. This is where a translation
+that drifted is caught, on the live data.
+
+A Spanish case looks the same, with `output_language` `"Spanish"`,
+`records_dataset` `feedback/records-es-v1`, `language` `es`, an id such
+as `P02-es`, and `es-NNNN` record ids throughout.
 
 ## Running `analyze_eval.py`
 
@@ -442,6 +486,8 @@ answer cites (`analyze_scorers.py`):
 | --- | --- | --- |
 | `outcome` | `ok`, `payload_too_large`, `content_filtered` or `error`. | Always. |
 | `quality_score`, `faithfulness`, `coverage`, `clarity` | As the service returns them. A failed judge shows as a missing score. | The outcome is `ok`, and the value is not null. |
+| `judge_failed` | 1 when the judge returned no `quality_score`, else 0. Numeric, so a run's mean is the share of cases the judge failed on — a missing score cannot be averaged, so it cannot be compared between runs. | The outcome is `ok`. |
+| `language_match` | 1 when the answer reads as the case's own `metadata.language`, else 0. A run's mean is the share of cases answered in the right language. | The outcome is `ok`. |
 | `item_recall` | The share of required items found. An item is found when the sections carrying its label hold at least half of its records. | The key has `required`. |
 | `citation_precision` | Of the ids in the sections with a required label, the share that carries that label. | A section has a required label. |
 | `group_recall::<group>` | The share of the group's records that the answer cites anywhere. | The key holds the group. |
@@ -461,6 +507,58 @@ The answers are saved to `.corpus_work/analyze-runs/<run name>.jsonl`,
 one line per case with the answer, its key and the ids that were sent, so
 a changed scorer can be tried on a finished run at no cost. Git ignores
 that folder.
+
+### The Spanish pool
+
+The Spanish pool is the English pool said again in Spanish: same labels,
+same counts, new ids, and `base_id` on each record naming the English
+record it translates. Build it in this order.
+
+1. Rebuild the English working file, which is not in git, from Langfuse:
+
+   ```python
+   import yaml
+   from langfuse import get_client
+   from _common import load_env
+   from make_analyze_cases import record_from_item
+   from pool_spec import RECORDS_DATASETS
+
+   load_env()
+   items = get_client().get_dataset(RECORDS_DATASETS["en"]).items
+   records = [record_from_item(item) for item in items]
+   print(yaml.safe_dump(records, allow_unicode=True, sort_keys=False))
+   ```
+
+2. Translate it into `.corpus_work/analyze-pool/records-es-v1.yaml`. Per
+   record: id `es-NNNN` mirroring the English number, `base_id` set to
+   the English id, `language: es`, `created` copied verbatim (so both
+   languages send in the same order), every label copied unchanged,
+   `facts` translated, `gen_model`/`gen_date` set to the translating
+   model and date, and `review_status: not_reviewed`. Then
+   `upload_pool.py --language es --dry-run` until it is clean.
+3. Have a native speaker review a sample, urgent and group records
+   first, and flip those to `review_status: reviewed`. A real upload is
+   blocked until they are.
+4. Run `scripts/check_pool_masking.py --language es` and reword any
+   record whose planted word gets masked. Expect a different result from
+   English: the Spanish spaCy model has no NRP recogniser, so
+   nationality and religion words that English masks come through.
+5. Upload the pool, then build the case set with
+   `make_analyze_cases.py --language es`.
+6. Run **evaluate-analyze** with `dataset: analyze/cases-frequent-es-v1`,
+   three times, and keep the `analyze-answers` artifacts. The Spanish
+   case set is deliberately not in the **evaluate** umbrella workflow:
+   it would double the cost and the 130-minute job time of every full
+   run.
+7. Compare `judge_failed` between the languages **before** reading any
+   other score. `_COMPONENTS_PATTERN` in `qfa.services.judge_scoring`
+   matches the literal English words `faithfulness:`, `coverage:` and
+   `clarity:`, so a Spanish reply that translates them parses as
+   unavailable. If Spanish fails the judge materially more often, that
+   is a service defect, not a quality gap — open a product bug and stop.
+   Only once `judge_failed` is comparable do `item_recall`,
+   `citation_precision` and `group_recall` mean anything. Report
+   `language_match` alongside.
 
 ### Running it in CI
 
