@@ -1,0 +1,10 @@
+version: 2
+updates:
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    # Wait 3 days after a release before a PR opens, so that the community
+    # can find and remove bad releases first. Security updates ignore this.
+    cooldown:
+      default-days: 3

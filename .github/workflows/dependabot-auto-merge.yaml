@@ -1,0 +1,40 @@
+# Approves a Dependabot PR and turns on auto-merge when the update is a
+# patch or minor version bump. Major updates get no approval, so they stay
+# open until a person reviews them. See #414.
+#
+# The merge waits for the required checks in the "Green pipeline before
+# merge" ruleset. The approval counts only because the repository allows
+# GitHub Actions to approve pull requests (Settings > Actions > General).
+#
+# Both conditions on the job are necessary. The PR author proves that
+# Dependabot opened the PR. The actor proves that Dependabot made the last
+# push, so a person who pushes to a Dependabot branch gets no approval.
+name: Dependabot auto-merge
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    if: >-
+      github.event.pull_request.user.login == 'dependabot[bot]'
+      && github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+      - name: Approve and enable auto-merge
+        if: >-
+          steps.metadata.outputs.update-type == 'version-update:semver-patch'
+          || steps.metadata.outputs.update-type == 'version-update:semver-minor'
+        run: |
+          gh pr review --approve "$PR_URL"
+          gh pr merge --auto --merge "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
