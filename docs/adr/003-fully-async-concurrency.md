@@ -73,7 +73,7 @@ The orchestrator, LLM client, and all I/O operations are fully async.
 - `asyncio.sleep` is patched in tests (not `time.sleep`).
 - The `openai` SDK's async client (`AsyncOpenAI`) is used, which returns
   the same response types as the sync client.
-- No thread pool is used for request handling, **except** the two narrow
+- No thread pool is used for request handling, **except** the narrow
   `asyncio.to_thread` call sites in the
   [2026-09-07 amendment](#amendment-2026-09-07-thread-offload-for-blocking-work).
   Uvicorn's event loop handles all other concurrency.
@@ -101,8 +101,10 @@ This amends the "no thread pool is used for request handling" consequence:
 anonymisation (`LLMCallExecutor.anonymize_records_and_prompt`) and, for
 `analyze_hierarchical`, their embedding (`EmbeddingPort.embed`) calls via
 `asyncio.to_thread`, using Python's default thread pool executor rather than
-a dedicated one. Scope is deliberately narrow — only these two known
-CPU-bound, non-cancellable calls — not a general policy of moving
+a dedicated one. `SummarizeService.summarize_bulk` joined them for the same
+reason (issue #334), offloading its one-envelope
+`LLMCallExecutor.anonymize_text` call. Scope is deliberately narrow — only
+these known CPU-bound, non-cancellable calls — not a general policy of moving
 synchronous work off the loop:
 
 - Both calls are one-shot and already complete by the time their `await`
@@ -129,9 +131,10 @@ synchronous work off the loop:
 codebase, so it is also the first time the process-wide `PresidioAnonymizer`
 (one `AnalyzerEngine`/`AnonymizerEngine` pair, shared by every service —
 see the composition root) can be entered from more than one OS thread at
-once — e.g. two concurrent `analyze_bulk` calls, or one overlapping with
-`CodingService`/`SummarizeService`'s still-synchronous anonymisation on the
-main thread. Presidio's maintainers describe the analyzer as "generally
+once — e.g. two concurrent bulk calls, or one overlapping with the
+anonymisation that `CodingService`, `summarize` and
+`summarize_community_meeting` still run on the main thread. Presidio's
+maintainers describe the analyzer as "generally
 thread-safe, though worth validating" (it delegates to spaCy, which
 [explosion.ai built for exactly this multi-threaded pattern](https://explosion.ai/blog/multithreading-with-cython)),
 without an explicit hard guarantee. We accept this risk rather than
