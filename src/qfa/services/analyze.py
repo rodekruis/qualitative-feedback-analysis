@@ -110,7 +110,7 @@ _ANALYZE_JUDGE_EXPLANATION_PATTERN = re.compile(
 
 
 def _parse_analyze_judge_response(raw: str) -> AnalyzeJudgeResult:
-    """Parse the analyse judge's four-line FAITHFULNESS/COVERAGE/CLARITY/EXPLANATION reply.
+    """Parse the analyse judge's reply: problem lists, then FAITHFULNESS/COVERAGE/CLARITY/EXPLANATION.
 
     Components are extracted by
     :func:`~qfa.services.judge_scoring.parse_judge_components`;
