@@ -23,6 +23,7 @@ and hierarchical leaf judges). They live in :mod:`qfa.services.record_links`
 and :mod:`qfa.services.prompts` respectively, shared with their other users.
 """
 
+import asyncio
 import logging
 from datetime import datetime
 
@@ -62,6 +63,7 @@ from qfa.services.prompts import (
     build_output_language_instruction,
 )
 from qfa.services.record_links import hyperlink_form_references
+from qfa.utils import timed
 
 logger = logging.getLogger(__name__)
 
@@ -241,6 +243,10 @@ class SummarizeService:
     ) -> AggregateSummaryResultModel:
         """Summarize feedback and/or community meeting records as one aggregate summary.
 
+        Anonymisation runs off the event loop thread via
+        ``asyncio.to_thread``, so a large batch cannot stall gunicorn's
+        asgi-worker heartbeat (#334).
+
         Parameters
         ----------
         request : SummaryRequest
@@ -269,8 +275,19 @@ class SummarizeService:
         # Fail before paying for Presidio on a batch the adapter would reject anyway.
         self._executor.check_token_limit(system_message, user_message)
 
-        anonymized_user_message, anonymization_mapping = self._anonymizer.anonymize(
-            user_message
+        # Offloaded via to_thread because Presidio's pass over the whole
+        # batch envelope is synchronous, CPU-bound work that would otherwise
+        # starve gunicorn's asgi-worker heartbeat (#325, #334) —
+        # asyncio.to_thread copies the current contextvars context, so
+        # CallContext still propagates.
+        with timed() as anonymize_sw:
+            anonymized_user_message, anonymization_mapping = await asyncio.to_thread(
+                self._executor.anonymize_text, user_message
+            )
+        logger.info(
+            "anonymisation: %d record(s) in %.2fs",
+            len(request.feedback_records),
+            anonymize_sw.elapsed_seconds,
         )
 
         timeout = self._executor.check_deadline_and_get_timeout(deadline)
