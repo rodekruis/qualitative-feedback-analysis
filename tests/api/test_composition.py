@@ -429,6 +429,21 @@ class TestBuildServices:
         assert services.analyze._executor is services.sensitivity._executor
         assert services.summarize._executor is services.sensitivity._executor
 
+    def test_coding_service_gets_the_coding_settings_group(
+        self, auth_env: None
+    ) -> None:
+        """``CODING_*`` reaches the service that reads it, by identity.
+
+        Identity, not equality: a second ``CodingSettings()`` constructed
+        inside the service would silently re-read the environment and look
+        right in every test that does not set the env var.
+        """
+        settings = AppSettings()
+
+        services = build_services(settings, llm=_StubLLM())
+
+        assert services.coding._coding_settings is settings.coding
+
     def test_every_service_shares_the_one_anonymiser(self, auth_env: None) -> None:
         """Constructing ``PresidioAnonymizer`` loads spaCy models; do it once."""
         services = build_services(AppSettings(), llm=_StubLLM())

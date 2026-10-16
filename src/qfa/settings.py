@@ -300,6 +300,32 @@ class AnalyzeSettings(BaseSettings):
     )
 
 
+class CodingSettings(BaseSettings):
+    """Configuration specific to the ``POST /v1/assign-codes`` endpoint.
+
+    Endpoint-scoped for the same reason as :class:`AnalyzeSettings`: only
+    knobs that apply to *every* use case live in
+    :class:`OrchestratorSettings`, so a coding-only knob never has to be
+    renamed in production when it turns out not to generalise.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="CODING_")
+
+    max_concurrent_judges: int = Field(
+        default=8,
+        ge=1,
+        description=(
+            "Maximum per-level judge calls running concurrently within one"
+            " assign-codes request, across all selected paths. The fan-out is"
+            " len(selected) x hierarchy levels and the pick response has no"
+            " maximum length, so a large coding framework (or a pick that"
+            " selects many paths) would otherwise burst past the provider's"
+            " request/token rate limit. Set to 1 for fully sequential"
+            " judging."
+        ),
+    )
+
+
 class AnonymizationSettings(BaseSettings):
     """Configuration for the Presidio-based anonymisation adapter.
 
@@ -449,6 +475,7 @@ class AppSettings(BaseSettings):
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
     orchestrator: OrchestratorSettings = Field(default_factory=OrchestratorSettings)
     analyze: AnalyzeSettings = Field(default_factory=AnalyzeSettings)
+    coding: CodingSettings = Field(default_factory=CodingSettings)
     anonymization: AnonymizationSettings = Field(default_factory=AnonymizationSettings)
     auth: AuthSettings = Field(default_factory=AuthSettings)
     log: LogSettings = Field(default_factory=LogSettings)

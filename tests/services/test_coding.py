@@ -13,6 +13,7 @@ the existing ``FakeLLMPort`` / ``FakeAnonymizer`` doubles — there is no fake
 executor and no fake service.
 """
 
+import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import ClassVar
@@ -30,6 +31,7 @@ from qfa.domain.models import (
     LLMResponse,
     PromptRef,
 )
+from qfa.domain.ports import LLMPort
 from qfa.domain.usage_models import Operation
 from qfa.services.call_context import call_scope
 from qfa.services.coding import (
@@ -40,7 +42,7 @@ from qfa.services.coding import (
 )
 from qfa.services.coding_classifier import CodingResponse
 from qfa.services.llm_call_executor import LLMCallExecutor
-from qfa.settings import OrchestratorSettings
+from qfa.settings import CodingSettings, OrchestratorSettings
 
 # Reuse the doubles the summarize suite already ships rather than growing a
 # second, drifting pair (ADR-017: service tests use the real executor over the
@@ -92,7 +94,9 @@ def _judge_text(score, explanation):
     return f"SCORE: {score}\nEXPLANATION: {explanation}"
 
 
-def _make_coding_service(fake_llm, settings, evaluator=None, prompt_versions=None):
+def _make_coding_service(
+    fake_llm, settings, evaluator=None, prompt_versions=None, coding_settings=None
+):
     """Build the service over the *real* executor, as ADR-017 prescribes."""
     anonymizer = FakeAnonymizer()
     executor = LLMCallExecutor(
@@ -108,6 +112,7 @@ def _make_coding_service(fake_llm, settings, evaluator=None, prompt_versions=Non
         executor=executor,
         evaluator=evaluator,
         prompt_versions=prompt_versions,
+        coding_settings=coding_settings,
     )
 
 
@@ -738,3 +743,163 @@ class TestAssignCodesConfidenceThreshold:
         assert code.explanation.index("Weak fit B.") < code.explanation.index(
             "Weak fit A."
         )
+
+
+class TestJudgeCallTimeout:
+    """Judge calls derive their timeout from the request deadline.
+
+    Before this fix ``_judge_code_level`` called the judge port directly with
+    no ``timeout=``, so the port's own default applied and a single judge call
+    could retry internally for ``LLM_RETRY_BUDGET_MULTIPLIER`` times that
+    default regardless of how little of the request deadline remained.
+    """
+
+    @pytest.mark.asyncio
+    async def test_judge_calls_carry_a_deadline_derived_timeout(self, settings):
+        """A near deadline shrinks the judge timeout to remaining / retry budget.
+
+        30s of budget over a retry multiplier of 3.0 leaves 10s per attempt,
+        so even a fully-retried judge call lands inside the deadline.
+        """
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=CodingResponse(selected=[0])),
+                _make_llm_response(structured=_judge_text(0.9, "Fits.")),
+            ]
+        )
+        service = _make_coding_service(fake_llm, settings)
+
+        await service.assign_codes(_make_coding_request(), _future_deadline(30))
+
+        judge_calls = [c for c in fake_llm.calls if c["response_model"] is str]
+        assert judge_calls
+        for call in judge_calls:
+            assert call["timeout"] == pytest.approx(10.0, abs=0.5)
+
+    @pytest.mark.asyncio
+    async def test_judge_timeout_is_capped_by_the_per_call_limit(self, settings):
+        """With a generous deadline the configured per-call cap binds instead.
+
+        The deadline-derived budget is only ever a *ceiling*: the executor
+        takes the minimum of it and ``llm_timeout_seconds``, so a far-off
+        deadline must not inflate a single attempt past the configured limit.
+        """
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=CodingResponse(selected=[0])),
+                _make_llm_response(structured=_judge_text(0.9, "Fits.")),
+            ]
+        )
+        service = _make_coding_service(fake_llm, settings)
+
+        await service.assign_codes(_make_coding_request(), _future_deadline(300))
+
+        judge_calls = [c for c in fake_llm.calls if c["response_model"] is str]
+        assert judge_calls
+        for call in judge_calls:
+            assert call["timeout"] == LLM_TIMEOUT
+
+
+class ConcurrencyTrackingLLM(LLMPort):
+    """Fake LLM that records the peak number of concurrent ``complete`` calls.
+
+    Each call yields control once via ``asyncio.sleep(0)`` so the event loop
+    can interleave the gathered judge tasks — without a real suspension point
+    a coroutine runs to completion before the next starts, which would hide
+    all concurrency and make the peak read 1 regardless of the fan-out.
+    """
+
+    def __init__(self, selected):
+        self.calls = []
+        self.in_flight = 0
+        self.peak_in_flight = 0
+        self._selected = list(selected)
+
+    async def complete(
+        self,
+        system_message,
+        user_message,
+        tenant_id,
+        response_model=str,
+        timeout=20.0,
+        prompt=None,
+    ):
+        """Track in-flight depth around a single event-loop yield, then answer."""
+        self.calls.append({"response_model": response_model, "timeout": timeout})
+        self.in_flight += 1
+        self.peak_in_flight = max(self.peak_in_flight, self.in_flight)
+        try:
+            await asyncio.sleep(0)
+        finally:
+            self.in_flight -= 1
+        if response_model is CodingResponse:
+            return _make_llm_response(
+                structured=CodingResponse(selected=list(self._selected))
+            )
+        return _make_llm_response(structured=_judge_text(0.9, "Fits."))
+
+
+def _wide_request():
+    """A framework of six flat root codes, all of which the pick selects."""
+    return _make_coding_request(
+        root_codes=[CodingNode(id=f"code-{i}", name=f"Code {i}") for i in range(6)],
+        max_codes=6,
+    )
+
+
+class TestJudgeConcurrency:
+    """One semaphore per request bounds the judge fan-out.
+
+    ``CodingResponse.selected`` has no maximum length and each selected path
+    costs one judge call per hierarchy level, so an unbounded ``gather`` let a
+    single assign-codes request burst arbitrarily wide.
+    """
+
+    @pytest.mark.asyncio
+    async def test_judge_calls_run_concurrently_bounded_by_the_setting(self, settings):
+        """Concurrency happens (>1) and the semaphore bounds it (never >2)."""
+        fake_llm = ConcurrencyTrackingLLM(selected=list(range(6)))
+        service = _make_coding_service(
+            fake_llm, settings, coding_settings=CodingSettings(max_concurrent_judges=2)
+        )
+
+        await service.assign_codes(_wide_request(), _future_deadline())
+
+        judge_calls = [c for c in fake_llm.calls if c["response_model"] is str]
+        assert len(judge_calls) >= 3, "pick did not fan out to multiple judge calls"
+        assert fake_llm.peak_in_flight == 2
+
+    @pytest.mark.asyncio
+    async def test_max_concurrent_judges_one_is_fully_sequential(self, settings):
+        """Cap 1 is the documented escape hatch for a rate-limited provider."""
+        fake_llm = ConcurrencyTrackingLLM(selected=list(range(6)))
+        service = _make_coding_service(
+            fake_llm, settings, coding_settings=CodingSettings(max_concurrent_judges=1)
+        )
+
+        await service.assign_codes(_wide_request(), _future_deadline())
+
+        judge_calls = [c for c in fake_llm.calls if c["response_model"] is str]
+        assert len(judge_calls) >= 3
+        assert fake_llm.peak_in_flight == 1
+
+    @pytest.mark.asyncio
+    async def test_the_bound_is_per_request_not_per_service(self, settings):
+        """Two concurrent requests through one service do not queue behind each other.
+
+        An instance-level semaphore would bind to the first event loop that
+        touched it and would serialise unrelated tenants' requests; this peak
+        of 2 under a per-request cap of 1 is what distinguishes the two.
+        """
+        fake_llm = ConcurrencyTrackingLLM(selected=list(range(6)))
+        service = _make_coding_service(
+            fake_llm, settings, coding_settings=CodingSettings(max_concurrent_judges=1)
+        )
+        deadline = _future_deadline()
+
+        await asyncio.gather(
+            service.assign_codes(_wide_request(), deadline),
+            service.assign_codes(_wide_request(), deadline),
+        )
+
+        assert fake_llm.peak_in_flight == 2

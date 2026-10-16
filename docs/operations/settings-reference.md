@@ -154,6 +154,14 @@ the clustering knobs are only consulted on the hierarchical path.
 | `ANALYZE_CODING_TREND_CODE_FIELDS` | no | `["coding_level_1", "coding_level_2", "coding_level_3"]` | JSON list. Metadata keys holding coding labels (comma-separated strings). |
 | `ANALYZE_DEFAULT_CODING_TREND_PERIOD` | no | `week` | Server-side default granularity for the coding-trend table (`day` / `week` / `month`). Overridable per-request via the `period` body field. |
 
+## Coding (`CODING_*`)
+
+Configuration specific to `POST /v1/assign-codes`.
+
+| Variable | Required | Default | Notes |
+|---|---|---|---|
+| `CODING_MAX_CONCURRENT_JUDGES` | no | `8` | Max per-level judge calls running concurrently within one request, across all selected paths. The fan-out is `len(selected) × hierarchy levels` and the pick response has no maximum length, so this bounds a wide pick and keeps it from bursting past the provider's rate limit. `1` = fully sequential judging. |
+
 ## Auth (`AUTH_*`)
 
 | Variable | Required | Default | Notes |
