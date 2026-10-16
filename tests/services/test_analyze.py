@@ -40,7 +40,7 @@ from qfa.services.analyze import (
 )
 from qfa.services.call_context import call_scope
 from qfa.services.llm_call_executor import LLMCallExecutor
-from qfa.services.prompts import JUDGE_UNAVAILABLE_EXPLANATION
+from qfa.services.prompts import ANALYZE_JUDGE_PROMPT, JUDGE_UNAVAILABLE_EXPLANATION
 from qfa.settings import OrchestratorSettings
 
 # Reuse the doubles the summarize suite already ships rather than growing a
@@ -135,7 +135,7 @@ def _build_analyze_service(
 def _judge_text(faithfulness, coverage, clarity, explanation):
     """Render judge components/explanation as the free-text reply the fake serves.
 
-    Matches ``ANALYZE_JUDGE_PROMPT``'s four-line output format
+    Only the four score lines of ``ANALYZE_JUDGE_PROMPT``'s output format
     (``prompts.py``), which ``analyze._parse_analyze_judge_response`` parses.
     """
     return (
@@ -535,7 +535,7 @@ class TestAnalyzeJudgeResultParsing:
 
 
 class TestParseAnalyzeJudgeResponse:
-    """Unit coverage for the four-line FAITHFULNESS/COVERAGE/CLARITY/EXPLANATION free-text parser."""
+    """Unit coverage for the free-text parser of the analyse judge reply."""
 
     def test_parses_well_formed_reply(self):
         judged = _parse_analyze_judge_response(
@@ -563,6 +563,44 @@ class TestParseAnalyzeJudgeResponse:
         )
         assert judged.quality_score == pytest.approx(0.5)
         assert judged.uncertainty_explanation == "Plausible."
+
+    def test_parses_problem_lists_before_the_scores(self):
+        judged = _parse_analyze_judge_response(
+            "UNSUPPORTED_CLAIMS:\n- Overstates cash requests (id-3, id-7).\n"
+            "MISSED_THEMES:\n- Water point distance (id-2, id-9).\n"
+            "CLARITY_PROBLEMS:\n- none\n"
+            "FAITHFULNESS: 0.7\nCOVERAGE: 0.6\nCLARITY: 1.0\n"
+            "UNCERTAINTY_EXPLANATION: Overstates cash, misses water."
+        )
+        assert judged.components.faithfulness == pytest.approx(0.7)
+        assert judged.components.coverage == pytest.approx(0.6)
+        assert judged.components.clarity == pytest.approx(1.0)
+        assert judged.uncertainty_explanation == "Overstates cash, misses water."
+
+    def test_list_line_with_a_score_word_is_not_read_as_a_score(self):
+        judged = _parse_analyze_judge_response(
+            "UNSUPPORTED_CLAIMS:\n- Faithfulness: the cash claim is not in id-3.\n"
+            "MISSED_THEMES:\n- Coverage: 2 records on water are missing.\n"
+            "CLARITY_PROBLEMS:\n- none\n"
+            "FAITHFULNESS: 0.8\nCOVERAGE: 0.7\nCLARITY: 0.9\n"
+            "UNCERTAINTY_EXPLANATION: One unsupported claim."
+        )
+        assert judged.components.faithfulness == pytest.approx(0.8)
+        assert judged.components.coverage == pytest.approx(0.7)
+
+    def test_parses_the_example_reply_in_the_prompt(self):
+        """The prompt's own example parses, so the prompt and parser cannot drift.
+
+        The example scores stay below 1.0, so the judge does not learn from
+        the example that 1.0 is the normal answer (#436).
+        """
+        example = ANALYZE_JUDGE_PROMPT.split("Example:")[1].strip()
+        judged = _parse_analyze_judge_response(example)
+        components = judged.components
+        assert (
+            max(components.faithfulness, components.coverage, components.clarity) < 1.0
+        )
+        assert "\n" not in judged.uncertainty_explanation
 
     def test_missing_component_raises_analysis_error(self):
         with pytest.raises(AnalysisError, match="unparsable response"):

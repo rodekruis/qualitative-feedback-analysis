@@ -38,30 +38,40 @@ coding-specific concern was ever recorded), and the classification judge in
 new credential — the judge connection inherits `LLM_API_KEY` from the primary
 connection, same Azure Foundry resource, same trust boundary.
 
+The judge model stays outside the model family of the primary model (GPT), so
+that no model grades its own answers. A replacement judge must follow this rule.
+
 ## How it was verified
 
-**Not yet run.** This decision is shipped without live evaluation evidence:
-no automated evaluation harness exists in this repo, and no environment
-available at implementation time held Azure credentials to run one against
-the real deployment. The rollout below is staged specifically to catch a
-bad judge model with limited blast radius in the absence of that evidence,
-and the rollback conditions are stated as objective log/metric signals a
-human can act on without needing a benchmark.
+Not before the rollout: no evaluation harness existed then. The staged rollout
+and the rollback conditions below limited the risk. #436 later measured the
+analyze judge with the analyze eval (see Evidence).
 
 ## Evidence
 
-<!-- PENDING: no evaluation harness exists yet. If one is built later
-(e.g. for the follow-up issue on the two free-text judge sites, or a
-dedicated evaluation ticket), its output belongs here. Until then, this
-decision rests on the cost case in Context and the staged rollout below,
-not on a discrimination or agreement benchmark. -->
+#436 (2026-10-16), analyze judge only, case set `analyze/cases-frequent-en-v1`
+(10 cases):
+
+- Before: in the dev CI run `cases-frequent-en-v1-full-20261014-192011`, the
+  judge gave faithfulness, coverage and clarity 1.0 on all 10 cases, with almost
+  the same explanation. P01 found 7 of 10 expected items and still got coverage
+  1.0.
+- After the stricter prompt (`analyze-judge` version 2), in two local runs with
+  the dev judge
+  ([run 1](https://langfuse.510.global/project/cmtlny8oi0001t807r9xv8exn/datasets/cmulbr6uo000jt807svhm3cts/runs/0986ac0edffaf536),
+  [run 2](https://langfuse.510.global/project/cmtlny8oi0001t807r9xv8exn/datasets/cmulbr6uo000jt807svhm3cts/runs/69f984ab8c2be67c)):
+  faithfulness 0.75–1.00, coverage 0.70–1.00, clarity 0.70–0.90. Each
+  explanation names specific problems.
+- Coverage does not follow `item_recall` reliably. P01 got coverage 0.80 in
+  run 1 and 1.00 in run 2. One case can move by 0.2 between runs.
+- The judge call takes 2.8–4.3 s on average instead of 1.3 s, because it
+  writes the problem lists before the scores.
 
 ## Limitations
 
-- No offline or live evidence that `mistral-medium-3-5` discriminates good
-  judge inputs from bad ones as reliably as `azure/gpt-5.4` did. The staged
-  rollout and rollback conditions below are the mitigation for shipping
-  without that evidence, not a substitute for it.
+- The analyze judge gives graded scores since #436, but its coverage does not
+  follow the reference scores reliably. The other judge call sites have no
+  discrimination evidence yet.
 - Every judge call site parses free text via regex (`parse_judge_components`
   for `analyze`/`summarize`, `parse_judge_response` for the
   `SCORE:`/`EXPLANATION:` replies that `assign_codes` and
@@ -82,17 +92,23 @@ not on a discrimination or agreement benchmark. -->
 ## Rollout
 
 dev → staging → prd, one environment at a time via the per-environment
-`AZ_JUDGE_LLM_API_BASE` GitHub Actions variable and a `terraform apply`,
-each soaking at least one working day before promoting to the next
-environment.
+`AZ_JUDGE_LLM_MODEL` and `AZ_JUDGE_LLM_API_BASE` GitHub Actions variables and a
+`terraform apply`, each soaking at least one working day before promoting to the
+next environment. Until #436, the apply step did not pass `AZ_JUDGE_LLM_MODEL`,
+so apply always used the default in `infra/variables.tf`. That default is this
+model, so the rollout still worked.
 
 ## Rollback
 
-Set the environment's `AZ_JUDGE_LLM_MODEL` GitHub Actions variable (and
-`AZ_JUDGE_LLM_API_BASE`, if set) to `""` and re-apply. Because `JUDGE_LLM_MODEL`
-unset means "use the primary client" (`src/qfa/settings.py`), rollback is a
-config change with **no code change and no redeploy of the image** — the
-cheapest rollback the `JUDGE_LLM_*` mechanism allows.
+Set the environment's `AZ_JUDGE_LLM_MODEL` (and `AZ_JUDGE_LLM_API_BASE`, if it
+changes) back to the previous judge model. Run Terraform `plan`, make sure that
+only the judge settings change, then `apply`. This is a config change with **no
+code change and no redeploy of the image**.
+
+An empty or unset `AZ_JUDGE_LLM_MODEL` removes `JUDGE_LLM_MODEL`, so judge calls
+fall back to the primary client, `azure/gpt-5.4` (`src/qfa/settings.py`). That
+breaks the family rule in Decision. Use it only when the judge endpoint is down.
+Judge scores from that time do not compare with other runs.
 
 ## Rollback conditions
 
@@ -168,7 +184,14 @@ Stated as observables, not feelings:
   carry no `uncertainty_explanation` field. Out-of-range or unparseable
   replies still raise `AnalysisError` → 502, unchanged from before this
   ticket; the two summarise judges have no `null`-degradation path (the risk
-  the first Limitations bullet above describes).
+  the second Limitations bullet above describes).
+- **Analyze judge lists problems before it scores, 2026-10-16** (#436): the
+  judge gave 1.0 to every analyze case (see Evidence). The prompt now asks for
+  `UNSUPPORTED_CLAIMS:`, `MISSED_THEMES:` and `CLARITY_PROBLEMS:` first, and
+  scores each criterion from its list, with anchors at 1.0, 0.9, 0.75, 0.5,
+  0.25 and 0.0. The reply still ends with the four lines, so the parser did not
+  change. The model stays. #449 tries Mistral Large 4 when it is available in
+  our Azure AI Foundry resources.
 
 ## Follow-up
 

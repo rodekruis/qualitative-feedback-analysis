@@ -91,7 +91,7 @@ def _executor(llm, anonymizer):
 
 
 def _analyze_judge_text():
-    """A valid free-text reply for ``ANALYZE_JUDGE_PROMPT``/``_JUDGE_PROMPT`` (shared format)."""
+    """A minimal reply that both the analyse and the summarise judge parsers accept."""
     return (
         "FAITHFULNESS: 0.9\nCOVERAGE: 0.8\nCLARITY: 0.9\n"
         "UNCERTAINTY_EXPLANATION: looks fine"

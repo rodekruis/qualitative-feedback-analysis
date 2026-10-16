@@ -141,12 +141,20 @@ add further layers.
 After the main analysis LLM call, `AnalyzeService` issues a second
 **judge call** using `build_analyze_judge_system_message` from
 `qfa.services.prompts`. The analyse judge is a dedicated prompt, distinct
-from the `summarize_aggregate` judge, but both ask for the same four
-free-text lines, explanation last — the summarise judge just has no
-`uncertainty_explanation` field to carry that fourth line into, so it's
+from the `summarize_aggregate` judge. The analyse judge first lists the
+problems it finds, then scores each criterion from its list (#436). The
+summarise judge writes the four score lines only. Both replies end with the
+same four lines, explanation last. The summarise judge has no
+`uncertainty_explanation` field to carry the fourth line into, so it is
 parsed and discarded:
 
 ```
+UNSUPPORTED_CLAIMS:            # analyse judge only
+- <problem> (<record ids>)
+MISSED_THEMES:                 # analyse judge only
+- <problem> (<record ids>)
+CLARITY_PROBLEMS:              # analyse judge only
+- <problem>
 FAITHFULNESS: <0.0-1.0>
 COVERAGE: <0.0-1.0>
 CLARITY: <0.0-1.0>
@@ -154,7 +162,9 @@ UNCERTAINTY_EXPLANATION: <one short paragraph>
 ```
 
 `parse_judge_components` in `qfa.services.judge_scoring` extracts the three
-floats (raises `AnalysisError` for a missing or out-of-range value).
+floats (raises `AnalysisError` for a missing or out-of-range value). It
+reads the first three score lines that follow each other, so the lists
+before them are not parsed and not returned.
 `AnalyzeJudgeResult` holds the components plus the explanation;
 `quality_score` is a passthrough property computed in Python from
 `QUALITY_SCORE_WEIGHTS`. The judge connection can point at a model that

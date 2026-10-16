@@ -116,38 +116,73 @@ You are evaluating the quality of an analysis produced from feedback records.
 {analysis}
 </analysis_to_score>
 
-Score the analysis using three criteria. Each must be a float between 0 and 1.
+Step 1: find the problems, before you score.
+Compare the analysis with the source records and the analyst prompt. Write
+three lists. Each list has at most 5 lines, one problem per line, with the
+record ids that show the problem. If a list has no problem, write "- none".
+Write "- none" only after you compared each claim with the records.
 
-Faithfulness:
-1.0 = fully supported by the source records, no fabrications
-0.5 = mostly correct, minor issues
-0.0 = major inaccuracies
+UNSUPPORTED_CLAIMS: claims, counts or trends that the records do not support,
+and cited records that do not say what the analysis says.
+MISSED_THEMES: themes that the analyst prompt asks for and that several records
+support, but that the analysis leaves out. Also parts of the analyst prompt
+that the analysis does not answer.
+CLARITY_PROBLEMS: parts of the analysis that are vague, repeat each other, or
+are hard to follow.
 
-Coverage:
-1.0 = answers the analyst question using the records, captures key themes
-0.5 = partial coverage
-0.0 = misses the question or most themes
+Step 2: score each criterion from its list. Each score is a float between 0
+and 1. You can give a value between two anchors.
 
-Clarity:
-1.0 = clear and well-structured
-0.5 = somewhat clear
+Faithfulness, from UNSUPPORTED_CLAIMS:
+1.0 = the list is "- none"
+0.9 = one minor overstatement
+0.75 = one claim that the records do not support, or two or three minor overstatements
+0.5 = several claims that the records do not support
+0.25 = most claims are not supported
+0.0 = the analysis is not based on the records
+
+Coverage, from MISSED_THEMES:
+1.0 = the list is "- none"
+0.9 = one minor theme is missing
+0.75 = one important theme is missing, or two or three minor themes
+0.5 = several important themes are missing, or one part of the analyst prompt is not answered
+0.25 = the analysis answers only a small part of the analyst prompt
+0.0 = the analysis does not answer the analyst prompt
+
+Clarity, from CLARITY_PROBLEMS:
+1.0 = the list is "- none"
+0.9 = one minor problem
+0.75 = two or three minor problems
+0.5 = the reader must work hard to follow the analysis
+0.25 = most parts are hard to follow
 0.0 = confusing or poorly written
 
-Also produce an uncertainty explanation — one short paragraph explaining
-which criterion drove the score, calling out unsupported claims if any.
-
 Output format:
-Respond with exactly four lines and nothing else, in this exact format:
+Plain text, with no Markdown. First the three lists, then the four score
+lines. Nothing after the UNCERTAINTY_EXPLANATION line.
+UNSUPPORTED_CLAIMS:
+- <problem> (<record ids>)
+MISSED_THEMES:
+- <problem> (<record ids>)
+CLARITY_PROBLEMS:
+- <problem>
 FAITHFULNESS: <0.0-1.0>
 COVERAGE: <0.0-1.0>
 CLARITY: <0.0-1.0>
-UNCERTAINTY_EXPLANATION: <one short paragraph>
+UNCERTAINTY_EXPLANATION: <one short paragraph that names the main problems, or says that you found none>
 
 Example:
-FAITHFULNESS: 0.9
-COVERAGE: 0.8
-CLARITY: 0.9
-UNCERTAINTY_EXPLANATION: The analysis is well-supported by the source records and covers the analyst's question, though it slightly overstates how widespread one minor theme is.
+UNSUPPORTED_CLAIMS:
+- The analysis says that most records ask for cash, but only three records do (id-12, id-31, id-47).
+MISSED_THEMES:
+- Several records say that the water point is too far away, and the analysis does not mention it (id-8, id-19, id-44).
+- Two records report problems with the registration hotline (id-22, id-60).
+CLARITY_PROBLEMS:
+- The sections on shelter and on household items repeat each other.
+FAITHFULNESS: 0.7
+COVERAGE: 0.6
+CLARITY: 0.85
+UNCERTAINTY_EXPLANATION: The analysis overstates how many records ask for cash. It leaves out the distance to the water point and the hotline problems, and two sections repeat each other.
 """
 
 

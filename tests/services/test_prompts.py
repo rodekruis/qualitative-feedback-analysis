@@ -8,6 +8,7 @@ from qfa.domain.models import (
 )
 from qfa.services.prompts import (
     ANALYZE_GUARDRAILS_PROMPT,
+    ANALYZE_JUDGE_PROMPT,
     ANALYZE_OUTPUT_FORMAT_PROMPT,
     build_analyze_judge_system_message,
     build_analyze_user_message,
@@ -305,13 +306,13 @@ class TestBuildAnalyzeJudgeSystemMessage:
         assert "The model said {{result}}." in out
 
     def test_states_the_free_text_output_format(self):
-        """The judge prompt spells out the four-line reply it expects.
+        """The judge prompt spells out the reply it expects.
 
         The judge connection can point at a model/deployment that rejects a
         schema-enforced ``response_format`` outright (see
         ``AnalyzeJudgeResult``'s docstring), so ``analyze.py`` parses free
         text instead — this only works if the prompt states the exact
-        four-line shape ``_parse_analyze_judge_response`` expects.
+        shape ``_parse_analyze_judge_response`` expects.
         """
         out = build_analyze_judge_system_message(
             source_text="s", analyst_prompt="p", analysis="a"
@@ -321,6 +322,28 @@ class TestBuildAnalyzeJudgeSystemMessage:
         assert "CLARITY:" in out
         assert "UNCERTAINTY_EXPLANATION:" in out
         assert "QUALITY_SCORE:" not in out
+
+    def test_output_format_puts_problem_lists_before_scores(self):
+        """The judge names problems before it scores, and the explanation is last.
+
+        Why (#436): a judge that scores first gave 1.0 to every analyze
+        case. ``UNCERTAINTY_EXPLANATION`` must stay last because
+        ``_parse_analyze_judge_response`` reads it to the end of the reply.
+        """
+        output_format = ANALYZE_JUDGE_PROMPT.split("Output format:")[1].split(
+            "Example:"
+        )[0]
+        labels = [
+            "UNSUPPORTED_CLAIMS:",
+            "MISSED_THEMES:",
+            "CLARITY_PROBLEMS:",
+            "FAITHFULNESS:",
+            "COVERAGE:",
+            "CLARITY:",
+            "UNCERTAINTY_EXPLANATION:",
+        ]
+        positions = [output_format.index(label) for label in labels]
+        assert positions == sorted(positions)
 
     def test_output_language_pins_the_uncertainty_explanation_language(self):
         """``output_language`` adds a directive naming the uncertainty explanation.
