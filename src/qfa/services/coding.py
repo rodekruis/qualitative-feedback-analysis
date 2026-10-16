@@ -58,6 +58,7 @@ from qfa.services.prompt_names import (
     CODING_CLASSIFIER_SYSTEM,
     prompt_ref,
 )
+from qfa.settings import CodingSettings
 
 logger = logging.getLogger(__name__)
 
@@ -191,6 +192,10 @@ class CodingService:
         always injects a real port, a no-op one when Langfuse is
         unconfigured, so ``None`` here is only ever a test/script default,
         never production behaviour.
+    coding_settings : CodingSettings | None
+        Endpoint-scoped tuning — currently only the cap on concurrent
+        judge calls per request. ``None`` (the default) reads it from the
+        process environment.
     prompt_versions : dict[str, int] | None
         Current Langfuse version per name in
         :data:`~qfa.services.prompt_registry.SYSTEM_PROMPTS` (#398). ``None``
@@ -208,6 +213,7 @@ class CodingService:
         judge_llm: LLMPort | None = None,
         evaluator: EvaluationPort | None = None,
         prompt_versions: dict[str, int] | None = None,
+        coding_settings: CodingSettings | None = None,
     ) -> None:
         self._llm = llm
         # Same rule as AnalyzeService/SummarizeService: judging runs on its
@@ -219,6 +225,7 @@ class CodingService:
         self._executor = executor
         self._evaluator = evaluator
         self._prompt_versions: dict[str, int] = prompt_versions or {}
+        self._coding_settings = coding_settings or CodingSettings()
 
     async def assign_codes(
         self,

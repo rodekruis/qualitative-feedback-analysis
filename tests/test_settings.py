@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from qfa.settings import (
     AppSettings,
     AuthSettings,
+    CodingSettings,
     DatabaseSettings,
     JudgeLLMSettings,
     LLMSettings,
@@ -373,6 +374,26 @@ def test_analyze_settings_default_period_overridable_via_env(monkeypatch) -> Non
     assert AnalyzeSettings().default_coding_trend_period == "month"
 
 
+def test_coding_settings_defaults_and_env_prefix(monkeypatch) -> None:
+    """``CODING_MAX_CONCURRENT_JUDGES`` bounds the assign-codes judge fan-out.
+
+    Why: the judge fan-out is ``len(selected) x hierarchy levels`` and the
+    pick response has no maximum length (#333), so the cap is the only thing
+    standing between a pathological pick and a burst past the provider's rate
+    limit — it has to be tunable from the environment without a code change.
+    ``ge=1`` is pinned because 0 would deadlock the fan-out rather than
+    disable it.
+    """
+    assert CodingSettings().max_concurrent_judges == 8
+
+    monkeypatch.setenv("CODING_MAX_CONCURRENT_JUDGES", "3")
+    assert CodingSettings().max_concurrent_judges == 3
+
+    monkeypatch.setenv("CODING_MAX_CONCURRENT_JUDGES", "0")
+    with pytest.raises(ValidationError):
+        CodingSettings()
+
+
 class TestAppSettings:
     def test_composes_all_sub_settings(self, no_judge_env, monkeypatch):
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
@@ -397,6 +418,8 @@ class TestAppSettings:
         assert len(settings.auth.api_keys) == 1
         assert settings.auth.api_keys[0].tenant_id == "tenant-1"
         assert settings.orchestrator.chars_per_token == 4
+        assert isinstance(settings.coding, CodingSettings)
+        assert settings.coding.max_concurrent_judges == 8
         assert settings.log.loglevel == 10  # DEBUG
 
     def test_sub_settings_pick_up_env_overrides(self, monkeypatch):

@@ -508,6 +508,7 @@ def build_services(
             executor=executor,
             evaluator=evaluator,
             prompt_versions=prompt_versions,
+            coding_settings=settings.coding,
         ),
         analyze=analyze,
         # Neither summarisation path runs the token-budget guard or needs an
