@@ -457,6 +457,11 @@ See Shared helpers for a local server.
   project at `LANGFUSE_HOST` that holds the case set and the pool it was
   built from.
 
+To use the dev judge on a local server, start the server with
+`JUDGE_LLM_MODEL=azure_ai/mistral-medium-3-5` and `JUDGE_LLM_API_BASE` set to
+`AZ_JUDGE_LLM_API_BASE` of the `dev` GitHub environment. Otherwise the local
+judge is the primary model, or the judge that your `.env` sets.
+
 ```bash
 # smoke test against the first case
 uv run python eval/analyze_eval.py --dataset analyze/cases-frequent-en-v1 --smoke-limit 1
