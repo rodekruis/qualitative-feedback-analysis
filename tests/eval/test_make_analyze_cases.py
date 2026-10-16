@@ -69,7 +69,7 @@ def test_labels_hold_every_record_and_required_starts_at_the_threshold() -> None
 def test_only_the_protection_key_has_urgent() -> None:
     records = [
         _record("en-0001", theme="protection", urgent_kind="sex_for_aid"),
-        _record("en-0002", theme="protection", decoy=True),
+        _record("en-0002", theme="protection"),
         _record("en-0003", theme="food"),
     ]
 

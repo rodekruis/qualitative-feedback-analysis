@@ -4,8 +4,8 @@ Helper script (run manually, not in CI). Every record's text and the
 analyst prompt are anonymised together in one placeholder namespace
 before either reaches the model — see
 ``qfa.services.llm_call_executor.LLMCallExecutor.anonymize_records_and_prompt``.
-If the anonymizer masks a word that a downstream score depends on — a
-keyword, a group word, anything the ground truth relies on — the score
+If the anonymizer masks a word the model needs to report a record's
+label — a group word, the thing a record complains about — the score
 for that record falls even though the model behaved correctly on what
 it was actually shown.
 

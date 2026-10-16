@@ -249,6 +249,61 @@ The script stops before uploading anything if two records share an `id`, if
 a `family` is neither a known one nor `unplanted`, or if a record is
 missing one of the metadata fields above.
 
+## The analyze pool
+
+The analyze eval scores answers against a pool of synthetic feedback records
+in the Langfuse dataset `feedback/records-en-v1`. All records describe one Red
+Cross migration response in a transit area, in one writing style. The working
+file is `.corpus_work/analyze-pool/records-en-v1.yaml`, which git ignores.
+
+The pool tests three things:
+
+- **The 10 prompt families.** Each analyst prompt has a family, and each family
+  has something to find in the pool.
+- **The vulnerable groups.** Some groups are small on purpose, to test whether
+  an answer keeps them visible.
+- **The urgent protection records.** Some of them describe the concern
+  indirectly. Missing one is the costly error.
+
+Each record carries labels. The answer key of a case is computed from them, so
+the labels decide what a correct answer is. A missing or wrong label lowers a
+score and blames the model.
+
+| Label | Values | Read by family |
+| --- | --- | --- |
+| `theme` | `food`, `shelter`, `documents_and_legal_information`, `health`, `cash`, `water_and_hygiene`, `protection`, `praise`, `rumours`, `suggestions`, `transport` | `themes` |
+| `need` | `food`, `shelter`, `health`, `water` | `needs` |
+| `complaint_about` | `food_distribution`, `cash_transfer_delays`, `facilities`, `missing_information` | `complaints` |
+| `rumour` | `cash_assistance_eligibility`, `resettlement_priority_list`, `threats` | `rumours` |
+| `suggestion` | `extend_distribution_hours`, `add_more_latrines` | `suggestions` |
+| `praise_about` | `health_post_staff`, `shelter_conditions` | `praise` |
+| `info_request` | `documents_and_legal_status` | `information` |
+| `promise_gap` | `onward_transport_not_provided`, `resettlement_timeline_not_kept` | `promise_gap` |
+| `access_barrier` | `distance_to_distribution_point`, `no_wheelchair_accessible_route` | `access_barrier` |
+| `urgent_kind` | `child_labor_risk`, `trafficking_risk`, `minor_at_risk`, `domestic_violence`, `missing_unaccompanied_minor`, `sex_for_aid` | `protection` |
+| `groups` | `children`, `women`, `single_headed_households`, `older_people`, `disabilities`, `chronically_ill`, `lgbtqi`, `unaccompanied_minors` | every family, for `group_recall` |
+
+`FAMILY_LABEL` in `pool_spec.py` maps each family to its label. `PLANTED` holds
+the number of records per value. A value with 5 or more records
+(`REQUIRED_MIN_RECORDS`) is a required item of its family's key.
+
+Rules for the labels:
+
+- The person who writes a record sets its labels. Nobody infers them later.
+- A record has one `theme`, and it can carry any number of the other labels.
+  For example, a suggestion that also states a problem with a service carries
+  `suggestion` and `complaint_about`.
+- `complaint_about` names the service that the complaint is about. A complaint
+  about missing information that no other value covers is
+  `missing_information`.
+- Each `urgent_kind` value is on one record, and that record has the theme
+  `protection`.
+
+Known limit: `theme` mixes topics (`food`, `shelter`) with kinds of feedback
+(`suggestions`, `protection`). A record has one theme, so the `themes` case
+counts a suggestion about the food distribution only under `suggestions`, even
+when an answer reports it under `food`.
+
 ## Running `upload_pool.py`
 
 This script checks and uploads the working YAML file behind the analyze
@@ -272,8 +327,8 @@ uv run python eval/upload_pool.py \
 
 `--dry-run` runs every check and reports what would change, but writes
 nothing. It also prints how many records have no text yet. A real upload
-stops if any record has no text or no `review_status`, or if an urgent,
-decoy or group record is not `review_status: reviewed`. If an item
+stops if any record has no text or no `review_status`, or if an urgent
+or group record is not `review_status: reviewed`. If an item
 already exists and its content changed, the script updates that item.
 Langfuse keeps the old version.
 
@@ -291,7 +346,6 @@ Each record in the input file is one feedback record:
     praise_about: null
     info_request: null
     urgent_kind: null # set only on the 6 urgent protection records
-    decoy: false # true on the 4 protection decoys
     promise_gap: null
     access_barrier: null
     groups: [] # the vulnerable groups this record is about
@@ -305,8 +359,8 @@ Each record in the input file is one feedback record:
 
 The script stops before uploading anything if an id is not shaped
 `en-NNNN` or repeats, a record is missing one of the metadata fields
-above, a planted count (`PLANTED` in `pool_spec.py`) is wrong, the decoy
-count or the `urgent_kind`s are wrong, a `created` falls outside the
+above, a planted count (`PLANTED` in `pool_spec.py`) is wrong, the
+`urgent_kind`s are wrong, a `created` falls outside the
 window, or — once a record has text — its length is outside 60–1,200
 characters, it has no `facts`, or its text uses a banned word (`PSEA`,
 `safeguarding`, `exploitation`, `referral`).

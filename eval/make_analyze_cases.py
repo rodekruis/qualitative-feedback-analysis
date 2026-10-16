@@ -59,21 +59,20 @@ def build_answer_key(
     ``protection`` gets ``urgent``, the ids of the urgent records,
     instead of ``labels`` and ``required``: it is scored on which of
     those records the answer cites, not on a label every record carries.
-    ``groups`` maps each group to its records that also set one of the
-    family's labels; every record sets ``theme``, so the ``themes`` key
-    holds every group.
+    ``groups`` maps each group to its records that also set the family's
+    label; every record sets ``theme``, so the ``themes`` key holds every
+    group.
 
     An absent or empty part means "not scored", never "wrong".
     """
-    labels = FAMILY_LABEL[family]
+    label = FAMILY_LABEL[family]
 
     key: dict[str, Any] = {"family": family}
     if family == "protection":
         key["urgent"] = sorted(
-            record["id"] for record in records if record["metadata"].get("urgent_kind")
+            record["id"] for record in records if record["metadata"].get(label)
         )
     else:
-        (label,) = labels
         by_record = {
             record["id"]: record["metadata"].get(label) or None for record in records
         }
@@ -85,7 +84,7 @@ def build_answer_key(
 
     ids_by_group: dict[str, list[str]] = {}
     for record in records:
-        if not any(record["metadata"].get(label) for label in labels):
+        if not record["metadata"].get(label):
             continue
         for group in record["metadata"].get("groups") or []:
             ids_by_group.setdefault(group, []).append(record["id"])
