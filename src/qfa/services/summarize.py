@@ -245,7 +245,7 @@ class SummarizeService:
 
         Anonymisation runs off the event loop thread via
         ``asyncio.to_thread``, so a large batch cannot stall gunicorn's
-        asgi-worker heartbeat (#334).
+        asgi-worker heartbeat.
 
         Parameters
         ----------
@@ -277,7 +277,7 @@ class SummarizeService:
 
         # Offloaded via to_thread because Presidio's pass over the whole
         # batch envelope is synchronous, CPU-bound work that would otherwise
-        # starve gunicorn's asgi-worker heartbeat (#325, #334) —
+        # starve gunicorn's asgi-worker heartbeat —
         # asyncio.to_thread copies the current contextvars context, so
         # CallContext still propagates.
         with timed() as anonymize_sw:

@@ -599,11 +599,11 @@ class TestNonTransientError:
 
 
 class TestAnonymizationOffEventLoop:
-    """Pins #334: ``summarize_bulk`` anonymisation runs off the event loop.
+    """Pins that ``summarize_bulk`` anonymisation runs off the event loop.
 
     The bulk envelope grows with the batch, so a synchronous Presidio pass
     over it can stall every other coroutine on the worker — the same stall
-    that starved gunicorn's asgi-worker heartbeat in #325.
+    that starved gunicorn's asgi-worker heartbeat in ``analyze_bulk``.
     """
 
     @pytest.mark.asyncio

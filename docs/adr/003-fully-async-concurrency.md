@@ -102,7 +102,7 @@ anonymisation (`LLMCallExecutor.anonymize_records_and_prompt`) and, for
 `analyze_hierarchical`, their embedding (`EmbeddingPort.embed`) calls via
 `asyncio.to_thread`, using Python's default thread pool executor rather than
 a dedicated one. `SummarizeService.summarize_bulk` joined them for the same
-reason (issue #334), offloading its one-envelope
+reason, offloading its one-envelope
 `LLMCallExecutor.anonymize_text` call. Scope is deliberately narrow — only
 these known CPU-bound, non-cancellable calls — not a general policy of moving
 synchronous work off the loop:
