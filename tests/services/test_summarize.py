@@ -10,7 +10,9 @@ Per ADR-017 the service is driven over the **real**
 is no fake executor.
 """
 
+import asyncio
 import logging
+import time
 from datetime import UTC, datetime, timedelta
 from typing import ClassVar
 from uuid import uuid4
@@ -594,6 +596,103 @@ class TestNonTransientError:
             await service.summarize_bulk(_make_aggregate_request(), _future_deadline())
 
         assert len(fake_llm.calls) == 2
+
+
+class TestAnonymizationOffEventLoop:
+    """Pins that ``summarize_bulk`` anonymisation runs off the event loop.
+
+    The bulk envelope grows with the batch, so a synchronous Presidio pass
+    over it can stall every other coroutine on the worker — the same stall
+    that starved gunicorn's asgi-worker heartbeat in ``analyze_bulk``.
+    """
+
+    @pytest.mark.asyncio
+    async def test_blocking_anonymizer_does_not_stall_concurrent_coroutines(
+        self, settings
+    ):
+        block_seconds = 0.3
+
+        class BlockingAnonymizer(AnonymizationPort):
+            def anonymize(self, text):
+                # Simulates real Presidio work: genuine thread-blocking
+                # sleep, not an awaitable — the point being tested is that
+                # this does NOT block the event loop.
+                time.sleep(block_seconds)
+                return text, {}
+
+            def anonymize_batch(self, texts):
+                time.sleep(block_seconds)
+                return texts, {}
+
+            def deanonymize(self, text, mapping):
+                return text
+
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=_make_aggregate_summary_result()),
+                _make_llm_response(structured=_judge_text()),
+            ]
+        )
+        service = _build_service(fake_llm, settings, anonymizer=BlockingAnonymizer())
+
+        ticker_finished_at: float | None = None
+
+        async def ticker() -> None:
+            nonlocal ticker_finished_at
+            # If the event loop were blocked by the anonymiser's sleep,
+            # this could not resume until the sleep finished.
+            await asyncio.sleep(0.05)
+            ticker_finished_at = time.monotonic()
+
+        start = time.monotonic()
+        ticker_task = asyncio.create_task(ticker())
+        await service.summarize_bulk(_make_aggregate_request(), _future_deadline())
+        await ticker_task
+
+        assert ticker_finished_at is not None
+        assert ticker_finished_at - start < block_seconds / 2
+
+    @pytest.mark.asyncio
+    async def test_aggregate_summary_restores_redacted_values(self, settings):
+        """The anonymise → call → de-anonymise round trip survives the offload."""
+
+        class RedactingAnonymizer(AnonymizationPort):
+            def anonymize(self, text):
+                return text.replace("Jane Doe", "<PERSON_0>"), {
+                    "<PERSON_0>": "Jane Doe"
+                }
+
+            def anonymize_batch(self, texts):
+                return tuple(
+                    text.replace("Jane Doe", "<PERSON_0>") for text in texts
+                ), {"<PERSON_0>": "Jane Doe"}
+
+            def deanonymize(self, text, mapping):
+                for placeholder, value in mapping.items():
+                    text = text.replace(placeholder, value)
+                return text
+
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(
+                    structured=_make_aggregate_summary_result(
+                        summary="- <PERSON_0> asked for water."
+                    )
+                ),
+                _make_llm_response(structured=_judge_text()),
+            ]
+        )
+        service = _build_service(fake_llm, settings, anonymizer=RedactingAnonymizer())
+        request = _make_aggregate_request(
+            feedback_records=(_make_feedback_record(content="Jane Doe needs water."),)
+        )
+
+        result = await service.summarize_bulk(request, _future_deadline())
+
+        assert result.summary == "- Jane Doe asked for water."
+        # The LLM only ever saw the redacted envelope.
+        assert "Jane Doe" not in fake_llm.calls[0]["user_message"]
+        assert "<PERSON_0>" in fake_llm.calls[0]["user_message"]
 
 
 class TestAggregateSummaryOutputLanguage:
