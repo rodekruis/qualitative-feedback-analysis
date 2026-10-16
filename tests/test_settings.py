@@ -378,7 +378,7 @@ def test_coding_settings_defaults_and_env_prefix(monkeypatch) -> None:
     """``CODING_MAX_CONCURRENT_JUDGES`` bounds the assign-codes judge fan-out.
 
     Why: the judge fan-out is ``len(selected) x hierarchy levels`` and the
-    pick response has no maximum length (#333), so the cap is the only thing
+    pick response has no maximum length, so the cap is the only thing
     standing between a pathological pick and a burst past the provider's rate
     limit — it has to be tunable from the environment without a code change.
     ``ge=1`` is pinned because 0 would deadlock the fan-out rather than

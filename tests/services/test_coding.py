@@ -746,7 +746,7 @@ class TestAssignCodesConfidenceThreshold:
 
 
 class TestJudgeCallTimeout:
-    """Judge calls derive their timeout from the request deadline (#333).
+    """Judge calls derive their timeout from the request deadline.
 
     Before this fix ``_judge_code_level`` called the judge port directly with
     no ``timeout=``, so the port's own default applied and a single judge call
@@ -848,7 +848,7 @@ def _wide_request():
 
 
 class TestJudgeConcurrency:
-    """One semaphore per request bounds the judge fan-out (#333).
+    """One semaphore per request bounds the judge fan-out.
 
     ``CodingResponse.selected`` has no maximum length and each selected path
     costs one judge call per hierarchy level, so an unbounded ``gather`` let a

@@ -482,7 +482,7 @@ class CodingService:
             When ``deadline`` has passed, or when less than one minimum
             attempt window (10s) of budget remains once a ``semaphore`` slot
             is acquired — the call is refused rather than issued with a
-            timeout it cannot honour (#333).
+            timeout it cannot honour.
         """
         system_message, user_message = build_judge_messages(
             feedback_record=feedback_record,

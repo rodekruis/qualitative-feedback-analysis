@@ -432,7 +432,7 @@ class TestBuildServices:
     def test_coding_service_gets_the_coding_settings_group(
         self, auth_env: None
     ) -> None:
-        """``CODING_*`` reaches the service that reads it, by identity (#333).
+        """``CODING_*`` reaches the service that reads it, by identity.
 
         Identity, not equality: a second ``CodingSettings()`` constructed
         inside the service would silently re-read the environment and look
