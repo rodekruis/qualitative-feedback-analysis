@@ -4,8 +4,9 @@
 # Use this when you want to try an in-flight feature branch in the dev App
 # Service without cutting a pre-release. Images produced here are
 # *intentionally* not releases: they cannot enter the promote-to-staging or
-# promote-to-prd paths, because those workflows read digests from release
-# bodies and this workflow never writes to one.
+# promote-to-prd paths, because those workflows resolve `qfa-backend:<release
+# tag>` from ACR and this workflow pushes an `ephemeral-*` tag instead — there
+# is no release tag for them to resolve, and no GitHub release either.
 #
 # This is the only sanctioned way to get a non-release image into dev, and
 # there is no sanctioned way to get one into staging or prd. That asymmetry
@@ -55,12 +56,16 @@ jobs:
         id: push
         env:
           IMAGE: ${{ vars.AZ_ACR_NAME }}.azurecr.io/qfa-backend
+          # Bound to env rather than interpolated straight into the script:
+          # `ref` is a free-form workflow_dispatch input, and splicing it into
+          # shell would be a script-injection vector (same class as #173).
+          REF: ${{ inputs.ref }}
         run: |
           set -euo pipefail
           SHA=$(git rev-parse --short HEAD)
           FULL_SHA=$(git rev-parse HEAD)
           # Sanitize the ref so it's a valid Docker tag (alnum, dot, dash, underscore).
-          SAFE_REF=$(printf '%s' "${{ inputs.ref }}" | tr -c 'A-Za-z0-9._-' '-' | cut -c1-40)
+          SAFE_REF=$(printf '%s' "$REF" | tr -c 'A-Za-z0-9._-' '-' | cut -c1-40)
           TAG="ephemeral-${SAFE_REF}-${SHA}"
           docker build --build-arg GIT_SHA="$FULL_SHA" -t "$IMAGE:$TAG" .
           docker push "$IMAGE:$TAG"

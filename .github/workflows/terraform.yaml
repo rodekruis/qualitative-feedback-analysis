@@ -110,10 +110,16 @@ jobs:
           ARM_USE_AZUREAD: true
 
       - name: Select workspace
-        run: terraform workspace select ${{ inputs.environment || 'dev' }}
+        run: terraform workspace select "$WORKSPACE"
         env:
           ARM_USE_OIDC: true
           ARM_USE_AZUREAD: true
+          # Bound to env rather than interpolated straight into the command:
+          # the workflow_call `environment` input is a free string (only the
+          # workflow_dispatch entry point restricts it to a choice), and
+          # splicing it into shell would be a script-injection vector (same
+          # class as #173).
+          WORKSPACE: ${{ inputs.environment || 'dev' }}
 
       - name: Terraform plan
         if: ${{ inputs.command != 'apply' }}

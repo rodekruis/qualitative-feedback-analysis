@@ -33,6 +33,7 @@ to them, the options considered, and the reasoning behind the chosen approach.
 | [022](022-evaluation-port-for-live-judge-scores.md) | `EvaluationPort` for live judge scores in Langfuse | Accepted |
 | [023](023-eval-black-box-and-langfuse-ground-truth.md) | `eval/` as a black-box client, and Langfuse as the analyze ground truth | Accepted |
 | [024](024-prompt-port-langfuse-mirror.md) | `PromptPort` and a push-based Langfuse prompt mirror | Accepted |
+| [025](025-registry-derived-deploy-digest.md) | Derive the deploy digest from the registry, cross-checked against the release body | Accepted |
 
 ## Obsolete
 
@@ -66,5 +67,6 @@ to them, the options considered, and the reasoning behind the chosen approach.
 022-evaluation-port-for-live-judge-scores
 023-eval-black-box-and-langfuse-ground-truth
 024-prompt-port-langfuse-mirror
+025-registry-derived-deploy-digest
 obsolete/008-keep-orchestrator-port
 ```
