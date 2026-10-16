@@ -327,6 +327,12 @@ class CodingService:
         valid_indices = [
             idx for idx in dict.fromkeys(selected_indices) if 0 <= idx < len(options)
         ]
+        # One semaphore per request bounds every judge call across all
+        # selected paths, as analyze_hierarchical does for its fan-out.
+        # Per request, not per service: an instance-level semaphore binds to
+        # the first event loop that touches it and would serialise unrelated
+        # concurrent requests against each other.
+        semaphore = asyncio.Semaphore(self._coding_settings.max_concurrent_judges)
         judged = await asyncio.gather(
             *(
                 self._judge_selected_path(
@@ -335,6 +341,7 @@ class CodingService:
                     threshold=request.confidence_threshold,
                     tenant_id=request.tenant_id,
                     deadline=deadline,
+                    semaphore=semaphore,
                 )
                 for idx in valid_indices
             )
@@ -403,6 +410,7 @@ class CodingService:
         threshold: float | None,
         tenant_id: str,
         deadline: datetime,
+        semaphore: asyncio.Semaphore,
     ) -> tuple[_ScoredCode, bool]:
         """Judge a one-shot-selected path level by level, root to leaf.
 
@@ -414,7 +422,9 @@ class CodingService:
 
         Returns the scored path and whether it was rejected by
         ``threshold``, so independently-selected paths can be judged
-        concurrently instead of one at a time.
+        concurrently instead of one at a time. ``semaphore`` bounds those
+        judge calls: they are sequential within a path (each level's score
+        decides whether the next is reached) but concurrent across paths.
         """
         scores: list[float] = []
         explanations: list[str] = []
@@ -429,6 +439,7 @@ class CodingService:
                 path=current_path,
                 tenant_id=tenant_id,
                 deadline=deadline,
+                semaphore=semaphore,
             )
             scores.append(judge.score)
             explanations.append(judge.explanation)
@@ -456,6 +467,7 @@ class CodingService:
         path: list[tuple[str, str]],
         tenant_id: str,
         deadline: datetime,
+        semaphore: asyncio.Semaphore,
     ) -> JudgeResponse:
         """Call the judge LLM for one hierarchy level; return score and explanation.
 
@@ -463,6 +475,14 @@ class CodingService:
         :class:`~qfa.services.judge_scoring.JudgeResponse`'s docstring
         for why the judge connection cannot rely on the provider to enforce
         a response schema here.
+
+        Raises
+        ------
+        AnalysisTimeoutError
+            When ``deadline`` has passed, or when less than one minimum
+            attempt window (10s) of budget remains once a ``semaphore`` slot
+            is acquired — the call is refused rather than issued with a
+            timeout it cannot honour (#333).
         """
         system_message, user_message = build_judge_messages(
             feedback_record=feedback_record,
@@ -473,11 +493,14 @@ class CodingService:
         self._executor.check_token_limit(system_message, user_message)
         user_message, _ = self._anonymizer.anonymize(user_message)
         with judge_call():
-            response = await self._judge_llm.complete(
+            response = await self._executor.bounded_complete(
+                semaphore,
+                llm=self._judge_llm,
                 system_message=system_message,
                 user_message=user_message,
                 tenant_id=tenant_id,
                 response_model=str,
+                deadline=deadline,
                 prompt=prompt_ref(self._prompt_versions, CODING_CLASSIFIER_JUDGE),
             )
         judged = parse_judge_response(response.structured)
