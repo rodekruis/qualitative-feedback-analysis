@@ -2,7 +2,6 @@
 
 import importlib.resources
 import inspect
-import logging
 import unicodedata
 
 import pytest
@@ -18,9 +17,7 @@ from qfa.api.schemas import (
     ApiSummarizeBulkResponse,
     ApiSummarizeCommunityMeetingResponse,
     _assign_codes_request_examples,
-    _create_pretty_output,
     _format_quality,
-    _resolve_language,
     sanitize_output_language,
 )
 
@@ -436,113 +433,6 @@ def test_assigned_code_level_2_and_3_nullable():
     assert code.coding_level_3_id is None
     assert code.confidence_level_2 is None
     assert code.confidence_level_3 is None
-
-
-# --- pretty_output header localization ---
-
-
-@pytest.mark.parametrize(
-    "value,expected",
-    [
-        ("English", "en"),
-        ("en", "en"),
-        ("French", "fr"),
-        ("fr", "fr"),
-        ("FRENCH", "fr"),  # case-insensitive
-        ("Spanish", "es"),
-        ("es", "es"),
-        ("Arabic", "ar"),
-        ("ar", "ar"),
-        ("Russian", "ru"),
-        ("ru", "ru"),
-        ("Dutch", "nl"),
-        ("nl", "nl"),
-        ("Ukrainian", "uk"),
-        ("uk", "uk"),
-    ],
-)
-def test_resolve_language_maps_supported_names_and_codes(value, expected):
-    """Known language names and ISO codes resolve to their code, case-insensitively.
-
-    The static label table is keyed by ISO code, so free-text output_language
-    values must normalize to one of the seven supported codes.
-    """
-    assert _resolve_language(value) == expected
-
-
-@pytest.mark.parametrize("value", [None, "", "Klingon", "Esperanto", "  "])
-def test_resolve_language_falls_back_to_english(value):
-    """Absent or unsupported languages fall back to English.
-
-    English is the guaranteed fallback so the block is never left with an
-    unresolved placeholder label.
-    """
-    assert _resolve_language(value) == "en"
-
-
-def test_resolve_language_logs_warning_on_unsupported_value(caplog):
-    """A present-but-unsupported language is logged at WARNING before fallback.
-
-    Operators need visibility into which languages clients request but we do
-    not yet localize; the message must echo the requested value.
-    """
-    with caplog.at_level(logging.WARNING, logger="qfa.api.schemas"):
-        assert _resolve_language("Klingon") == "en"
-    assert any(
-        record.levelno == logging.WARNING and "Klingon" in record.getMessage()
-        for record in caplog.records
-    )
-
-
-@pytest.mark.parametrize("value", [None, "", "  ", "French", "en"])
-def test_resolve_language_does_not_warn_when_absent_or_supported(value, caplog):
-    """Absent or supported languages must not emit a fallback warning.
-
-    The warning is reserved for genuinely unsupported requests, so an omitted
-    or recognized language stays quiet.
-    """
-    with caplog.at_level(logging.WARNING, logger="qfa.api.schemas"):
-        _resolve_language(value)
-    assert not caplog.records
-
-
-def test_create_pretty_output_default_language_is_english():
-    """language=None reproduces the original English headers (regression guard).
-
-    Existing callers that do not pass a language must see unchanged output.
-    """
-    out = _create_pretty_output(
-        id="doc-1", quality_score=0.85, title="A title", summary="A summary"
-    )
-    assert "QUALITY:" in out
-    assert "TITLE:" in out
-    assert "SUMMARY:" in out
-    # No translated label leaks in for the default path.
-    assert "QUALITÉ" not in out
-
-
-def test_create_pretty_output_translates_headers_to_requested_language():
-    """French headers are translated while IDs, dots, and percentage are unchanged.
-
-    Only QUALITY/TITLE/SUMMARY are localized; technical ID labels and the
-    numeric/dot formatting stay as-is.
-    """
-    out = _create_pretty_output(
-        id="doc-1",
-        quality_score=0.85,
-        title="Un titre",
-        summary="Un résumé",
-        language="French",
-    )
-    assert "QUALITÉ" in out
-    assert "TITRE" in out
-    assert "RÉSUMÉ" in out
-    # English headers are replaced, not duplicated.
-    assert "QUALITY:" not in out
-    assert "TITLE:" not in out
-    # Technical label and numeric formatting are untouched.
-    assert "Feedback-ID:" in out
-    assert "85%" in out
 
 
 def test_summarize_bulk_pretty_output_is_summary_text_only():

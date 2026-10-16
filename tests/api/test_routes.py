@@ -312,7 +312,7 @@ class TestSummarizeSuccess:
         assert data["faithfulness"] is None
         assert data["coverage"] is None
         assert data["clarity"] is None
-        assert "pretty_output" in data
+        assert "pretty_output" not in data
 
     @pytest.mark.asyncio
     async def test_community_meeting_summary_forwards_meeting_base_url(
