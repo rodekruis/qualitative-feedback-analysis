@@ -35,9 +35,11 @@ _REDUCE_ACTION_PROMPT = (
     " faithfulness anchor — the prose must not contradict these counts."
     " Answer the analyst's instruction in <analyst_instruction>."
     " Apply the guardrails above."
-    " When you combine points from different partial analyses, the Records:"
-    " line of the combined point lists every id from the Records: lines of the"
-    " points you combined. Cite only ids that appear in the partial analyses."
+    " When you combine points from different partial analyses, merge their"
+    " supporting ids from the qfa-citations metadata into the combined point."
+    " Cite only ids that appear in the partial analyses. Rebuild one citation"
+    " metadata block for this synthesis; marker keys in different partials are"
+    " local to each partial and may collide."
 )
 
 

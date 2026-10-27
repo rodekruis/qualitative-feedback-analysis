@@ -190,18 +190,31 @@ This is presentational only — it rewrites the already-generated `analysis`/`su
 
 ### Record lists in analyses
 
-`/v1/analyze-bulk` (both modes) always answers in the same shape, even when the prompt asks for a table or another layout. Each point is a `###` heading, one to three sentences, and a last line that starts with `Records:`.
+`/v1/analyze-bulk` (both modes) defaults to a `###` heading per point, one to three sentences and a citation line. An explicit request for another Markdown layout, such as a table or bullet list, is honoured by the generation prompt. Citations can appear inside table cells or list items without Python rearranging the report.
 
 | Case | What the `analysis` holds |
 |---|---|
-| 5 ids or fewer | The `Records:` line stays in the point, with a bold label. Each id is linked as above. |
+| 5 ids or fewer | A bold `Records:` label and the linked ids appear at the citation location. |
 | More than 5 ids | The line becomes `**Records:** 46 records. *See "Records per point" at the end.*`. The linked ids go in a `#### <point title> (46 records)` block under `### Records per point`, after a `---` rule. |
 | Both record types | One list for both. The count reads `40 feedback records, 6 community meetings`, and each link uses the base URL of its own type. |
 | An id that is not in the request | Stays plain text. The count shows it as `unmatched`. |
 
-- The word `Records`, the counts and the section title stay in English in every output language.
+- These examples are English; labels, count wording, pointers and appendix titles come from the existing generation call in `output_language`, or the analysis language if none was requested. No extra translation call or language dictionary is used.
+- Python deduplicates each citation's ids, calculates counts (including mixed types), applies the five-id threshold and creates links. It does not verify translation quality, whether all findings are cited, or whether the cited records truly support each finding.
 - Plain Markdown only. EspoCRM shows raw HTML in a Text field as text, so there is no `<details>` fold, and EspoCRM headings have no anchors to link to.
 - `/v1/summarize-bulk` does not change.
+
+#### Internal citation contract
+
+The model places `[[qfa:c1]]` at each citation location and ends its answer with one `<qfa-citations>` JSON block, not a code fence:
+
+```json
+{"label":"Registros","heading":"Registros por punto","pointer":"Consulte \"{heading}\" al final.","citations":[{"key":"c1","title":"Agua","ids":["Form-1"],"count":"{count} registros"}]}
+```
+
+Each key must have exactly one marker and one metadata entry. Templates preserve `{count}` (one type), or `{feedback}`, `{meetings}` and `{unmatched}` for each nonzero kind when mixed or unknown ids are present. Python supplies the numbers; the model supplies suitable singular/plural wording. Pointer text must contain exactly one `{heading}`, which Python replaces with the same title used for the appendix. Labels and titles are single-line plain text so generated citations do not introduce table separators or HTML.
+
+Malformed JSON, missing/duplicate markers, invalid templates and empty citations raise an analysis error rather than leaking the internal contract or silently substituting English. Marker-free prose is still returned with normal ID hyperlinking, including answers with no supported findings; this is not proof of citation completeness. Partial and intermediate hierarchical answers keep their local citation metadata for the next reduction, which merges supporting ids and rebuilds keys. Only the final answer is rendered and its metadata removed.
 
 ## Usage endpoint response shape
 

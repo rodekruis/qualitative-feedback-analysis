@@ -8,6 +8,8 @@ single_pass call is byte-identical to before (no regression).
 """
 
 import asyncio
+import json
+import re
 import time
 from datetime import UTC, datetime, timedelta
 from html import unescape
@@ -29,10 +31,12 @@ from qfa.domain.ports import AnonymizationPort, EmbeddingPort, LLMPort
 from qfa.domain.usage_models import Operation
 from qfa.services.analyze import AnalyzeService
 from qfa.services.call_context import call_scope
+from qfa.services.hierarchical_prompts import build_reduce_system_message
 from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.services.prompts import ANALYZE_GUARDRAILS_PROMPT
 from qfa.settings import AnalyzeSettings, OrchestratorSettings
 
+from .test_record_links import _citation, _citation_answer
 from .test_summarize import FakeEvaluationPort
 
 TENANT_ID = "tenant-42"
@@ -229,14 +233,26 @@ async def test_hierarchical_covers_all_records_and_returns_confidence():
 
 
 @pytest.mark.asyncio
-async def test_hierarchical_final_answer_moves_a_long_records_line():
+@pytest.mark.parametrize("layout", ["default", "table"])
+async def test_hierarchical_final_answer_renders_localized_citations(layout):
     """The reduce answer goes through the same citation handling as ``analyze_bulk``."""
     records = tuple(
         r.model_copy(update={"url_id": f"id-{r.id}"})
         for r in _records(4, "water access was limited " * 5, "w")
         + _records(4, "health clinic medicine " * 5, "h")
     )
-    synthesis = "### All\nText.\nRecords: " + ", ".join(r.id for r in records)
+    body = (
+        "| Tema | Fuentes |\n| --- | --- |\n| Agua | [[qfa:c1]] |"
+        if layout == "table"
+        else "### Agua\nLargas colas.\n[[qfa:c1]]"
+    )
+    synthesis = _citation_answer(
+        body,
+        [
+            _citation([r.id for r in records], title="Agua", count="{count} registros"),
+        ],
+        spanish=True,
+    )
 
     class ReduceAnswersWithRecords(RecordingLLM):
         async def complete(self, system_message, user_message, *args, **kwargs):
@@ -249,10 +265,11 @@ async def test_hierarchical_final_answer_moves_a_long_records_line():
 
     request = AnalysisRequestModel(
         feedback_records=records,
-        prompt="trends?",
+        prompt="Give me a table." if layout == "table" else "trends?",
         tenant_id=TENANT_ID,
         mode="hierarchical",
         espo_feedback_base_url="https://espo.example.com/feedback",
+        output_language="Spanish",
     )
     service = _build_analyze_service(
         ReduceAnswersWithRecords(),
@@ -264,8 +281,77 @@ async def test_hierarchical_final_answer_moves_a_long_records_line():
 
     result = await service.analyze_hierarchical(request, deadline, anonymize=True)
 
-    assert "#### All (8 records)" in result.result
+    assert "#### Agua (8 registros)" in result.result
+    assert result.result.startswith(body.split("[[qfa:c1]]")[0])
+    assert "Records" not in result.result
+    assert "<qfa-citations>" not in result.result
     assert "[w0](https://espo.example.com/feedback/id-w0)" in result.result
+
+
+@pytest.mark.asyncio
+async def test_hierarchical_merges_partial_metadata_with_colliding_local_keys():
+    class CitationLLM(RecordingLLM):
+        async def complete(self, system_message, user_message, *args, **kwargs):
+            response = await super().complete(
+                system_message, user_message, *args, **kwargs
+            )
+            if _is_judge_call(system_message):
+                return response
+            if "<feedback_records>" in user_message:
+                ids = re.findall(r'<feedback_record id="([^"]+)"', user_message)
+            else:
+                partials = re.findall(
+                    r"<partial_analysis>(.*?)</partial_analysis>",
+                    user_message,
+                    re.DOTALL,
+                )
+                assert len(partials) >= 2
+                ids = []
+                for partial in partials:
+                    decoded = unescape(partial)
+                    assert "[[qfa:c1]]" in decoded
+                    payload = decoded.split("<qfa-citations>")[1].split(
+                        "</qfa-citations>"
+                    )[0]
+                    metadata = json.loads(payload)
+                    assert metadata["citations"][0]["key"] == "c1"
+                    ids.extend(metadata["citations"][0]["ids"])
+            text = _citation_answer(
+                "| Tema | Fuentes |\n| --- | --- |\n| Agua y salud | [[qfa:c1]] |",
+                [_citation(ids, title="Agua y salud", count="{count} registros")],
+                spanish=True,
+            )
+            return response.model_copy(update={"structured": text})
+
+    records = _records(4, "water access " * 5, "w") + _records(
+        4, "health clinic " * 5, "h"
+    )
+    llm = CitationLLM()
+    service = _build_analyze_service(
+        llm,
+        RecordingAnonymizer(),
+        FakeEmbeddingPort(),
+        max_total_tokens=100_000,
+    )
+    result = await service.analyze_hierarchical(
+        AnalysisRequestModel(
+            feedback_records=records,
+            prompt="Give me a table.",
+            tenant_id=TENANT_ID,
+            mode="hierarchical",
+            output_language="Spanish",
+        ),
+        datetime.now(UTC) + timedelta(seconds=120),
+    )
+    assert "#### Agua y salud (8 registros)" in result.result
+    assert "<qfa-citations>" not in result.result
+    for record in records:
+        assert result.result.count(record.id) == 1
+    map_calls = [c for c in llm.calls if "<feedback_records>" in c[1]]
+    judge_calls = [c for c in llm.calls if _is_judge_call(c[0])]
+    reduce_calls = [c for c in llm.calls if "<partial_analyses>" in c[1]]
+    assert len(map_calls) >= 2
+    assert len(llm.calls) == len(map_calls) + len(judge_calls) + len(reduce_calls)
 
 
 @pytest.mark.asyncio
@@ -512,16 +598,7 @@ async def test_anonymize_and_embed_do_not_block_the_event_loop():
 
 
 class LargeOutputLLM(LLMPort):
-    """LLM that returns a moderate map output to force multi-level tree-reduce.
-
-    Map calls return a ~250-char partial. With a 700-token budget and a
-    442-token system message, 3 partials (plus envelope overhead) fit in one
-    reduce group (683 tokens total) but 4 do not (755 tokens total) —
-    measured empirically via ``build_reduce_user_message``, since the
-    per-partial envelope tags make the token count not a clean multiple. Ten
-    map chunks therefore produce a multi-level tree-reduce (groups of 3 or
-    fewer, recursing until one final synthesis).
-    """
+    """Return ~250-character partials and syntheses to exercise tree-reduce."""
 
     def __init__(self):
         self.calls = []
@@ -546,9 +623,6 @@ class LargeOutputLLM(LLMPort):
                 cost=0.0,
             )
         if "<feedback_records>" in user_message:
-            # Map call — return a ~250-char partial so that 3 partials fit
-            # per reduce group but 4 do not, forcing a multi-level
-            # tree-reduce over the 10 map chunks.
             partial = "Analysis: " + ("Water access issues observed. " * 8)
             return LLMResponse(
                 structured=partial,
@@ -571,25 +645,13 @@ class LargeOutputLLM(LLMPort):
 
 @pytest.mark.asyncio
 async def test_recursion_fires_on_corpus_at_least_five_times_token_cap():
-    """A corpus >5x the cap forces trigger 1 (cluster splitting) and trigger 2 (tree-reduce).
-
-    Why: this is the headline acceptance criterion of #124. Trigger 1 fires
-    when the cluster's total tokens exceed the budget (many map sub-chunks).
-    Trigger 2 fires when the combined large partials exceed the budget,
-    causing recursive tree-reduce. A LargeOutputLLM returns ~250-char
-    partials. The 1000-token budget is sized against the ~790-token reduce
-    system message: it leaves room for only a few partials per reduce group,
-    so 10 map chunks produce a multi-level tree-reduce (several reduce
-    calls, all >= 2). If the system message grows, raise the budget, or the
-    "no progress" safeguard in ``_reduce_partials`` makes a single reduce call.
-    """
-    # 30 records of ~1000 chars each (250 tokens). Budget=1000 tokens, so 3
-    # records fit per map chunk → 10 map chunks (>= 3). Total = 30*250 = 7500
-    # tokens, which is 7.5x the 1000-token cap (>5x requirement).
-    per_record = (
-        "water access was limited and people waited for hours. " * 19
-    )  # ~1026 chars
+    """Exercise both splitting triggers with >5x the cap, allowing for prompt size."""
+    budget = len(build_reduce_system_message()) // 4 + 250
+    per_record = "water access was limited and people waited for hours. " * (
+        budget // 50
+    )
     records = _records(30, per_record, "w")
+    assert sum(len(r.content) // 4 for r in records) > 5 * budget
     request = AnalysisRequestModel(
         feedback_records=records,
         prompt="trends?",
@@ -598,7 +660,7 @@ async def test_recursion_fires_on_corpus_at_least_five_times_token_cap():
     )
     llm = LargeOutputLLM()
     service = _build_analyze_service(
-        llm, RecordingAnonymizer(), FakeEmbeddingPort(), max_total_tokens=1000
+        llm, RecordingAnonymizer(), FakeEmbeddingPort(), max_total_tokens=budget
     )
     deadline = datetime.now(UTC) + timedelta(seconds=120)
     result = await service.analyze_hierarchical(request, deadline, anonymize=True)

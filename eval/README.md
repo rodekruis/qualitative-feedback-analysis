@@ -481,13 +481,12 @@ backend's Postgres pool is small. The task is `async`, because the
 Langfuse SDK runs a sync task inside its own event loop one case at a
 time, whatever `max_concurrency` says.
 
-The harness sends the analyst prompt as it is. The service's own prompt
-asks the model for one `###` section per point, each ending with a
-`Records:` line of the ids behind it, and the reference scores read those
-ids. A point with more than 5 ids leaves a pointer line, and its ids move
-to a block under `### Records per point` at the end. Each id still appears
-once, so the scores are the same as for an inline answer
-(`test_analyze_scorers.py`).
+The harness sends the analyst prompt as it is. The service defaults to
+one `###` section per point but honours explicitly requested Markdown
+layouts. Reference scores read the rendered ids, not the internal citation
+markers or metadata. Each heading, list item or pipe-delimited table row
+is a separate point. Lists above 5 ids move to a closing section; its
+translated per-point blocks remain separate points for scoring.
 
 A 413 becomes the outcome `payload_too_large`, and a content-filter 422
 becomes `content_filtered`; both let the run continue. Any other failure

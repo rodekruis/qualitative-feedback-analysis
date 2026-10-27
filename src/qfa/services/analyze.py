@@ -337,7 +337,12 @@ class AnalyzeService:
             timeout=analyse_timeout,
             prompt=prompt_ref(self._prompt_versions, ANALYZE_SINGLE_PASS_SYSTEM),
         )
-        analysis_text: str = analyse_response.structured
+        analysis_text = format_record_citations(
+            analyse_response.structured,
+            request.feedback_records,
+            request.espo_feedback_base_url,
+            request.espo_meeting_base_url,
+        )
 
         if anonymize:
             restorable_mapping = {
@@ -348,13 +353,6 @@ class AnalyzeService:
             analysis_text = self._anonymizer.deanonymize(
                 analysis_text, restorable_mapping
             )
-
-        analysis_text = format_record_citations(
-            analysis_text,
-            request.feedback_records,
-            request.espo_feedback_base_url,
-            request.espo_meeting_base_url,
-        )
 
         quality_score: float | None
         uncertainty_explanation: str
@@ -681,6 +679,13 @@ class AnalyzeService:
             synthesis = await _reduce()
         logger.info("reduce phase in %.2fs", reduce_sw.elapsed_seconds)
 
+        analysis_text = format_record_citations(
+            synthesis,
+            request.feedback_records,
+            request.espo_feedback_base_url,
+            request.espo_meeting_base_url,
+        )
+
         logger.info("starting judge phase")
         with timed() as judge_sw:
             try:
@@ -732,8 +737,6 @@ class AnalyzeService:
                 f"lowest single-chunk faithfulness was {floor:.2f}."
             )
 
-        # 7. De-anonymise the synthesis (retain PERSON placeholders as in `analyze`).
-        analysis_text = synthesis
         if anonymize:
             restorable = {
                 placeholder: original
@@ -741,13 +744,6 @@ class AnalyzeService:
                 if not self._is_retained_analyze_placeholder(placeholder)
             }
             analysis_text = self._anonymizer.deanonymize(analysis_text, restorable)
-
-        analysis_text = format_record_citations(
-            analysis_text,
-            request.feedback_records,
-            request.espo_feedback_base_url,
-            request.espo_meeting_base_url,
-        )
 
         # One-line breakdown so a single log line answers "where did the time
         # go?" without scrolling. The total is the sum of the timed phases
