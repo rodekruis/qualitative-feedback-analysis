@@ -17,6 +17,7 @@ composition-only decomposition in the first place.
 """
 
 import asyncio
+import json
 import logging
 import re
 from datetime import datetime
@@ -56,6 +57,7 @@ from qfa.services.judge_scoring import (
 )
 from qfa.services.llm_call_executor import LLMCallExecutor, SlotTiming
 from qfa.services.prompt_names import (
+    ANALYZE_CITATION_TRANSLATION,
     ANALYZE_HIERARCHICAL_MAP_SYSTEM,
     ANALYZE_HIERARCHICAL_REDUCE_SYSTEM,
     ANALYZE_JUDGE,
@@ -67,6 +69,7 @@ from qfa.services.prompts import (
     JUDGE_USER_MESSAGE,
     build_analyze_judge_system_message,
     build_analyze_user_message,
+    build_output_language_instruction,
     build_single_pass_system_message,
 )
 from qfa.services.record_links import format_record_citations
@@ -74,6 +77,21 @@ from qfa.settings import AnalyzeSettings, OrchestratorSettings
 from qfa.utils import timed
 
 logger = logging.getLogger(__name__)
+
+_CITATION_TRANSLATION_PROMPT = (
+    "Translate each string in the JSON array into the requested output language. "
+    'Return only a JSON object {"translations": [...]} with translations in '
+    "exactly the same order. Use consistent terminology. "
+    "Preserve every number and the literal placeholder {heading} exactly. "
+    "Each translation must be nonempty plain text on one line, without Markdown. "
+    "Do not add explanations or translate the placeholder."
+)
+
+
+class CitationTranslations(BaseModel):
+    """Ordered translations of generated citation text, without source records."""
+
+    translations: list[str]
 
 
 class AnalyzeJudgeResult(BaseModel):
@@ -261,8 +279,8 @@ class AnalyzeService:
     ) -> AnalysisResultModel:
         """Analyze a batch of feedback records.
 
-        Two LLM calls are issued: the analysis itself, then a judge call
-        that produces ``quality_score`` and ``uncertainty_explanation``.
+        Analysis and judge calls are issued, plus a citation-label translation
+        call when a non-English output language and citations are present.
 
         Also computes the deterministic ``coding_trends`` table from
         record metadata (no LLM, no chunking) and returns it. The table
@@ -349,11 +367,8 @@ class AnalyzeService:
                 analysis_text, restorable_mapping
             )
 
-        analysis_text = format_record_citations(
-            analysis_text,
-            request.feedback_records,
-            request.espo_feedback_base_url,
-            request.espo_meeting_base_url,
+        analysis_text = await self._format_record_citations(
+            analysis_text, request, deadline
         )
 
         quality_score: float | None
@@ -418,6 +433,60 @@ class AnalyzeService:
             components=components,
             coding_trends=trend_table,
         )
+
+    async def _format_record_citations(
+        self, text: str, request: AnalysisRequestModel, deadline: datetime
+    ) -> str:
+        translations: dict[str, str] = {}
+
+        def collect(label: str) -> str:
+            return translations.setdefault(label, label)
+
+        def render() -> str:
+            return format_record_citations(
+                text,
+                request.feedback_records,
+                request.espo_feedback_base_url,
+                request.espo_meeting_base_url,
+                translate=collect,
+            )
+
+        formatted = render()
+        language = (request.output_language or "").strip()
+        if not translations or not language or language.casefold() in {"english", "en"}:
+            return formatted
+
+        originals = list(translations)
+        response = await self._executor.complete(
+            llm=self._llm,
+            system_message=_CITATION_TRANSLATION_PROMPT
+            + build_output_language_instruction(language, subject="citation labels"),
+            user_message=json.dumps(originals, ensure_ascii=False),
+            tenant_id=request.tenant_id,
+            response_model=str,
+            deadline=deadline,
+            prompt=prompt_ref(self._prompt_versions, ANALYZE_CITATION_TRANSLATION),
+        )
+        try:
+            translated = CitationTranslations.model_validate_json(
+                response.structured
+            ).translations
+        except ValidationError as exc:
+            raise AnalysisError("LLM returned invalid citation translations") from exc
+        if len(translated) != len(originals) or any(
+            not target.strip()
+            or "\n" in target
+            or "\r" in target
+            or any(marker in target for marker in ("*", "#", "<", ">"))
+            or re.findall(r"\d+", source) != re.findall(r"\d+", target)
+            or source.count("{heading}") != target.count("{heading}")
+            for source, target in zip(originals, translated)
+        ):
+            raise AnalysisError(
+                "Invalid citation translations: counts or placeholders changed"
+            )
+        translations.update(zip(originals, translated, strict=True))
+        return render()
 
     async def analyze_hierarchical(
         self,
@@ -681,6 +750,15 @@ class AnalyzeService:
             synthesis = await _reduce()
         logger.info("reduce phase in %.2fs", reduce_sw.elapsed_seconds)
 
+        if anonymize:
+            restorable = {
+                placeholder: original
+                for placeholder, original in mapping.items()
+                if not self._is_retained_analyze_placeholder(placeholder)
+            }
+            synthesis = self._anonymizer.deanonymize(synthesis, restorable)
+        synthesis = await self._format_record_citations(synthesis, request, deadline)
+
         logger.info("starting judge phase")
         with timed() as judge_sw:
             try:
@@ -732,22 +810,7 @@ class AnalyzeService:
                 f"lowest single-chunk faithfulness was {floor:.2f}."
             )
 
-        # 7. De-anonymise the synthesis (retain PERSON placeholders as in `analyze`).
         analysis_text = synthesis
-        if anonymize:
-            restorable = {
-                placeholder: original
-                for placeholder, original in mapping.items()
-                if not self._is_retained_analyze_placeholder(placeholder)
-            }
-            analysis_text = self._anonymizer.deanonymize(analysis_text, restorable)
-
-        analysis_text = format_record_citations(
-            analysis_text,
-            request.feedback_records,
-            request.espo_feedback_base_url,
-            request.espo_meeting_base_url,
-        )
 
         # One-line breakdown so a single log line answers "where did the time
         # go?" without scrolling. The total is the sum of the timed phases

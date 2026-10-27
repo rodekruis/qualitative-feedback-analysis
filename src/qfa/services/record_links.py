@@ -24,7 +24,9 @@ MAX_INLINE_RECORD_IDS = 5
 _HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(?P<title>.*?)\s*#*\s*$")
 
 OVERFLOW_HEADING = "Records per point"
-"""Title of the closing section that holds the long lists (English in every language)."""
+"""Default title of the closing section that holds the long lists."""
+
+_POINTER_TEXT = 'See "{heading}" at the end.'
 
 _CITATION_LINE = re.compile(
     r"^(?P<lead>\s*(?:[-*+]\s+)?)(?:\*\*|__)?(?P<label>[^\W\d_][^:\uff1a\n]{0,39}?)"
@@ -92,6 +94,8 @@ def format_record_citations(
     records: tuple[FeedbackRecordModel | CommunityMeetingRecordModel, ...],
     espo_feedback_base_url: str | None,
     espo_meeting_base_url: str | None = None,
+    *,
+    translate: Callable[[str], str] = lambda text: text,
 ) -> str:
     """Link record ids in an analysis and move long ``Records:`` lists to the end.
 
@@ -106,9 +110,8 @@ def format_record_citations(
     linked. Unknown ids stay plain text, so an invented id stays visible.
 
     Plain Markdown only: EspoCRM escapes raw HTML in Text fields, so a
-    ``<details>`` fold shows as literal text. Counts are in English in every
-    output language and never contain record text or ids. Each id appears once
-    in the answer.
+    ``<details>`` fold shows as literal text. ``translate`` localises only
+    generated labels, counts and navigation, never record text or ids.
     """
     apply_links = _link_applier(records, espo_feedback_base_url, espo_meeting_base_url)
     kinds = {
@@ -127,17 +130,21 @@ def format_record_citations(
             lines.append(apply_links(line))
         elif len(citation.ids) <= MAX_INLINE_RECORD_IDS:
             lines.append(
-                f"{citation.lead}**{citation.label}{citation.colon}** "
+                f"{citation.lead}**{translate(citation.label)}{citation.colon}** "
                 f"{apply_links(citation.rest)}"
             )
         else:
-            count = _count_label(*_count_by_kind(citation.ids, kinds))
-            lines.append(_pointer_line(count))
+            count = translate(_count_label(*_count_by_kind(citation.ids, kinds)))
+            lines.append(_pointer_line(count, translate))
             moved.append(
-                (heading or "Records", count, apply_links(", ".join(citation.ids)))
+                (
+                    heading or translate("Records"),
+                    count,
+                    apply_links(", ".join(citation.ids)),
+                )
             )
     if moved:
-        lines.append(_overflow_section(moved))
+        lines.append(_overflow_section(moved, translate(OVERFLOW_HEADING)))
     return "\n".join(lines)
 
 
@@ -189,16 +196,17 @@ def _count_label(feedback: int, meetings: int, unmatched: int) -> str:
     )
 
 
-def _pointer_line(label: str) -> str:
+def _pointer_line(label: str, translate: Callable[[str], str]) -> str:
     """Line that replaces a long ``Records:`` list inside its point.
 
     With :func:`_overflow_section`, the only place that knows the shape of a
     moved list, so a change of shape touches only these two functions.
     """
-    return f'**Records:** {label}. *See "{OVERFLOW_HEADING}" at the end.*'
+    pointer = translate(_POINTER_TEXT).replace("{heading}", translate(OVERFLOW_HEADING))
+    return f"**{translate('Records')}:** {label}. *{pointer}*"
 
 
-def _overflow_section(moved: list[tuple[str, str, str]]) -> str:
+def _overflow_section(moved: list[tuple[str, str, str]], title: str) -> str:
     """Closing section with one ``####`` block per moved list.
 
     A ``---`` rule sets it apart: Markdown collapses extra blank lines.
@@ -208,4 +216,4 @@ def _overflow_section(moved: list[tuple[str, str, str]]) -> str:
     blocks = "".join(
         f"\n#### {heading} ({label})\n{ids}\n" for heading, label, ids in moved
     )
-    return f"\n---\n\n### {OVERFLOW_HEADING}\n{blocks}".rstrip("\n")
+    return f"\n---\n\n### {title}\n{blocks}".rstrip("\n")

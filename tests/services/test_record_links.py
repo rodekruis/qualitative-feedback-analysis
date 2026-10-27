@@ -116,6 +116,32 @@ SECTION = "### Records per point"
 
 
 class TestFormatRecordCitations:
+    def test_translates_mixed_counts_pointer_heading_and_fallback_title(self):
+        records = (*(_feedback(n) for n in range(1, 5)), _meeting(1), _meeting(2))
+        labels = {
+            "4 feedback records, 2 community meetings, 1 unmatched id": "4 feedbackrecords, 2 gemeenschapsbijeenkomsten, 1 onbekende id",
+            'See "{heading}" at the end.': 'Zie "{heading}" aan het einde.',
+            "Records per point": "Records per punt",
+            "Records": "Records",
+        }
+
+        result = format_record_citations(
+            f"Records: {_ids(records)}, Form-99999",
+            records,
+            FEEDBACK_URL,
+            MEETING_URL,
+            translate=labels.__getitem__,
+        )
+
+        count = "4 feedbackrecords, 2 gemeenschapsbijeenkomsten, 1 onbekende id"
+        assert result.startswith(
+            f'**Records:** {count}. *Zie "Records per punt" aan het einde.*'
+        )
+        assert f"### Records per punt\n\n#### Records ({count})" in result
+        assert f"[Form-00001]({FEEDBACK_URL}/fb-1)" in result
+        assert f"[MTG-0001]({MEETING_URL}/mt-1)" in result
+        assert result.endswith(", Form-99999")
+
     def test_short_line_stays_inline_with_links(self):
         records = tuple(_feedback(n) for n in range(1, 6))
         text = f"### Water\nLong queues.\nRecords: {_ids(records)}"

@@ -27,7 +27,11 @@ from qfa.domain.models import (
 )
 from qfa.domain.ports import AnonymizationPort, EmbeddingPort, LLMPort
 from qfa.domain.usage_models import Operation
-from qfa.services.analyze import AnalyzeService
+from qfa.services.analyze import (
+    _CITATION_TRANSLATION_PROMPT,
+    AnalyzeService,
+    CitationTranslations,
+)
 from qfa.services.call_context import call_scope
 from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.services.prompts import ANALYZE_GUARDRAILS_PROMPT
@@ -229,7 +233,8 @@ async def test_hierarchical_covers_all_records_and_returns_confidence():
 
 
 @pytest.mark.asyncio
-async def test_hierarchical_final_answer_moves_a_long_records_line():
+@pytest.mark.parametrize("language", [None, "Spanish"])
+async def test_hierarchical_final_answer_moves_a_long_records_line(language):
     """The reduce answer goes through the same citation handling as ``analyze_bulk``."""
     records = tuple(
         r.model_copy(update={"url_id": f"id-{r.id}"})
@@ -240,6 +245,21 @@ async def test_hierarchical_final_answer_moves_a_long_records_line():
 
     class ReduceAnswersWithRecords(RecordingLLM):
         async def complete(self, system_message, user_message, *args, **kwargs):
+            if system_message.startswith(_CITATION_TRANSLATION_PROMPT):
+                return LLMResponse(
+                    structured=CitationTranslations(
+                        translations=[
+                            "8 registros",
+                            'Consulte "{heading}" al final.',
+                            "Registros por punto",
+                            "Registros",
+                        ]
+                    ).model_dump_json(),
+                    model="fake",
+                    prompt_tokens=1,
+                    completion_tokens=1,
+                    cost=0.0,
+                )
             response = await super().complete(
                 system_message, user_message, *args, **kwargs
             )
@@ -253,6 +273,7 @@ async def test_hierarchical_final_answer_moves_a_long_records_line():
         tenant_id=TENANT_ID,
         mode="hierarchical",
         espo_feedback_base_url="https://espo.example.com/feedback",
+        output_language=language,
     )
     service = _build_analyze_service(
         ReduceAnswersWithRecords(),
@@ -264,7 +285,15 @@ async def test_hierarchical_final_answer_moves_a_long_records_line():
 
     result = await service.analyze_hierarchical(request, deadline, anonymize=True)
 
-    assert "#### All (8 records)" in result.result
+    if language:
+        assert (
+            '**Registros:** 8 registros. *Consulte "Registros por punto" al final.*'
+            in result.result
+        )
+        assert "### Registros por punto\n\n#### All (8 registros)" in result.result
+        assert "Records" not in result.result
+    else:
+        assert "#### All (8 records)" in result.result
     assert "[w0](https://espo.example.com/feedback/id-w0)" in result.result
 
 

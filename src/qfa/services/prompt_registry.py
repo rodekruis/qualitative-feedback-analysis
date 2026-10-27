@@ -2,12 +2,12 @@
 
 :data:`SYSTEM_PROMPTS` is what
 :func:`qfa.api.composition.build_prompt_versions` pushes to Langfuse at
-startup, and what the tests check against. Adding a thirteenth prompt later
+startup, and what the tests check against. Adding a prompt
 means adding one entry here — every value is imported from its owning
 module, never copied as a duplicate literal, so this registry cannot drift
 from the text an LLM call actually sends.
 
-Each of the 12 names maps to one combined, static prompt. Two rules for
+Each name maps to one combined, static prompt. Two rules for
 what is versioned:
 
 * Where a real call site appends request-specific text to a prompt — the
@@ -21,12 +21,14 @@ what is versioned:
   used here.
 """
 
+from qfa.services.analyze import _CITATION_TRANSLATION_PROMPT
 from qfa.services.coding_classifier import _JUDGE_SYSTEM, SYSTEM_PROMPT
 from qfa.services.hierarchical_prompts import (
     build_map_system_message,
     build_reduce_system_message,
 )
 from qfa.services.prompt_names import (
+    ANALYZE_CITATION_TRANSLATION,
     ANALYZE_HIERARCHICAL_MAP_SYSTEM,
     ANALYZE_HIERARCHICAL_REDUCE_SYSTEM,
     ANALYZE_JUDGE,
@@ -65,6 +67,7 @@ SYSTEM_PROMPTS: dict[str, str] = {
     ANALYZE_HIERARCHICAL_MAP_SYSTEM: _ANALYZE_HIERARCHICAL_MAP_SYSTEM,
     ANALYZE_HIERARCHICAL_REDUCE_SYSTEM: _ANALYZE_HIERARCHICAL_REDUCE_SYSTEM,
     ANALYZE_JUDGE: ANALYZE_JUDGE_PROMPT,
+    ANALYZE_CITATION_TRANSLATION: _CITATION_TRANSLATION_PROMPT,
     SUMMARIZE_AGGREGATE_SYSTEM: _DEFAULT_AGGREGATE_SUMMARIZATION_PROMPT,
     SUMMARIZE_SINGLE_SYSTEM: _DEFAULT_SUMMARIZATION_PROMPT,
     SUMMARIZE_COMMUNITY_MEETING_SYSTEM: (

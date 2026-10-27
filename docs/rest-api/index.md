@@ -190,7 +190,7 @@ This is presentational only — it rewrites the already-generated `analysis`/`su
 
 ### Record lists in analyses
 
-`/v1/analyze-bulk` (both modes) always answers in the same shape, even when the prompt asks for a table or another layout. Each point is a `###` heading, one to three sentences, and a last line that starts with `Records:`.
+`/v1/analyze-bulk` (both modes) always answers in the same shape, even when the prompt asks for a table or another layout. Each point is a `###` heading, one to three sentences, and a last line that starts with `Records:` (translated when `output_language` is set).
 
 | Case | What the `analysis` holds |
 |---|---|
@@ -199,7 +199,7 @@ This is presentational only — it rewrites the already-generated `analysis`/`su
 | Both record types | One list for both. The count reads `40 feedback records, 6 community meetings`, and each link uses the base URL of its own type. |
 | An id that is not in the request | Stays plain text. The count shows it as `unmatched`. |
 
-- The word `Records`, the counts and the section title stay in English in every output language.
+- These examples are English. When `output_language` is set, citation labels, counts, the pointer and the closing section title are translated into that language; the Markdown shape, five-id threshold, ids and links stay unchanged. This adds one deadline-bounded LLM call for citation text only (no record content or ids); invalid translations fail the request rather than silently reverting to English. Without `output_language`, the existing defaults apply.
 - Plain Markdown only. EspoCRM shows raw HTML in a Text field as text, so there is no `<details>` fold, and EspoCRM headings have no anchors to link to.
 - `/v1/summarize-bulk` does not change.
 
