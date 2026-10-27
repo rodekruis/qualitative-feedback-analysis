@@ -19,7 +19,6 @@ import pytest
 
 from qfa.domain.errors import (
     AnalysisError,
-    AnalysisTimeoutError,
     FeedbackTooLargeError,
     LLMBadRequestError,
     LLMError,
@@ -37,13 +36,14 @@ from qfa.domain.usage_models import Operation
 from qfa.services.analyze import (
     AnalyzeJudgeResult,
     AnalyzeService,
-    CitationTranslations,
     _parse_analyze_judge_response,
 )
 from qfa.services.call_context import call_scope
 from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.services.prompts import ANALYZE_JUDGE_PROMPT, JUDGE_UNAVAILABLE_EXPLANATION
 from qfa.settings import OrchestratorSettings
+
+from .test_record_links import _citation, _citation_answer
 
 # Reuse the doubles the summarize suite already ships rather than growing a
 # second, drifting pair (ADR-017) — same call the sensitivity and coding
@@ -761,203 +761,85 @@ class TestAnalyzeHappyPath:
         )
 
     @pytest.mark.asyncio
-    async def test_long_records_line_moves_to_the_end_but_the_judge_sees_the_raw_answer(
-        self, settings
+    @pytest.mark.parametrize("layout", ["default", "table", "list"])
+    async def test_localized_citations_preserve_layout_without_extra_calls(
+        self, settings, layout
     ):
-        """A ``Records:`` line over the limit moves to the end; the judge scores the raw text."""
+        """Only analysis + judge calls; Python counts and links the model's markers."""
         records = tuple(
             _make_feedback_record(doc_id=f"Form-{n}", content="a", url_id=f"id-{n}")
             for n in range(1, 8)
         )
-        raw = "### Water\nLong queues.\nRecords: " + ", ".join(r.id for r in records)
+        body = {
+            "default": "### Agua\nLargas colas.\n[[qfa:c1]]",
+            "table": "| Tema | Fuentes |\n| --- | --- |\n| Agua | [[qfa:c1]] |",
+            "list": "- Agua: largas colas. [[qfa:c1]]",
+        }[layout]
+        raw = _citation_answer(
+            body,
+            [
+                _citation(
+                    [r.id for r in records], title="Agua", count="{count} registros"
+                ),
+            ],
+            spanish=True,
+        )
         fake_llm = _judging_llm(analysis=raw)
         service = _build_analyze_service(fake_llm, FakeAnonymizer(), settings)
-        request = _make_request(feedback_records=records).model_copy(
-            update={"espo_feedback_base_url": "https://espo.example.com/feedback"}
-        )
-
-        result = await service.analyze_bulk(request, _future_deadline())
-
-        assert "### Records per point\n\n#### Water (7 records)" in result.result
-        assert "[Form-1](https://espo.example.com/feedback/id-1)" in result.result
-        assert raw in fake_llm.calls[1]["system_message"]
-        assert "Records per point" not in fake_llm.calls[1]["system_message"]
-
-
-class TestCitationTranslation:
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        "reply", ["not JSON", '{"translations": null}', '{"translations": [123]}']
-    )
-    async def test_unparseable_translation_response_fails(self, settings, reply):
-        llm = FakeLLMPort(
-            responses=[
-                _make_llm_response("Records: doc-1"),
-                _make_llm_response(reply),
-            ]
-        )
-        service = _build_analyze_service(llm, FakeAnonymizer(), settings)
-        with pytest.raises(AnalysisError, match="invalid citation translations"):
-            await service.analyze_bulk(
-                _make_request(output_language="Dutch"), _future_deadline()
-            )
-
-    @pytest.mark.asyncio
-    async def test_translation_failure_propagates(self, settings):
-        llm = FakeLLMPort(
-            responses=[_make_llm_response("Records: doc-1")],
-            errors=[None, LLMError("translation unavailable")],
-        )
-        service = _build_analyze_service(llm, FakeAnonymizer(), settings)
-        with pytest.raises(LLMError, match="translation unavailable"):
-            await service.analyze_bulk(
-                _make_request(output_language="Dutch"), _future_deadline()
-            )
-
-    @pytest.mark.asyncio
-    async def test_translation_respects_request_deadline(self, settings):
-        llm = FakeLLMPort()
-        service = _build_analyze_service(llm, FakeAnonymizer(), settings)
-        with pytest.raises(AnalysisTimeoutError, match="Deadline exceeded"):
-            await service._format_record_citations(
-                "Records: doc-1",
-                _make_request(output_language="Dutch"),
-                datetime.now(UTC) - timedelta(seconds=1),
-            )
-        assert not llm.calls
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize("count", [1, 5, 6, 37])
-    async def test_spanish_citations_preserve_format_and_links(self, settings, count):
-        records = tuple(
-            _make_feedback_record(doc_id=f"Form-{n}", url_id=f"id-{n}")
-            for n in range(1, count + 1)
-        )
-        raw = "### Agua\nLargas colas.\nRecords: " + ", ".join(r.id for r in records)
-        translated = (
-            [
-                f"{count} registros",
-                'Consulte "{heading}" al final.',
-                "Registros por punto",
-                "Registros",
-            ]
-            if count > 5
-            else ["Registros"]
-        )
-        llm = FakeLLMPort(
-            responses=[
-                _make_llm_response(raw),
-                _make_llm_response(
-                    CitationTranslations(translations=translated).model_dump_json()
-                ),
-                _make_llm_response(_judge_text(0.9, 0.9, 0.9, "Bien")),
-            ]
-        )
-        service = _build_analyze_service(llm, FakeAnonymizer(), settings)
         request = _make_request(
-            feedback_records=records, output_language="Spanish"
+            feedback_records=records,
+            output_language="Spanish",
+            prompt="Give me a table." if layout == "table" else "Summarize feedback.",
         ).model_copy(
             update={"espo_feedback_base_url": "https://espo.example.com/feedback"}
         )
 
         result = await service.analyze_bulk(request, _future_deadline())
 
-        if count > 5:
-            assert (
-                f'**Registros:** {count} registros. *Consulte "Registros por punto" al final.*'
-                in result.result
-            )
-            assert (
-                f"---\n\n### Registros por punto\n\n#### Agua ({count} registros)"
-                in result.result
-            )
-        else:
-            assert "**Registros:** [Form-1]" in result.result
-            assert "---" not in result.result
+        assert "### Registros por punto\n\n#### Agua (7 registros)" in result.result
+        assert (
+            '**Registros:** 7 registros. *Consulte "Registros por punto" al final.*'
+            in result.result
+        )
+        assert result.result.startswith(body.split("[[qfa:c1]]")[0])
+        assert "[Form-1](https://espo.example.com/feedback/id-1)" in result.result
+        assert len(fake_llm.calls) == 2
+        assert raw in fake_llm.calls[1]["system_message"]
+        assert "<qfa-citations>" not in result.result
         assert "Records" not in result.result
-        assert llm.calls[1]["response_model"] is str
-        for record in records:
-            assert (
-                result.result.count(
-                    f"[{record.id}](https://espo.example.com/feedback/{record.url_id})"
-                )
-                == 1
-            )
-        assert all(record.id not in llm.calls[1]["user_message"] for record in records)
-        assert "Largas colas." not in llm.calls[1]["user_message"]
-        assert raw in llm.calls[2]["system_message"]
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        "translations",
-        [
-            [],
-            [""],
-            ["Registros\n### Extra"],
-            ["**Registros**"],
-        ],
-    )
-    async def test_invalid_translations_fail_instead_of_returning_english(
-        self, settings, translations
-    ):
-        llm = FakeLLMPort(
-            responses=[
-                _make_llm_response("Records: doc-1"),
-                _make_llm_response(
-                    CitationTranslations(translations=translations).model_dump_json()
-                ),
-            ]
+    async def test_invalid_citation_contract_fails_before_judging(self, settings):
+        fake_llm = _judging_llm("### Water\n[[qfa:c1]]")
+        service = _build_analyze_service(fake_llm, FakeAnonymizer(), settings)
+        with pytest.raises(AnalysisError, match="citation metadata"):
+            await service.analyze_bulk(_make_request(), _future_deadline())
+        assert len(fake_llm.calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_restoring_quotes_cannot_corrupt_citation_json(self, settings):
+        class QuoteAnonymizer(FakeAnonymizer):
+            def anonymize_batch(self, texts):
+                return texts, {"<LOCATION_0>": 'The "Water" district'}
+
+            def deanonymize(self, text, mapping):
+                for placeholder, original in mapping.items():
+                    text = text.replace(placeholder, original)
+                return text
+
+        records = tuple(_make_feedback_record(doc_id=f"Form-{n}") for n in range(6))
+        raw = _citation_answer(
+            "### <LOCATION_0>\n[[qfa:c1]]",
+            [_citation([r.id for r in records], title="<LOCATION_0>")],
         )
-        service = _build_analyze_service(llm, FakeAnonymizer(), settings)
-        with pytest.raises(AnalysisError, match="Invalid citation translations"):
-            await service.analyze_bulk(
-                _make_request(output_language="Dutch"), _future_deadline()
-            )
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        "invalid",
-        [
-            [
-                "38 registros",
-                'Consulte "{heading}" al final.',
-                "Registros por punto",
-                "Registros",
-            ],
-            ["37 registros", "Consulte al final.", "Registros por punto", "Registros"],
-        ],
-    )
-    async def test_changed_counts_or_missing_heading_placeholder_fail(
-        self, settings, invalid
-    ):
-        records = tuple(_make_feedback_record(doc_id=f"Form-{n}") for n in range(37))
-        llm = FakeLLMPort(
-            responses=[
-                _make_llm_response("Records: " + ", ".join(r.id for r in records)),
-                _make_llm_response(
-                    CitationTranslations(translations=invalid).model_dump_json()
-                ),
-            ]
-        )
-        service = _build_analyze_service(llm, FakeAnonymizer(), settings)
-        with pytest.raises(AnalysisError, match="Invalid citation translations"):
-            await service.analyze_bulk(
-                _make_request(feedback_records=records, output_language="Spanish"),
-                _future_deadline(),
-            )
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize("language", [None, "English", "en"])
-    async def test_default_and_english_citations_need_no_translation_call(
-        self, settings, language
-    ):
-        llm = _judging_llm("Records: doc-1")
-        service = _build_analyze_service(llm, FakeAnonymizer(), settings)
+        fake_llm = _judging_llm(raw)
+        service = _build_analyze_service(fake_llm, QuoteAnonymizer(), settings)
         result = await service.analyze_bulk(
-            _make_request(output_language=language), _future_deadline()
+            _make_request(feedback_records=records),
+            _future_deadline(),
         )
-        assert result.result == "**Records:** doc-1"
-        assert len(llm.calls) == 2
+        assert '### The "Water" district' in result.result
+        assert '#### The "Water" district (6 records)' in result.result
 
 
 class TestAnalyzePromptVersions:

@@ -81,6 +81,19 @@ def test_cited_ids_matches_bold_and_uppercase_but_not_a_longer_number() -> None:
     assert cited_ids(text) == {"en-0042"}
 
 
+def test_table_rows_are_scored_as_separate_findings() -> None:
+    key = _key(
+        labels={"en-0001": "food", "en-0002": "shelter"},
+        required=["food", "shelter"],
+    )
+    text = (
+        "| Topic | Records |\n| --- | --- |\n| Food | en-0001 |\n| Shelter | en-0002 |"
+    )
+    scores = score_answer(text, key, list(key["labels"]))
+    assert _score(scores, "item_recall").value == 1
+    assert _score(scores, "citation_precision").value == 1
+
+
 def test_judge_scores_leave_out_a_null_value() -> None:
     full_output = {
         "quality_score": 0.8,

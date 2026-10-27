@@ -30,6 +30,18 @@ def test_guardrails_forbid_trailing_questions():
     assert "Do not end with a question" in ANALYZE_GUARDRAILS_PROMPT
 
 
+def test_default_layout_and_explicit_markdown_layouts_share_citation_contract():
+    assert "By default" in ANALYZE_OUTPUT_FORMAT_PROMPT
+    assert "explicitly requests another Markdown" in ANALYZE_OUTPUT_FORMAT_PROMPT
+    assert "table cell or list item" in ANALYZE_OUTPUT_FORMAT_PROMPT
+    assert "[[qfa:c1]]" in ANALYZE_OUTPUT_FORMAT_PROMPT
+    assert "<qfa-citations>" in ANALYZE_OUTPUT_FORMAT_PROMPT
+    assert "{count}" in ANALYZE_OUTPUT_FORMAT_PROMPT
+    assert "{heading}" in ANALYZE_OUTPUT_FORMAT_PROMPT
+    assert "Translate label, heading, pointer" in ANALYZE_OUTPUT_FORMAT_PROMPT
+    assert "Keep the word" not in ANALYZE_OUTPUT_FORMAT_PROMPT
+
+
 class TestBuildSinglePassSystemMessage:
     def test_contains_the_output_format_block(self):
         """The single-pass message carries the one-section-per-point format."""

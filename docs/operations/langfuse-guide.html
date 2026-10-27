@@ -283,7 +283,7 @@ footer { border-top: 1px solid var(--line); padding-top: 18px; font-size: 0.85re
         <tr><td>Which organizations use QFA</td><td>Users</td><td>Each tenant ID with its number of calls, tokens and cost. The ID is a random string, so you must look up the country in another system.</td></tr>
         <tr><td>What it costs</td><td>Dashboards or Users</td><td>Cost per call, per day, per model and per tenant.</td></tr>
         <tr><td>How good the output is</td><td>Scores</td><td>User ratings and judge scores over time, per task.</td></tr>
-        <tr><td>Which instructions the model got</td><td>Prompts</td><td>The QFA prompts, each with its full text and version history. <code>analyze-citation-translation</code> translates generated citation labels for non-English analyses; its input contains only labels, counts and a heading placeholder, not record content or ids.</td></tr>
+        <tr><td>Which instructions the model got</td><td>Prompts</td><td>The 12 QFA prompts, each with its full text and version history. Analysis generation now includes citation markers and translated JSON metadata in the same response, including map/reduce responses. Python renders the final citations; the judge reads the internal metadata to check support. There is no separate translation call or prompt.</td></tr>
         <tr><td>How a test run went</td><td>Datasets</td><td>Test sets and the results of each test run.</td></tr>
         <tr><td>How a deploy compares to earlier ones</td><td>Dashboards, in <span class="mono">dev</span></td><td>The <em>Evaluation comparison by version</em> dashboard: test scores per deploy, side by side.</td></tr>
       </tbody>
@@ -319,7 +319,7 @@ footer { border-top: 1px solid var(--line); padding-top: 18px; font-size: 0.85re
     </div>
     <div>
       <h3>Prompts and versions</h3>
-      <p>The Prompts page shows the instructions that QFA gives the model, for example <code>summarize-single-system</code>. When the team changes an instruction, a new version appears at the next start of the service. Each call shows which prompt and which version it used, so you can compare results before and after a change.</p>
+      <p>The Prompts page shows the 12 instructions that QFA gives the model, for example <code>summarize-single-system</code>. When the team changes an instruction, a new version appears at the next start of the service. Each call shows which prompt and which version it used, so you can compare results before and after a change.</p>
       <p class="muted">These prompts are fixed text from the code. They never contain feedback.</p>
     </div>
   </div>

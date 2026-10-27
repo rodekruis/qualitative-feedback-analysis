@@ -17,7 +17,6 @@ ANALYZE_SINGLE_PASS_SYSTEM = "analyze-single-pass-system"  # noqa: S105 (not a p
 ANALYZE_HIERARCHICAL_MAP_SYSTEM = "analyze-hierarchical-map-system"
 ANALYZE_HIERARCHICAL_REDUCE_SYSTEM = "analyze-hierarchical-reduce-system"
 ANALYZE_JUDGE = "analyze-judge"
-ANALYZE_CITATION_TRANSLATION = "analyze-citation-translation"
 SUMMARIZE_AGGREGATE_SYSTEM = "summarize-aggregate-system"
 SUMMARIZE_SINGLE_SYSTEM = "summarize-single-system"
 SUMMARIZE_COMMUNITY_MEETING_SYSTEM = "summarize-community-meeting-system"

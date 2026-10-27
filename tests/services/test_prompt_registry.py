@@ -41,7 +41,7 @@ from qfa.domain.models import (
     SummaryResultModel,
 )
 from qfa.domain.sensitivity_types import SensitivityType
-from qfa.services.analyze import AnalyzeService, CitationTranslations
+from qfa.services.analyze import AnalyzeService
 from qfa.services.coding import CodingService
 from qfa.services.coding_classifier import CodingResponse
 from qfa.services.llm_call_executor import LLMCallExecutor
@@ -112,10 +112,7 @@ async def _single_pass_calls() -> list[tuple[PromptRef | None, str]]:
     """Drive ``analyze_bulk`` (single_pass): tags ``analyze-single-pass-system``/``analyze-judge``."""
     fake_llm = FakeLLMPort(
         responses=[
-            _llm_response("Records: doc-1"),
-            _llm_response(
-                CitationTranslations(translations=["Bronnen"]).model_dump_json()
-            ),
+            _llm_response("analysis text"),
             _llm_response(_analyze_judge_text()),
         ]
     )
@@ -128,10 +125,7 @@ async def _single_pass_calls() -> list[tuple[PromptRef | None, str]]:
         prompt_versions=_PROMPT_VERSIONS,
     )
     request = AnalysisRequestModel(
-        feedback_records=(_feedback_record(),),
-        prompt="trends?",
-        tenant_id=TENANT_ID,
-        output_language="Dutch",
+        feedback_records=(_feedback_record(),), prompt="trends?", tenant_id=TENANT_ID
     )
 
     await service.analyze_bulk(request, _future_deadline())

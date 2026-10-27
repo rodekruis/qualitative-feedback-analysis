@@ -30,6 +30,7 @@ _ALL_BOLD = re.compile(r"^\*\*(?:(?!\*\*).)+\*\*$")
 # No leading space: an indented item is a detail of the point above it,
 # and a nested item under "1. " is already indented three spaces.
 _TOP_LEVEL_LIST_ITEM = re.compile(r"^(?:[-*+]|\d+[.)])\s")
+_TABLE_ROW = re.compile(r"^\s*\|.*\|\s*$")
 _CITED_ID = re.compile(r"\b[a-z]{2}-\d{4}\b")
 
 
@@ -38,8 +39,7 @@ def sections(text: str) -> list[str]:
 
     A section starts at a markdown heading, at a line that is all bold
     such as ``**1. Food security (5 records)**``, or at a top-level list
-    item — answers report one point per heading or per list item, and
-    which of the two they use varies by prompt. An indented list item
+    item or a pipe-delimited table row; the layout varies by prompt. An indented list item
     stays inside its point, so the detail bullets under a heading do not
     split it. A bold label with text after it, such as ``**Food:** the
     camp ran out``, also stays inside the section above it. Anything
@@ -52,6 +52,7 @@ def sections(text: str) -> list[str]:
             _HEADING.match(line)
             or _ALL_BOLD.match(line.strip())
             or _TOP_LEVEL_LIST_ITEM.match(line)
+            or _TABLE_ROW.match(line)
         )
         if starts_new and current:
             result.append("\n".join(current))
