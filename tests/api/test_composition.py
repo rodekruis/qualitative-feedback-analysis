@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import base64
+import importlib.resources
 import json
 from typing import Any
 from unittest.mock import patch
 
 import litellm
 import pytest
+import yaml
+from litellm import ModelResponse
+from litellm.types.utils import Usage
 from pydantic import SecretStr, ValidationError
 
 from qfa.adapters.evaluation import NoOpEvaluationAdapter
@@ -583,6 +587,14 @@ class TestBuildServices:
         assert services.prompt_versions is stub_versions
 
 
+def _azure_model_prices() -> dict[str, dict[str, Any]]:
+    prices_yaml = importlib.resources.files("qfa.resources").joinpath(
+        "model_prices.yaml"
+    )
+    models = yaml.safe_load(prices_yaml.read_text())["models"]
+    return {key: entry for key, entry in models.items() if key.startswith("azure/")}
+
+
 class TestRegisterCustomModelPrices:
     """Judge calls on an unpriced model are silently recorded at zero cost.
 
@@ -600,6 +612,23 @@ class TestRegisterCustomModelPrices:
 
         assert entry["input_cost_per_token"] > 0
         assert entry["output_cost_per_token"] > 0
+
+    @pytest.mark.parametrize("model", sorted(_azure_model_prices()))
+    def test_azure_call_is_billed_at_the_custom_rate(self, model: str) -> None:
+        """A wrong ``litellm_provider`` makes LiteLLM skip the entry and bill $0."""
+        register_custom_model_prices()
+        entry = _azure_model_prices()[model]
+        response = ModelResponse(
+            model=model.removeprefix("azure/"),
+            usage=Usage(prompt_tokens=1000, completion_tokens=500, total_tokens=1500),
+        )
+        response._hidden_params["custom_llm_provider"] = "azure"
+
+        cost = litellm.completion_cost(completion_response=response)
+
+        assert cost == pytest.approx(
+            1000 * entry["input_cost_per_token"] + 500 * entry["output_cost_per_token"]
+        )
 
 
 @pytest.fixture
