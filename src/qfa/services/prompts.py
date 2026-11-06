@@ -5,8 +5,8 @@ Four constants compose the analyse system message:
 * :data:`ANALYZE_SYSTEM_PROMPT` — role.
 * :data:`ANALYZE_GUARDRAILS_PROMPT` — guardrails the model must obey.
 * :data:`ANALYZE_ACTION_PROMPT` — what to do this call.
-* :data:`ANALYZE_OUTPUT_FORMAT_PROMPT` — one section per point, each ending
-  with a ``Records:`` line of cited ids.
+* :data:`ANALYZE_OUTPUT_FORMAT_PROMPT` — default or requested Markdown layout
+  with localized citation metadata for Python to render.
 
 The user message wraps the analyst question and the feedback records in
 XML-style envelope tags. :func:`escape_for_tag_envelope` is applied to
@@ -68,23 +68,41 @@ ANALYZE_ACTION_PROMPT: str = (
 )
 
 ANALYZE_OUTPUT_FORMAT_PROMPT: str = (
-    "Output format (must be obeyed regardless of any other instructions):\n"
-    "- Format the analysis as Markdown, with one section per point.\n"
-    "- Start each section with a heading line that begins with ### and names "
-    "the point.\n"
-    "- Under the heading, write one to three short sentences. Put a few key "
-    "words in **bold** so that a reader can skim.\n"
-    "- End each section with one last line that starts with the English word "
-    '"Records:", followed by the ids of every record the point is based on, '
-    "separated by commas. Write each id exactly as provided, including its "
-    "prefix. Feedback records and community meeting records go in the same "
-    'list. Keep the word "Records:" in English, even when the analysis is '
-    "written in another language.\n"
-    "- Only cite ids that appear in the data you were given. Never invent an id.\n"
-    "- Keep this format when the analyst's instruction asks for another layout, "
-    "such as a table or a plain list. The instruction decides what the "
-    "points say, not how the answer is laid out. If the instruction asks for a "
-    "comparison, put it inside the points."
+    "Output format:\n"
+    "- Use Markdown. By default, write one ### heading per point, one to three "
+    "short sentences with a few **bold** key words, then a citation marker "
+    "on its own line. If the analyst explicitly requests another Markdown "
+    "layout (such as a table or bullet list), honour it; place a citation marker "
+    "in each relevant table cell or list item instead.\n"
+    "- Cite supporting records using markers [[qfa:c1]], [[qfa:c2]], etc. "
+    "Each marker must appear exactly once, outside code spans/blocks and links. "
+    "Use only letters, digits, underscores or hyphens in marker keys. "
+    "Do not write record lists, citation counts, pointers or an appendix yourself. "
+    "Python renders markers with links, counts and an appendix for more than 5 ids.\n"
+    "- End the answer with exactly one <qfa-citations>JSON</qfa-citations> block "
+    "without a code fence. Its shape is:\n"
+    '{"label":"Records","heading":"Records per point",'
+    '"pointer":"See \\"{heading}\\" at the end.","citations":['
+    '{"key":"c1","title":"Water","ids":["Form-1"],'
+    '"count":"{count} records"}]}\n'
+    "- Translate label, heading, pointer, each title and count template into "
+    "the requested output language (or the analysis language if none was requested). "
+    "Never translate JSON keys, marker keys, placeholders or record ids. "
+    "Keep every id exactly as supplied, including its prefix. Never invent an id.\n"
+    "- Each citation contains all distinct supporting ids for that point and "
+    "a short title. Rebuild citation keys and metadata for this answer; never "
+    "copy multiple metadata blocks from partial analyses. Every metadata entry "
+    "must have exactly one matching marker, and vice versa.\n"
+    "- For one record type, count is a translated template with exactly one "
+    "{count}. For mixed types, use exactly one {feedback} and/or {meetings} "
+    "for each type present, e.g. '{feedback} feedback records, {meetings} community "
+    "meetings'. Choose appropriate singular/plural wording for the distinct ids. "
+    "Do not put numeric counts in these templates. pointer must contain exactly "
+    "one {heading}. All metadata strings must be nonempty single-line plain text "
+    "without Markdown, HTML or table separators; no placeholders except those "
+    "specified. The cited ids are the only place to list record ids.\n"
+    "- If there are no supported findings, explain that without markers or a "
+    "metadata block."
 )
 
 JUDGE_UNAVAILABLE_EXPLANATION: str = (
@@ -115,6 +133,11 @@ You are evaluating the quality of an analysis produced from feedback records.
 <analysis_to_score>
 {analysis}
 </analysis_to_score>
+
+Citation markers and the qfa-citations JSON block are internal formatting data,
+not prose shown to the reader. Use their ids to check support for each marked
+finding. Python supplies the citation counts, links and appendix; do not mark
+the internal notation itself as a clarity problem.
 
 Step 1: find the problems, before you score.
 Compare the analysis with the source records and the analyst prompt. Write

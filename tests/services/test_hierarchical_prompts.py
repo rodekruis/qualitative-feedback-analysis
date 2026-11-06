@@ -37,11 +37,17 @@ def test_reduce_system_message_contains_guardrails() -> None:
 def test_map_and_reduce_system_messages_contain_the_output_format() -> None:
     """Map and reduce carry the same format block as the single-pass message.
 
-    Why: the reduce step only sees partials, so the ``Records:`` lines must
-    be written at map time and kept at reduce time.
+    Citation metadata must survive every stage, including intermediate reductions.
     """
     assert ANALYZE_OUTPUT_FORMAT_PROMPT in build_map_system_message()
     assert ANALYZE_OUTPUT_FORMAT_PROMPT in build_reduce_system_message()
+
+
+def test_reduce_merges_citation_ids_and_rebuilds_local_keys() -> None:
+    message = build_reduce_system_message("Spanish")
+    assert "merge their supporting ids" in message
+    assert "local to each partial and may collide" in message
+    assert "Rebuild one citation" in message
 
 
 def test_map_system_message_honours_output_language() -> None:

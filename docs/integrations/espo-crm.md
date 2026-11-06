@@ -120,7 +120,7 @@ The `motherPayload` sends `espo_feedback_base_url` and `espo_meeting_base_url` t
 
 ### Long record lists in analyses
 
-`modelResponse` is a Text field. EspoCRM shows it as Markdown and escapes raw HTML, so a `<details>` fold shows as literal text (checked on dev). For a point with more than 5 records, `analyze-bulk` therefore leaves a pointer line in the point and lists the records under `### Records per point` at the end. See [REST API § Record lists in analyses](../rest-api/index.md#record-lists-in-analyses). The pointer cannot be a link: EspoCRM headings have no anchors. A collapsible list needs a separate EspoCRM field.
+`modelResponse` is a Text field. EspoCRM shows it as Markdown and escapes raw HTML, so a `<details>` fold shows as literal text (checked on dev). `analyze-bulk` defaults to insight sections but can generate explicitly requested Markdown layouts, including tables. Python renders citations in place; lists above 5 ids move to a closing section, leaving a count and pointer even inside a table cell. Labels and pointers follow the output language. See [REST API § Record lists in analyses](../rest-api/index.md#record-lists-in-analyses). The pointer cannot be a link: EspoCRM headings have no anchors. Table rendering still needs verification on the target EspoCRM instance.
 
 ## Authentication
 

@@ -283,7 +283,7 @@ footer { border-top: 1px solid var(--line); padding-top: 18px; font-size: 0.85re
         <tr><td>Which organizations use QFA</td><td>Users</td><td>Each tenant ID with its number of calls, tokens and cost. The ID is a random string, so you must look up the country in another system.</td></tr>
         <tr><td>What it costs</td><td>Dashboards or Users</td><td>Cost per call, per day, per model and per tenant.</td></tr>
         <tr><td>How good the output is</td><td>Scores</td><td>User ratings and judge scores over time, per task.</td></tr>
-        <tr><td>Which instructions the model got</td><td>Prompts</td><td>The 12 QFA prompts, each with its full text and version history.</td></tr>
+        <tr><td>Which instructions the model got</td><td>Prompts</td><td>The 12 QFA prompts, each with its full text and version history. Analysis generation now includes citation markers and translated JSON metadata in the same response, including map/reduce responses. Python renders the final citations; the judge reads the internal metadata to check support. There is no separate translation call or prompt.</td></tr>
         <tr><td>How a test run went</td><td>Datasets</td><td>Test sets and the results of each test run.</td></tr>
         <tr><td>How a deploy compares to earlier ones</td><td>Dashboards, in <span class="mono">dev</span></td><td>The <em>Evaluation comparison by version</em> dashboard: test scores per deploy, side by side.</td></tr>
       </tbody>
