@@ -66,6 +66,17 @@ gh variable set AZ_CLIENT_ID       --env "$ENV" --repo "$REPO" --body "$(terrafo
 gh variable set AZ_RESOURCE_GROUP  --env "$ENV" --repo "$REPO" --body "$TF_VAR_resource_group_name"
 gh variable set AZ_APP_NAME        --env "$ENV" --repo "$REPO" --body "qfa-${ENV}-backend"
 
+# Required: the primary LLM model, azure/<Foundry deployment name>. CI's
+# Terraform run stops with an error while it is missing. See
+# docs/operations/release-flow.md#changing-the-llm-model-for-an-environment.
+gh variable set AZ_LLM_MODEL       --env "$ENV" --repo "$REPO" --body "azure/gpt-5.4"
+
+# Optional: a separate judge model (see ADR-020). Leaving AZ_JUDGE_LLM_MODEL
+# unset turns the judge connection off, so judge calls run on AZ_LLM_MODEL.
+# An azure_ai/ judge also needs its endpoint in AZ_JUDGE_LLM_API_BASE.
+gh variable set AZ_JUDGE_LLM_MODEL    --env "$ENV" --repo "$REPO" --body "azure_ai/mistral-medium-3-5"
+gh variable set AZ_JUDGE_LLM_API_BASE --env "$ENV" --repo "$REPO" --body "https://<resource>.services.ai.azure.com/models"
+
 # Optional: only needed to turn on Langfuse call tracing for this
 # environment (see docs/operations/observability.md). Leaving these unset
 # is the default. It disables tracing entirely, and no other step below

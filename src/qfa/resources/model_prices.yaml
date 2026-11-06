@@ -1,4 +1,5 @@
-# Custom model pricing for models absent from LiteLLM's built-in cost map.
+# Custom model pricing for models absent from LiteLLM's built-in cost map,
+# or priced differently there (LiteLLM lists Azure Global, not EU Data Zone).
 # Registered at startup via litellm.register_model().
 # Prices are per-token in USD.
 #
@@ -33,9 +34,25 @@ models:
     max_tokens: 131072
     litellm_provider: azure_ai
     mode: chat
-  azure/gpt-5.4:
-    input_cost_per_token: 0.0000025
-    output_cost_per_token: 0.000015
+  # Azure OpenAI EU Data Zone Standard, short-context (<272k input) rates;
+  # LLM_MAX_TOTAL_TOKENS keeps every request below 272k input tokens.
+  # litellm_provider must be "azure" for azure/ keys, or LiteLLM skips the entry.
+  # LiteLLM prices a call by the model name Azure returns, which can be the
+  # dated version, so each model is listed under both names.
+  azure/gpt-5.4: &azure_gpt_5_4
+    input_cost_per_token: 0.00000275
+    cache_read_input_token_cost: 0.00000028
+    output_cost_per_token: 0.0000165
     max_tokens: 1050000
-    litellm_provider: azure_ai
+    litellm_provider: azure
     mode: chat
+  azure/gpt-5.4-2026-03-05: *azure_gpt_5_4
+  azure/gpt-6.1-sol: &azure_gpt_6_1_sol
+    input_cost_per_token: 0.0000022
+    cache_read_input_token_cost: 0.00000011
+    cache_creation_input_token_cost: 0.00000275
+    output_cost_per_token: 0.000011
+    max_tokens: 1050000
+    litellm_provider: azure
+    mode: chat
+  azure/gpt-6.1-sol-2026-09-29: *azure_gpt_6_1_sol
