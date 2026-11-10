@@ -43,6 +43,24 @@ from qfa.utils import timed
 
 logger = logging.getLogger(__name__)
 
+# API version per LiteLLM provider prefix, used when none is configured. Azure
+# OpenAI gets the dateless v1 API: with a dated version before 2024-08-01
+# LiteLLM sends structured output as a function tool, which newer models
+# (e.g. gpt-6.1-sol) reject. See ADR-026.
+_DEFAULT_API_VERSION_BY_PREFIX: dict[str, str] = {
+    "azure/": "v1",
+    "azure_ai/": "2024-05-01-preview",
+}
+
+
+def default_api_version(model: str) -> str:
+    """Return the API version for ``model`` when none is configured, or ``""``."""
+    for prefix, api_version in _DEFAULT_API_VERSION_BY_PREFIX.items():
+        if model.startswith(prefix):
+            return api_version
+    return ""
+
+
 # JSON-Schema validation keywords that some structured-output providers reject
 # in a ``response_format`` schema — Azure AI Mistral, for one, answers a schema
 # carrying ``minimum`` with "Received unsupported keyword `minimum` in schema".
@@ -284,9 +302,11 @@ class LiteLLMClient(LLMPort):
     api_key : str
         API key for the provider.
     api_base : str
-        Base URL for the provider endpoint. Empty string if not needed.
+        Base URL for the provider endpoint. Empty string if not needed. A
+        trailing ``/`` is removed, since LiteLLM appends ``/openai/v1/...``.
     api_version : str
-        API version string. Empty string if not needed.
+        API version string. Empty string means :func:`default_api_version`
+        for ``model``.
     tracer : Tracer | None
         Emits one span per :meth:`complete` call, for Langfuse call tracing
         (see :func:`qfa.api.composition.build_langfuse_tracer`). ``None``
@@ -310,8 +330,8 @@ class LiteLLMClient(LLMPort):
     ) -> None:
         self._model = model
         self._api_key = api_key
-        self._api_base = api_base
-        self._api_version = api_version
+        self._api_base = api_base.rstrip("/")
+        self._api_version = api_version or default_api_version(model)
         self._chars_per_token = chars_per_token
         self._max_total_tokens = max_total_tokens
         self._tracer = (

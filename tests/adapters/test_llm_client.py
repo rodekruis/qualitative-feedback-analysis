@@ -7,6 +7,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
+import litellm
 import pytest
 from litellm.exceptions import APIError, BadRequestError, RateLimitError, Timeout
 from opentelemetry.sdk.trace import TracerProvider
@@ -23,6 +24,7 @@ from qfa.adapters.llm_client import (
     LiteLLMClient,
     _content_filter_signal,
     _provider_safe_response_format,
+    default_api_version,
 )
 from qfa.domain.errors import (
     LLMBadRequestError,
@@ -131,6 +133,96 @@ class TestLiteLLMClientCallParameters:
         messages = call_kwargs["messages"]
         assert messages[0] == {"role": "system", "content": SYSTEM_MSG}
         assert messages[1] == {"role": "user", "content": USER_MSG}
+
+
+class TestApiVersion:
+    """The API version follows the model's provider unless one is configured (ADR-026)."""
+
+    @pytest.mark.parametrize(
+        ("model", "expected"),
+        [
+            ("azure/gpt-6.1-sol", "v1"),
+            ("azure/gpt-5.4", "v1"),
+            ("azure_ai/mistral-medium-3-5", "2024-05-01-preview"),
+            ("azure_ai/claude-sonnet-4-6", "2024-05-01-preview"),
+            ("openai/gpt-4o", ""),
+        ],
+    )
+    def test_default_follows_the_provider_prefix(self, model: str, expected: str):
+        assert default_api_version(model) == expected
+
+    @pytest.mark.asyncio
+    async def test_trailing_slash_is_removed_from_api_base(self):
+        client = _make_client(api_base="https://res.openai.azure.com/")
+        with (
+            patch(
+                "qfa.adapters.llm_client.acompletion",
+                new_callable=AsyncMock,
+                return_value=_make_mock_response(),
+            ) as mock_ac,
+            patch("qfa.adapters.llm_client.completion_cost", return_value=0.0),
+        ):
+            await client.complete(SYSTEM_MSG, USER_MSG, TENANT_ID, str, timeout=TIMEOUT)
+
+        assert mock_ac.call_args.kwargs["api_base"] == "https://res.openai.azure.com"
+
+    @pytest.mark.asyncio
+    async def test_azure_structured_output_is_sent_as_response_format_on_v1(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Regression: dated versions before 2024-08 made LiteLLM send a function tool.
+
+        gpt-6.1-sol rejects tools here with a 400, which surfaced as a 502 on
+        every endpoint. Asserts on the HTTP request LiteLLM actually builds.
+        """
+        sent: dict[str, Any] = {}
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            sent["path"] = request.url.path
+            sent["body"] = json.loads(request.content)
+            return httpx.Response(
+                200,
+                json={
+                    "id": "x",
+                    "object": "chat.completion",
+                    "created": 1,
+                    "model": "gpt-6.1-sol-2026-09-29",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "finish_reason": "stop",
+                            "message": {
+                                "role": "assistant",
+                                "content": '{"summary": "ok"}',
+                            },
+                        }
+                    ],
+                    "usage": {
+                        "prompt_tokens": 1,
+                        "completion_tokens": 1,
+                        "total_tokens": 2,
+                    },
+                },
+            )
+
+        monkeypatch.setattr(
+            litellm,
+            "aclient_session",
+            httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        )
+        client = _make_client(
+            model="azure/gpt-6.1-sol",
+            api_base="https://regression-test.openai.azure.com/",
+        )
+        with patch("qfa.adapters.llm_client.completion_cost", return_value=0.0):
+            result = await client.complete(
+                SYSTEM_MSG, USER_MSG, TENANT_ID, _StructuredResponse, timeout=TIMEOUT
+            )
+
+        assert sent["path"] == "/openai/v1/chat/completions"
+        assert "tools" not in sent["body"]
+        assert sent["body"]["response_format"]["type"] == "json_schema"
+        assert result.structured == _StructuredResponse(summary="ok")
 
 
 def _client_with_span_capture(**overrides):
@@ -364,7 +456,7 @@ class TestLiteLLMClientLangfuseSpan:
 
         call_kwargs = mock_ac.call_args.kwargs
         assert call_kwargs["api_base"] is None
-        assert call_kwargs["api_version"] is None
+        assert call_kwargs["api_version"] == "v1"
 
     @pytest.mark.asyncio
     async def test_structured_response_model_sent_and_parsed(self):

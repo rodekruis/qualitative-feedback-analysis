@@ -141,7 +141,10 @@ def resolve_judge_llm_settings(
     The rule is per field: an explicitly set ``JUDGE_LLM_*`` field overrides
     only itself, every unset field (``None``) keeps the primary's value —
     including ``api_key``, which is why enabling a judge model needs no new
-    secret. ``timeout_seconds``, ``max_total_tokens`` and ``chars_per_token``
+    secret. ``api_version`` is the exception: it depends on the model's
+    provider, so an unset one is left empty for the client to derive from
+    the judge model (see ``default_api_version``, ADR-026), never inherited.
+    ``timeout_seconds``, ``max_total_tokens`` and ``chars_per_token``
     have no judge-side override and always come from ``primary``.
 
     Parameters
@@ -170,10 +173,10 @@ def resolve_judge_llm_settings(
             ("model", judge.model),
             ("api_key", judge.api_key),
             ("api_base", judge.api_base),
-            ("api_version", judge.api_version),
         )
         if value is not None
     }
+    overrides["api_version"] = judge.api_version or ""
     return primary.model_copy(update=overrides)
 
 

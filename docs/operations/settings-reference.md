@@ -11,7 +11,7 @@ Every environment variable the app reads. Settings are loaded by `pydantic-setti
 | `LLM_MODEL` | no | `azure/gpt-5.4` locally; deployed environments must set it via the `AZ_LLM_MODEL` GitHub environment variable (`var.llm_model`) — see [Changing the LLM model](release-flow.md#changing-the-llm-model-for-an-environment) | Routed by LiteLLM based on the prefix (`azure/…`, `azure_ai/…`, `openai/…`, …). Needs an entry in `src/qfa/resources/model_prices.yaml`, or its calls are recorded at zero cost. |
 | `LLM_API_KEY` | **yes** | — | Provider API key. Stored as `SecretStr`. |
 | `LLM_API_BASE` | only some providers | `""` | E.g. `https://<resource>.openai.azure.com/` for Azure OpenAI. |
-| `LLM_API_VERSION` | only some providers | `""` | API version where the provider expects one. |
+| `LLM_API_VERSION` | no | picked from the `LLM_MODEL` prefix: `v1` for `azure/…`, `2024-05-01-preview` for `azure_ai/…`, none otherwise | Set only to override that choice. Deployed environments leave it unset ([ADR-026](../adr/026-azure-api-version-by-model-provider.md)). |
 | `LLM_TIMEOUT_SECONDS` | no | `230.0` | Per-*attempt* LLM-call timeout. A single call retries transient failures (timeout, rate-limit) up to `3×` this budget; the shared `LLMCallExecutor` sizes the per-attempt timeout against the request deadline so the worst-case retry sequence still fits. |
 | `LLM_MAX_TOTAL_TOKENS` | no | `100000` | Token budget guard. Estimated as `len(text) / LLM_CHARS_PER_TOKEN`. |
 | `LLM_CHARS_PER_TOKEN` | no | `4` | Conversion ratio used by the token budget guard. |
@@ -45,7 +45,7 @@ base URL.
 | `JUDGE_LLM_MODEL` | no | unset locally; deployed environments set `azure_ai/mistral-medium-3-5` via Terraform (`var.judge_llm_model`) — see [ADR-020](../adr/020-mistral-medium-as-judge-model.md) | Enables the separate judge connection. Same LiteLLM prefix routing as `LLM_MODEL`. |
 | `JUDGE_LLM_API_KEY` | no | inherits `LLM_API_KEY` | Only needed for a judge on a different Azure resource or provider. Stored as `SecretStr`. |
 | `JUDGE_LLM_API_BASE` | no | inherits `LLM_API_BASE` | Needed when the judge sits on a different provider *route* — e.g. `azure_ai/…` uses `https://<resource>.services.ai.azure.com/models` while `azure/…` uses `https://<resource>.openai.azure.com/`. Non-secret. |
-| `JUDGE_LLM_API_VERSION` | no | inherits `LLM_API_VERSION` | API version where the judge provider expects a different one. |
+| `JUDGE_LLM_API_VERSION` | no | picked from the `JUDGE_LLM_MODEL` prefix, like `LLM_API_VERSION`; **not** inherited | Set only to override that choice. Not inherited because the right version depends on the judge's own provider ([ADR-026](../adr/026-azure-api-version-by-model-provider.md)). |
 
 There are no judge-side equivalents of `LLM_TIMEOUT_SECONDS`,
 `LLM_MAX_TOTAL_TOKENS` or `LLM_CHARS_PER_TOKEN`: both connections always share

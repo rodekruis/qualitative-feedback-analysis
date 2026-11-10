@@ -124,6 +124,8 @@ To roll back, set the variable back to the previous value and repeat steps 4 and
 
 An `azure_ai/` primary model also needs the environment's `llm-api-base` Key Vault secret pointed at `https://<resource>.services.ai.azure.com/models`. ADR-020 keeps the judge in a different model family from the primary model, so check the judge before moving the primary to the judge's family.
 
+You don't set an API version. The app picks it from the model's provider: Azure OpenAI's dateless `v1` for `azure/` models, `2024-05-01-preview` for `azure_ai/` models, separately for the primary model and the judge ([ADR-026](../adr/026-azure-api-version-by-model-provider.md)). Only set the Terraform variable `llm_api_version` if a model needs something else.
+
 ## GitHub environments and variables
 
 GitHub environments (`dev`, `prd`) and their required Actions variables are managed by Terraform — see [Infrastructure bootstrap](bootstrap.md).
