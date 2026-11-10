@@ -113,7 +113,9 @@ class JudgeLLMSettings(BaseSettings):
     configures that second connection.
 
     **Every field is optional and defaults to ``None``, which means "inherit
-    the corresponding value from the primary** :class:`LLMSettings` **".**
+    the corresponding value from the primary** :class:`LLMSettings` **"**,
+    except ``api_version``: unset, it is derived from the judge model's
+    provider rather than inherited (ADR-026).
     Deliberately *not* a subclass of :class:`LLMSettings`: that would inherit
     ``api_key``'s required-ness and force a second credential — and therefore a
     new Key Vault secret in every environment — before a judge model could be

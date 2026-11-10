@@ -176,9 +176,10 @@ class TestResolveJudgeLLMSettings:
         """One non-secret variable is enough to enable a judge model.
 
         This is the acceptance criterion that keeps Key Vault out of the
-        picture: with only ``JUDGE_LLM_MODEL`` set, the API key, base URL and
-        version all come from the primary ``LLM_*`` connection, so no new
-        secret has to be provisioned in any environment.
+        picture: with only ``JUDGE_LLM_MODEL`` set, the API key and base URL
+        come from the primary ``LLM_*`` connection, so no new secret has to
+        be provisioned in any environment. The API version is not inherited:
+        it is left empty for the client to derive from the judge model.
         """
         resolved = resolve_judge_llm_settings(
             primary_llm_settings,
@@ -189,7 +190,7 @@ class TestResolveJudgeLLMSettings:
         assert resolved.model == "azure/some-other-deployment"
         assert resolved.api_key.get_secret_value() == "sk-primary"
         assert resolved.api_base == "https://res.openai.azure.com/"
-        assert resolved.api_version == "2024-05-01-preview"
+        assert resolved.api_version == ""
 
     @pytest.mark.parametrize(
         ("field", "override", "expected"),
@@ -226,9 +227,13 @@ class TestResolveJudgeLLMSettings:
             assert resolved.api_key.get_secret_value() == expected
         else:
             assert getattr(resolved, field) == override
-        # ...and every field that was left unset still mirrors the primary.
+        # ...and every field that was left unset still mirrors the primary,
+        # except api_version, which is never inherited (ADR-026).
         for other in ("api_key", "api_base", "api_version"):
             if other == field:
+                continue
+            if other == "api_version":
+                assert resolved.api_version == ""
                 continue
             assert getattr(resolved, other) == getattr(primary_llm_settings, other)
 

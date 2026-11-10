@@ -60,9 +60,14 @@ variable "llm_model" {
 }
 
 variable "llm_api_version" {
-  description = "API version for Azure OpenAI and/or Azure AI serverless endpoints"
+  description = "Optional override for LLM_API_VERSION. Empty (the default) writes no app setting, so the app picks the version from the model's provider: v1 for azure/, 2024-05-01-preview for azure_ai/ (ADR-026). Only set this when a model needs something else."
   type        = string
-  default     = "2024-05-01-preview"
+  default     = ""
+
+  validation {
+    condition     = can(regex("^(|v1|latest|preview|\\d{4}-\\d{2}-\\d{2}(-preview)?)$", var.llm_api_version))
+    error_message = "llm_api_version must be empty, v1, latest, preview, or a dated version such as 2025-04-01-preview."
+  }
 }
 
 variable "judge_llm_model" {
