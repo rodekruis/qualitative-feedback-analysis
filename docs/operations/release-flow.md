@@ -101,6 +101,29 @@ For deployed environments, PostgreSQL application authentication is Entra-only, 
 3. To apply the change immediately, without waiting for a release, run the `Terraform` workflow from the Actions tab with the target `environment` and `command: apply`.
 4. Otherwise, the next release or promotion to that environment applies the change automatically, before it deploys.
 
+### Changing the LLM model for an environment
+
+Each environment picks its models through variables on its GitHub environment (Settings → Environments → the environment → Environment variables). The `Terraform` workflow passes them to the App Service:
+
+| GitHub variable | App setting | When unset |
+|---|---|---|
+| `AZ_LLM_MODEL` | `LLM_MODEL` | Terraform stops with an error. |
+| `AZ_JUDGE_LLM_MODEL` | `JUDGE_LLM_MODEL` | The judge connection is off, and judge calls run on `AZ_LLM_MODEL` ([ADR-020](../adr/020-mistral-medium-as-judge-model.md)). |
+| `AZ_JUDGE_LLM_API_BASE` | `JUDGE_LLM_API_BASE` | The judge uses the primary endpoint. |
+
+To change a model:
+
+1. Deploy the model in the environment's Azure AI Foundry resource as **Data Zone Standard (EU)**, so data stays in the EU. The value to use is `azure/<deployment name>` for Azure OpenAI models and `azure_ai/<deployment name>` for other models, such as Mistral.
+2. If `src/qfa/resources/model_prices.yaml` has no entry for that value, add one in a PR and release it to the environment first. Without it, calls are recorded at zero cost. Use the EU Data Zone prices from the [Azure OpenAI pricing page](https://azure.microsoft.com/pricing/details/azure-openai/), and list the model under both its plain and its dated name (for example `azure/gpt-6.1-sol` and `azure/gpt-6.1-sol-2026-09-29`), because LiteLLM prices a call by the name Azure returns.
+3. Set the variable, for example: `gh variable set AZ_LLM_MODEL --env dev --repo rodekruis/qualitative-feedback-analysis --body "azure/gpt-6.1-sol"`.
+4. Run the `Terraform` workflow from the Actions tab with that `environment` and `command: plan`. The App Service diff should show only the changed model setting. Stop if it shows anything else.
+5. Run it again with `command: apply`. The App Service restarts with the new model.
+6. Run an analysis and check, in Langfuse or the `llm_calls` table, that calls use the new model and have a cost above zero.
+
+To roll back, set the variable back to the previous value and repeat steps 4 and 5. Change one environment at a time: `dev`, then `staging`, then `prd`.
+
+An `azure_ai/` primary model also needs the environment's `llm-api-base` Key Vault secret pointed at `https://<resource>.services.ai.azure.com/models`. ADR-020 keeps the judge in a different model family from the primary model, so check the judge before moving the primary to the judge's family.
+
 ## GitHub environments and variables
 
 GitHub environments (`dev`, `prd`) and their required Actions variables are managed by Terraform — see [Infrastructure bootstrap](bootstrap.md).

@@ -8,7 +8,7 @@ Every environment variable the app reads. Settings are loaded by `pydantic-setti
 
 | Variable | Required | Default | Notes |
 |---|---|---|---|
-| `LLM_MODEL` | no | `azure/gpt-5.4` | Routed by LiteLLM based on the prefix (`azure/…`, `azure_ai/…`, `openai/…`, …). |
+| `LLM_MODEL` | no | `azure/gpt-5.4` locally; deployed environments must set it via the `AZ_LLM_MODEL` GitHub environment variable (`var.llm_model`) — see [Changing the LLM model](release-flow.md#changing-the-llm-model-for-an-environment) | Routed by LiteLLM based on the prefix (`azure/…`, `azure_ai/…`, `openai/…`, …). Needs an entry in `src/qfa/resources/model_prices.yaml`, or its calls are recorded at zero cost. |
 | `LLM_API_KEY` | **yes** | — | Provider API key. Stored as `SecretStr`. |
 | `LLM_API_BASE` | only some providers | `""` | E.g. `https://<resource>.openai.azure.com/` for Azure OpenAI. |
 | `LLM_API_VERSION` | only some providers | `""` | API version where the provider expects one. |
