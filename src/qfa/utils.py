@@ -2,7 +2,7 @@
 
 import logging
 import time
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 
@@ -17,7 +17,7 @@ class Stopwatch:
 
 
 @contextmanager
-def timed() -> Iterator[Stopwatch]:
+def timed() -> Generator[Stopwatch, None, None]:
     """Measure the wall-clock duration of a block, without logging anything.
 
     Yields a :class:`Stopwatch` whose ``elapsed_seconds`` is populated when the

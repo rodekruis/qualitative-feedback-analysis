@@ -35,7 +35,7 @@ that span's ``context=`` — scoping the override to Langfuse's own
 isolated tracer (see :func:`qfa.api.composition.build_langfuse_tracer`).
 """
 
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncGenerator, Generator
 from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
 from uuid import UUID
@@ -92,7 +92,7 @@ role is currently a Langfuse-only, not a Postgres-usage, dimension.
 
 
 @contextmanager
-def judge_call() -> Iterator[None]:
+def judge_call() -> Generator[None, None, None]:
     """Mark the LLM calls made inside this block as judge calls.
 
     Wrap a judge call site in ``with judge_call():`` — every current site
@@ -114,7 +114,7 @@ async def call_scope(
     tenant_id: str,
     operation: Operation,
     request_id: UUID,
-) -> AsyncIterator[CallContext]:
+) -> AsyncGenerator[CallContext, None]:
     """Set ``current_call_context`` for the duration of the block.
 
     Parameters
