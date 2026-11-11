@@ -622,6 +622,12 @@ class TestAssignCodesRequestExamples:
             request = ApiAssignCodesRequest.model_validate(example)
             assert request.coding_levels.root_codes
 
+    def test_examples_are_published_in_json_schema(self) -> None:
+        assert (
+            ApiAssignCodesRequest.model_json_schema()["examples"]
+            == _assign_codes_request_examples()
+        )
+
     def test_examples_expose_the_real_framework(self) -> None:
         """The examples carry the full 3-level taxonomy, not a stub."""
         request = ApiAssignCodesRequest.model_validate(
