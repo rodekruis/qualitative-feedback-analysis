@@ -105,6 +105,52 @@ def test_community_meeting_flowchart_sends_meeting_base_url():
     assert "espo_feedback_base_url" not in formulas
 
 
+@pytest.mark.parametrize("level", [1, 2, 3])
+def test_feedback_flowchart_includes_optional_code_descriptions(level):
+    nodes = _nodes(FLOWCHART_DIR / "Feedback_saving_flowchart.csv")
+    framework = next(node for node in nodes if node["id"] == "g3dcslcmvk")
+    formula = framework["actionList"][0]["formula"]
+
+    lookup = (
+        f"$desc{level} = record\\attribute("
+        f"'CCodingLevel{level}', $id{level}, 'description');"
+    )
+    append = (
+        f"ifThen($desc{level} != null && string\\length($desc{level}) > 0, "
+        f"$name{level} = string\\concatenate($name{level}, ' ', $desc{level}));"
+    )
+    assignment = f"$node{level}['name'] = $name{level};"
+
+    assert lookup in formula
+    assert append in formula
+    assert formula.index(lookup) < formula.index(append) < formula.index(assignment)
+
+
+def test_feedback_flowchart_uses_configurable_confidence_thresholds():
+    flowchart = FLOWCHART_DIR / "Feedback_saving_flowchart.csv"
+    nodes = {node["id"]: node for node in _nodes(flowchart)}
+    coding = nodes["pgang8h4rp"]["actionList"][1]["formula"]
+    sensitive = nodes["xqfh7up3zb"]["actionList"][1]["formula"]
+
+    for level in (1, 2, 3):
+        assert f"assigned_codes.0.confidence_level_{level}" in coding
+    for level, weight in ((1, "0.20"), (2, "0.30"), (3, "0.50")):
+        assert f"$confidenceLevel{level} != null, {weight}, 0" in coding
+    assert "/ $totalWeight" in coding
+    assert "$confidenceLevel3 ?? $confidenceLevel2 ?? $confidenceLevel1" in coding
+    assert "QFA_CODING_WEIGHTED_THRESHOLD" in coding
+    assert "QFA_CODING_DEEPEST_THRESHOLD" in coding
+    assert "$weightedConfidenceScore < $weightedThreshold" in coding
+    assert "$deepestLevelConfidence < $deepestLevelThreshold" in coding
+    assert "confidence_aggregate" not in coding
+    assert "autoCodingStatus = 'human_review_required'" in coding
+
+    assert "QFA_SENSITIVE_CONFIDENCE_THRESHOLD" in sensitive
+    assert "$sensitiveConfidence == null" in sensitive
+    assert "$sensitiveConfidence < $sensitiveThreshold" in sensitive
+    assert "autoSensitiveStatus = 'human_review_required'" in sensitive
+
+
 def test_insight_flowchart_sends_meetings_to_both_bulk_endpoints():
     """Meeting records are collected regardless of the insight method."""
     flowchart = FLOWCHART_DIR / "Insight_creation_flowchart.csv"
