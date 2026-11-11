@@ -928,7 +928,12 @@ class ApiCodingNode(BaseModel):
     id: str = Field(
         description="Stable identifier for this coding node from the source system."
     )
-    name: str = Field(description="Name of this coding")
+    name: str = Field(
+        description=(
+            "Code label, including any description. Sent to the model unchanged; "
+            "must not contain personal data."
+        )
+    )
     children: list["ApiCodingNode"] = Field(
         default_factory=list,
         description="Child coding nodes nested under this coding.",

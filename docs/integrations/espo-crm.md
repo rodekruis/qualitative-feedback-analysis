@@ -16,7 +16,7 @@ The flowcharts compose request bodies based on three distinct workflows.
 
 The flow calls `summarize`, `detect-sensitive` and `assign-codes` for requested operations. The summary gateway accepts `requested`, not `queued`.
 
-> **Note:** The entire coding framework (all codingLevel1, codingLevel2, codingLevel3 items) is sent to the `assign-codes` endpoint. This allows the inference to be stateless.
+> **Note:** The entire coding framework (all codingLevel1, codingLevel2, codingLevel3 items) is sent to the `assign-codes` endpoint. Names and any descriptions sent with them reach the model unchanged. Do not put personal data in these fields.
 
 At all three levels, non-empty `description` fields are appended after the name and optional English name. Empty descriptions leave labels unchanged. Keep descriptions short: parent text repeats across candidate paths, increasing prompt size, and is included in returned code names.
 

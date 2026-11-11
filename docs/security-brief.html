@@ -278,7 +278,8 @@
     <div class="card">
       <h2>Privacy &amp; PII Handling</h2>
       <ul>
-        <li>Every AI call is wrapped <strong>anonymise → send → de-anonymise</strong>; the model never sees raw personal data. <span class="cite">Presidio + spaCy, two-model NER union for person-name recall</span></li>
+        <li>Feedback is checked for personal data before AI calls. Detection is statistical and can miss data. <span class="cite">Presidio + spaCy, two-model NER union for person-name recall</span></li>
+        <li>Coding framework names and descriptions are sent to the model unchanged. They must not contain personal data.</li>
         <li>Analysis output <strong>keeps person-name placeholders un-restored</strong> — the analyst never sees the underlying name. NER is statistical, so this reduces re-identification risk; it does not guarantee zero.</li>
         <li><strong>Data minimisation by design:</strong> feedback content and model responses are never written to the database.</li>
         <li>The EspoCRM feedback flow flags sensitivity results for human review when confidence is missing or below its instance-specific threshold; this is not a guarantee of correct classification.</li>

@@ -17,11 +17,16 @@ import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import ClassVar
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
 
-from qfa.domain.errors import AnalysisError, LLMResponseParseError
+from qfa.domain.errors import (
+    AnalysisError,
+    FeedbackTooLargeError,
+    LLMResponseParseError,
+)
 from qfa.domain.models import (
     CodingAssignmentRequestModel,
     CodingFramework,
@@ -31,8 +36,9 @@ from qfa.domain.models import (
     LLMResponse,
     PromptRef,
 )
-from qfa.domain.ports import LLMPort
+from qfa.domain.ports import AnonymizationPort, LLMPort
 from qfa.domain.usage_models import Operation
+from qfa.services import coding_classifier
 from qfa.services.call_context import call_scope
 from qfa.services.coding import (
     NO_CODING_NOTHING_RELEVANT_EXPLANATION,
@@ -40,7 +46,12 @@ from qfa.services.coding import (
     _combine_rejected_explanations,
     _ScoredCode,
 )
-from qfa.services.coding_classifier import CodingResponse
+from qfa.services.coding_classifier import (
+    CodingResponse,
+    build_coding_messages,
+    build_judge_messages,
+    flatten_coding_nodes,
+)
 from qfa.services.llm_call_executor import LLMCallExecutor
 from qfa.settings import CodingSettings, OrchestratorSettings
 
@@ -95,16 +106,23 @@ def _judge_text(score, explanation):
 
 
 def _make_coding_service(
-    fake_llm, settings, evaluator=None, prompt_versions=None, coding_settings=None
+    fake_llm,
+    settings,
+    evaluator=None,
+    prompt_versions=None,
+    coding_settings=None,
+    anonymizer=None,
+    max_total_tokens=MAX_TOKENS,
 ):
     """Build the service over the *real* executor, as ADR-017 prescribes."""
-    anonymizer = FakeAnonymizer()
+    if anonymizer is None:
+        anonymizer = FakeAnonymizer()
     executor = LLMCallExecutor(
         llm=fake_llm,
         anonymizer=anonymizer,
         settings=settings,
         llm_timeout_seconds=LLM_TIMEOUT,
-        max_total_tokens=MAX_TOKENS,
+        max_total_tokens=max_total_tokens,
     )
     return CodingService(
         llm=fake_llm,
@@ -134,6 +152,243 @@ def _make_coding_request(
         confidence_threshold=confidence_threshold,
         tenant_id=tenant_id,
     )
+
+
+class TestCodingPrivacyBoundary:
+    @pytest.mark.asyncio
+    async def test_picker_and_judges_anonymize_feedback_not_framework(self, settings):
+        feedback = "Alice Example asks about Фінансова допомога. <tag> & more."
+        labels = (
+            "Фінансова допомога (грошова підтримка сімей)",
+            "Питання (опис запитань)",
+            "Виплати (опис виплат)",
+        )
+        replacements = {
+            "Alice Example": "<PERSON_0>",
+            "Фінансова допомога": "<PERSON_1>",
+            "грошова підтримка сімей": "<PERSON_2>",
+            "опис запитань": "<PERSON_3>",
+            "опис виплат": "<PERSON_4>",
+        }
+
+        def redact(text):
+            for value, placeholder in replacements.items():
+                text = text.replace(value, placeholder)
+            return text, {
+                placeholder: value for value, placeholder in replacements.items()
+            }
+
+        anonymizer = MagicMock(spec=AnonymizationPort)
+        anonymizer.anonymize.side_effect = redact
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=CodingResponse(selected=[2])),
+                _make_llm_response(structured=_judge_text(0.95, "Level 1 fits.")),
+                _make_llm_response(structured=_judge_text(0.90, "Level 2 fits.")),
+                _make_llm_response(structured=_judge_text(0.85, "Level 3 fits.")),
+            ]
+        )
+        root_codes = [
+            CodingNode(
+                id="l1",
+                name=labels[0],
+                children=[
+                    CodingNode(
+                        id="l2",
+                        name=labels[1],
+                        children=[CodingNode(id="l3", name=labels[2])],
+                    )
+                ],
+            )
+        ]
+        record = _make_feedback_record(
+            doc_id="private-id",
+            content=feedback,
+            metadata={"coding_level_1": "private-metadata"},
+        )
+        service = _make_coding_service(fake_llm, settings, anonymizer=anonymizer)
+
+        result = await service.assign_codes(
+            _make_coding_request(
+                feedback_record=record,
+                root_codes=root_codes,
+                confidence_threshold=0.8,
+            ),
+            _future_deadline(),
+        )
+
+        assert len(fake_llm.calls) == 4
+        for call, expected_labels in zip(
+            fake_llm.calls,
+            (labels, labels[:1], labels[:2], labels),
+            strict=True,
+        ):
+            message = call["user_message"]
+            text = message.split("<text>", 1)[1].split("</text>", 1)[0]
+            assert all(label in message for label in expected_labels)
+            assert "&lt;PERSON_0&gt;" in text
+            assert "&lt;PERSON_1&gt;" in text
+            assert "&lt;tag&gt; &amp; more." in text
+            assert "Alice Example" not in message
+            assert "private-id" not in message
+            assert "private-metadata" not in message
+        anonymizer.anonymize.assert_called_once_with(feedback)
+
+        assigned = result.coded_feedback_records[0].assigned_codes[0]
+        assert (assigned.coding_level_1_id, assigned.coding_level_1_name) == (
+            "l1",
+            labels[0],
+        )
+        assert (assigned.coding_level_2_id, assigned.coding_level_2_name) == (
+            "l2",
+            labels[1],
+        )
+        assert (assigned.coding_level_3_id, assigned.coding_level_3_name) == (
+            "l3",
+            labels[2],
+        )
+        assert assigned.confidence_aggregate == 0.85
+        assert record.content == feedback
+
+    @pytest.mark.asyncio
+    async def test_empty_framework_does_not_anonymize_or_call_llm(self, settings):
+        anonymizer = MagicMock(spec=AnonymizationPort)
+        fake_llm = FakeLLMPort()
+        service = _make_coding_service(fake_llm, settings, anonymizer=anonymizer)
+        request = _make_coding_request().model_copy(
+            update={"coding_levels": CodingFramework.model_construct(root_codes=[])}
+        )
+
+        result = await service.assign_codes(request, _future_deadline())
+
+        anonymizer.anonymize.assert_not_called()
+        assert not fake_llm.calls
+        assert (
+            result.coded_feedback_records[0].assigned_codes[0].explanation
+            == NO_CODING_NOTHING_RELEVANT_EXPLANATION
+        )
+
+    @pytest.mark.asyncio
+    async def test_rejection_stops_judging_with_anonymized_feedback(self, settings):
+        feedback = "Alice Example asks for help."
+        label = "Фінансова допомога (опис)"
+        anonymizer = MagicMock(spec=AnonymizationPort)
+        anonymizer.anonymize.return_value = (
+            "<PERSON_0> asks for help.",
+            {"<PERSON_0>": "Alice Example"},
+        )
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=CodingResponse(selected=[1])),
+                _make_llm_response(structured=_judge_text(0.1, "Weak fit.")),
+            ]
+        )
+        service = _make_coding_service(fake_llm, settings, anonymizer=anonymizer)
+        request = _make_coding_request(
+            feedback_record=_make_feedback_record(content=feedback),
+            root_codes=[
+                CodingNode(
+                    id="l1",
+                    name=label,
+                    children=[CodingNode(id="l2", name="Child")],
+                )
+            ],
+            confidence_threshold=0.8,
+        )
+
+        result = await service.assign_codes(request, _future_deadline())
+
+        assert len(fake_llm.calls) == 2
+        assert all(label in call["user_message"] for call in fake_llm.calls)
+        assert all(
+            "Alice Example" not in call["user_message"] for call in fake_llm.calls
+        )
+        anonymizer.anonymize.assert_called_once_with(feedback)
+        assigned = result.coded_feedback_records[0].assigned_codes[0]
+        assert assigned.coding_level_1_id is None
+        assert label in assigned.explanation
+        assert "10%" in assigned.explanation
+
+    @pytest.mark.asyncio
+    async def test_token_limit_includes_framework_before_anonymization(self, settings):
+        anonymizer = MagicMock(spec=AnonymizationPort)
+        fake_llm = FakeLLMPort()
+        service = _make_coding_service(fake_llm, settings, anonymizer=anonymizer)
+
+        with pytest.raises(FeedbackTooLargeError):
+            await service.assign_codes(
+                _make_coding_request(
+                    root_codes=[CodingNode(id="l1", name="A" * 40_000)]
+                ),
+                _future_deadline(),
+            )
+
+        anonymizer.anonymize.assert_not_called()
+        assert not fake_llm.calls
+
+    @pytest.mark.asyncio
+    async def test_token_limit_covers_the_message_after_anonymization(self, settings):
+        anonymizer = MagicMock(spec=AnonymizationPort)
+        anonymizer.anonymize.return_value = ("<PERSON_0>" * 10_000, {})
+        fake_llm = FakeLLMPort(
+            responses=[_make_llm_response(structured=CodingResponse(selected=[]))]
+        )
+        service = _make_coding_service(fake_llm, settings, anonymizer=anonymizer)
+
+        with pytest.raises(FeedbackTooLargeError):
+            await service.assign_codes(_make_coding_request(), _future_deadline())
+
+        assert not fake_llm.calls
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("expanded_feedback", [False, True])
+    async def test_judge_token_limit_checks_raw_and_anonymized_feedback(
+        self, settings, monkeypatch, expanded_feedback
+    ):
+        short = "X"
+        long = "X" * 1000
+        raw, redacted = (short, long) if expanded_feedback else (long, short)
+        record = _make_feedback_record(content=raw)
+        node = CodingNode(id="l1", name="A")
+        monkeypatch.setattr(coding_classifier, "_JUDGE_SYSTEM", "Judge. " * 2000)
+        long_record = record.model_copy(update={"content": long})
+        short_record = record.model_copy(update={"content": short})
+        pick_system, pick_user = build_coding_messages(
+            feedback_record=long_record, options=flatten_coding_nodes([node])
+        )
+        judge_system, short_judge_user = build_judge_messages(
+            feedback_record=short_record,
+            level="Code level 1",
+            path=[("Code level 1", "A")],
+        )
+        _, long_judge_user = build_judge_messages(
+            feedback_record=long_record,
+            level="Code level 1",
+            path=[("Code level 1", "A")],
+        )
+        max_tokens = len(judge_system + short_judge_user) // settings.chars_per_token
+        assert len(pick_system + pick_user) // settings.chars_per_token <= max_tokens
+        assert (
+            len(judge_system + long_judge_user) // settings.chars_per_token > max_tokens
+        )
+
+        anonymizer = MagicMock(spec=AnonymizationPort)
+        anonymizer.anonymize.return_value = (redacted, {})
+        fake_llm = FakeLLMPort(
+            responses=[_make_llm_response(structured=CodingResponse(selected=[0]))]
+        )
+        service = _make_coding_service(
+            fake_llm, settings, anonymizer=anonymizer, max_total_tokens=max_tokens
+        )
+
+        with pytest.raises(FeedbackTooLargeError):
+            await service.assign_codes(
+                _make_coding_request(feedback_record=record, root_codes=[node]),
+                _future_deadline(),
+            )
+
+        assert len(fake_llm.calls) == 1
+        anonymizer.anonymize.assert_called_once_with(raw)
 
 
 class TestAssignCodesOneShot:

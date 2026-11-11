@@ -9,6 +9,18 @@ from qfa.adapters.presidio_anonymizer import (
     LANGUAGES_AND_ANONYMIZATION_MODEL_PAIRINGS,
     PresidioAnonymizer,
 )
+from qfa.domain.models import CodingNode
+from qfa.services.coding_classifier import CodingResponse
+from qfa.settings import OrchestratorSettings
+from tests.services.test_coding import (
+    FakeLLMPort,
+    _future_deadline,
+    _judge_text,
+    _make_coding_request,
+    _make_coding_service,
+    _make_feedback_record,
+    _make_llm_response,
+)
 
 
 @pytest.fixture(scope="module")
@@ -309,3 +321,43 @@ def test_second_pass_is_a_union_not_a_replacement(
 
     assert "Kamara Alieu Sesay" not in redacted
     assert mapping == {"<PERSON_0>": "Kamara Alieu Sesay"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "feedback, name",
+    [
+        ("Hi my name is Dick Schoof", "Dick Schoof"),
+        ("Je m'appelle Marie Dupont", "Marie Dupont"),
+        ("Мене звати Олена Петренко", "Олена Петренко"),
+    ],
+)
+async def test_coding_prompts_redact_feedback_but_keep_framework(
+    anonymizer, feedback, name
+):
+    label = "Фінансова допомога (грошова підтримка сімей)"
+    fake_llm = FakeLLMPort(
+        responses=[
+            _make_llm_response(structured=CodingResponse(selected=[0])),
+            _make_llm_response(structured=_judge_text(0.9, "Fits.")),
+        ]
+    )
+    service = _make_coding_service(
+        fake_llm, OrchestratorSettings(), anonymizer=anonymizer
+    )
+    request = _make_coding_request(
+        feedback_record=_make_feedback_record(content=feedback),
+        root_codes=[CodingNode(id="l1", name=label)],
+    )
+
+    result = await service.assign_codes(request, _future_deadline())
+
+    assert len(fake_llm.calls) == 2
+    for call in fake_llm.calls:
+        message = call["user_message"]
+        assert name not in message
+        assert "&lt;PERSON_" in message
+        assert label in message
+    assert (
+        result.coded_feedback_records[0].assigned_codes[0].coding_level_1_name == label
+    )

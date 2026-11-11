@@ -4,7 +4,7 @@ Things that don't belong to a single component — they show up at multiple laye
 
 ## Anonymisation round-trip
 
-For every operation that reaches the LLM, the use-case service wraps the user-facing text in an anonymise → call → de-anonymise sandwich:
+Services redact user-facing text before calling the LLM; some restore placeholders in the response. For example:
 
 ```mermaid
 sequenceDiagram
@@ -25,8 +25,9 @@ sequenceDiagram
 
 Notes:
 
+- `assign_codes` redacts feedback once before building the picker and judge prompts. Framework names and any descriptions included in them are sent unchanged and must not contain personal data. Judge explanations do not restore feedback placeholders.
 - The mapping lives in memory for the request and is discarded when the service method returns.
-- Batch redaction (one `anonymize_batch` call over every record plus the analyst prompt, one shared placeholder namespace) goes through {py:meth}`~qfa.services.llm_call_executor.LLMCallExecutor.anonymize_records_and_prompt` rather than being open-coded per use case; single-message redaction goes through {py:meth}`~qfa.services.llm_call_executor.LLMCallExecutor.anonymize_text`. The bulk paths (`analyze_bulk`, `analyze_hierarchical`, `summarize_bulk`) run their redaction via `asyncio.to_thread` — see [ADR-003](../adr/003-fully-async-concurrency.md).
+- Batch redaction (one `anonymize_batch` call over every record plus the analyst prompt, one shared placeholder namespace) goes through {py:meth}`~qfa.services.llm_call_executor.LLMCallExecutor.anonymize_records_and_prompt`; sensitivity's message redaction uses {py:meth}`~qfa.services.llm_call_executor.LLMCallExecutor.anonymize_text`. The bulk paths (`analyze_bulk`, `analyze_hierarchical`, `summarize_bulk`) run their redaction via `asyncio.to_thread` — see [ADR-003](../adr/003-fully-async-concurrency.md).
 - Mappings from two `anonymize`/`anonymize_batch` calls must **never** be merged: each call restarts placeholder numbering, so merging silently substitutes one call's value into the other's text (#324). Texts that need one namespace go into one `anonymize_batch` call.
 - The de-anonymise step runs over the serialised response — substitutions are textual, so the round-trip is a string replacement, not a structured walk.
 - Inside `anonymize_batch`, entity detection is batched through spaCy's `nlp.pipe` and, for a multi-chunk batch, parallelised across a bounded thread pool owned by the `PresidioAnonymizer` instance (`ANONYMIZATION_MAX_WORKERS`, `ANONYMIZATION_BATCH_SIZE`). Placeholder allocation stays serial and in input order, so output for a given set of detected entities is identical regardless of worker count — see ADR-003's amendment for the concurrency rationale.
