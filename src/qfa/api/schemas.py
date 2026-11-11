@@ -10,7 +10,7 @@ import logging
 import re
 import unicodedata
 from abc import ABC, abstractmethod
-from typing import Annotated, Any, Literal, Self, override
+from typing import Annotated, Any, Literal, Self, cast, override
 
 from pydantic import (
     BaseModel,
@@ -964,9 +964,12 @@ class ApiCodingFramework(BaseModel):
 class ApiAssignCodesRequest(ApiSingleInferenceRequestBase):
     """Request body for ``POST /v1/assign-codes``."""
 
-    model_config = {
-        "json_schema_extra": {"examples": _assign_codes_request_examples()},
-    }
+    model_config = ConfigDict(
+        json_schema_extra=cast(
+            dict[str, JsonValue],
+            {"examples": _assign_codes_request_examples()},
+        )
+    )
     coding_levels: ApiCodingFramework = Field(
         description="Hierarchical coding framework.",
     )
