@@ -105,6 +105,27 @@ def test_community_meeting_flowchart_sends_meeting_base_url():
     assert "espo_feedback_base_url" not in formulas
 
 
+@pytest.mark.parametrize("level", [1, 2, 3])
+def test_feedback_flowchart_includes_optional_code_descriptions(level):
+    nodes = _nodes(FLOWCHART_DIR / "Feedback_saving_flowchart.csv")
+    framework = next(node for node in nodes if node["id"] == "g3dcslcmvk")
+    formula = framework["actionList"][0]["formula"]
+
+    lookup = (
+        f"$desc{level} = record\\attribute("
+        f"'CCodingLevel{level}', $id{level}, 'description');"
+    )
+    append = (
+        f"ifThen($desc{level} != null && string\\length($desc{level}) > 0, "
+        f"$name{level} = string\\concatenate($name{level}, ' ', $desc{level}));"
+    )
+    assignment = f"$node{level}['name'] = $name{level};"
+
+    assert lookup in formula
+    assert append in formula
+    assert formula.index(lookup) < formula.index(append) < formula.index(assignment)
+
+
 def test_feedback_flowchart_uses_configurable_confidence_thresholds():
     flowchart = FLOWCHART_DIR / "Feedback_saving_flowchart.csv"
     nodes = {node["id"]: node for node in _nodes(flowchart)}

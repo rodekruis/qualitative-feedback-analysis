@@ -18,6 +18,8 @@ The flow calls `summarize`, `detect-sensitive` and `assign-codes` for requested 
 
 > **Note:** The entire coding framework (all codingLevel1, codingLevel2, codingLevel3 items) is sent to the `assign-codes` endpoint. This allows the inference to be stateless.
 
+At all three levels, non-empty `description` fields are appended after the name and optional English name. Empty descriptions leave labels unchanged. Keep descriptions short: parent text repeats across candidate paths, increasing prompt size, and is included in returned code names.
+
 ### Insight saving flow
 
 `Insight_creation_flowchart.csv` triggers when an insight record is **created**. This flow selects the endpoint that coincides with the user request, and calls one of the bulk endpoints: `analyze-bulk` or `summarize-bulk`. Both receive the insight's related feedback and community meeting records, each tagged with `record_type`.
