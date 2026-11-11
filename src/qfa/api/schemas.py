@@ -115,7 +115,7 @@ def _format_quality(score: float) -> str:
     return f"{_quality_dots(score)} {round(score * 100)}%"
 
 
-def _assign_codes_request_examples() -> list[dict[str, JsonValue]]:
+def _assign_codes_request_examples() -> list[dict[str, Any]]:
     """Build Swagger ``examples`` from the bundled coding framework + COVID-19 codebook quotes.
 
     The framework is read as a package resource
