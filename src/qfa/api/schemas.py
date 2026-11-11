@@ -17,6 +17,7 @@ from pydantic import (
     ConfigDict,
     Discriminator,
     Field,
+    JsonValue,
     Tag,
     computed_field,
     field_validator,
@@ -114,7 +115,7 @@ def _format_quality(score: float) -> str:
     return f"{_quality_dots(score)} {round(score * 100)}%"
 
 
-def _assign_codes_request_examples() -> list[dict[str, Any]]:
+def _assign_codes_request_examples() -> list[dict[str, JsonValue]]:
     """Build Swagger ``examples`` from the bundled coding framework + COVID-19 codebook quotes.
 
     The framework is read as a package resource
