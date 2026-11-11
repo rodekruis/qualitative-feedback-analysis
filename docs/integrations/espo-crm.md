@@ -14,7 +14,7 @@ The flowcharts compose request bodies based on three distinct workflows.
 
 ![Espo flowchart for saving a single feedback item](../assets/espo_feedback_save_flow.png)
 
-These use all single-feedback record endpoints such as `summarize`, `detect-sensitive` and `assign-codes`. These are all executed at once.
+The flow calls `summarize`, `detect-sensitive` and `assign-codes` for requested operations. The summary gateway accepts `requested`, not `queued`.
 
 > **Note:** The entire coding framework (all codingLevel1, codingLevel2, codingLevel3 items) is sent to the `assign-codes` endpoint. This allows the inference to be stateless.
 
@@ -45,11 +45,11 @@ Each flow builds its own `motherPayload` — a JSON object containing all key-va
 
 ## Error handling
 
-Every flow wraps each outbound call in an EspoCRM error-boundary event. On success, the relevant status field is set to `completed`; on failure, the boundary runs an "error notification" step instead, which sets the status field to `failed` and stores the underlying error via `bpm\caughtErrorCode()` / `bpm\caughtErrorMessage()`. All of these are plain fields on the triggering feedback record or insight, so the outcome and any error detail are visible directly on that record in the EspoCRM UI — there is no separate error log to check.
+Every flow wraps each outbound call in an EspoCRM error-boundary event. On failure, the boundary stores the error via `bpm\caughtErrorCode()` / `bpm\caughtErrorMessage()` on the record. The feedback flow marks HTTP 502 as `human_review_required` and other errors as `failed`. Its coding message describes a content rejection, but a 502 can also mean another upstream failure; check the error details.
 
 ### Single-feedback record flow
 
-Each of the three calls tracks its own status field on the feedback record, moving through `requested` → `processing` → `completed` (or `failed`). The trigger itself only fires while at least one of these fields is `requested`:
+Each call tracks its own status, moving through `requested` → `processing` → `completed`, `human_review_required`, or `failed`. The trigger fires only while at least one status is `requested`:
 
 | Endpoint | Status field | Error fields |
 |---|---|---|
@@ -57,9 +57,9 @@ Each of the three calls tracks its own status field on the feedback record, movi
 | `assign-codes` | `autoCodingStatus` | `autoCodingErrorCode`, `autoCodingErrorMessage` |
 | `detect-sensitive` | `autoSensitiveStatus` | `autoSensitiveErrorCode`, `autoSensitiveErrorMessage` |
 
-The `assign-codes` step copies `assigned_codes.0.explanation` into `autoCodingExplanation`. A record can legitimately come back with no code applied while `autoCodingStatus` is still `completed` — that is a successful call, not an error, so it sets none of the error fields. The API guarantees that `assigned_codes` is never empty, so in that case `autoCodingExplanation` holds a message beginning with `NO CODING APPLIED.` explaining why. See the [REST API reference](../rest-api/index.md) for the exact wording.
+The `assign-codes` step copies the first assigned path and explanation to the record. It computes a weighted confidence using level 1 / 2 / 3 weights of 0.20 / 0.30 / 0.50; missing scores are excluded and the remaining weights are normalized. Both the weighted score and the deepest available level's score must meet their App Secret thresholds. Otherwise, or when no confidence is available, the record requires human review. The API request's separate `confidence_threshold` of 0.1 filters candidates before this calculation.
 
-The `detect-sensitive` step copies `is_sensitive`, `explanation` and the judge's `confidence` into `autoSensitive`, `autoSensitiveExplanation` and `autoSensitiveConfidence`. When `confidence` is null (the judge call failed) or below 0.80, it sets `autoSensitiveStatus` to `human_review_required` instead of `completed`. The score covers the whole classification, flag and types together, so a correct flag with poorly chosen types also scores low. The 0.80 threshold mirrors `assign-codes` and has not been calibrated for sensitivity yet.
+The `detect-sensitive` step copies `is_sensitive`, `explanation` and `confidence` into `autoSensitive`, `autoSensitiveExplanation` and `autoSensitiveConfidence`. A null confidence or a score below the sensitivity threshold requires human review, regardless of whether the result is sensitive. The score covers both the flag and types. Empty feedback also produces a null confidence and requires review.
 
 `autoSensitiveConfidence` is an entity field, not part of the flowchart export: add it (type Float, on Feedback Data) by hand on each EspoCRM instance before importing the flowchart.
 
@@ -127,6 +127,16 @@ The `motherPayload` sends `espo_feedback_base_url` and `espo_meeting_base_url` t
 EspoCRM stores the bearer token as a server-side secret. Provisioning and rotation use the standard flow in [API key management](../operations/auth-management.md).
 
 Within your EspoCRM instance, set the following values under _Administration_ → _App Secrets_:
+
+The feedback flow also requires these per-instance thresholds, expressed as decimals from 0 to 1:
+
+| Secret | Purpose |
+|---|---|
+| `QFA_CODING_WEIGHTED_THRESHOLD` | Minimum weighted coding confidence. |
+| `QFA_CODING_DEEPEST_THRESHOLD` | Minimum confidence of the deepest available coding level. |
+| `QFA_SENSITIVE_CONFIDENCE_THRESHOLD` | Minimum sensitivity confidence. |
+
+Set them before activating the flow. Choose values based on human-reviewed examples.
 
 | Secret | Value |
 |---|---|
