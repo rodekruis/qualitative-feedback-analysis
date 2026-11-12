@@ -652,6 +652,40 @@ class TestNoCodingAppliedMessage:
 
 class TestAssignCodesConfidenceThreshold:
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("threshold", "score", "expected_id"),
+        [
+            (0.1, 0.09, None),
+            (0.1, 0.1, "code-1"),
+            (0.1, 0.15, "code-1"),
+            (0.2, 0.15, None),
+            (0.2, 0.19, None),
+            (0.2, 0.2, "code-1"),
+        ],
+    )
+    async def test_minimum_threshold_boundaries(
+        self, settings, threshold, score, expected_id
+    ):
+        fake_llm = FakeLLMPort(
+            responses=[
+                _make_llm_response(structured=CodingResponse(selected=[0])),
+                _make_llm_response(structured=_judge_text(score, "Test fit.")),
+            ]
+        )
+        service = _make_coding_service(fake_llm, settings)
+
+        result = await service.assign_codes(
+            _make_coding_request(confidence_threshold=threshold), _future_deadline()
+        )
+
+        code = result.coded_feedback_records[0].assigned_codes[0]
+        assert code.coding_level_1_id == expected_id
+        if expected_id is None:
+            assert code.explanation.startswith("NO CODING APPLIED.")
+        else:
+            assert code.confidence_level_1 == score
+
+    @pytest.mark.asyncio
     async def test_all_candidates_rejected_returns_null_codes_with_explanation(
         self, settings
     ):
