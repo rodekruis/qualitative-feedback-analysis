@@ -151,6 +151,28 @@ def test_feedback_flowchart_uses_configurable_confidence_thresholds():
     assert "autoSensitiveStatus = 'human_review_required'" in sensitive
 
 
+def test_feedback_flowchart_uses_optional_minimum_coding_threshold():
+    nodes = {
+        node["id"]: node
+        for node in _nodes(FLOWCHART_DIR / "Feedback_saving_flowchart.csv")
+    }
+    payload = nodes["7k24bkfmi6"]["actionList"][1]["formula"]
+
+    assert "$minimumThreshold = 0.1;" in payload
+    assert (
+        "if (record\\exists('AppSecret', 'name=', "
+        "'QFA_CODING_MINIMUM_THRESHOLD')) {\n"
+        "    $minimumThreshold = number\\parseFloat("
+        "ext\\appSecret\\get('QFA_CODING_MINIMUM_THRESHOLD'));\n"
+        "}"
+    ) in payload
+    assert "$payload['confidence_threshold'] = $minimumThreshold;" in payload
+    assert "$payload['confidence_threshold'] = 0.1;" not in payload
+    assert "string\\trim(" not in payload
+    assert "string\\replace(" not in payload
+    assert "string\\test(" not in payload
+
+
 def test_insight_flowchart_sends_meetings_to_both_bulk_endpoints():
     """Meeting records are collected regardless of the insight method."""
     flowchart = FLOWCHART_DIR / "Insight_creation_flowchart.csv"

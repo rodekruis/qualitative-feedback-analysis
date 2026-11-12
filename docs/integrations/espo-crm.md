@@ -59,7 +59,7 @@ Each call tracks its own status, moving through `requested` → `processing` →
 | `assign-codes` | `autoCodingStatus` | `autoCodingErrorCode`, `autoCodingErrorMessage` |
 | `detect-sensitive` | `autoSensitiveStatus` | `autoSensitiveErrorCode`, `autoSensitiveErrorMessage` |
 
-The `assign-codes` step copies the first assigned path and explanation to the record. It computes a weighted confidence using level 1 / 2 / 3 weights of 0.20 / 0.30 / 0.50; missing scores are excluded and the remaining weights are normalized. Both the weighted score and the deepest available level's score must meet their App Secret thresholds. Otherwise, or when no confidence is available, the record requires human review. The API request's separate `confidence_threshold` of 0.1 filters candidates before this calculation.
+The `assign-codes` step copies the first assigned path and explanation to the record. It computes a weighted confidence using level 1 / 2 / 3 weights of 0.20 / 0.30 / 0.50; missing scores are excluded and the remaining weights are normalized. Both the weighted score and the deepest available level's score must meet their App Secret thresholds. Otherwise, or when no confidence is available, the record requires human review. Before this, the API drops any candidate path with a level below the request's `confidence_threshold` (`QFA_CODING_MINIMUM_THRESHOLD`, default 0.1). If every candidate is dropped, no code is assigned, the explanation starts with `NO CODING APPLIED.`, and the record requires human review.
 
 The `detect-sensitive` step copies `is_sensitive`, `explanation` and `confidence` into `autoSensitive`, `autoSensitiveExplanation` and `autoSensitiveConfidence`. A null confidence or a score below the sensitivity threshold requires human review, regardless of whether the result is sensitive. The score covers both the flag and types. Empty feedback also produces a null confidence and requires review.
 
@@ -137,8 +137,9 @@ The feedback flow also requires these per-instance thresholds, expressed as deci
 | `QFA_CODING_WEIGHTED_THRESHOLD` | Minimum weighted coding confidence. |
 | `QFA_CODING_DEEPEST_THRESHOLD` | Minimum confidence of the deepest available coding level. |
 | `QFA_SENSITIVE_CONFIDENCE_THRESHOLD` | Minimum sensitivity confidence. |
+| `QFA_CODING_MINIMUM_THRESHOLD` | Optional. Minimum score at every level for a code path to be kept. Defaults to 0.1 when unset. |
 
-Set them before activating the flow. Choose values based on human-reviewed examples.
+Set the required thresholds before activating the flow. Choose values based on human-reviewed examples.
 
 | Secret | Value |
 |---|---|
