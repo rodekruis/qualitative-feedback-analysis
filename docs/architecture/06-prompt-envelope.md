@@ -213,10 +213,9 @@ underlying name. Other entity types Presidio detects (e.g. `LOCATION`,
 covers aggregate-trend output and analysts may need location context for
 the trend interpretation.
 
-The retention applies **only to the analyse modes** — `summarize`,
-`summarize_aggregate`, and `assign_codes` continue to restore all
-placeholders, because their per-record output is meant to be faithful to
-the source.
+The retention applies **only to the analyse modes**. Summary endpoints
+restore all placeholders; `assign_codes` does not restore feedback
+placeholders in judge explanations.
 
 ## Sequence summary
 

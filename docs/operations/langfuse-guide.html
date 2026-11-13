@@ -161,6 +161,7 @@ footer { border-top: 1px solid var(--line); padding-top: 18px; font-size: 0.85re
     <li>The analysis results go back only to the system that called QFA.</li>
   </ul>
   <p>The one exception is the quality tests at the end of this page. They use invented or anonymized test text, not real feedback.</p>
+  <p>For coding, framework names and descriptions reach the model unchanged. Keep personal data out of them. They are not included in Langfuse call records.</p>
 </section>
 
 <section aria-labelledby="flow-h">
@@ -179,7 +180,7 @@ footer { border-top: 1px solid var(--line); padding-top: 18px; font-size: 0.85re
 
       <rect class="box" x="355" y="40" width="190" height="80" rx="8"/>
       <text class="lbl" x="450" y="76" text-anchor="middle">QFA service</text>
-      <text class="sub" x="450" y="97" text-anchor="middle">removes personal data first</text>
+      <text class="sub" x="450" y="97" text-anchor="middle">redacts feedback first</text>
 
       <rect class="box" x="690" y="40" width="190" height="80" rx="8"/>
       <text class="lbl" x="785" y="76" text-anchor="middle">Language model</text>
@@ -195,7 +196,8 @@ footer { border-top: 1px solid var(--line); padding-top: 18px; font-size: 0.85re
       <text class="elbl" x="282" y="114" text-anchor="middle">results</text>
 
       <path class="edge" d="M545,68 H688" marker-end="url(#ah)"/>
-      <text class="elbl" x="617" y="60" text-anchor="middle">anonymized text</text>
+      <text class="elbl" x="617" y="44" text-anchor="middle">redacted feedback</text>
+      <text class="elbl" x="617" y="60" text-anchor="middle">+ coding framework</text>
       <path class="edge" d="M688,96 H547" marker-end="url(#ah)"/>
       <text class="elbl" x="617" y="114" text-anchor="middle">answer</text>
 

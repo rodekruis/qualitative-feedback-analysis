@@ -271,6 +271,13 @@ def test_coding_levels_flat_depth_accepted():
     assert len(levels.root_codes) == 2
 
 
+def test_coding_node_schema_warns_that_names_reach_model_unchanged():
+    schema = ApiCodingNode.model_json_schema()["$defs"]["ApiCodingNode"]
+    description = schema["properties"]["name"]["description"]
+    assert "model unchanged" in description
+    assert "must not contain personal data" in description
+
+
 def test_coding_levels_valid_uniform_depth():
     levels = ApiCodingFramework(
         root_codes=[

@@ -170,8 +170,7 @@ class CodingService:
         The LLM provider adapter used for the one-shot pick — the only
         generation call this service makes.
     anonymizer : AnonymizationPort
-        The anonymisation adapter used to redact PII from each assembled
-        prompt before it leaves the process.
+        The anonymisation adapter used to redact feedback text before prompt assembly.
     executor : LLMCallExecutor
         The shared LLM-call scaffolding (ADR-017), used here for the
         pre-flight token-budget guard and deadline-derived timeout.
@@ -301,7 +300,14 @@ class CodingService:
             return CodingAssignmentResultModel(coded_feedback_records=tuple(coded))
 
         self._executor.check_token_limit(system_message, user_message)
-        anonymized_user_message, _ = self._anonymizer.anonymize(user_message)
+        anonymized_content, _ = self._anonymizer.anonymize(feedback_record.content)
+        anonymized_feedback_record = feedback_record.model_copy(
+            update={"content": anonymized_content}
+        )
+        _, anonymized_user_message = build_coding_messages(
+            feedback_record=anonymized_feedback_record, options=options
+        )
+        self._executor.check_token_limit(system_message, anonymized_user_message)
         timeout = self._executor.check_deadline_and_get_timeout(deadline)
 
         try:
@@ -337,6 +343,7 @@ class CodingService:
             *(
                 self._judge_selected_path(
                     feedback_record=feedback_record,
+                    anonymized_feedback_record=anonymized_feedback_record,
                     path=options[idx].path,
                     threshold=request.confidence_threshold,
                     tenant_id=request.tenant_id,
@@ -406,6 +413,7 @@ class CodingService:
         self,
         *,
         feedback_record: FeedbackRecordModel,
+        anonymized_feedback_record: FeedbackRecordModel,
         path: tuple[tuple[str, str], ...],
         threshold: float | None,
         tenant_id: str,
@@ -434,6 +442,7 @@ class CodingService:
             current_path = [*hierarchy_path, (level_label, name)]
             judge = await self._judge_code_level(
                 feedback_record=feedback_record,
+                anonymized_feedback_record=anonymized_feedback_record,
                 level=level_label,
                 level_num=level_num,
                 path=current_path,
@@ -462,6 +471,7 @@ class CodingService:
         self,
         *,
         feedback_record: FeedbackRecordModel,
+        anonymized_feedback_record: FeedbackRecordModel,
         level: str,
         level_num: int,
         path: list[tuple[str, str]],
@@ -491,13 +501,18 @@ class CodingService:
         )
         self._check_coding_deadline(deadline)
         self._executor.check_token_limit(system_message, user_message)
-        user_message, _ = self._anonymizer.anonymize(user_message)
+        _, anonymized_user_message = build_judge_messages(
+            feedback_record=anonymized_feedback_record,
+            level=level,
+            path=path,
+        )
+        self._executor.check_token_limit(system_message, anonymized_user_message)
         with judge_call():
             response = await self._executor.bounded_complete(
                 semaphore,
                 llm=self._judge_llm,
                 system_message=system_message,
-                user_message=user_message,
+                user_message=anonymized_user_message,
                 tenant_id=tenant_id,
                 response_model=str,
                 deadline=deadline,

@@ -183,7 +183,12 @@ class CodingNode(BaseModel):
     id: str = Field(
         description="Stable identifier for this node from the source system."
     )
-    name: str = Field(description="Label for this node in the coding hierarchy.")
+    name: str = Field(
+        description=(
+            "Label for this node, including any description. Sent to the model "
+            "unchanged; must not contain personal data."
+        )
+    )
     children: list["CodingNode"] = Field(
         default_factory=list,
         description="Child nodes. Empty for leaf-level codes.",

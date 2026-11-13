@@ -79,7 +79,9 @@ Per-record inference endpoints (`/v1/summarize`, `/v1/summarize-community-meetin
 
 `POST /v1/summarize` takes no language parameter: the generated title and summary follow the record's own language, detected server-side from its content. Records too short to detect fall back to instructing the model to mirror the input language.
 
-Anonymisation is unconditional on every inference endpoint: record text (plus the analyst prompt on `/v1/analyze-bulk`) is redacted before the LLM call, and placeholders are restored in the response — except person-name placeholders on `/v1/analyze-bulk`, which stay redacted by design. There is no request field to switch it off and no response field reporting it — see [crosscutting concerns](../architecture/04-crosscutting.md).
+Anonymisation is unconditional on every inference endpoint: record text (plus the analyst prompt on `/v1/analyze-bulk`) is redacted before the LLM call. Summarization and sensitivity responses restore placeholders; `/v1/analyze-bulk` keeps person-name placeholders redacted, and `/v1/assign-codes` does not restore feedback placeholders. There is no request field to switch anonymisation off — see [crosscutting concerns](../architecture/04-crosscutting.md).
+
+For `/v1/assign-codes`, framework names and any descriptions included in them are sent to the model unchanged. They must not contain personal data. Detection in feedback is statistical and can miss personal data.
 
 `POST /v1/summarize-community-meeting` accepts HTML in `meetingNotes`. EspoCRM's rich-text editor stores whatever is pasted into it, and notes pasted from Word arrive as tens of thousands of characters of inline CSS wrapping a few kilobytes of prose. The markup is reduced to plain text — block boundaries become newlines, table cells are tab-separated, `<style>`/`<script>` content is dropped — *before* the 100 000-character limit is checked, so the limit bounds the prose rather than the markup. Notes containing no tag at all are passed through unchanged.
 
