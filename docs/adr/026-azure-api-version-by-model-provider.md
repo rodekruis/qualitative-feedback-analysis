@@ -69,6 +69,7 @@ provider prefix (`default_api_version` in `qfa.adapters.llm_client`):
   `2024-05-01-preview` to `v1`. The request content is unchanged; only the
   Azure path changes, to `/openai/v1/chat/completions`. Staging receives it
   first with its release; prd only with Promote to prd.
+- On 2026-11-12, prd also switched its primary model to `azure/gpt-6.1-sol`.
 - The Mistral judge on staging and prd keeps `2024-05-01-preview`.
 - A test in `tests/adapters/test_llm_client.py` sends a simulated request
   through LiteLLM and fails if structured output for `azure/gpt-6.1-sol` is

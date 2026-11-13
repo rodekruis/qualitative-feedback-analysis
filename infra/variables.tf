@@ -51,11 +51,11 @@ variable "github_repo" {
 variable "llm_model" {
   description = "Primary LLM model (LLM_MODEL): azure/<Foundry deployment name> or azure_ai/<deployment name>. Deployed environments must set it through the AZ_LLM_MODEL GitHub environment variable; CI passes an unset one as \"\", which the validation below rejects, so the deployment stops instead of shipping an empty model. The default only applies to manual runs. The model needs an entry in src/qfa/resources/model_prices.yaml or its calls are recorded at zero cost, and an azure_ai/ model also needs the llm-api-base Key Vault secret pointed at its endpoint. See docs/operations/release-flow.md."
   type        = string
-  default     = "azure/gpt-5.4"
+  default     = "azure/gpt-6.1-sol"
 
   validation {
     condition     = can(regex("^(azure|azure_ai)/\\S+$", var.llm_model))
-    error_message = "llm_model must look like azure/<deployment name> or azure_ai/<deployment name>, e.g. azure/gpt-5.4. In CI, set the AZ_LLM_MODEL variable on this GitHub environment."
+    error_message = "llm_model must look like azure/<deployment name> or azure_ai/<deployment name>, e.g. azure/gpt-6.1-sol. In CI, set the AZ_LLM_MODEL variable on this GitHub environment."
   }
 }
 

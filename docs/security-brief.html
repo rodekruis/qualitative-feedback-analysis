@@ -282,8 +282,9 @@
         <li>Analysis output <strong>keeps person-name placeholders un-restored</strong> — the analyst never sees the underlying name. NER is statistical, so this reduces re-identification risk; it does not guarantee zero.</li>
         <li><strong>Data minimisation by design:</strong> feedback content and model responses are never written to the database.</li>
         <li>The EspoCRM feedback flow flags sensitivity results for human review when confidence is missing or below its instance-specific threshold; this is not a guarantee of correct classification.</li>
-        <li>Currently powered by <strong>OpenAI's GPT-5.4</strong> model — accessed through <strong>Azure AI Foundry</strong> (Microsoft-hosted, Sweden Central), not OpenAI's servers. Prompts and completions are never available to OpenAI, never used to improve their models, or to train foundation models without explicit permission. <a href="https://learn.microsoft.com/en-us/azure/foundry/responsible-ai/openai/data-privacy?tabs=azure-portal">Source</a></li>
-      </ul>
+        <li>Currently powered by <strong data-model="azure/gpt-6.1-sol">OpenAI's GPT-6.1 Sol</strong> model — accessed through <strong>Azure AI Foundry</strong> (Microsoft-hosted, Sweden Central), not OpenAI's servers. Prompts and completions are never available to OpenAI, never used to improve their models, or to train foundation models without explicit permission. <a href="https://learn.microsoft.com/en-us/azure/foundry/responsible-ai/openai/data-privacy?tabs=azure-portal">Source</a></li>
+                <li>Quality checks use a second model, <strong data-judge-model="azure_ai/mistral-medium-3-5">Mistral Medium 3.5</strong>, on the same Azure AI Foundry resource. It receives the same anonymised text.</li>
+              </ul>
     </div>
 
     <div class="card">
@@ -316,7 +317,7 @@
         <li><strong>TLS 1.2+ enforced</strong> everywhere; legacy insecure file-transfer protocols are disabled.</li>
         <li>Services authenticate to each other via <strong>managed identity</strong> — no shared-key secrets between components.</li>
         <li><strong>Isolated environments:</strong> development, staging and production each have their own resources.</li>
-        <li>Hosted in <strong>Europe (Sweden)</strong> — data stays within the EU.</li>
+        <li>Hosted in <strong>Europe (Sweden)</strong>. In staging and production, all models run as EU Data Zone deployments, so data stays within the EU.</li>
       </ul>
     </div>
 
