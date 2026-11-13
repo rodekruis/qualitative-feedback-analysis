@@ -74,7 +74,7 @@ gh variable set AZ_LLM_MODEL       --env "$ENV" --repo "$REPO" --body "azure/gpt
 # Optional: a separate judge model (see ADR-020). Leaving AZ_JUDGE_LLM_MODEL
 # unset turns the judge connection off, so judge calls run on AZ_LLM_MODEL.
 # An azure_ai/ judge also needs its endpoint in AZ_JUDGE_LLM_API_BASE.
-gh variable set AZ_JUDGE_LLM_MODEL    --env "$ENV" --repo "$REPO" --body "azure_ai/mistral-medium-3-5"
+gh variable set AZ_JUDGE_LLM_MODEL    --env "$ENV" --repo "$REPO" --body "azure_ai/mistral-large-4-latest"
 gh variable set AZ_JUDGE_LLM_API_BASE --env "$ENV" --repo "$REPO" --body "https://<resource>.services.ai.azure.com/models"
 
 # Optional: only needed to turn on Langfuse call tracing for this
