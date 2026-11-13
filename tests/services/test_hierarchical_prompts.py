@@ -13,7 +13,19 @@ from qfa.services.hierarchical_prompts import (
     build_reduce_system_message,
     build_reduce_user_message,
 )
-from qfa.services.prompts import ANALYZE_GUARDRAILS_PROMPT, ANALYZE_OUTPUT_FORMAT_PROMPT
+from qfa.services.prompts import (
+    ANALYZE_GUARDRAILS_PROMPT,
+    ANALYZE_OUTPUT_FORMAT_PROMPT,
+    SOURCE_COMPARISON_PROMPT,
+)
+
+
+def test_source_comparison_only_when_requested() -> None:
+    """Map and reduce add the source comparison only for mixed-source requests."""
+    assert SOURCE_COMPARISON_PROMPT not in build_map_system_message()
+    assert SOURCE_COMPARISON_PROMPT not in build_reduce_system_message()
+    assert SOURCE_COMPARISON_PROMPT in build_map_system_message(compare_sources=True)
+    assert SOURCE_COMPARISON_PROMPT in build_reduce_system_message(compare_sources=True)
 
 
 def test_map_system_message_contains_guardrails() -> None:

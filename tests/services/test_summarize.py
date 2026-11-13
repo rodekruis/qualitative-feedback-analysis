@@ -41,6 +41,7 @@ from qfa.domain.ports import AnonymizationPort, EvaluationPort, LLMPort
 from qfa.domain.usage_models import Operation
 from qfa.services.call_context import call_scope
 from qfa.services.llm_call_executor import LLMCallExecutor
+from qfa.services.prompts import SOURCE_COMPARISON_PROMPT
 from qfa.services.summarize import SummarizeService
 from qfa.settings import OrchestratorSettings
 
@@ -385,6 +386,24 @@ class TestSummarizeBulkCommunityMeetingRecords:
         system_message = fake_llm.calls[0]["system_message"]
         assert "community meeting notes" in system_message
         assert "fgd means focus group discussion" in system_message
+
+    @pytest.mark.asyncio
+    async def test_mixed_sources_ask_for_a_source_comparison(self, settings):
+        fake_llm = self._fake_llm()
+        service = _build_service(fake_llm, settings)
+
+        await service.summarize_bulk(self._mixed_request(), _future_deadline())
+
+        assert SOURCE_COMPARISON_PROMPT in fake_llm.calls[0]["system_message"]
+
+    @pytest.mark.asyncio
+    async def test_single_source_has_no_source_comparison(self, settings):
+        fake_llm = self._fake_llm()
+        service = _build_service(fake_llm, settings)
+
+        await service.summarize_bulk(_make_aggregate_request(), _future_deadline())
+
+        assert SOURCE_COMPARISON_PROMPT not in fake_llm.calls[0]["system_message"]
 
     @pytest.mark.asyncio
     async def test_meeting_mentions_link_to_meeting_base_url(self, settings):

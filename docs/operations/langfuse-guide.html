@@ -323,6 +323,7 @@ footer { border-top: 1px solid var(--line); padding-top: 18px; font-size: 0.85re
       <h3>Prompts and versions</h3>
       <p>The Prompts page shows the 12 instructions that QFA gives the model, for example <code>summarize-single-system</code>. When the team changes an instruction, a new version appears at the next start of the service. Each call shows which prompt and which version it used, so you can compare results before and after a change.</p>
       <p class="muted">These prompts are fixed text from the code. They never contain feedback.</p>
+      <p class="muted">Some requests add lines to the end of a prompt: the output language, or a comparison of the two sources when a request has both feedback and community meeting records. These added lines are not part of the stored prompt version.</p>
     </div>
   </div>
 </section>

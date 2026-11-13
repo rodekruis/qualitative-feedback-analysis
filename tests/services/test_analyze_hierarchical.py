@@ -20,6 +20,8 @@ from qfa.adapters.presidio_anonymizer import PresidioAnonymizer
 from qfa.domain.errors import AnalysisError, AnalysisTimeoutError, LLMError
 from qfa.domain.models import (
     AnalysisRequestModel,
+    CommunityMeetingRecordMetadataModel,
+    CommunityMeetingRecordModel,
     FeedbackRecordMetadataModel,
     FeedbackRecordModel,
     LLMResponse,
@@ -30,7 +32,7 @@ from qfa.domain.usage_models import Operation
 from qfa.services.analyze import AnalyzeService
 from qfa.services.call_context import call_scope
 from qfa.services.llm_call_executor import LLMCallExecutor
-from qfa.services.prompts import ANALYZE_GUARDRAILS_PROMPT
+from qfa.services.prompts import ANALYZE_GUARDRAILS_PROMPT, SOURCE_COMPARISON_PROMPT
 from qfa.settings import AnalyzeSettings, OrchestratorSettings
 
 from .test_summarize import FakeEvaluationPort
@@ -416,6 +418,38 @@ async def test_output_language_instructs_the_reduce_system_message():
     # already be in the target language rather than leaving translation of a
     # whole mixed-language corpus to the single final reduce call.
     assert all("Dutch" in s for s in system_msgs[:-1])
+
+
+@pytest.mark.asyncio
+async def test_mixed_sources_ask_every_map_and_reduce_call_for_a_comparison():
+    """Every map partial names its source, even a chunk with one record type.
+
+    Why: the reduce step only sees partials, so it can compare sources only
+    if each partial already says which source a point came from.
+    """
+    meetings = tuple(
+        CommunityMeetingRecordModel(
+            id=f"m{i}",
+            meetingNotes="water access " * 5,
+            metadata=CommunityMeetingRecordMetadataModel(dateOfMeeting="2024-01-05"),
+        )
+        for i in range(2)
+    )
+    request = AnalysisRequestModel(
+        feedback_records=(*_records(2, "water access " * 5, "w"), *meetings),
+        prompt="trends?",
+        tenant_id=TENANT_ID,
+        mode="hierarchical",
+    )
+    llm = RecordingLLM()
+    service = _build_analyze_service(
+        llm, RecordingAnonymizer(), FakeEmbeddingPort(), max_total_tokens=100_000
+    )
+    deadline = datetime.now(UTC) + timedelta(seconds=120)
+    await service.analyze_hierarchical(request, deadline, anonymize=True)
+    system_msgs = [c[0] for c in llm.calls if c[2] is str and not _is_judge_call(c[0])]
+    assert system_msgs
+    assert all(SOURCE_COMPARISON_PROMPT in s for s in system_msgs)
 
 
 @pytest.mark.asyncio

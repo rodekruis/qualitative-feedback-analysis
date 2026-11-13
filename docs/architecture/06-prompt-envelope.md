@@ -72,6 +72,24 @@ wrongly guessed language is worse than not pinning one (#294).
 `/v1/summarize-bulk` is unchanged — its callers always set `output_language`,
 so its directive is already explicit.
 
+## Source comparison
+
+When a request has both feedback and community meeting records,
+`build_source_comparison_instruction` adds `SOURCE_COMPARISON_PROMPT` after the
+output format and before the language directive. The model must then:
+
+- name the source of each point: feedback, community meetings, or both
+- show points from one source only, and points where the sources differ
+- not treat a point missing from one source as a contradiction
+- not add the two record counts together
+
+It applies to `/v1/analyze-bulk` (single-pass, and every hierarchical map and
+reduce call) and to `/v1/summarize-bulk`. In hierarchical mode the decision is
+made for the whole request, not per chunk: the reduce step sees only partials,
+so each partial must already name its source. Single-source requests get no
+extra text. Like the language directive, it is not part of the versioned
+Langfuse prompt (ADR-024).
+
 ## XML-style envelope (user message)
 
 The analyst prompt and every feedback record are placed in the **user
