@@ -95,7 +95,7 @@ class LLMSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="LLM_")
 
-    model: str = "azure/gpt-5.4"
+    model: str = "azure/gpt-6.1-sol"
     api_key: SecretStr = Field(default=...)  # required, no default
     api_base: str = ""
     api_version: str = ""

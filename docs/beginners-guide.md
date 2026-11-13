@@ -80,7 +80,7 @@ Change the value in your `.env` file. The app uses the new model the next
 time it starts.
 
 ```
-LLM_MODEL=azure/gpt-5.4
+LLM_MODEL=azure/gpt-6.1-sol
 ```
 
 This `.env` change only affects your own machine. A deployed environment

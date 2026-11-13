@@ -119,6 +119,7 @@ To change a model:
 4. Run the `Terraform` workflow from the Actions tab with that `environment` and `command: plan`. The App Service diff should show only the changed model setting. Stop if it shows anything else.
 5. Run it again with `command: apply`. The App Service restarts with the new model.
 6. Run an analysis and check, in Langfuse or the `llm_calls` table, that calls use the new model and have a cost above zero.
+7. For `prd`, set the matching default in `infra/variables.tf` in a PR. The docs and the security brief describe these defaults, and a test fails until they name the new model. The `Terraform` workflow warns while `prd` runs a model that differs from the defaults.
 
 To roll back, set the variable back to the previous value and repeat steps 4 and 5. Change one environment at a time: `dev`, then `staging`, then `prd`.
 

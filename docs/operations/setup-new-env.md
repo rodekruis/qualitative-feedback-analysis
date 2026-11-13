@@ -69,7 +69,7 @@ gh variable set AZ_APP_NAME        --env "$ENV" --repo "$REPO" --body "qfa-${ENV
 # Required: the primary LLM model, azure/<Foundry deployment name>. CI's
 # Terraform run stops with an error while it is missing. See
 # docs/operations/release-flow.md#changing-the-llm-model-for-an-environment.
-gh variable set AZ_LLM_MODEL       --env "$ENV" --repo "$REPO" --body "azure/gpt-5.4"
+gh variable set AZ_LLM_MODEL       --env "$ENV" --repo "$REPO" --body "azure/gpt-6.1-sol"
 
 # Optional: a separate judge model (see ADR-020). Leaving AZ_JUDGE_LLM_MODEL
 # unset turns the judge connection off, so judge calls run on AZ_LLM_MODEL.
