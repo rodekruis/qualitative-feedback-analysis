@@ -28,7 +28,7 @@ to them, the options considered, and the reasoning behind the chosen approach.
 | [017](017-orchestrator-composition-only.md) | Decompose the Orchestrator by composition only | Accepted (supersedes decision 3 of [011](011-drop-orchestrator-port.md)) |
 | [018](018-no-third-party-text-in-error-envelope.md) | No third-party text in the error envelope | Accepted |
 | [019](019-per-environment-app-service-plan-sizing.md) | Per-environment App Service plan sizing, prd on P0v3 | Accepted |
-| [020](020-mistral-medium-as-judge-model.md) | `mistral-medium-3-5` as the judge model | Accepted |
+| [020](020-mistral-medium-as-judge-model.md) | `mistral-large-4-latest` as the judge model | Accepted |
 | [021](021-two-model-person-union.md) | Two-model NER union for person-name recall | Accepted |
 | [022](022-evaluation-port-for-live-judge-scores.md) | `EvaluationPort` for live judge scores in Langfuse | Accepted |
 | [023](023-eval-black-box-and-langfuse-ground-truth.md) | `eval/` as a black-box client, and Langfuse as the analyze ground truth | Accepted |

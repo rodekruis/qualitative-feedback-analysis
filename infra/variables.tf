@@ -73,7 +73,7 @@ variable "llm_api_version" {
 variable "judge_llm_model" {
   description = "Model for the separate LLM-as-judge connection (JUDGE_LLM_MODEL). An empty string disables the judge connection entirely — judge calls fall back to the primary llm_model, matching pre-judge-config behaviour. This is also the rollback lever: to roll back, set this to \"\" and re-apply, no code change or redeploy needed. See ADR-020."
   type        = string
-  default     = "azure_ai/mistral-medium-3-5"
+  default     = "azure_ai/mistral-large-4-latest"
 }
 
 variable "judge_llm_api_base" {

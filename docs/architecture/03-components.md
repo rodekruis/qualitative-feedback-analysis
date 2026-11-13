@@ -59,7 +59,7 @@ grades it. It is configured by `JUDGE_LLM_*` (see the
 [settings reference](../operations/settings-reference.md)) and off by default:
 with `JUDGE_LLM_MODEL` unset the judge reference simply *is* the generation
 client, and behaviour is identical to a single-client deployment. Deployed
-environments do configure it, to `mistral-medium-3-5` — see
+environments do configure it, to `mistral-large-4-latest` — see
 [ADR-020](../adr/020-mistral-medium-as-judge-model.md).
 
 Five call sites use the judge connection — the `analyze` judge and the

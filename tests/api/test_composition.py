@@ -610,10 +610,13 @@ class TestRegisterCustomModelPrices:
     guard against a candidate judge model being deployed unpriced.
     """
 
-    def test_mistral_medium_3_5_is_priced(self) -> None:
+    @pytest.mark.parametrize(
+        "model", ["azure_ai/mistral-medium-3-5", "azure_ai/mistral-large-4-latest"]
+    )
+    def test_judge_model_is_priced(self, model: str) -> None:
         register_custom_model_prices()
 
-        entry = litellm.model_cost["azure_ai/mistral-medium-3-5"]
+        entry = litellm.model_cost[model]
 
         assert entry["input_cost_per_token"] > 0
         assert entry["output_cost_per_token"] > 0
