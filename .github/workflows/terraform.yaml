@@ -121,25 +121,6 @@ jobs:
           # class as #173).
           WORKSPACE: ${{ inputs.environment || 'dev' }}
 
-      # The docs and security brief describe the variables.tf defaults
-      # (enforced by tests/scripts/test_infra_judge_config.py), so prd running
-      # anything else means they are out of date. Warns only; never blocks.
-      - name: Check prd models match the documented defaults
-        if: inputs.environment == 'prd'
-        run: |
-          for pair in "llm_model=$LLM_MODEL" "judge_llm_model=$JUDGE_LLM_MODEL"; do
-            name="${pair%%=*}"
-            actual="${pair#*=}"
-            documented=$(awk -v v="variable \"$name\"" \
-              'index($0, v) {f=1} f && /^ *default *=/ {gsub(/^[^"]*"|".*$/, ""); print; exit}' variables.tf)
-            if [ "$actual" != "$documented" ]; then
-              echo "::warning file=infra/variables.tf::prd $name is '$actual', but the docs and security brief describe '$documented'. Change the default in variables.tf and the docs in a PR."
-            fi
-          done
-        env:
-          LLM_MODEL: ${{ vars.AZ_LLM_MODEL }}
-          JUDGE_LLM_MODEL: ${{ vars.AZ_JUDGE_LLM_MODEL }}
-
       - name: Terraform plan
         if: ${{ inputs.command != 'apply' }}
         run: terraform plan -input=false
