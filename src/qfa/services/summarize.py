@@ -61,6 +61,8 @@ from qfa.services.prompts import (
     build_feedback_record_envelope,
     build_feedback_records_envelope,
     build_output_language_instruction,
+    build_source_comparison_instruction,
+    includes_both_sources,
 )
 from qfa.services.record_links import hyperlink_form_references
 from qfa.utils import timed
@@ -265,6 +267,9 @@ class SummarizeService:
             When the un-anonymised prompt exceeds the token cap.
         """
         system_message = _DEFAULT_AGGREGATE_SUMMARIZATION_PROMPT
+        system_message += build_source_comparison_instruction(
+            includes_both_sources(request.feedback_records)
+        )
         system_message += build_output_language_instruction(
             request.output_language, subject="title and summary"
         )

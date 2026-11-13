@@ -68,6 +68,7 @@ from qfa.services.prompts import (
     build_analyze_judge_system_message,
     build_analyze_user_message,
     build_single_pass_system_message,
+    includes_both_sources,
 )
 from qfa.services.record_links import format_record_citations
 from qfa.settings import AnalyzeSettings, OrchestratorSettings
@@ -288,7 +289,10 @@ class AnalyzeService:
         - Existing regex prompt-injection tripwire still applies and
           returns 422 ``prompt_injection_detected``.
         """
-        system_message = build_single_pass_system_message(request.output_language)
+        system_message = build_single_pass_system_message(
+            request.output_language,
+            compare_sources=includes_both_sources(request.feedback_records),
+        )
         user_message = build_analyze_user_message(
             request.prompt, request.feedback_records
         )
@@ -545,6 +549,7 @@ class AnalyzeService:
             len(chunks),
             max_in_flight,
         )
+        compare_sources = includes_both_sources(request.feedback_records)
 
         async def _map_one(index: int, chunk: Chunk) -> str:
             """Produce one chunk's partial (the judge runs separately)."""
@@ -564,6 +569,7 @@ class AnalyzeService:
                     semaphore,
                     timing=timing,
                     output_language=request.output_language,
+                    compare_sources=compare_sources,
                 )
             logger.debug(
                 "map chunk %d/%d done in %.2fs (queued=%.2fs call=%.2fs)",
@@ -675,6 +681,7 @@ class AnalyzeService:
                 deadline,
                 semaphore,
                 request.output_language,
+                compare_sources=compare_sources,
             )
 
         with timed() as reduce_sw:
@@ -786,6 +793,7 @@ class AnalyzeService:
         semaphore: asyncio.Semaphore,
         timing: SlotTiming | None = None,
         output_language: str | None = None,
+        compare_sources: bool = False,
     ) -> str:
         """Produce one partial analysis for a chunk (no judging).
 
@@ -797,7 +805,9 @@ class AnalyzeService:
         response = await self._executor.bounded_complete(
             semaphore,
             llm=self._llm,
-            system_message=build_map_system_message(output_language),
+            system_message=build_map_system_message(
+                output_language, compare_sources=compare_sources
+            ),
             user_message=build_analyze_user_message(analyst_prompt, records),
             tenant_id=tenant_id,
             response_model=str,
@@ -880,6 +890,7 @@ class AnalyzeService:
         deadline: datetime,
         semaphore: asyncio.Semaphore,
         output_language: str | None = None,
+        compare_sources: bool = False,
     ) -> str:
         """Synthesise partials into one analysis, tree-reducing on overflow.
 
@@ -899,7 +910,9 @@ class AnalyzeService:
         we emit a single LLM call on the partials anyway so the recursion
         always terminates.
         """
-        system_message = build_reduce_system_message(output_language)
+        system_message = build_reduce_system_message(
+            output_language, compare_sources=compare_sources
+        )
 
         def _fits(items: tuple[str, ...], table: CodingTrendTable | None) -> bool:
             user = build_reduce_user_message(
@@ -962,6 +975,7 @@ class AnalyzeService:
                 deadline,
                 semaphore,
                 output_language,
+                compare_sources=compare_sources,
             )
             for group in groups
         ]
@@ -973,6 +987,7 @@ class AnalyzeService:
             deadline,
             semaphore,
             output_language,
+            compare_sources=compare_sources,
         )
 
     def _group_partials_to_budget(

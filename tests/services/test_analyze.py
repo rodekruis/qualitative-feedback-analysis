@@ -25,6 +25,7 @@ from qfa.domain.errors import (
 )
 from qfa.domain.models import (
     AnalysisRequestModel,
+    CommunityMeetingRecordModel,
     FeedbackRecordMetadataModel,
     FeedbackRecordModel,
     JudgeComponents,
@@ -40,7 +41,11 @@ from qfa.services.analyze import (
 )
 from qfa.services.call_context import call_scope
 from qfa.services.llm_call_executor import LLMCallExecutor
-from qfa.services.prompts import ANALYZE_JUDGE_PROMPT, JUDGE_UNAVAILABLE_EXPLANATION
+from qfa.services.prompts import (
+    ANALYZE_JUDGE_PROMPT,
+    JUDGE_UNAVAILABLE_EXPLANATION,
+    SOURCE_COMPARISON_PROMPT,
+)
 from qfa.settings import OrchestratorSettings
 
 # Reuse the doubles the summarize suite already ships rather than growing a
@@ -428,6 +433,30 @@ class TestAnalyzeOutputLanguage:
         await service.analyze_bulk(_make_request(), _future_deadline())
 
         assert "Write the analysis in" not in fake_llm.calls[0]["system_message"]
+
+
+class TestSourceComparison:
+    @pytest.mark.asyncio
+    async def test_mixed_sources_ask_for_a_source_comparison(self, settings):
+        fake_llm = _judging_llm()
+        service = _build_analyze_service(fake_llm, FakeAnonymizer(), settings)
+        meeting = CommunityMeetingRecordModel(id="m1", meetingNotes="Water talk.")
+
+        await service.analyze_bulk(
+            _make_request(feedback_records=(_make_feedback_record(), meeting)),
+            _future_deadline(),
+        )
+
+        assert SOURCE_COMPARISON_PROMPT in fake_llm.calls[0]["system_message"]
+
+    @pytest.mark.asyncio
+    async def test_single_source_has_no_source_comparison(self, settings):
+        fake_llm = _judging_llm()
+        service = _build_analyze_service(fake_llm, FakeAnonymizer(), settings)
+
+        await service.analyze_bulk(_make_request(), _future_deadline())
+
+        assert SOURCE_COMPARISON_PROMPT not in fake_llm.calls[0]["system_message"]
 
 
 class TestNoTrailingQuestion:

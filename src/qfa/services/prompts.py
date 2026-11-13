@@ -8,6 +8,9 @@ Four constants compose the analyse system message:
 * :data:`ANALYZE_OUTPUT_FORMAT_PROMPT` — one section per point, each ending
   with a ``Records:`` line of cited ids.
 
+:data:`SOURCE_COMPARISON_PROMPT` is appended only when a request mixes
+feedback and community meeting records (:func:`includes_both_sources`).
+
 The user message wraps the analyst question and the feedback records in
 XML-style envelope tags. :func:`escape_for_tag_envelope` is applied to
 every piece of untrusted text before it is embedded, so attacker-supplied
@@ -85,6 +88,22 @@ ANALYZE_OUTPUT_FORMAT_PROMPT: str = (
     "such as a table or a plain list. The instruction decides what the "
     "points say, not how the answer is laid out. If the instruction asks for a "
     "comparison, put it inside the points."
+)
+
+SOURCE_COMPARISON_PROMPT: str = (
+    "Source comparison (the records come from two sources: feedback records "
+    "and community meeting records):\n"
+    "- In each section, say whether the point comes from feedback records, "
+    "community meeting records, or both.\n"
+    "- Make it clear when a point comes from only one source, and when the "
+    "two sources say different things about the same topic.\n"
+    "- A point that is missing from one source is not a contradiction. The "
+    "two sources collect information in different ways.\n"
+    "- Do not add the number of feedback records and the number of community "
+    "meeting records together. One meeting record covers a group discussion, "
+    "so the two counts cannot be compared.\n"
+    "- A point that both sources support is stronger. But the sources are not "
+    "fully independent: the same people or events can appear in both."
 )
 
 JUDGE_UNAVAILABLE_EXPLANATION: str = (
@@ -186,11 +205,14 @@ UNCERTAINTY_EXPLANATION: The analysis overstates how many records ask for cash. 
 """
 
 
-def build_single_pass_system_message(output_language: str | None = None) -> str:
+def build_single_pass_system_message(
+    output_language: str | None = None, *, compare_sources: bool = False
+) -> str:
     """Build the single-pass analyse system message.
 
-    Role, guardrails, action, output format, then the language instruction
-    last, so that it keeps the final say.
+    Role, guardrails, action, output format, the optional source-comparison
+    instruction, then the language instruction last, so that it keeps the
+    final say.
 
     The one builder both the ``analyze_bulk`` call site and
     :data:`~qfa.services.prompt_registry.SYSTEM_PROMPTS` use, so the two
@@ -203,8 +225,25 @@ def build_single_pass_system_message(output_language: str | None = None) -> str:
         f"{ANALYZE_GUARDRAILS_PROMPT}\n\n"
         f"{ANALYZE_ACTION_PROMPT}\n\n"
         f"{ANALYZE_OUTPUT_FORMAT_PROMPT}"
+        f"{build_source_comparison_instruction(compare_sources)}"
         f"{build_output_language_instruction(output_language)}"
     )
+
+
+def includes_both_sources(records: tuple[AnalysisRecord, ...]) -> bool:
+    """Return whether ``records`` holds feedback *and* community meeting records."""
+    record_types = {type(record) for record in records}
+    return {FeedbackRecordModel, CommunityMeetingRecordModel} <= record_types
+
+
+def build_source_comparison_instruction(compare_sources: bool) -> str:
+    """Build the system-prompt suffix that asks for a per-source comparison.
+
+    Returns an empty string when ``compare_sources`` is false, so callers can
+    append it unconditionally. Like the output-language suffix, it is not part
+    of the versioned Langfuse prompt (ADR-024).
+    """
+    return f"\n\n{SOURCE_COMPARISON_PROMPT}" if compare_sources else ""
 
 
 def build_output_language_instruction(
