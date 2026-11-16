@@ -78,10 +78,12 @@ When a request has both feedback and community meeting records,
 `build_source_comparison_instruction` adds `SOURCE_COMPARISON_PROMPT` after the
 output format and before the language directive. The model must then:
 
-- name the source of each point: feedback, community meetings, or both
-- show points from one source only, and points where the sources differ
+- add a `Sources:` line to each point, using one fixed English label
+  (`SOURCE_LABELS`): `both, agree`, `both, partly agree`, `both, disagree`,
+  `feedback only`, `meetings only`
+- keep disagreeing sources as one `both, disagree` point with both views
 - say when one source explains the other
-- call it agreement only for the same location and time, as far as metadata shows
+- use `both, agree` only for the same location and time, as far as metadata shows
 - not treat a point missing from one source as a contradiction
 - not add or compare the two record counts; when ordering by frequency
   (summaries), put shared points first, then feedback-only, then
@@ -93,7 +95,9 @@ reduce call) and to `/v1/summarize-bulk`. In hierarchical mode the decision is
 made for the whole request, not per chunk: the reduce step sees only partials,
 so each partial must already name its source. Single-source requests get no
 extra text. Like the language directive, it is not part of the versioned
-Langfuse prompt (ADR-024).
+Langfuse prompt (ADR-024). The analyze judge always counts unsupported source
+labels or agreement claims as unsupported claims; that line is in the versioned
+judge prompt.
 
 ## XML-style envelope (user message)
 

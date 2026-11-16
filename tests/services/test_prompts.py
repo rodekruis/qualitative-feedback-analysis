@@ -11,6 +11,7 @@ from qfa.services.prompts import (
     ANALYZE_JUDGE_PROMPT,
     ANALYZE_OUTPUT_FORMAT_PROMPT,
     SOURCE_COMPARISON_PROMPT,
+    SOURCE_LABELS,
     build_analyze_judge_system_message,
     build_analyze_user_message,
     build_output_language_instruction,
@@ -56,6 +57,15 @@ class TestBuildSinglePassSystemMessage:
         format_at = message.index(ANALYZE_OUTPUT_FORMAT_PROMPT)
         comparison_at = message.index(SOURCE_COMPARISON_PROMPT)
         assert format_at < comparison_at < message.index("Write the analysis in")
+
+
+class TestSourceComparisonPrompt:
+    def test_lists_every_fixed_source_label(self):
+        for label in SOURCE_LABELS:
+            assert f'"{label}"' in SOURCE_COMPARISON_PROMPT
+
+    def test_judge_checks_source_labels(self):
+        assert "source labels" in ANALYZE_JUDGE_PROMPT
 
 
 class TestIncludesBothSources:

@@ -90,18 +90,32 @@ ANALYZE_OUTPUT_FORMAT_PROMPT: str = (
     "comparison, put it inside the points."
 )
 
+SOURCE_LABELS: tuple[str, ...] = (
+    "both, agree",
+    "both, partly agree",
+    "both, disagree",
+    "feedback only",
+    "meetings only",
+)
+"""Fixed values of the ``Sources:`` line; English so code can parse them later."""
+
 SOURCE_COMPARISON_PROMPT: str = (
     "Source comparison (the records come from two sources: feedback records "
     "and community meeting records):\n"
-    "- In each point or theme section, say whether it comes from feedback "
-    "records, community meeting records, or both.\n"
-    "- Make it clear when a point comes from only one source, and when the "
-    "two sources say different things about the same topic.\n"
+    "- In each point or theme section, add a line that starts with the English "
+    'word "Sources:", followed by exactly one of these labels: '
+    + ", ".join(f'"{label}"' for label in SOURCE_LABELS)
+    + ". Put it just before the "
+    '"Records:" line, if there is one. Keep the labels in English, even when '
+    "the output is in another language.\n"
+    "- When the two sources say different things about the same topic, keep "
+    'it as one point labelled "both, disagree" and describe both views. '
+    "Never merge them into one view.\n"
     "- If one source explains or adds context to the other, for example "
     "feedback says what goes wrong and meeting notes say why, say so.\n"
-    "- Only call it agreement when the records are about the same location "
-    "and time, as far as the metadata shows. Otherwise say that the overlap "
-    "is uncertain.\n"
+    '- Only use "both, agree" when the records are about the same location '
+    "and time, as far as the metadata shows. Otherwise use "
+    '"both, partly agree" and say that the overlap is uncertain.\n'
     "- A point that is missing from one source is not a contradiction. The "
     "two sources collect information in different ways.\n"
     "- Do not add the number of feedback records and the number of community "
@@ -156,7 +170,9 @@ record ids that show the problem. If a list has no problem, write "- none".
 Write "- none" only after you compared each claim with the records.
 
 UNSUPPORTED_CLAIMS: claims, counts or trends that the records do not support,
-and cited records that do not say what the analysis says.
+and cited records that do not say what the analysis says. Also source labels
+(feedback, community meetings, or both) and claims that the sources agree or
+differ, when the cited records do not support them.
 MISSED_THEMES: themes that the analyst prompt asks for and that several records
 support, but that the analysis leaves out. Also parts of the analyst prompt
 that the analysis does not answer.
