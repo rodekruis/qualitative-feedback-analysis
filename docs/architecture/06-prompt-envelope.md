@@ -95,9 +95,15 @@ reduce call) and to `/v1/summarize-bulk`. In hierarchical mode the decision is
 made for the whole request, not per chunk: the reduce step sees only partials,
 so each partial must already name its source. Single-source requests get no
 extra text. Like the language directive, it is not part of the versioned
-Langfuse prompt (ADR-024). The analyze judge always counts unsupported source
-labels or agreement claims as unsupported claims; that line is in the versioned
-judge prompt.
+Langfuse prompt (ADR-024). The analyze and summary judges are instructed to
+treat unsupported source labels and comparisons as faithfulness errors; these
+instructions are part of the versioned judge prompts.
+
+For mixed-source analyses, the service flags a `Sources:` label if it conflicts
+with the cited IDs or those IDs cannot be checked. It warns once if no labels
+are present, but does not check unlabelled sections such as a conclusion.
+It does not change the label or judge score. Matching types do not prove that
+the records support the point or that the sources agree.
 
 ## XML-style envelope (user message)
 

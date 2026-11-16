@@ -453,6 +453,33 @@ async def test_mixed_sources_ask_every_map_and_reduce_call_for_a_comparison():
 
 
 @pytest.mark.asyncio
+async def test_mixed_source_synthesis_flags_citation_mismatch():
+    meeting = CommunityMeetingRecordModel(id="m1", meetingNotes="water access")
+    request = AnalysisRequestModel(
+        feedback_records=(*_records(2, "water access", "w"), meeting),
+        prompt="trends?",
+        tenant_id=TENANT_ID,
+        mode="hierarchical",
+    )
+    service = _build_analyze_service(
+        RecordingLLM(),
+        RecordingAnonymizer(),
+        FakeEmbeddingPort(),
+        max_total_tokens=100_000,
+    )
+    synthesis = "### Water\nFinding.\nSources: feedback only\nRecords: m1"
+
+    with patch.object(
+        service, "_reduce_partials", new=AsyncMock(return_value=synthesis)
+    ):
+        result = await service.analyze_hierarchical(
+            request, datetime.now(UTC) + timedelta(seconds=120), anonymize=True
+        )
+
+    assert "Source label does not match the cited record types" in result.result
+
+
+@pytest.mark.asyncio
 async def test_anonymization_happens_before_any_llm_or_embed_call():
     """No raw PII reaches the embedder or the LLM; anonymiser saw the text first.
 

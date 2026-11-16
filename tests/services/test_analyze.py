@@ -437,6 +437,21 @@ class TestAnalyzeOutputLanguage:
 
 class TestSourceComparison:
     @pytest.mark.asyncio
+    async def test_mixed_source_result_flags_citation_mismatch(self, settings):
+        feedback = _make_feedback_record(doc_id="f1")
+        meeting = CommunityMeetingRecordModel(id="m1", meetingNotes="Water talk.")
+        fake_llm = _judging_llm(
+            analysis="### Water\nFinding.\nSources: both, agree\nRecords: f1"
+        )
+        service = _build_analyze_service(fake_llm, FakeAnonymizer(), settings)
+
+        result = await service.analyze_bulk(
+            _make_request(feedback_records=(feedback, meeting)), _future_deadline()
+        )
+
+        assert "Source label does not match the cited record types" in result.result
+
+    @pytest.mark.asyncio
     async def test_mixed_sources_ask_for_a_source_comparison(self, settings):
         fake_llm = _judging_llm()
         service = _build_analyze_service(fake_llm, FakeAnonymizer(), settings)

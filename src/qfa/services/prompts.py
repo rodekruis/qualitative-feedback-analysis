@@ -97,7 +97,7 @@ SOURCE_LABELS: tuple[str, ...] = (
     "feedback only",
     "meetings only",
 )
-"""Fixed values of the ``Sources:`` line; English so code can parse them later."""
+"""Fixed English ``Sources:`` labels for the prompt and citation check."""
 
 SOURCE_COMPARISON_PROMPT: str = (
     "Source comparison (the records come from two sources: feedback records "

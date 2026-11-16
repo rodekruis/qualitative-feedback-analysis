@@ -70,7 +70,10 @@ from qfa.services.prompts import (
     build_single_pass_system_message,
     includes_both_sources,
 )
-from qfa.services.record_links import format_record_citations
+from qfa.services.record_links import (
+    annotate_source_citation_checks,
+    format_record_citations,
+)
 from qfa.settings import AnalyzeSettings, OrchestratorSettings
 from qfa.utils import timed
 
@@ -353,6 +356,9 @@ class AnalyzeService:
                 analysis_text, restorable_mapping
             )
 
+        analysis_text = annotate_source_citation_checks(
+            analysis_text, request.feedback_records
+        )
         analysis_text = format_record_citations(
             analysis_text,
             request.feedback_records,
@@ -749,6 +755,9 @@ class AnalyzeService:
             }
             analysis_text = self._anonymizer.deanonymize(analysis_text, restorable)
 
+        analysis_text = annotate_source_citation_checks(
+            analysis_text, request.feedback_records
+        )
         analysis_text = format_record_citations(
             analysis_text,
             request.feedback_records,

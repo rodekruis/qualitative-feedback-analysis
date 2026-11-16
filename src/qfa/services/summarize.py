@@ -124,6 +124,9 @@ Summary:
 Score the summary using three criteria. Each must be a float between 0 and 1.
 
 Faithfulness:
+If the summary gives source labels or says that sources agree or disagree,
+check those statements against the corresponding source records. Treat
+unsupported source labels or comparisons as faithfulness errors.
 1.0 = fully supported by the source text above, no hallucinations
 0.5 = mostly correct, minor issues
 0.0 = major inaccuracies

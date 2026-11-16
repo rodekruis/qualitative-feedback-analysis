@@ -1,5 +1,7 @@
 """Tests for record-reference hyperlink rewriting."""
 
+import pytest
+
 from qfa.domain.models import (
     CommunityMeetingRecordMetadataModel,
     CommunityMeetingRecordModel,
@@ -7,6 +9,7 @@ from qfa.domain.models import (
     FeedbackRecordModel,
 )
 from qfa.services.record_links import (
+    annotate_source_citation_checks,
     format_record_citations,
     hyperlink_form_references,
 )
@@ -113,6 +116,161 @@ def _ids(records) -> str:
 
 
 SECTION = "### Records per point"
+MISMATCH = "**Source check:** Source label does not match the cited record types."
+UNVERIFIED = (
+    "**Source check:** Could not verify the source label against cited record IDs."
+)
+
+
+class TestSourceCitationChecks:
+    @pytest.mark.parametrize(
+        ("label", "cited_ids", "warning"),
+        [
+            ("both, agree", "Form-00001, MTG-0001", None),
+            ("both, partly agree", "Form-00001, MTG-0001", None),
+            ("both, disagree", "Form-00001, MTG-0001", None),
+            ("feedback only", "Form-00001", None),
+            ("meetings only", "MTG-0001", None),
+            ("both, agree", "Form-00001", MISMATCH),
+            ("both, disagree", "MTG-0001", MISMATCH),
+            ("feedback only", "MTG-0001", MISMATCH),
+            ("feedback only", "Form-00001, MTG-0001", MISMATCH),
+            ("meetings only", "Form-00001", MISMATCH),
+            ("meetings only", "Form-00001, MTG-0001", MISMATCH),
+        ],
+    )
+    def test_source_label_matches_the_cited_record_types(
+        self, label, cited_ids, warning
+    ):
+        records = (_feedback(1), _meeting(1))
+        text = f"### Water\nFinding.\nSources: {label}\nRecords: {cited_ids}"
+
+        result = annotate_source_citation_checks(text, records)
+
+        if warning is None:
+            assert result == text
+        else:
+            assert result == text.replace("\nRecords:", f"\n{warning}\nRecords:")
+
+    @pytest.mark.parametrize(
+        "point",
+        [
+            "Sources: feedback only\nRecords: Form-00001, missing",
+            "Sources: feedback only\nRecords: missing",
+            "Records: Form-00001",
+            "Sources: feedback only",
+            "Sources: unexpected label\nRecords: Form-00001",
+            "Sources: feedback only\nSources: meetings only\nRecords: Form-00001",
+            "Sources: feedback only\nRecords: Form-00001\nRecords: MTG-0001",
+            "Sources: feedback only\nRecords: Form-00001\nRecords: missing",
+            "Sources: feedback only\nRecords:",
+            "Sources: feedback only\nExample: Form-00001",
+            "An unstructured finding.",
+        ],
+    )
+    def test_unverifiable_points_are_flagged(self, point):
+        result = annotate_source_citation_checks(
+            f"### Water\n{point}", (_feedback(1), _meeting(1))
+        )
+
+        assert result.count(UNVERIFIED) == 1
+        assert MISMATCH not in result
+
+    def test_ambiguous_record_id_is_unverifiable(self):
+        feedback = _feedback(1)
+        meeting = _meeting(1).model_copy(update={"id": feedback.id})
+        text = f"### Water\nSources: feedback only\nRecords: {feedback.id}"
+
+        result = annotate_source_citation_checks(text, (feedback, meeting))
+
+        assert UNVERIFIED in result
+        assert MISMATCH not in result
+
+    def test_each_point_is_checked_separately(self):
+        text = (
+            "### Water\nSources: feedback only\nRecords: Form-00001\n\n"
+            "### Health\nSources: both, disagree\nRecords: MTG-0001"
+        )
+
+        result = annotate_source_citation_checks(text, (_feedback(1), _meeting(1)))
+
+        water, health = result.split("### Health")
+        assert "Source check" not in water
+        assert MISMATCH in health
+
+    def test_unlabelled_section_does_not_inherit_the_previous_points_label(self):
+        text = (
+            "### Water\nSources: feedback only\nRecords: Form-00001\n\n"
+            "### Health\nRecords: MTG-0001"
+        )
+
+        result = annotate_source_citation_checks(text, (_feedback(1), _meeting(1)))
+
+        water, health = result.split("### Health")
+        assert "Source check" not in water
+        assert "Source check" not in health
+
+    def test_unlabelled_conclusion_is_not_flagged(self):
+        text = (
+            "### Water\nSources: both, agree\nRecords: Form-00001, MTG-0001\n\n"
+            "### Conclusion\nBoth sources discuss water."
+        )
+
+        assert (
+            annotate_source_citation_checks(text, (_feedback(1), _meeting(1))) == text
+        )
+
+    def test_no_source_labels_in_any_section_is_flagged_once(self):
+        text = "### Water\nRecords: Form-00001\n\n### Health\nRecords: MTG-0001"
+
+        result = annotate_source_citation_checks(text, (_feedback(1), _meeting(1)))
+
+        assert result.count(UNVERIFIED) == 1
+
+    def test_bold_source_and_record_labels_are_recognized(self):
+        text = (
+            "### Water\n**Sources:** **both, agree**\n**Records:** Form-00001, MTG-0001"
+        )
+
+        assert (
+            annotate_source_citation_checks(text, (_feedback(1), _meeting(1))) == text
+        )
+
+    def test_single_source_request_is_unchanged(self):
+        text = "### Water\nSources: both, agree\nRecords: Form-00001"
+
+        assert annotate_source_citation_checks(text, (_feedback(1),)) == text
+
+    def test_warning_stays_next_to_long_citation_before_ids_are_moved(self):
+        records = (*(_feedback(n) for n in range(1, 6)), _meeting(1))
+        text = f"### Water\nSources: feedback only\nRecords: {_ids(records)}"
+
+        checked = annotate_source_citation_checks(text, records)
+        result = format_record_citations(checked, records, FEEDBACK_URL, MEETING_URL)
+
+        assert result.index(MISMATCH) < result.index("**Records:**")
+        assert "#### Water (5 feedback records, 1 community meeting)" in result
+
+    def test_source_labels_are_not_linked_as_record_ids(self):
+        feedback = _feedback(1).model_copy(update={"id": "both"})
+        meeting = _meeting(1)
+        text = "### Water\nSources: both, agree\nRecords: both, MTG-0001"
+
+        result = format_record_citations(text, (feedback, meeting), FEEDBACK_URL)
+
+        assert "\nSources: both, agree\n" in result
+        assert f"[both]({FEEDBACK_URL}/fb-1)" in result
+
+    def test_warning_is_not_linked_when_a_word_matches_a_record_id(self):
+        feedback = _feedback(1).model_copy(update={"id": "Source"})
+        meeting = _meeting(1)
+        text = "### Water\nSources: both, agree\nRecords: Source"
+
+        checked = annotate_source_citation_checks(text, (feedback, meeting))
+        result = format_record_citations(checked, (feedback, meeting), FEEDBACK_URL)
+
+        assert MISMATCH in result
+        assert f"[Source]({FEEDBACK_URL}/fb-1)" in result
 
 
 class TestFormatRecordCitations:

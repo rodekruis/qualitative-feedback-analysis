@@ -397,6 +397,23 @@ class TestSummarizeBulkCommunityMeetingRecords:
         assert SOURCE_COMPARISON_PROMPT in fake_llm.calls[0]["system_message"]
 
     @pytest.mark.asyncio
+    async def test_judge_checks_source_labels_and_comparisons(self, settings):
+        summary = "### Water\nSources: both, disagree\nThe sources disagree."
+        fake_llm = self._fake_llm(summary=summary)
+        service = _build_service(fake_llm, settings)
+
+        await service.summarize_bulk(self._mixed_request(), _future_deadline())
+
+        judge_message = fake_llm.calls[1]["system_message"]
+        assert (
+            "unsupported source labels or comparisons as faithfulness errors"
+            in judge_message
+        )
+        assert '<feedback_record id="Form-1">' in judge_message
+        assert '<community_meeting_record id="meeting-1">' in judge_message
+        assert summary in judge_message
+
+    @pytest.mark.asyncio
     async def test_source_comparison_follows_base_prompt_and_precedes_language(
         self, settings
     ):
