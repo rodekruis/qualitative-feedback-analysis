@@ -397,6 +397,25 @@ class TestSummarizeBulkCommunityMeetingRecords:
         assert SOURCE_COMPARISON_PROMPT in fake_llm.calls[0]["system_message"]
 
     @pytest.mark.asyncio
+    async def test_source_comparison_follows_base_prompt_and_precedes_language(
+        self, settings
+    ):
+        # The comparison narrows the base "most frequent first" rule, so it
+        # must come after it; the language directive keeps the final say.
+        fake_llm = self._fake_llm()
+        service = _build_service(fake_llm, settings)
+
+        await service.summarize_bulk(
+            self._mixed_request(output_language="French"), _future_deadline()
+        )
+
+        system_message = fake_llm.calls[0]["system_message"]
+        ordering = system_message.index("most to least frequently mentioned")
+        comparison = system_message.index(SOURCE_COMPARISON_PROMPT)
+        language = system_message.index("French")
+        assert ordering < comparison < language
+
+    @pytest.mark.asyncio
     async def test_single_source_has_no_source_comparison(self, settings):
         fake_llm = self._fake_llm()
         service = _build_service(fake_llm, settings)

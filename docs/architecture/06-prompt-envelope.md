@@ -80,8 +80,13 @@ output format and before the language directive. The model must then:
 
 - name the source of each point: feedback, community meetings, or both
 - show points from one source only, and points where the sources differ
+- say when one source explains the other
+- call it agreement only for the same location and time, as far as metadata shows
 - not treat a point missing from one source as a contradiction
-- not add the two record counts together
+- not add or compare the two record counts; when ordering by frequency
+  (summaries), put shared points first, then feedback-only, then
+  meeting-only, each ranked within its own source
+- in a closing conclusion, say where the sources agree and differ
 
 It applies to `/v1/analyze-bulk` (single-pass, and every hierarchical map and
 reduce call) and to `/v1/summarize-bulk`. In hierarchical mode the decision is
