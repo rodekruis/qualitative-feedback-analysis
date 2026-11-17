@@ -174,20 +174,46 @@ def test_feedback_flowchart_uses_optional_minimum_coding_threshold():
 
 
 def test_insight_flowchart_sends_meetings_to_both_bulk_endpoints():
-    """Meeting records are collected regardless of the insight method."""
+    """Selected source records are collected and counted for either method."""
     flowchart = FLOWCHART_DIR / "Insight_creation_flowchart.csv"
     nodes = _nodes(flowchart)
     collection = next(node for node in nodes if node["id"] == "ski0qsd6qx")
     formula = collection["actionList"][0]["formula"]
 
+    assert (
+        "$dataSources = record\\attribute('CInsight', id, 'dataSourceType');" in formula
+    )
+    assert "$useFeedback = true;\n$useMeetings = true;" in formula
+    assert (
+        "if ($dataSources != null) {\n  if (array\\length($dataSources) > 0)" in formula
+    )
+    assert "$useFeedback = array\\includes($dataSources, 'feedback');" in formula
+    assert (
+        "$useMeetings = array\\includes($dataSources, 'community_meeting');" in formula
+    )
+    assert (
+        "ifThen($useFeedback, $$backendIDs = "
+        "record\\findRelatedMany('CInsight', id, 'feedbackDatas',"
+    ) in formula
+    assert (
+        "ifThen($useMeetings, $$meetingBackendIDs = "
+        "record\\findRelatedMany('CInsight', id, 'communityMeetingDatas',"
+    ) in formula
     assert "$analysisRecords = list();" in formula
+    assert "$feedbackUsed = 0;\n$meetingsUsed = 0;" in formula
     assert "$feedbackRecord['record_type'] = 'feedback';" in formula
     assert (
-        "$analysisRecords = array\\push($analysisRecords, $feedbackRecord);" in formula
+        "$analysisRecords = array\\push($analysisRecords, $feedbackRecord);\n"
+        "    $feedbackUsed = $feedbackUsed + 1;" in formula
     )
     assert (
-        "$analysisRecords = array\\push($analysisRecords, $meetingRecord);" in formula
+        "$analysisRecords = array\\push($analysisRecords, $meetingRecord);\n"
+        "    $meetingsUsed = $meetingsUsed + 1;" in formula
     )
+    assert "if ($feedbackDescription != null && $feedbackDescription != '')" in formula
+    assert "if ($meetingNotes != null && $meetingNotes != '')" in formula
+    assert "numberOfFeedbackRecordsUsed = $feedbackUsed;" in formula
+    assert "numberOfMeetingRecordsUsed = $meetingsUsed;" in formula
     assert "$feedbackRecords" not in formula
     assert "$meetingCount = array\\length($$meetingBackendIDs);" in formula
     assert "$method ==" not in formula
