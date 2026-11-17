@@ -22,7 +22,9 @@ At all three levels, non-empty `description` fields are appended after the name 
 
 ### Insight saving flow
 
-`Insight_creation_flowchart.csv` triggers when an insight record is **created**. This flow selects the endpoint that coincides with the user request, and calls one of the bulk endpoints: `analyze-bulk` or `summarize-bulk`. Both receive the insight's related feedback and community meeting records, each tagged with `record_type`.
+`Insight_creation_flowchart.csv` triggers when an insight record is **created**. It selects the related feedback and community meeting records chosen in `dataSourceType`, tags each with `record_type`, and calls `analyze-bulk` or `summarize-bulk`. An empty source selection uses all linked records. `numberOfFeedbackRecordsUsed` and `numberOfMeetingRecordsUsed` count records with non-empty text prepared for the request, even if the request fails.
+
+Before importing, add `dataSourceType` to `CInsight` as a multi-enum stored as an array, with options `feedback` and `community_meeting`, and add both count fields as read-only integers. The exported HTTP Authorization header is masked; restore the environment's secret reference before activating the flowchart, e.g. `Authorization: Bearer {#secrets.QFA_API_KEY}`.
 
 ![Espo flowchart for creating an insight entity](../assets/espo_insight_creation_flow.png)
 
