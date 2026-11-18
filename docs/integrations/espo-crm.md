@@ -63,6 +63,8 @@ Each call tracks its own status, moving through `requested` → `processing` →
 
 The `assign-codes` step copies the first assigned path and explanation to the record. It computes a weighted confidence using level 1 / 2 / 3 weights of 0.20 / 0.30 / 0.50; missing scores are excluded and the remaining weights are normalized. Both the weighted score and the deepest available level's score must meet their App Secret thresholds. Otherwise, or when no confidence is available, the record requires human review. Before this, the API drops any candidate path with a level below the request's `confidence_threshold` (`QFA_CODING_MINIMUM_THRESHOLD`, default 0.1). If every candidate is dropped, no code is assigned, the explanation starts with `NO CODING APPLIED.`, and the record requires human review.
 
+Only `assign-codes` receives `confidence_threshold`; sensitivity confidence is checked separately in EspoCRM.
+
 The `detect-sensitive` step copies `is_sensitive`, `explanation` and `confidence` into `autoSensitive`, `autoSensitiveExplanation` and `autoSensitiveConfidence`. A null confidence or a score below the sensitivity threshold requires human review, regardless of whether the result is sensitive. The score covers both the flag and types. Empty feedback also produces a null confidence and requires review.
 
 `autoSensitiveConfidence` is an entity field, not part of the flowchart export: add it (type Float, on Feedback Data) by hand on each EspoCRM instance before importing the flowchart.
