@@ -105,6 +105,10 @@ uv run pytest tests/integration/test_db_postgres.py   # specific file
 
 Dependabot opens a PR for each `uv` dependency update. It waits 3 days after a release before it opens a version-update PR. The cooldown does not apply to security updates.
 
+The Docker model-download stage resolves dependencies separately. Keep its certifi and filelock minimums in sync with `pyproject.toml`.
+
+The pinned spaCy model URLs include hashes and matching dependency metadata. Update both when changing a model. This lets Dependabot lock without the failing GitHub release redirect ([upstream bug](https://github.com/dependabot/proxy/issues/348)).
+
 | Update type | Review |
 |-------------|--------|
 | Patch or minor, opened and last pushed by Dependabot | `.github/workflows/dependabot-auto-merge.yaml` approves it. It merges when the required checks pass. |
