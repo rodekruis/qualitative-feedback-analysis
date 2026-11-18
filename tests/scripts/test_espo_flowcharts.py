@@ -173,6 +173,21 @@ def test_feedback_flowchart_uses_optional_minimum_coding_threshold():
     assert "string\\test(" not in payload
 
 
+@pytest.mark.parametrize(
+    ("node_id", "action_index"), [("816sh17k5p", 0), ("20wynscwjv", 1)]
+)
+def test_feedback_flowchart_omits_coding_threshold_from_other_requests(
+    node_id, action_index
+):
+    nodes = {
+        node["id"]: node
+        for node in _nodes(FLOWCHART_DIR / "Feedback_saving_flowchart.csv")
+    }
+    payload = nodes[node_id]["actionList"][action_index]["formula"]
+
+    assert "confidence_threshold" not in payload
+
+
 def test_insight_flowchart_sends_meetings_to_both_bulk_endpoints():
     """Meeting records are collected regardless of the insight method."""
     flowchart = FLOWCHART_DIR / "Insight_creation_flowchart.csv"
