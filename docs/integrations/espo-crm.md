@@ -22,7 +22,9 @@ At all three levels, non-empty `description` fields are appended after the name 
 
 ### Insight saving flow
 
-`Insight_creation_flowchart.csv` triggers when an insight record is **created**. This flow selects the endpoint that coincides with the user request, and calls one of the bulk endpoints: `analyze-bulk` or `summarize-bulk`. Both receive the insight's related feedback and community meeting records, each tagged with `record_type`.
+`Insight_creation_flowchart.csv` triggers when an insight record is **created**. It selects the related feedback and community meeting records chosen in `dataSourceType`, tags each with `record_type`, and calls `analyze-bulk` or `summarize-bulk`. An empty source selection uses all linked records. `numberOfFeedbackRecordsUsed` and `numberOfMeetingRecordsUsed` count records with non-empty text prepared for the request, even if the request fails.
+
+Before importing, add `dataSourceType` to `CInsight` as a multi-enum stored as an array, with options `feedback` and `community_meeting`, and add both count fields as read-only integers. If an export shows a masked HTTP Authorization header, restore the environment's secret reference before committing or activating it, e.g. `Authorization: Bearer {#secrets.QFA_API_KEY}`.
 
 ![Espo flowchart for creating an insight entity](../assets/espo_insight_creation_flow.png)
 
@@ -45,6 +47,22 @@ Each flow builds its own `motherPayload` — a JSON object containing all key-va
 
 `tests/scripts/test_espo_flowcharts.py` enforces both rules against the exported CSVs.
 
+### Background processing
+
+Every flowchart starts with a 0-minute timer, "Run in background". Saving a record then returns at once, and the flow runs later in EspoCRM's background worker (daemon or cron), which must be running. Until the worker picks it up, the status stays `requested` (Insight: `not_started`). The worker runs flows about one at a time, so a large Insight delays every flow queued after it.
+
+Per-instance server settings, not part of the export:
+
+| Setting | Where | Value | Why |
+|---|---|---|---|
+| `workflowSendRequestTimeout` | `data/config.php` | `230` (default 60 seconds) | A bulk request for a few hundred records takes 1–2 minutes. |
+| PHP `memory_limit` | web *and* daemon containers | `512M` | The Insight flow builds the whole payload in memory. |
+
+Known Insight limits for `mode=single_pass` (measured on dev2, depend on text length):
+
+- above roughly 1,200–2,000 records, the request exceeds `LLM_MAX_TOTAL_TOKENS` and fails with 413;
+- at roughly 4,000 records (3,300 passed, 4,259 failed), collecting records runs out of memory at 512M. The worker crashes past the error boundary, so the Insight stays `not_started` with no error.
+
 ## Error handling
 
 Every flow wraps each outbound call in an EspoCRM error-boundary event. On failure, the boundary stores the error via `bpm\caughtErrorCode()` / `bpm\caughtErrorMessage()` on the record. The feedback flow marks HTTP 502 as `human_review_required` and other errors as `failed`. Its coding message describes a content rejection, but a 502 can also mean another upstream failure; check the error details.
@@ -60,6 +78,8 @@ Each call tracks its own status, moving through `requested` → `processing` →
 | `detect-sensitive` | `autoSensitiveStatus` | `autoSensitiveErrorCode`, `autoSensitiveErrorMessage` |
 
 The `assign-codes` step copies the first assigned path and explanation to the record. It computes a weighted confidence using level 1 / 2 / 3 weights of 0.20 / 0.30 / 0.50; missing scores are excluded and the remaining weights are normalized. Both the weighted score and the deepest available level's score must meet their App Secret thresholds. Otherwise, or when no confidence is available, the record requires human review. Before this, the API drops any candidate path with a level below the request's `confidence_threshold` (`QFA_CODING_MINIMUM_THRESHOLD`, default 0.1). If every candidate is dropped, no code is assigned, the explanation starts with `NO CODING APPLIED.`, and the record requires human review.
+
+Only `assign-codes` receives `confidence_threshold`; sensitivity confidence is checked separately in EspoCRM.
 
 The `detect-sensitive` step copies `is_sensitive`, `explanation` and `confidence` into `autoSensitive`, `autoSensitiveExplanation` and `autoSensitiveConfidence`. A null confidence or a score below the sensitivity threshold requires human review, regardless of whether the result is sensitive. The score covers both the flag and types. Empty feedback also produces a null confidence and requires review.
 
