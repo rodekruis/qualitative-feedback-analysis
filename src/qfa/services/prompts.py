@@ -8,6 +8,9 @@ Four constants compose the analyse system message:
 * :data:`ANALYZE_OUTPUT_FORMAT_PROMPT` — one section per point, each ending
   with a ``Records:`` line of cited ids.
 
+:data:`SOURCE_COMPARISON_PROMPT` is appended only when a request mixes
+feedback and community meeting records (:func:`includes_both_sources`).
+
 The user message wraps the analyst question and the feedback records in
 XML-style envelope tags. :func:`escape_for_tag_envelope` is applied to
 every piece of untrusted text before it is embedded, so attacker-supplied
@@ -87,6 +90,50 @@ ANALYZE_OUTPUT_FORMAT_PROMPT: str = (
     "comparison, put it inside the points."
 )
 
+SOURCE_LABELS: tuple[str, ...] = (
+    "both, agree",
+    "both, partly agree",
+    "both, disagree",
+    "feedback only",
+    "meetings only",
+)
+"""Fixed English ``Sources:`` labels for the prompt and citation check."""
+
+SOURCE_COMPARISON_PROMPT: str = (
+    "Source comparison (the records come from two sources: feedback records "
+    "and community meeting records):\n"
+    "- In each point or theme section, add a line that starts with the English "
+    'word "Sources:", followed by exactly one of these labels: '
+    + ", ".join(f'"{label}"' for label in SOURCE_LABELS)
+    + ". Put it just before the "
+    '"Records:" line, if there is one. Keep the labels in English, even when '
+    "the output is in another language.\n"
+    "- When the two sources say different things about the same topic, keep "
+    'it as one point labelled "both, disagree" and describe both views. '
+    "Never merge them into one view.\n"
+    "- If one source explains or adds context to the other, for example "
+    "feedback says what goes wrong and meeting notes say why, say so.\n"
+    '- Only use "both, agree" when the records are about the same location '
+    "and time, as far as the metadata shows. Otherwise use "
+    '"both, partly agree" and say that the overlap is uncertain.\n'
+    "- A point that is missing from one source is not a contradiction. The "
+    "two sources collect information in different ways.\n"
+    "- Do not add the number of feedback records and the number of community "
+    "meeting records together, and do not compare them. One meeting record "
+    "covers a group discussion, so the two counts cannot be compared.\n"
+    "- When you order points by how often they are mentioned, judge how often "
+    "only within each source. Put points from both sources first; among them, "
+    "a point that is common in both sources comes before one that is common "
+    "in only one. Then put points only from feedback records, then points "
+    "only from community meeting records, each ordered by how often they come "
+    "up within that source.\n"
+    "- If the output ends with an overall conclusion, say there in one "
+    "sentence where the two sources agree and where they differ, instead of "
+    "naming a source for the conclusion itself.\n"
+    "- A point that both sources support is stronger. But the sources are not "
+    "fully independent: the same people or events can appear in both."
+)
+
 JUDGE_UNAVAILABLE_EXPLANATION: str = (
     "Judge unavailable; the quality score could not be computed for this analysis."
 )
@@ -123,7 +170,9 @@ record ids that show the problem. If a list has no problem, write "- none".
 Write "- none" only after you compared each claim with the records.
 
 UNSUPPORTED_CLAIMS: claims, counts or trends that the records do not support,
-and cited records that do not say what the analysis says.
+and cited records that do not say what the analysis says. Also source labels
+(feedback, community meetings, or both) and claims that the sources agree or
+differ, when the cited records do not support them.
 MISSED_THEMES: themes that the analyst prompt asks for and that several records
 support, but that the analysis leaves out. Also parts of the analyst prompt
 that the analysis does not answer.
@@ -186,11 +235,14 @@ UNCERTAINTY_EXPLANATION: The analysis overstates how many records ask for cash. 
 """
 
 
-def build_single_pass_system_message(output_language: str | None = None) -> str:
+def build_single_pass_system_message(
+    output_language: str | None = None, *, compare_sources: bool = False
+) -> str:
     """Build the single-pass analyse system message.
 
-    Role, guardrails, action, output format, then the language instruction
-    last, so that it keeps the final say.
+    Role, guardrails, action, output format, the optional source-comparison
+    instruction, then the language instruction last, so that it keeps the
+    final say.
 
     The one builder both the ``analyze_bulk`` call site and
     :data:`~qfa.services.prompt_registry.SYSTEM_PROMPTS` use, so the two
@@ -203,8 +255,25 @@ def build_single_pass_system_message(output_language: str | None = None) -> str:
         f"{ANALYZE_GUARDRAILS_PROMPT}\n\n"
         f"{ANALYZE_ACTION_PROMPT}\n\n"
         f"{ANALYZE_OUTPUT_FORMAT_PROMPT}"
+        f"{build_source_comparison_instruction(compare_sources)}"
         f"{build_output_language_instruction(output_language)}"
     )
+
+
+def includes_both_sources(records: tuple[AnalysisRecord, ...]) -> bool:
+    """Return whether ``records`` holds feedback *and* community meeting records."""
+    record_types = {type(record) for record in records}
+    return {FeedbackRecordModel, CommunityMeetingRecordModel} <= record_types
+
+
+def build_source_comparison_instruction(compare_sources: bool) -> str:
+    """Build the system-prompt suffix that asks for a per-source comparison.
+
+    Returns an empty string when ``compare_sources`` is false, so callers can
+    append it unconditionally. Like the output-language suffix, it is not part
+    of the versioned Langfuse prompt (ADR-024).
+    """
+    return f"\n\n{SOURCE_COMPARISON_PROMPT}" if compare_sources else ""
 
 
 def build_output_language_instruction(

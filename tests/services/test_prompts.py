@@ -10,11 +10,14 @@ from qfa.services.prompts import (
     ANALYZE_GUARDRAILS_PROMPT,
     ANALYZE_JUDGE_PROMPT,
     ANALYZE_OUTPUT_FORMAT_PROMPT,
+    SOURCE_COMPARISON_PROMPT,
+    SOURCE_LABELS,
     build_analyze_judge_system_message,
     build_analyze_user_message,
     build_output_language_instruction,
     build_single_pass_system_message,
     escape_for_tag_envelope,
+    includes_both_sources,
 )
 
 
@@ -43,6 +46,38 @@ class TestBuildSinglePassSystemMessage:
 
         assert message.endswith(language)
         assert message.index(ANALYZE_OUTPUT_FORMAT_PROMPT) < message.index(language)
+
+    def test_source_comparison_is_off_by_default(self):
+        assert SOURCE_COMPARISON_PROMPT not in build_single_pass_system_message()
+
+    def test_source_comparison_sits_between_format_and_language(self):
+        """The comparison refines the format; the language directive still comes last."""
+        message = build_single_pass_system_message("Spanish", compare_sources=True)
+
+        format_at = message.index(ANALYZE_OUTPUT_FORMAT_PROMPT)
+        comparison_at = message.index(SOURCE_COMPARISON_PROMPT)
+        assert format_at < comparison_at < message.index("Write the analysis in")
+
+
+class TestSourceComparisonPrompt:
+    def test_lists_every_fixed_source_label(self):
+        for label in SOURCE_LABELS:
+            assert f'"{label}"' in SOURCE_COMPARISON_PROMPT
+
+    def test_judge_checks_source_labels(self):
+        assert "source labels" in ANALYZE_JUDGE_PROMPT
+
+
+class TestIncludesBothSources:
+    _FEEDBACK = FeedbackRecordModel(id="f1", content="Water is far away.")
+    _MEETING = CommunityMeetingRecordModel(id="m1", meetingNotes="Water was discussed.")
+
+    def test_true_for_feedback_and_meeting_records(self):
+        assert includes_both_sources((self._FEEDBACK, self._MEETING))
+
+    def test_false_for_a_single_source(self):
+        assert not includes_both_sources((self._FEEDBACK, self._FEEDBACK))
+        assert not includes_both_sources((self._MEETING,))
 
 
 class TestBuildOutputLanguageInstruction:

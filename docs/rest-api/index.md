@@ -75,6 +75,12 @@ type every item and are analyzed together in one request. Both
 clustering orders meeting notes by `dateOfMeeting`, falling back to `created`.
 Other meeting metadata is not used for clustering.
 
+For mixed batches, an analysis point carries an English `Source check:` warning
+when its source label conflicts with the types of its cited record IDs, or when
+its citations cannot be checked. A missing set of labels also produces a
+warning; individual unlabelled sections are not checked. The check does not
+change the label or judge score, and matching IDs do not prove support.
+
 Per-record inference endpoints (`/v1/summarize`, `/v1/summarize-community-meeting`, `/v1/assign-codes`, `/v1/detect-sensitive`) accept a single record and return one result object, unlike bulk endpoints that accept multiple records and return aggregated output.
 
 `POST /v1/summarize` takes no language parameter: the generated title and summary follow the record's own language, detected server-side from its content. Records too short to detect fall back to instructing the model to mirror the input language.

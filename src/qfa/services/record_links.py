@@ -9,14 +9,20 @@ import the other to reach it.
 
 :func:`format_record_citations` is the analyse entry point: it also moves
 long ``Records:`` lists to the end of the answer. Summaries keep calling
-:func:`hyperlink_form_references`.
+:func:`hyperlink_form_references`. Mixed-source analyses first pass through
+:func:`annotate_source_citation_checks`.
 """
 
 import re
 from collections.abc import Callable
 from typing import NamedTuple
 
-from qfa.domain.models import CommunityMeetingRecordModel, FeedbackRecordModel
+from qfa.domain.models import (
+    AnalysisRecord,
+    CommunityMeetingRecordModel,
+    FeedbackRecordModel,
+)
+from qfa.services.prompts import SOURCE_LABELS, includes_both_sources
 
 MAX_INLINE_RECORD_IDS = 5
 """A ``Records:`` line with more ids than this moves to the end of the answer."""
@@ -29,6 +35,22 @@ OVERFLOW_HEADING = "Records per point"
 _CITATION_LINE = re.compile(
     r"^(?P<lead>\s*(?:[-*+]\s+)?)(?:\*\*|__)?(?P<label>[^\W\d_][^:\uff1a\n]{0,39}?)"
     r"(?:\*\*|__)?\s*(?P<colon>[:\uff1a])\s*(?:\*\*|__)?\s*(?P<ids>\S.*?)\s*$"
+)
+
+_RECORDS_LINE = re.compile(
+    r"^\s*(?:[-*+]\s+)?(?:\*\*|__)?\s*Records(?:\*\*|__)?\s*[:\uff1a]",
+    re.IGNORECASE,
+)
+_SOURCE_LINE = re.compile(
+    r"^\s*(?:[-*+]\s+)?(?:\*\*|__)?\s*Sources(?:\*\*|__)?"
+    r"\s*[:\uff1a]\s*(?:\*\*|__)?\s*(?P<label>.*?)\s*$",
+    re.IGNORECASE,
+)
+_SOURCE_CHECK_MISMATCH = (
+    "**Source check:** Source label does not match the cited record types."
+)
+_SOURCE_CHECK_UNVERIFIED = (
+    "**Source check:** Could not verify the source label against cited record IDs."
 )
 
 
@@ -87,6 +109,99 @@ def _link_applier(
     return lambda text: pattern.sub(lambda match: links[match.group(1)], text)
 
 
+def annotate_source_citation_checks(
+    text: str, records: tuple[AnalysisRecord, ...]
+) -> str:
+    """Flag mixed-source labels that disagree with, or cannot be checked against, citations.
+
+    A matching label does not establish that the cited records support the claim.
+    Unlabelled sections are not checked; if every label is missing, warn once.
+    Single-source outputs are unchanged.
+    """
+    if not includes_both_sources(records):
+        return text
+
+    id_kinds: dict[str, set[bool]] = {}
+    for record in records:
+        if record.id:
+            id_kinds.setdefault(record.id, set()).add(
+                isinstance(record, CommunityMeetingRecordModel)
+            )
+    kinds = {
+        record_id: next(iter(types))
+        for record_id, types in id_kinds.items()
+        if len(types) == 1
+    }
+
+    sections: list[list[str]] = []
+    current: list[str] = []
+    for line in text.split("\n"):
+        if _HEADING.match(line) and current:
+            sections.append(current)
+            current = []
+        current.append(line)
+    sections.append(current)
+
+    output: list[str] = []
+    has_labels = any(
+        _SOURCE_LINE.match(line) for section in sections for line in section
+    )
+    warned_missing_labels = False
+    for index, section in enumerate(sections):
+        sources = [
+            match for line in section if (match := _SOURCE_LINE.match(line)) is not None
+        ]
+        record_lines = [
+            (line_index, line)
+            for line_index, line in enumerate(section)
+            if _RECORDS_LINE.match(line) is not None
+        ]
+        is_intro = index == 0 and len(sections) > 1 and not _HEADING.match(section[0])
+        if is_intro and not sources and not record_lines:
+            output.extend(section)
+            continue
+        if not sources:
+            if has_labels or warned_missing_labels:
+                output.extend(section)
+                continue
+            warned_missing_labels = True
+
+        warning = _SOURCE_CHECK_UNVERIFIED
+        if (
+            len(sources) == 1
+            and len(record_lines) == 1
+            and (citation := _parse_citation_line(record_lines[0][1], kinds))
+            is not None
+        ):
+            label = " ".join(
+                sources[0]["label"].strip().strip("*_").strip().rstrip(".").split()
+            ).casefold()
+            feedback, meetings, unmatched = _count_by_kind(citation.ids, kinds)
+            if label in SOURCE_LABELS and not unmatched:
+                if label.startswith("both, "):
+                    expected = (True, True)
+                elif label == "feedback only":
+                    expected = (True, False)
+                elif label == "meetings only":
+                    expected = (False, True)
+                else:
+                    expected = None
+                if expected is not None:
+                    warning = (
+                        None
+                        if (bool(feedback), bool(meetings)) == expected
+                        else _SOURCE_CHECK_MISMATCH
+                    )
+
+        if warning is not None:
+            insertion = record_lines[0][0] if record_lines else len(section)
+            while insertion > 0 and not section[insertion - 1].strip():
+                insertion -= 1
+            section.insert(insertion, warning)
+        output.extend(section)
+    return "\n".join(output)
+
+
 def format_record_citations(
     text: str,
     records: tuple[FeedbackRecordModel | CommunityMeetingRecordModel, ...],
@@ -119,9 +234,16 @@ def format_record_citations(
     lines: list[str] = []
     moved: list[tuple[str, str, str]] = []
     heading = ""
+    mixed_sources = includes_both_sources(records)
     for line in text.split("\n"):
         if heading_match := _HEADING.match(line):
             heading = heading_match["title"]
+        if mixed_sources and (
+            _SOURCE_LINE.match(line)
+            or line in (_SOURCE_CHECK_MISMATCH, _SOURCE_CHECK_UNVERIFIED)
+        ):
+            lines.append(line)
+            continue
         citation = _parse_citation_line(line, kinds)
         if citation is None:
             lines.append(apply_links(line))

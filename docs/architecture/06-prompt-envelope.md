@@ -72,6 +72,39 @@ wrongly guessed language is worse than not pinning one (#294).
 `/v1/summarize-bulk` is unchanged — its callers always set `output_language`,
 so its directive is already explicit.
 
+## Source comparison
+
+When a request has both feedback and community meeting records,
+`build_source_comparison_instruction` adds `SOURCE_COMPARISON_PROMPT` after the
+output format and before the language directive. The model must then:
+
+- add a `Sources:` line to each point, using one fixed English label
+  (`SOURCE_LABELS`): `both, agree`, `both, partly agree`, `both, disagree`,
+  `feedback only`, `meetings only`
+- keep disagreeing sources as one `both, disagree` point with both views
+- say when one source explains the other
+- use `both, agree` only for the same location and time, as far as metadata shows
+- not treat a point missing from one source as a contradiction
+- not add or compare the two record counts; when ordering by frequency
+  (summaries), put shared points first, then feedback-only, then
+  meeting-only, each ranked within its own source
+- in a closing conclusion, say where the sources agree and differ
+
+It applies to `/v1/analyze-bulk` (single-pass, and every hierarchical map and
+reduce call) and to `/v1/summarize-bulk`. In hierarchical mode the decision is
+made for the whole request, not per chunk: the reduce step sees only partials,
+so each partial must already name its source. Single-source requests get no
+extra text. Like the language directive, it is not part of the versioned
+Langfuse prompt (ADR-024). The analyze and summary judges are instructed to
+treat unsupported source labels and comparisons as faithfulness errors; these
+instructions are part of the versioned judge prompts.
+
+For mixed-source analyses, the service flags a `Sources:` label if it conflicts
+with the cited IDs or those IDs cannot be checked. It warns once if no labels
+are present, but does not check unlabelled sections such as a conclusion.
+It does not change the label or judge score. Matching types do not prove that
+the records support the point or that the sources agree.
+
 ## XML-style envelope (user message)
 
 The analyst prompt and every feedback record are placed in the **user
