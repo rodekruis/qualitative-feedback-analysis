@@ -276,3 +276,31 @@ def test_langfuse_flow_requires_non_empty_request_id():
     assert None in request_id_values
     assert "" in request_id_values
     assert "ifThen($request_id == null, $request_id = '');" in formula
+
+
+@pytest.mark.parametrize("path", FLOWCHARTS, ids=lambda p: p.name)
+def test_flowchart_starts_with_background_timer(path):
+    """A 0-minute timer moves the flow off the record save into the worker."""
+    nodes = {node["id"]: node for node in _nodes(path)}
+    starts = [n for n in nodes.values() if n["type"].startswith("eventStart")]
+    assert starts
+    for start in starts:
+        targets = [
+            nodes[n["endId"]]
+            for n in nodes.values()
+            if n["type"] == "flow" and n["startId"] == start["id"]
+        ]
+        assert [(t["type"], t["timerShift"]) for t in targets] == [
+            ("eventIntermediateTimerCatch", 0)
+        ], f"{path.name}: start event {start['id']} must lead to one 0-minute timer"
+
+
+@pytest.mark.parametrize("path", FLOWCHARTS, ids=lambda p: p.name)
+def test_flowchart_references_point_backwards(path):
+    """The editor stops drawing at a flow whose start or end comes later."""
+    seen = set()
+    for node in _nodes(path):
+        for key in ("startId", "endId", "attachedToId"):
+            if node.get(key):
+                assert node[key] in seen, f"{path.name}: {node['id']}.{key}"
+        seen.add(node["id"])

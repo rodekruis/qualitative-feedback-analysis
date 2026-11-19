@@ -24,7 +24,7 @@ At all three levels, non-empty `description` fields are appended after the name 
 
 `Insight_creation_flowchart.csv` triggers when an insight record is **created**. It selects the related feedback and community meeting records chosen in `dataSourceType`, tags each with `record_type`, and calls `analyze-bulk` or `summarize-bulk`. An empty source selection uses all linked records. `numberOfFeedbackRecordsUsed` and `numberOfMeetingRecordsUsed` count records with non-empty text prepared for the request, even if the request fails.
 
-Before importing, add `dataSourceType` to `CInsight` as a multi-enum stored as an array, with options `feedback` and `community_meeting`, and add both count fields as read-only integers. The exported HTTP Authorization header is masked; restore the environment's secret reference before activating the flowchart, e.g. `Authorization: Bearer {#secrets.QFA_API_KEY}`.
+Before importing, add `dataSourceType` to `CInsight` as a multi-enum stored as an array, with options `feedback` and `community_meeting`, and add both count fields as read-only integers. If an export shows a masked HTTP Authorization header, restore the environment's secret reference before committing or activating it, e.g. `Authorization: Bearer {#secrets.QFA_API_KEY}`.
 
 ![Espo flowchart for creating an insight entity](../assets/espo_insight_creation_flow.png)
 
@@ -46,6 +46,22 @@ Each flow builds its own `motherPayload` — a JSON object containing all key-va
 - Fields the API declares non-nullable — `id`, `content`, `url_id` and `metadata.created` — must be coerced with `ifThen($x == null, $x = '')` before serialising. `json\encode()` emits `null` where concatenation emitted `""`, and `null` is a 422.
 
 `tests/scripts/test_espo_flowcharts.py` enforces both rules against the exported CSVs.
+
+### Background processing
+
+Every flowchart starts with a 0-minute timer, "Run in background". Saving a record then returns at once, and the flow runs later in EspoCRM's background worker (daemon or cron), which must be running. Until the worker picks it up, the status stays `requested` (Insight: `not_started`). The worker runs flows about one at a time, so a large Insight delays every flow queued after it.
+
+Per-instance server settings, not part of the export:
+
+| Setting | Where | Value | Why |
+|---|---|---|---|
+| `workflowSendRequestTimeout` | `data/config.php` | `230` (default 60 seconds) | A bulk request for a few hundred records takes 1–2 minutes. |
+| PHP `memory_limit` | web *and* daemon containers | `512M` | The Insight flow builds the whole payload in memory. |
+
+Known Insight limits for `mode=single_pass` (measured on dev2, depend on text length):
+
+- above roughly 1,200–2,000 records, the request exceeds `LLM_MAX_TOTAL_TOKENS` and fails with 413;
+- at roughly 4,000 records (3,300 passed, 4,259 failed), collecting records runs out of memory at 512M. The worker crashes past the error boundary, so the Insight stays `not_started` with no error.
 
 ## Error handling
 
