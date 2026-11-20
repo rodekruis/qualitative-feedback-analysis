@@ -4,8 +4,9 @@ import logging
 import os
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Body, Depends, Request
 
 import qfa
 from qfa.api.dependencies import (
@@ -15,6 +16,14 @@ from qfa.api.dependencies import (
     get_coding_service,
     get_sensitivity_service,
     get_summarize_service,
+)
+from qfa.api.openapi_examples import (
+    ANALYZE_BULK_EXAMPLES,
+    ASSIGN_CODES_EXAMPLES,
+    DETECT_SENSITIVE_EXAMPLES,
+    SUMMARIZE_BULK_EXAMPLES,
+    SUMMARIZE_COMMUNITY_MEETING_EXAMPLES,
+    SUMMARIZE_EXAMPLES,
 )
 from qfa.api.schemas import (
     ApiAnalyzeBulkResponse,
@@ -170,7 +179,7 @@ router = APIRouter()
     tags=["Bulk Inference"],
 )
 async def analyze_bulk(
-    body: ApiAnalyzeRequest,
+    body: Annotated[ApiAnalyzeRequest, Body(openapi_examples=ANALYZE_BULK_EXAMPLES)],
     request: Request,
     tenant: TenantApiKey = Depends(authenticate_request),
     analyze_service: AnalyzeService = Depends(get_analyze_service),
@@ -296,7 +305,9 @@ async def analyze_bulk(
     tags=["Bulk Inference"],
 )
 async def summarize_bulk(
-    body: ApiSummarizeBulkRequest,
+    body: Annotated[
+        ApiSummarizeBulkRequest, Body(openapi_examples=SUMMARIZE_BULK_EXAMPLES)
+    ],
     request: Request,
     tenant: TenantApiKey = Depends(authenticate_request),
     summarize_service: SummarizeService = Depends(get_summarize_service),
@@ -376,7 +387,7 @@ async def summarize_bulk(
     tags=["Single Inference"],
 )
 async def summarize(
-    body: ApiSummarizeRequest,
+    body: Annotated[ApiSummarizeRequest, Body(openapi_examples=SUMMARIZE_EXAMPLES)],
     request: Request,
     tenant: TenantApiKey = Depends(authenticate_request),
     summarize_service: SummarizeService = Depends(get_summarize_service),
@@ -453,7 +464,10 @@ async def summarize(
     tags=["Single Inference"],
 )
 async def summarize_community_meeting(
-    body: ApiSummarizeCommunityMeetingRequest,
+    body: Annotated[
+        ApiSummarizeCommunityMeetingRequest,
+        Body(openapi_examples=SUMMARIZE_COMMUNITY_MEETING_EXAMPLES),
+    ],
     request: Request,
     tenant: TenantApiKey = Depends(authenticate_request),
     summarize_service: SummarizeService = Depends(get_summarize_service),
@@ -507,7 +521,9 @@ async def summarize_community_meeting(
     tags=["Single Inference"],
 )
 async def assign_codes(
-    body: ApiAssignCodesRequest,
+    body: Annotated[
+        ApiAssignCodesRequest, Body(openapi_examples=ASSIGN_CODES_EXAMPLES)
+    ],
     tenant: TenantApiKey = Depends(authenticate_request),
     coding: CodingService = Depends(get_coding_service),
     _scope: CallContext = Depends(call_scope_for(Operation.ASSIGN_CODES)),
@@ -595,7 +611,9 @@ async def assign_codes(
     tags=["Single Inference"],
 )
 async def detect_sensitive(
-    body: ApiDetectSensitiveRequest,
+    body: Annotated[
+        ApiDetectSensitiveRequest, Body(openapi_examples=DETECT_SENSITIVE_EXAMPLES)
+    ],
     request: Request,
     tenant: TenantApiKey = Depends(authenticate_request),
     sensitivity_service: SensitivityService = Depends(get_sensitivity_service),
