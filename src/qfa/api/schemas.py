@@ -754,14 +754,6 @@ class ApiSummarizeBulkResponse(ApiBulkInferenceResponseBase):
             "failed or the batch was empty."
         ),
     )
-    output_language: str | None = Field(
-        default=None,
-        exclude=True,
-        description=(
-            "Render input only (not serialized): the request's output_language,"
-            " used to localize the pretty_output headers."
-        ),
-    )
     request_id: str = Field(description="Unique identifier for this request.")
 
     @override

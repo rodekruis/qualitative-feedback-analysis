@@ -364,7 +364,6 @@ async def summarize_bulk(
         faithfulness=None if components is None else components.faithfulness,
         coverage=None if components is None else components.coverage,
         clarity=None if components is None else components.clarity,
-        output_language=body.output_language,
         request_id=request.state.request_id,
     )
 
