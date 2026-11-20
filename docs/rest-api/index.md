@@ -9,6 +9,8 @@ The live, always-current OpenAPI reference is served by FastAPI itself:
 
 For local dev, that's `http://localhost:8000/docs`.
 
+Each `POST` endpoint in Swagger UI has an Examples dropdown with pre-filled request bodies. The first example is realistic. It looks like an EspoCRM request, with mixed feedback and community meeting records, `url_id` values and both `espo_*_base_url` fields. The second example is short. All records are made up. The examples live in `qfa.api.openapi_examples`, and a test makes sure that each one is valid for its request model.
+
 ## Quick reference
 
 All endpoints except `GET /v1/health` require `Authorization: Bearer <key>`.
