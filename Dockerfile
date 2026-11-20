@@ -23,9 +23,10 @@ ARG EMBEDDING_E5_REVISION
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 WORKDIR /build
 COPY scripts/fetch_embedding_model.py .
-# --no-project: don't try to resolve the repo's pyproject; --with pulls just
-# the one dependency the script needs into an ephemeral environment.
+# --no-project ignores pyproject constraints, so keep these floors in sync.
 RUN uv run --no-project --with "huggingface-hub>=1.10" \
+        --with "certifi>=2026.10.19" \
+        --with "filelock>=4.2.1" \
         python fetch_embedding_model.py --model e5-base \
         --revision "${EMBEDDING_E5_REVISION}" \
         --dest /models/multilingual-e5-base

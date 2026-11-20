@@ -37,12 +37,12 @@ dependencies = [
     "pyyaml~=6.0",
     "tenacity~=9.1",
     "uvicorn[standard]>=0.42,<0.55",
-    "en_core_web_sm",
-    "fr_core_news_sm",
-    "uk_core_news_sm",
-    "ru_core_news_sm",
-    "es_core_news_sm",
-    "xx_ent_wiki_sm",
+    "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl#sha256=1932429db727d4bff3deed6b34cfc05df17794f4a52eeb26cf8928f7c1a0fb85",
+    "fr-core-news-sm @ https://github.com/explosion/spacy-models/releases/download/fr_core_news_sm-3.8.0/fr_core_news_sm-3.8.0-py3-none-any.whl#sha256=7d6ad14cd5078e53147bfbf70fb9d433c6a3865b695fda2657140bbc59a27e29",
+    "uk-core-news-sm @ https://github.com/explosion/spacy-models/releases/download/uk_core_news_sm-3.8.0/uk_core_news_sm-3.8.0-py3-none-any.whl#sha256=d20adb50b42c0dcfdedf4994dabcb96789a64983a9ab560d0c6c38a59e8efb58",
+    "ru-core-news-sm @ https://github.com/explosion/spacy-models/releases/download/ru_core_news_sm-3.8.0/ru_core_news_sm-3.8.0-py3-none-any.whl#sha256=69978d47b43e2c4f329bebdb155e8e9d3861bba1a58ba25551419dae7d7e07fc",
+    "es-core-news-sm @ https://github.com/explosion/spacy-models/releases/download/es_core_news_sm-3.8.0/es_core_news_sm-3.8.0-py3-none-any.whl#sha256=e451a83d6df79b87e9eed0cb553f03e99e36a3bab18a7b79f0dcfd1fdf875e12",
+    "xx-ent-wiki-sm @ https://github.com/explosion/spacy-models/releases/download/xx_ent_wiki_sm-3.8.0/xx_ent_wiki_sm-3.8.0-py3-none-any.whl#sha256=6f3c4b853852ea9e9d2dc76cc950dddb10a7e4c42d813308caefe6c5e8be2f0a",
     "langdetect>=1.0.9",
     "hdbscan>=0.8.43",
     "numpy>=2.4.4",
@@ -73,6 +73,12 @@ dependencies = [
 
 [tool.uv]
 constraint-dependencies = [
+    # GHSA-6q48-6c7w-9gw2: exclude the affected emSign root.
+    "certifi>=2026.10.19",
+    # Security floors for the model cache and installer tooling.
+    "filelock>=4.2.1",
+    "setuptools>=84.1.0",
+    "virtualenv>=21.14.9",
     # Starlette vulnerability in starlette >= 0.8.3, < 1.0.1: https://x41-dsec.de/lab/advisories/x41-2026-002-starlette/
     # Floor bumped to track dependabot's latest release.
     "starlette>=1.3.1",
@@ -80,19 +86,23 @@ constraint-dependencies = [
     # dependabot's bumped release.
     "tornado>=6.5.7",
 ]
-
-[tool.uv.sources] # include spacy models through custom-defined sources https://stackoverflow.com/a/79768491
-en-core-web-sm = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" }
-fr-core-news-sm = { url = "https://github.com/explosion/spacy-models/releases/download/fr_core_news_sm-3.8.0/fr_core_news_sm-3.8.0-py3-none-any.whl" }
-uk-core-news-sm = { url = "https://github.com/explosion/spacy-models/releases/download/uk_core_news_sm-3.8.0/uk_core_news_sm-3.8.0-py3-none-any.whl" }
-ru-core-news-sm = { url = "https://github.com/explosion/spacy-models/releases/download/ru_core_news_sm-3.8.0/ru_core_news_sm-3.8.0-py3-none-any.whl" }
-es_core_news_sm = { url = "https://github.com/explosion/spacy-models/releases/download/es_core_news_sm-3.8.0/es_core_news_sm-3.8.0-py3-none-any.whl" }
-xx-ent-wiki-sm = { url = "https://github.com/explosion/spacy-models/releases/download/xx_ent_wiki_sm-3.8.0/xx_ent_wiki_sm-3.8.0-py3-none-any.whl" }
+# Match the pinned wheels so Dependabot can lock without the broken GitHub
+# release redirect: https://github.com/dependabot/proxy/issues/348
+dependency-metadata = [
+    { name = "en-core-web-sm", version = "3.8.0", requires-dist = [] },
+    { name = "es-core-news-sm", version = "3.8.0", requires-dist = [] },
+    { name = "fr-core-news-sm", version = "3.8.0", requires-dist = [] },
+    { name = "ru-core-news-sm", version = "3.8.0", requires-dist = ["pymorphy3 >=1.0.0"] },
+    { name = "uk-core-news-sm", version = "3.8.0", requires-dist = ["pymorphy3 >=1.0.0", "pymorphy3-dicts-uk"] },
+    { name = "xx-ent-wiki-sm", version = "3.8.0", requires-dist = [] },
+]
 
 [project.urls]
 Homepage = "https://github.com/rodekruis/qualitative-feedback-analysis"
 Repository = "https://github.com/rodekruis/qualitative-feedback-analysis"
 
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build]
 # hatchling ships every tracked file under `packages`, `.py` or not, so the

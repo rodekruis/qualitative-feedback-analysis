@@ -316,6 +316,7 @@
       <ul>
         <li>The database has <strong>no public network access</strong> and no password login — private network only, identity-based access.</li>
         <li><strong>TLS 1.2+ enforced</strong> everywhere; legacy insecure file-transfer protocols are disabled.</li>
+        <li><strong>Python CA bundle:</strong> New images require certifi 2026.10.19 or later, excluding the emSign root linked to compromised intermediate keys. Production must deploy a rebuilt image to use this update.</li>
         <li>Services authenticate to each other via <strong>managed identity</strong> — no shared-key secrets between components.</li>
         <li><strong>Isolated environments:</strong> development, staging and production each have their own resources.</li>
         <li>Hosted in <strong>Europe (Sweden)</strong> — data stays within the EU.</li>
@@ -327,6 +328,7 @@
       <ul>
         <li><strong>Static security scanning</strong> (CodeQL) and security-focused lint checks run on every change.</li>
         <li><strong>Automated dependency scanning</strong> keeps third-party libraries patched. Patch and minor updates merge without a human review only after all required checks pass and a 3-day cooldown. Major updates need a human review.</li>
+        <li><strong>Model integrity:</strong> spaCy models use official release files pinned by SHA-256 hash.</li>
         <li>Architectural boundaries are <strong>enforced by the build</strong>, not convention — the privacy-sensitive core stays isolated from vendor code.</li>
         <li>Releases require a <strong>named human's sign-off</strong> before reaching staging or production.</li>
         <li>The release pipeline's elevated, branch-protection-bypassing credential is scoped to only the version-bump commit; every other release step uses a standard, non-bypassing token.</li>
