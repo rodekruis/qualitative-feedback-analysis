@@ -14,7 +14,7 @@ The flowcharts compose request bodies based on three distinct workflows.
 
 ![Espo flowchart for saving a single feedback item](../assets/espo_feedback_save_flow.png)
 
-These use all single-feedback record endpoints such as `summarize`, `detect-sensitive` and `assign-codes`. These are all executed at once.
+The flow calls `summarize`, `detect-sensitive` and `assign-codes` for requested operations. Its parallel gateway does not guarantee simultaneous HTTP calls.
 
 > **Note:** The entire coding framework (all codingLevel1, codingLevel2, codingLevel3 items) is sent to the `assign-codes` endpoint. This allows the inference to be stateless.
 
@@ -43,9 +43,83 @@ Each flow builds its own `motherPayload` — a JSON object containing all key-va
 
 `tests/scripts/test_espo_flowcharts.py` enforces both rules against the exported CSVs.
 
+### Background processing and instance setup
+
+These settings are per EspoCRM instance; importing a flowchart does not set them.
+For record-triggered flows, use flowchart exports with a 0-minute **Run in
+background** timer after the start event. The save returns before QFA finishes,
+so a running Espo daemon or cron is required to continue the flow. Verify the
+timer is present after import; older exports may not contain it.
+
+1. In **Administration > Job Settings**, enable **Jobs Run in Parallel**.
+   Parallel jobs require a supported Unix-like environment and PHP's `pcntl`
+   and `posix` extensions.
+2. Set `bpmnRunInParallel` to `true`. Both this setting and parallel jobs are
+   needed for parallel BPM processing. Advanced Pack 3.10 or later is required.
+3. Set `jobPeriodForReadyNotStarted` to a value that accommodates the expected
+   wait for a worker. **600 seconds** is a starting point tested on dev2, not a
+   capacity limit. A longer timeout also delays detection of jobs that never
+   start. It does not increase concurrency or the HTTP request timeout.
+
+For EspoCRM 10.0 or later, run these commands from the Espo application directory:
+
+```sh
+php command.php config:set bpmnRunInParallel true --type=bool
+php command.php config:set jobPeriodForReadyNotStarted 600 --type=int
+php command.php config:get bpmnRunInParallel --json
+php command.php config:get jobPeriodForReadyNotStarted --json
+```
+
+For older versions, add these values to `data/config.php` or
+`data/config-internal.php`; see Espo's
+[configuration guide](https://docs.espocrm.com/administration/config-params/).
+Do not put the same setting in both files. Persist changes in the deployment,
+verify the effective values in every scheduler container, and clear the cache
+or restart scheduler processes if needed. Avoid printing full config files,
+which may contain secrets. The Ready timeout default was 60 seconds in EspoCRM
+10.0.11; check the default and applicable configuration when upgrading.
+
+In the dev2 test, **Jobs Max Portion** was 15, **Jobs Pool Concurrency Number**
+was 8, and the daemon used a 10-second interval and a maximum of 5 processes.
+These are test settings, not recommended limits for every instance: max portion
+is a per-run job limit, and pool concurrency is per pool, not a global QFA
+request limit. Check QFA capacity, database resources and model provider request
+and token limits before raising concurrency.
+
+With EspoCRM 10.0.11 and Advanced Pack 3.13.6, a synthetic mixed burst of 120
+feedback records and 60 small insights reached final states in about 15 minutes:
+113 feedback records completed, 7 required human review, and all insights
+completed. This is not a production capacity guarantee. Test the new instance
+with representative record sizes, concurrent traffic and failure scenarios.
+
+### Overdue work and recovery
+
+- Monitor requested or processing feedback operations and queued or processing
+  insights, failed jobs, and scheduler health. Human review is a separate
+  outcome and needs follow-up. Alerting for overdue work is tracked in
+  [#485](https://github.com/rodekruis/qualitative-feedback-analysis/issues/485).
+- Error boundaries on HTTP tasks cannot catch a background job that fails before
+  the task starts. In the tested Advanced Pack version, stale BPM locks default
+  to a three-hour unlock period; pending work may then be scheduled again if
+  the scheduler is healthy. Two failed dev2 jobs recovered after roughly three
+  hours, consistent with this mechanism, but the trigger was not confirmed.
+  Recovery is not guaranteed and may take longer.
+- Check the process, job, record statuses and logs before recovery. Confirm no
+  worker or QFA request is still active; avoid direct database unlocks and
+  blind retries, which can duplicate work. Use Espo's
+  [process controls](https://docs.espocrm.com/administration/bpm/#manipulating)
+  after assessing side effects.
+- A boundary timer or gateway inside the same locked root process also depends
+  on the BPM scheduler, so it is not a reliable substitute for independent
+  monitoring. Do not shorten the stale-lock period without testing long-running
+  requests and duplicate protection.
+
 ## Error handling
 
-Every flow wraps each outbound call in an EspoCRM error-boundary event. On success, the relevant status field is set to `completed`; on failure, the boundary runs an "error notification" step instead, which sets the status field to `failed` and stores the underlying error via `bpm\caughtErrorCode()` / `bpm\caughtErrorMessage()`. All of these are plain fields on the triggering feedback record or insight, so the outcome and any error detail are visible directly on that record in the EspoCRM UI — there is no separate error log to check.
+Every flow wraps each outbound call in an EspoCRM error-boundary event. On
+failure, the boundary sets the record's status to `failed` and stores
+`bpm\caughtErrorCode()` / `bpm\caughtErrorMessage()`. Job or scheduler failures
+can instead appear in Espo's job and application logs.
 
 ### Single-feedback record flow
 
