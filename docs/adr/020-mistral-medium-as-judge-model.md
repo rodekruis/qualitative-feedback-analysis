@@ -1,4 +1,4 @@
-# ADR-020: `mistral-large-4-latest` as the judge model
+# ADR-020: `mistral-medium-3-5` as the judge model
 
 ## Status
 
@@ -26,7 +26,7 @@ written.
 
 ## Decision
 
-`azure_ai/mistral-large-4-latest`, on the existing Azure Foundry resource, serves
+`azure_ai/mistral-medium-3-5`, on the existing Azure Foundry resource, serves
 every judge call site in every deployed environment: the `analyze` judge,
 the hierarchical leaf judge, the judges in `summarize` and `summarize_bulk`,
 the per-level judge in `assign_codes` (added by #310 after this ADR was
@@ -199,6 +199,10 @@ Stated as observables, not feelings:
   numbers compare the two judges yet. Until those runs are in Langfuse, the
   rollback conditions above are the safeguard. Before 2026-11-13, the model
   was `azure_ai/mistral-medium-3-5`, which the entries above name.
+- **Judge model back to Mistral Medium 3.5, 2026-11-20**: Mistral Large 4
+  made the judge calls too slow, because its latency is high. The judge model
+  is `azure_ai/mistral-medium-3-5` again. The Large 4 price entry stays, so
+  that a switch back does not record zero cost.
 
 ## Follow-up
 
