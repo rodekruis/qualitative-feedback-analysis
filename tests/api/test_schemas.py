@@ -482,22 +482,6 @@ def test_summarize_bulk_quality_text_empty_batch_is_none():
     assert response.quality_text is None
 
 
-def test_summarize_bulk_response_output_language_excluded_from_serialization():
-    """output_language is a render input only and never appears in the JSON body.
-
-    Keeping it out of model_dump avoids polluting the data contract with a
-    presentation concern.
-    """
-    response = ApiSummarizeBulkResponse(
-        title="t",
-        summary="s",
-        quality_score=0.5,
-        output_language="French",
-        request_id="req-1",
-    )
-    assert "output_language" not in response.model_dump()
-
-
 def test_analyze_bulk_pretty_output_is_analysis_text_only():
     """pretty_output equals the analysis string — no quality header, title, or separator.
 

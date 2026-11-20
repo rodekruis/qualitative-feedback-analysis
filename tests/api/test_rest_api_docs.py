@@ -7,8 +7,7 @@ undocumented new field. Issue #370 was the former — `anonymize` and
 
 Response fields are compared against a live 200 body rather than
 `model_fields`, because only the wire output settles `@computed_field`
-(`pretty_output`, `quality_text`) and `Field(exclude=True)`
-(`ApiSummarizeBulkResponse.output_language`, absent from both).
+(`pretty_output`, `quality_text`).
 """
 
 import re
