@@ -135,6 +135,8 @@ jobs:
           TF_VAR_tf_state_storage_account: ${{ vars.AZ_TF_STATE_STORAGE_ACCOUNT }}
           TF_VAR_tf_state_resource_group_name: ${{ vars.AZ_TF_STATE_RESOURCE_GROUP }}
           TF_VAR_teams_webhook_url: ${{ secrets.TEAMS_ALERTS_WEBHOOK_URL }}
+          # Unset expands to "", which var.llm_model's validation rejects.
+          TF_VAR_llm_model: ${{ vars.AZ_LLM_MODEL }}
           TF_VAR_judge_llm_model: ${{ vars.AZ_JUDGE_LLM_MODEL }}
           TF_VAR_judge_llm_api_base: ${{ vars.AZ_JUDGE_LLM_API_BASE }}
           TF_VAR_langfuse_public_key: ${{ vars.AZ_LANGFUSE_PUBLIC_KEY }}
@@ -154,6 +156,8 @@ jobs:
           TF_VAR_tf_state_storage_account: ${{ vars.AZ_TF_STATE_STORAGE_ACCOUNT }}
           TF_VAR_tf_state_resource_group_name: ${{ vars.AZ_TF_STATE_RESOURCE_GROUP }}
           TF_VAR_teams_webhook_url: ${{ secrets.TEAMS_ALERTS_WEBHOOK_URL }}
+          # Unset expands to "", which var.llm_model's validation rejects.
+          TF_VAR_llm_model: ${{ vars.AZ_LLM_MODEL }}
           TF_VAR_judge_llm_model: ${{ vars.AZ_JUDGE_LLM_MODEL }}
           TF_VAR_judge_llm_api_base: ${{ vars.AZ_JUDGE_LLM_API_BASE }}
           TF_VAR_langfuse_public_key: ${{ vars.AZ_LANGFUSE_PUBLIC_KEY }}

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "qualitative-feedback-analysis"
-version = "2.12.0"
+version = "3.1.0"
 description = "The feedback analysis tool receives feedback items and analyses trends, topics and their evolution over time."
 readme = "README.md"
 license = "LicenseRef-Proprietary"
@@ -27,7 +27,7 @@ dependencies = [
     "azure-identity~=1.25",
     "sqlalchemy[asyncio]>=2.0",
     "fastapi~=0.135.0",
-    "gunicorn~=25.3",
+    "gunicorn>=25.3,<27.0",
     "langfuse>=4.6",
     "litellm>=1.84,<1.89",
     "presidio-analyzer>=2.2.362",

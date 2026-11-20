@@ -61,6 +61,8 @@ from qfa.services.prompts import (
     build_feedback_record_envelope,
     build_feedback_records_envelope,
     build_output_language_instruction,
+    build_source_comparison_instruction,
+    includes_both_sources,
 )
 from qfa.services.record_links import hyperlink_form_references
 from qfa.utils import timed
@@ -122,6 +124,9 @@ Summary:
 Score the summary using three criteria. Each must be a float between 0 and 1.
 
 Faithfulness:
+If the summary gives source labels or says that sources agree or disagree,
+check those statements against the corresponding source records. Treat
+unsupported source labels or comparisons as faithfulness errors.
 1.0 = fully supported by the source text above, no hallucinations
 0.5 = mostly correct, minor issues
 0.0 = major inaccuracies
@@ -265,6 +270,9 @@ class SummarizeService:
             When the un-anonymised prompt exceeds the token cap.
         """
         system_message = _DEFAULT_AGGREGATE_SUMMARIZATION_PROMPT
+        system_message += build_source_comparison_instruction(
+            includes_both_sources(request.feedback_records)
+        )
         system_message += build_output_language_instruction(
             request.output_language, subject="title and summary"
         )

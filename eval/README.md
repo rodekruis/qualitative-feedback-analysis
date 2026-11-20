@@ -458,7 +458,7 @@ See Shared helpers for a local server.
   built from.
 
 To use the dev judge on a local server, start the server with
-`JUDGE_LLM_MODEL=azure_ai/mistral-medium-3-5` and `JUDGE_LLM_API_BASE` set to
+`JUDGE_LLM_MODEL=azure_ai/mistral-large-4-latest` and `JUDGE_LLM_API_BASE` set to
 `AZ_JUDGE_LLM_API_BASE` of the `dev` GitHub environment. Otherwise the local
 judge is the primary model, or the judge that your `.env` sets.
 

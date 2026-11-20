@@ -41,6 +41,7 @@ from qfa.domain.ports import AnonymizationPort, EvaluationPort, LLMPort
 from qfa.domain.usage_models import Operation
 from qfa.services.call_context import call_scope
 from qfa.services.llm_call_executor import LLMCallExecutor
+from qfa.services.prompts import SOURCE_COMPARISON_PROMPT
 from qfa.services.summarize import SummarizeService
 from qfa.settings import OrchestratorSettings
 
@@ -385,6 +386,60 @@ class TestSummarizeBulkCommunityMeetingRecords:
         system_message = fake_llm.calls[0]["system_message"]
         assert "community meeting notes" in system_message
         assert "fgd means focus group discussion" in system_message
+
+    @pytest.mark.asyncio
+    async def test_mixed_sources_ask_for_a_source_comparison(self, settings):
+        fake_llm = self._fake_llm()
+        service = _build_service(fake_llm, settings)
+
+        await service.summarize_bulk(self._mixed_request(), _future_deadline())
+
+        assert SOURCE_COMPARISON_PROMPT in fake_llm.calls[0]["system_message"]
+
+    @pytest.mark.asyncio
+    async def test_judge_checks_source_labels_and_comparisons(self, settings):
+        summary = "### Water\nSources: both, disagree\nThe sources disagree."
+        fake_llm = self._fake_llm(summary=summary)
+        service = _build_service(fake_llm, settings)
+
+        await service.summarize_bulk(self._mixed_request(), _future_deadline())
+
+        judge_message = fake_llm.calls[1]["system_message"]
+        assert (
+            "unsupported source labels or comparisons as faithfulness errors"
+            in judge_message
+        )
+        assert '<feedback_record id="Form-1">' in judge_message
+        assert '<community_meeting_record id="meeting-1">' in judge_message
+        assert summary in judge_message
+
+    @pytest.mark.asyncio
+    async def test_source_comparison_follows_base_prompt_and_precedes_language(
+        self, settings
+    ):
+        # The comparison narrows the base "most frequent first" rule, so it
+        # must come after it; the language directive keeps the final say.
+        fake_llm = self._fake_llm()
+        service = _build_service(fake_llm, settings)
+
+        await service.summarize_bulk(
+            self._mixed_request(output_language="French"), _future_deadline()
+        )
+
+        system_message = fake_llm.calls[0]["system_message"]
+        ordering = system_message.index("most to least frequently mentioned")
+        comparison = system_message.index(SOURCE_COMPARISON_PROMPT)
+        language = system_message.index("French")
+        assert ordering < comparison < language
+
+    @pytest.mark.asyncio
+    async def test_single_source_has_no_source_comparison(self, settings):
+        fake_llm = self._fake_llm()
+        service = _build_service(fake_llm, settings)
+
+        await service.summarize_bulk(_make_aggregate_request(), _future_deadline())
+
+        assert SOURCE_COMPARISON_PROMPT not in fake_llm.calls[0]["system_message"]
 
     @pytest.mark.asyncio
     async def test_meeting_mentions_link_to_meeting_base_url(self, settings):

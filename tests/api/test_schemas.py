@@ -271,6 +271,13 @@ def test_coding_levels_flat_depth_accepted():
     assert len(levels.root_codes) == 2
 
 
+def test_coding_node_schema_warns_that_names_reach_model_unchanged():
+    schema = ApiCodingNode.model_json_schema()["$defs"]["ApiCodingNode"]
+    description = schema["properties"]["name"]["description"]
+    assert "model unchanged" in description
+    assert "must not contain personal data" in description
+
+
 def test_coding_levels_valid_uniform_depth():
     levels = ApiCodingFramework(
         root_codes=[
@@ -621,6 +628,12 @@ class TestAssignCodesRequestExamples:
         for example in _assign_codes_request_examples():
             request = ApiAssignCodesRequest.model_validate(example)
             assert request.coding_levels.root_codes
+
+    def test_examples_are_published_in_json_schema(self) -> None:
+        assert (
+            ApiAssignCodesRequest.model_json_schema()["examples"]
+            == _assign_codes_request_examples()
+        )
 
     def test_examples_expose_the_real_framework(self) -> None:
         """The examples carry the full 3-level taxonomy, not a stub."""

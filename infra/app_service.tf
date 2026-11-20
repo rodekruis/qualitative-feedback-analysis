@@ -57,8 +57,7 @@ resource "azurerm_linux_web_app" "backend" {
   # that distinction matters.
   app_settings = merge(
     {
-      LLM_MODEL       = var.llm_model
-      LLM_API_VERSION = var.llm_api_version
+      LLM_MODEL = var.llm_model
 
       # Key Vault references — the App Service resolves these at runtime
       LLM_API_BASE  = "@Microsoft.KeyVault(SecretUri=https://${local.keyvault_name}.vault.azure.net/secrets/llm-api-base)"
@@ -78,6 +77,7 @@ resource "azurerm_linux_web_app" "backend" {
 
       APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.main.connection_string
     },
+    var.llm_api_version == "" ? {} : { LLM_API_VERSION = var.llm_api_version },
     local.judge_app_settings,
     local.langfuse_app_settings,
   )

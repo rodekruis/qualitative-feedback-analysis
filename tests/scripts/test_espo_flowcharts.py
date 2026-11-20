@@ -105,21 +105,130 @@ def test_community_meeting_flowchart_sends_meeting_base_url():
     assert "espo_feedback_base_url" not in formulas
 
 
+@pytest.mark.parametrize("level", [1, 2, 3])
+def test_feedback_flowchart_includes_optional_code_descriptions(level):
+    nodes = _nodes(FLOWCHART_DIR / "Feedback_saving_flowchart.csv")
+    framework = next(node for node in nodes if node["id"] == "g3dcslcmvk")
+    formula = framework["actionList"][0]["formula"]
+
+    lookup = (
+        f"$desc{level} = record\\attribute("
+        f"'CCodingLevel{level}', $id{level}, 'description');"
+    )
+    append = (
+        f"ifThen($desc{level} != null && string\\length($desc{level}) > 0, "
+        f"$name{level} = string\\concatenate($name{level}, ' ', $desc{level}));"
+    )
+    assignment = f"$node{level}['name'] = $name{level};"
+
+    assert lookup in formula
+    assert append in formula
+    assert formula.index(lookup) < formula.index(append) < formula.index(assignment)
+
+
+def test_feedback_flowchart_uses_configurable_confidence_thresholds():
+    flowchart = FLOWCHART_DIR / "Feedback_saving_flowchart.csv"
+    nodes = {node["id"]: node for node in _nodes(flowchart)}
+    coding = nodes["pgang8h4rp"]["actionList"][1]["formula"]
+    sensitive = nodes["xqfh7up3zb"]["actionList"][1]["formula"]
+
+    for level in (1, 2, 3):
+        assert f"assigned_codes.0.confidence_level_{level}" in coding
+    for level, weight in ((1, "0.20"), (2, "0.30"), (3, "0.50")):
+        assert f"$confidenceLevel{level} != null, {weight}, 0" in coding
+    assert "/ $totalWeight" in coding
+    assert "$confidenceLevel3 ?? $confidenceLevel2 ?? $confidenceLevel1" in coding
+    assert "QFA_CODING_WEIGHTED_THRESHOLD" in coding
+    assert "QFA_CODING_DEEPEST_THRESHOLD" in coding
+    assert "$weightedConfidenceScore < $weightedThreshold" in coding
+    assert "$deepestLevelConfidence < $deepestLevelThreshold" in coding
+    assert "confidence_aggregate" not in coding
+    assert "autoCodingStatus = 'human_review_required'" in coding
+
+    assert "QFA_SENSITIVE_CONFIDENCE_THRESHOLD" in sensitive
+    assert "$sensitiveConfidence == null" in sensitive
+    assert "$sensitiveConfidence < $sensitiveThreshold" in sensitive
+    assert "autoSensitiveStatus = 'human_review_required'" in sensitive
+
+
+def test_feedback_flowchart_uses_optional_minimum_coding_threshold():
+    nodes = {
+        node["id"]: node
+        for node in _nodes(FLOWCHART_DIR / "Feedback_saving_flowchart.csv")
+    }
+    payload = nodes["7k24bkfmi6"]["actionList"][1]["formula"]
+
+    assert "$minimumThreshold = 0.1;" in payload
+    assert (
+        "if (record\\exists('AppSecret', 'name=', "
+        "'QFA_CODING_MINIMUM_THRESHOLD')) {\n"
+        "    $minimumThreshold = number\\parseFloat("
+        "ext\\appSecret\\get('QFA_CODING_MINIMUM_THRESHOLD'));\n"
+        "}"
+    ) in payload
+    assert "$payload['confidence_threshold'] = $minimumThreshold;" in payload
+    assert "$payload['confidence_threshold'] = 0.1;" not in payload
+    assert "string\\trim(" not in payload
+    assert "string\\replace(" not in payload
+    assert "string\\test(" not in payload
+
+
+@pytest.mark.parametrize(
+    ("node_id", "action_index"), [("816sh17k5p", 0), ("20wynscwjv", 1)]
+)
+def test_feedback_flowchart_omits_coding_threshold_from_other_requests(
+    node_id, action_index
+):
+    nodes = {
+        node["id"]: node
+        for node in _nodes(FLOWCHART_DIR / "Feedback_saving_flowchart.csv")
+    }
+    payload = nodes[node_id]["actionList"][action_index]["formula"]
+
+    assert "confidence_threshold" not in payload
+
+
 def test_insight_flowchart_sends_meetings_to_both_bulk_endpoints():
-    """Meeting records are collected regardless of the insight method."""
+    """Selected source records are collected and counted for either method."""
     flowchart = FLOWCHART_DIR / "Insight_creation_flowchart.csv"
     nodes = _nodes(flowchart)
     collection = next(node for node in nodes if node["id"] == "ski0qsd6qx")
     formula = collection["actionList"][0]["formula"]
 
+    assert (
+        "$dataSources = record\\attribute('CInsight', id, 'dataSourceType');" in formula
+    )
+    assert "$useFeedback = true;\n$useMeetings = true;" in formula
+    assert (
+        "if ($dataSources != null) {\n  if (array\\length($dataSources) > 0)" in formula
+    )
+    assert "$useFeedback = array\\includes($dataSources, 'feedback');" in formula
+    assert (
+        "$useMeetings = array\\includes($dataSources, 'community_meeting');" in formula
+    )
+    assert (
+        "ifThen($useFeedback, $$backendIDs = "
+        "record\\findRelatedMany('CInsight', id, 'feedbackDatas',"
+    ) in formula
+    assert (
+        "ifThen($useMeetings, $$meetingBackendIDs = "
+        "record\\findRelatedMany('CInsight', id, 'communityMeetingDatas',"
+    ) in formula
     assert "$analysisRecords = list();" in formula
+    assert "$feedbackUsed = 0;\n$meetingsUsed = 0;" in formula
     assert "$feedbackRecord['record_type'] = 'feedback';" in formula
     assert (
-        "$analysisRecords = array\\push($analysisRecords, $feedbackRecord);" in formula
+        "$analysisRecords = array\\push($analysisRecords, $feedbackRecord);\n"
+        "    $feedbackUsed = $feedbackUsed + 1;" in formula
     )
     assert (
-        "$analysisRecords = array\\push($analysisRecords, $meetingRecord);" in formula
+        "$analysisRecords = array\\push($analysisRecords, $meetingRecord);\n"
+        "    $meetingsUsed = $meetingsUsed + 1;" in formula
     )
+    assert "if ($feedbackDescription != null && $feedbackDescription != '')" in formula
+    assert "if ($meetingNotes != null && $meetingNotes != '')" in formula
+    assert "numberOfFeedbackRecordsUsed = $feedbackUsed;" in formula
+    assert "numberOfMeetingRecordsUsed = $meetingsUsed;" in formula
     assert "$feedbackRecords" not in formula
     assert "$meetingCount = array\\length($$meetingBackendIDs);" in formula
     assert "$method ==" not in formula
@@ -167,3 +276,31 @@ def test_langfuse_flow_requires_non_empty_request_id():
     assert None in request_id_values
     assert "" in request_id_values
     assert "ifThen($request_id == null, $request_id = '');" in formula
+
+
+@pytest.mark.parametrize("path", FLOWCHARTS, ids=lambda p: p.name)
+def test_flowchart_starts_with_background_timer(path):
+    """A 0-minute timer moves the flow off the record save into the worker."""
+    nodes = {node["id"]: node for node in _nodes(path)}
+    starts = [n for n in nodes.values() if n["type"].startswith("eventStart")]
+    assert starts
+    for start in starts:
+        targets = [
+            nodes[n["endId"]]
+            for n in nodes.values()
+            if n["type"] == "flow" and n["startId"] == start["id"]
+        ]
+        assert [(t["type"], t["timerShift"]) for t in targets] == [
+            ("eventIntermediateTimerCatch", 0)
+        ], f"{path.name}: start event {start['id']} must lead to one 0-minute timer"
+
+
+@pytest.mark.parametrize("path", FLOWCHARTS, ids=lambda p: p.name)
+def test_flowchart_references_point_backwards(path):
+    """The editor stops drawing at a flow whose start or end comes later."""
+    seen = set()
+    for node in _nodes(path):
+        for key in ("startId", "endId", "attachedToId"):
+            if node.get(key):
+                assert node[key] in seen, f"{path.name}: {node['id']}.{key}"
+        seen.add(node["id"])

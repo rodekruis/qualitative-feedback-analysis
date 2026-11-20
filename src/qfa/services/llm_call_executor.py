@@ -141,14 +141,9 @@ class LLMCallExecutor:
         return new_records, redacted_prompt, mapping
 
     def anonymize_text(self, text: str) -> tuple[str, dict[str, str]]:
-        """Redact PII from one assembled message, returning text + mapping.
+        """Redact PII from text, returning text + mapping.
 
-        The single-record use cases anonymise the *assembled* user message
-        rather than each record's content, because the envelope they send is
-        built before the call; :meth:`anonymize_records_and_prompt` is the
-        batch equivalent for the paths that chunk records first. Pair this with
-        :meth:`deanonymize_json` to restore the redacted values in the
-        model's response.
+        Pair with :meth:`deanonymize_json` to restore values in the response.
         """
         return self._anonymizer.anonymize(text)
 

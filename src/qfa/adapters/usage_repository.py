@@ -21,7 +21,7 @@ pre-aggregated by ``call_id``). The duality is expressed once as a
 carried through as parallel code paths.
 """
 
-from collections.abc import AsyncIterator, Callable, Sequence
+from collections.abc import AsyncGenerator, Callable, Sequence
 from contextlib import asynccontextmanager
 from datetime import datetime
 from decimal import Decimal
@@ -54,7 +54,7 @@ _StatsByKey = dict[_StatsKey, UsageMetrics]
 
 
 @asynccontextmanager
-async def _translate_db_errors() -> AsyncIterator[None]:
+async def _translate_db_errors() -> AsyncGenerator[None, None]:
     """Translate SQLAlchemy connectivity errors into a domain-level error.
 
     Wraps the read paths so the API layer can map a single domain

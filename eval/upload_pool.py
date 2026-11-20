@@ -187,7 +187,7 @@ def validate_pool(
             f"created outside 2026-06-01..2026-08-31: {', '.join(out_of_window)}"
         )
 
-    empty_text = [r["id"] for r in records if not (r.get("content") or "")]
+    empty_text = [r["id"] for r in records if not r.get("content")]
     if final:
         if empty_text:
             raise SystemExit(

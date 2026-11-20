@@ -95,7 +95,7 @@ class LLMSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="LLM_")
 
-    model: str = "azure/gpt-5.4"
+    model: str = "azure/gpt-6.1-sol"
     api_key: SecretStr = Field(default=...)  # required, no default
     api_base: str = ""
     api_version: str = ""
@@ -113,14 +113,16 @@ class JudgeLLMSettings(BaseSettings):
     configures that second connection.
 
     **Every field is optional and defaults to ``None``, which means "inherit
-    the corresponding value from the primary** :class:`LLMSettings` **".**
+    the corresponding value from the primary** :class:`LLMSettings` **"**,
+    except ``api_version``: unset, it is derived from the judge model's
+    provider rather than inherited (ADR-026).
     Deliberately *not* a subclass of :class:`LLMSettings`: that would inherit
     ``api_key``'s required-ness and force a second credential — and therefore a
     new Key Vault secret in every environment — before a judge model could be
     tried at all. Here the credential is inherited by default, so enabling a
     judge on the same Azure resource needs one non-secret variable::
 
-        JUDGE_LLM_MODEL=azure_ai/mistral-medium-3-5
+        JUDGE_LLM_MODEL=azure_ai/mistral-large-4-latest
         JUDGE_LLM_API_BASE=https://<resource>.services.ai.azure.com/models
 
     ``model`` is the switch: while it is unset (or empty) no judge client is

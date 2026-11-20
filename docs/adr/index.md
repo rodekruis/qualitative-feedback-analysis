@@ -28,12 +28,13 @@ to them, the options considered, and the reasoning behind the chosen approach.
 | [017](017-orchestrator-composition-only.md) | Decompose the Orchestrator by composition only | Accepted (supersedes decision 3 of [011](011-drop-orchestrator-port.md)) |
 | [018](018-no-third-party-text-in-error-envelope.md) | No third-party text in the error envelope | Accepted |
 | [019](019-per-environment-app-service-plan-sizing.md) | Per-environment App Service plan sizing, prd on P0v3 | Accepted |
-| [020](020-mistral-medium-as-judge-model.md) | `mistral-medium-3-5` as the judge model | Accepted |
+| [020](020-mistral-medium-as-judge-model.md) | `mistral-large-4-latest` as the judge model | Accepted |
 | [021](021-two-model-person-union.md) | Two-model NER union for person-name recall | Accepted |
 | [022](022-evaluation-port-for-live-judge-scores.md) | `EvaluationPort` for live judge scores in Langfuse | Accepted |
 | [023](023-eval-black-box-and-langfuse-ground-truth.md) | `eval/` as a black-box client, and Langfuse as the analyze ground truth | Accepted |
 | [024](024-prompt-port-langfuse-mirror.md) | `PromptPort` and a push-based Langfuse prompt mirror | Accepted |
 | [025](025-registry-derived-deploy-digest.md) | Derive the deploy digest from the registry, cross-checked against the release body | Accepted |
+| [026](026-azure-api-version-by-model-provider.md) | Pick the Azure API version from the model provider, `v1` for Azure OpenAI | Accepted |
 
 ## Obsolete
 
@@ -68,5 +69,6 @@ to them, the options considered, and the reasoning behind the chosen approach.
 023-eval-black-box-and-langfuse-ground-truth
 024-prompt-port-langfuse-mirror
 025-registry-derived-deploy-digest
+026-azure-api-version-by-model-provider
 obsolete/008-keep-orchestrator-port
 ```

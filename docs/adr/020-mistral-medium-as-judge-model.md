@@ -1,4 +1,4 @@
-# ADR-020: `mistral-medium-3-5` as the judge model
+# ADR-020: `mistral-large-4-latest` as the judge model
 
 ## Status
 
@@ -26,7 +26,7 @@ written.
 
 ## Decision
 
-`azure_ai/mistral-medium-3-5`, on the existing Azure Foundry resource, serves
+`azure_ai/mistral-large-4-latest`, on the existing Azure Foundry resource, serves
 every judge call site in every deployed environment: the `analyze` judge,
 the hierarchical leaf judge, the judges in `summarize` and `summarize_bulk`,
 the per-level judge in `assign_codes` (added by #310 after this ADR was
@@ -192,6 +192,13 @@ Stated as observables, not feelings:
   0.25 and 0.0. The reply still ends with the four lines, so the parser did not
   change. The model stays. #449 tries Mistral Large 4 when it is available in
   our Azure AI Foundry resources.
+- **Judge model changed to Mistral Large 4, 2026-11-13** (#449): the product
+  owner directed `azure_ai/mistral-large-4-latest`, deployed in the dev and prd
+  Foundry resources. It is newer than Medium 3.5 and cheaper: $0.70/1M input
+  and $2.10/1M output. The judge stays outside the GPT family. No eval
+  numbers compare the two judges yet. Until those runs are in Langfuse, the
+  rollback conditions above are the safeguard. Before 2026-11-13, the model
+  was `azure_ai/mistral-medium-3-5`, which the entries above name.
 
 ## Follow-up
 

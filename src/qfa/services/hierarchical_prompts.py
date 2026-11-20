@@ -14,6 +14,7 @@ from qfa.services.prompts import (
     ANALYZE_OUTPUT_FORMAT_PROMPT,
     ANALYZE_SYSTEM_PROMPT,
     build_output_language_instruction,
+    build_source_comparison_instruction,
     escape_for_tag_envelope,
 )
 
@@ -41,11 +42,17 @@ _REDUCE_ACTION_PROMPT = (
 )
 
 
-def build_map_system_message(output_language: str | None = None) -> str:
+def build_map_system_message(
+    output_language: str | None = None, *, compare_sources: bool = False
+) -> str:
     """Build the leaf (map) system message.
 
     Role, guardrails, map action, then the output format. Each partial cites
     the ids of its own chunk, so the reduce step can merge them.
+
+    ``compare_sources`` reflects the whole request, not this chunk: a
+    single-source chunk must still name its source, because the reduce step
+    only sees the partials.
 
     ``output_language``, when given, is appended here too, so each partial is
     already produced in the target language rather than leaving translation
@@ -56,11 +63,14 @@ def build_map_system_message(output_language: str | None = None) -> str:
         f"{ANALYZE_GUARDRAILS_PROMPT}\n\n"
         f"{_MAP_ACTION_PROMPT}\n\n"
         f"{ANALYZE_OUTPUT_FORMAT_PROMPT}"
+        f"{build_source_comparison_instruction(compare_sources)}"
         f"{build_output_language_instruction(output_language)}"
     )
 
 
-def build_reduce_system_message(output_language: str | None = None) -> str:
+def build_reduce_system_message(
+    output_language: str | None = None, *, compare_sources: bool = False
+) -> str:
     """Build the synthesis (reduce) system message.
 
     Role, guardrails, reduce action, then the output format.
@@ -75,6 +85,7 @@ def build_reduce_system_message(output_language: str | None = None) -> str:
         f"{ANALYZE_GUARDRAILS_PROMPT}\n\n"
         f"{_REDUCE_ACTION_PROMPT}\n\n"
         f"{ANALYZE_OUTPUT_FORMAT_PROMPT}"
+        f"{build_source_comparison_instruction(compare_sources)}"
         f"{build_output_language_instruction(output_language)}"
     )
 

@@ -36,7 +36,7 @@ flowchart LR
 | System | Direction | Notes |
 |---|---|---|
 | **EspoCRM** | inbound | The primary integration. Calls the analyze/summarize/assign-codes endpoints via small server-side scripts in `scripts/espo_crm/`. Auth: bearer token (see [API key management](../operations/auth-management.md)). |
-| **LiteLLM** | outbound | A library that routes to the actual LLM provider based on the model string prefix (`azure/…`, `azure_ai/…`, `openai/…`, `anthropic/…`). Configured by `LLM_MODEL`, `LLM_API_KEY`, `LLM_API_BASE`, `LLM_API_VERSION`. A second, optional connection configured by `JUDGE_LLM_*` serves judge calls only; unset fields inherit from `LLM_*`, so it may differ from the primary in model and route alone. |
+| **LiteLLM** | outbound | A library that routes to the actual LLM provider based on the model string prefix (`azure/…`, `azure_ai/…`, `openai/…`, `anthropic/…`). Configured by `LLM_MODEL`, `LLM_API_KEY`, `LLM_API_BASE`, `LLM_API_VERSION`. A second, optional connection configured by `JUDGE_LLM_*` serves judge calls only; unset fields inherit from `LLM_*` (except the API version, which each connection picks from its own model prefix), so it may differ from the primary in model and route alone. |
 | **PostgreSQL** | outbound | Stores one row per LLM call for cost / token / latency reporting (table `llm_calls`). Auth is either password-based (`DB_AUTH_MODE=password`) or AAD token (`DB_AUTH_MODE=entra`). |
 | **Presidio + spaCy** | in-process | PII detection runs inside the app container — no network hop. |
 | **Azure App Service** | hosting | Runs the container. The `entrypoint.sh` script runs DB migrations before `uvicorn` binds (multi-replica-safe via Postgres advisory lock). |

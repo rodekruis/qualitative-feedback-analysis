@@ -14,13 +14,17 @@ The flowcharts compose request bodies based on three distinct workflows.
 
 ![Espo flowchart for saving a single feedback item](../assets/espo_feedback_save_flow.png)
 
-The flow calls `summarize`, `detect-sensitive` and `assign-codes` for requested operations. Its parallel gateway does not guarantee simultaneous HTTP calls.
+The flow calls `summarize`, `detect-sensitive` and `assign-codes` for requested operations. Its parallel gateway does not guarantee simultaneous HTTP calls. The summary gateway accepts `requested`, not `queued`.
 
-> **Note:** The entire coding framework (all codingLevel1, codingLevel2, codingLevel3 items) is sent to the `assign-codes` endpoint. This allows the inference to be stateless.
+> **Note:** The entire coding framework (all codingLevel1, codingLevel2, codingLevel3 items) is sent to the `assign-codes` endpoint. Names and any descriptions sent with them reach the model unchanged. Do not put personal data in these fields.
+
+At all three levels, non-empty `description` fields are appended after the name and optional English name. Empty descriptions leave labels unchanged. Keep descriptions short: parent text repeats across candidate paths, increasing prompt size, and is included in returned code names.
 
 ### Insight saving flow
 
-`Insight_creation_flowchart.csv` triggers when an insight record is **created**. This flow selects the endpoint that coincides with the user request, and calls one of the bulk endpoints: `analyze-bulk` or `summarize-bulk`. Both receive the insight's related feedback and community meeting records, each tagged with `record_type`.
+`Insight_creation_flowchart.csv` triggers when an insight record is **created**. It selects the related feedback and community meeting records chosen in `dataSourceType`, tags each with `record_type`, and calls `analyze-bulk` or `summarize-bulk`. An empty source selection uses all linked records. `numberOfFeedbackRecordsUsed` and `numberOfMeetingRecordsUsed` count records with non-empty text prepared for the request, even if the request fails.
+
+Before importing, add `dataSourceType` to `CInsight` as a multi-enum stored as an array, with options `feedback` and `community_meeting`, and add both count fields as read-only integers. If an export shows a masked HTTP Authorization header, restore the environment's secret reference before committing or activating it, e.g. `Authorization: Bearer {#secrets.QFA_API_KEY}`.
 
 ![Espo flowchart for creating an insight entity](../assets/espo_insight_creation_flow.png)
 
@@ -48,8 +52,9 @@ Each flow builds its own `motherPayload` — a JSON object containing all key-va
 These settings are per EspoCRM instance; importing a flowchart does not set them.
 For record-triggered flows, use flowchart exports with a 0-minute **Run in
 background** timer after the start event. The save returns before QFA finishes,
-so a running Espo daemon or cron is required to continue the flow. Verify the
-timer is present after import; older exports may not contain it.
+so a running Espo daemon or cron is required to continue the flow. Until the
+worker picks it up, the status stays `requested` (Insight: `not_started`).
+Verify the timer is present after import; older exports may not contain it.
 
 1. In **Administration > Job Settings**, enable **Jobs Run in Parallel**.
    Parallel jobs require a supported Unix-like environment and PHP's `pcntl`
@@ -92,9 +97,21 @@ feedback records and 60 small insights reached final states in about 15 minutes:
 completed. This is not a production capacity guarantee. Test the new instance
 with representative record sizes, concurrent traffic and failure scenarios.
 
+Other per-instance settings:
+
+| Setting | Where | Value | Why |
+|---|---|---|---|
+| `workflowSendRequestTimeout` | `data/config.php` | `230` (default 60 seconds) | A bulk request for a few hundred records takes 1–2 minutes. |
+| PHP `memory_limit` | web *and* daemon containers | `512M` | The Insight flow builds the whole payload in memory. |
+
+Known Insight limits for `mode=single_pass` (measured on dev2, depend on text length):
+
+- above roughly 1,200–2,000 records, the request exceeds `LLM_MAX_TOTAL_TOKENS` and fails with 413;
+- at roughly 4,000 records (3,300 passed, 4,259 failed), collecting records runs out of memory at 512M. The worker crashes past the error boundary, so the Insight stays `not_started` with no error.
+
 ### Overdue work and recovery
 
-- Monitor requested or processing feedback operations and queued or processing
+- Monitor requested or processing feedback operations and not-started or processing
   insights, failed jobs, and scheduler health. Human review is a separate
   outcome and needs follow-up. Alerting for overdue work is tracked in
   [#485](https://github.com/rodekruis/qualitative-feedback-analysis/issues/485).
@@ -117,13 +134,16 @@ with representative record sizes, concurrent traffic and failure scenarios.
 ## Error handling
 
 Every flow wraps each outbound call in an EspoCRM error-boundary event. On
-failure, the boundary sets the record's status to `failed` and stores
-`bpm\caughtErrorCode()` / `bpm\caughtErrorMessage()`. Job or scheduler failures
-can instead appear in Espo's job and application logs.
+failure, the boundary stores the error via `bpm\caughtErrorCode()` /
+`bpm\caughtErrorMessage()` on the record. The feedback flow marks HTTP 502 as
+`human_review_required` and other errors as `failed`. Its coding message
+describes a content rejection, but a 502 can also mean another upstream failure;
+check the error details. Job or scheduler failures can instead appear in Espo's
+job and application logs.
 
 ### Single-feedback record flow
 
-Each of the three calls tracks its own status field on the feedback record, moving through `requested` → `processing` → `completed` (or `failed`). The trigger itself only fires while at least one of these fields is `requested`:
+Each call tracks its own status, moving through `requested` → `processing` → `completed`, `human_review_required`, or `failed`. The trigger fires only while at least one status is `requested`:
 
 | Endpoint | Status field | Error fields |
 |---|---|---|
@@ -131,9 +151,11 @@ Each of the three calls tracks its own status field on the feedback record, movi
 | `assign-codes` | `autoCodingStatus` | `autoCodingErrorCode`, `autoCodingErrorMessage` |
 | `detect-sensitive` | `autoSensitiveStatus` | `autoSensitiveErrorCode`, `autoSensitiveErrorMessage` |
 
-The `assign-codes` step copies `assigned_codes.0.explanation` into `autoCodingExplanation`. A record can legitimately come back with no code applied while `autoCodingStatus` is still `completed` — that is a successful call, not an error, so it sets none of the error fields. The API guarantees that `assigned_codes` is never empty, so in that case `autoCodingExplanation` holds a message beginning with `NO CODING APPLIED.` explaining why. See the [REST API reference](../rest-api/index.md) for the exact wording.
+The `assign-codes` step copies the first assigned path and explanation to the record. It computes a weighted confidence using level 1 / 2 / 3 weights of 0.20 / 0.30 / 0.50; missing scores are excluded and the remaining weights are normalized. Both the weighted score and the deepest available level's score must meet their App Secret thresholds. Otherwise, or when no confidence is available, the record requires human review. Before this, the API drops any candidate path with a level below the request's `confidence_threshold` (`QFA_CODING_MINIMUM_THRESHOLD`, default 0.1). If every candidate is dropped, no code is assigned, the explanation starts with `NO CODING APPLIED.`, and the record requires human review.
 
-The `detect-sensitive` step copies `is_sensitive`, `explanation` and the judge's `confidence` into `autoSensitive`, `autoSensitiveExplanation` and `autoSensitiveConfidence`. When `confidence` is null (the judge call failed) or below 0.80, it sets `autoSensitiveStatus` to `human_review_required` instead of `completed`. The score covers the whole classification, flag and types together, so a correct flag with poorly chosen types also scores low. The 0.80 threshold mirrors `assign-codes` and has not been calibrated for sensitivity yet.
+Only `assign-codes` receives `confidence_threshold`; sensitivity confidence is checked separately in EspoCRM.
+
+The `detect-sensitive` step copies `is_sensitive`, `explanation` and `confidence` into `autoSensitive`, `autoSensitiveExplanation` and `autoSensitiveConfidence`. A null confidence or a score below the sensitivity threshold requires human review, regardless of whether the result is sensitive. The score covers both the flag and types. Empty feedback also produces a null confidence and requires review.
 
 `autoSensitiveConfidence` is an entity field, not part of the flowchart export: add it (type Float, on Feedback Data) by hand on each EspoCRM instance before importing the flowchart.
 
@@ -201,6 +223,17 @@ The `motherPayload` sends `espo_feedback_base_url` and `espo_meeting_base_url` t
 EspoCRM stores the bearer token as a server-side secret. Provisioning and rotation use the standard flow in [API key management](../operations/auth-management.md).
 
 Within your EspoCRM instance, set the following values under _Administration_ → _App Secrets_:
+
+The feedback flow also requires these per-instance thresholds, expressed as decimals from 0 to 1:
+
+| Secret | Purpose |
+|---|---|
+| `QFA_CODING_WEIGHTED_THRESHOLD` | Minimum weighted coding confidence. |
+| `QFA_CODING_DEEPEST_THRESHOLD` | Minimum confidence of the deepest available coding level. |
+| `QFA_SENSITIVE_CONFIDENCE_THRESHOLD` | Minimum sensitivity confidence. |
+| `QFA_CODING_MINIMUM_THRESHOLD` | Optional. Minimum score at every level for a code path to be kept. Defaults to 0.1 when unset. |
+
+Set the required thresholds before activating the flow. Choose values based on human-reviewed examples.
 
 | Secret | Value |
 |---|---|

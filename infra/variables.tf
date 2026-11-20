@@ -49,21 +49,31 @@ variable "github_repo" {
 # --- App configuration (non-secret) ---
 
 variable "llm_model" {
-  description = "LLM model name"
+  description = "Primary LLM model (LLM_MODEL): azure/<Foundry deployment name> or azure_ai/<deployment name>. Deployed environments must set it through the AZ_LLM_MODEL GitHub environment variable; CI passes an unset one as \"\", which the validation below rejects, so the deployment stops instead of shipping an empty model. The default only applies to manual runs. The model needs an entry in src/qfa/resources/model_prices.yaml or its calls are recorded at zero cost, and an azure_ai/ model also needs the llm-api-base Key Vault secret pointed at its endpoint. See docs/operations/release-flow.md."
   type        = string
-  default     = "azure/gpt-5.4"
+  default     = "azure/gpt-6.1-sol"
+
+  validation {
+    condition     = can(regex("^(azure|azure_ai)/\\S+$", var.llm_model))
+    error_message = "llm_model must look like azure/<deployment name> or azure_ai/<deployment name>, e.g. azure/gpt-6.1-sol. In CI, set the AZ_LLM_MODEL variable on this GitHub environment."
+  }
 }
 
 variable "llm_api_version" {
-  description = "API version for Azure OpenAI and/or Azure AI serverless endpoints"
+  description = "Optional override for LLM_API_VERSION. Empty (the default) writes no app setting, so the app picks the version from the model's provider: v1 for azure/, 2024-05-01-preview for azure_ai/ (ADR-026). Only set this when a model needs something else."
   type        = string
-  default     = "2024-05-01-preview"
+  default     = ""
+
+  validation {
+    condition     = can(regex("^(|v1|latest|preview|\\d{4}-\\d{2}-\\d{2}(-preview)?)$", var.llm_api_version))
+    error_message = "llm_api_version must be empty, v1, latest, preview, or a dated version such as 2025-04-01-preview."
+  }
 }
 
 variable "judge_llm_model" {
   description = "Model for the separate LLM-as-judge connection (JUDGE_LLM_MODEL). An empty string disables the judge connection entirely — judge calls fall back to the primary llm_model, matching pre-judge-config behaviour. This is also the rollback lever: to roll back, set this to \"\" and re-apply, no code change or redeploy needed. See ADR-020."
   type        = string
-  default     = "azure_ai/mistral-medium-3-5"
+  default     = "azure_ai/mistral-large-4-latest"
 }
 
 variable "judge_llm_api_base" {
