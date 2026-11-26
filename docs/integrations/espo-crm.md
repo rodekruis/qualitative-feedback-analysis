@@ -14,7 +14,7 @@ The flowcharts compose request bodies based on three distinct workflows.
 
 ![Espo flowchart for saving a single feedback item](../assets/espo_feedback_save_flow.png)
 
-The flow calls `summarize`, `detect-sensitive` and `assign-codes` for requested operations. The summary gateway accepts `requested`, not `queued`.
+The flow calls `summarize`, `detect-sensitive` and `assign-codes` for requested operations. Its parallel gateway does not guarantee simultaneous HTTP calls. The summary gateway accepts `requested`, not `queued`.
 
 > **Note:** The entire coding framework (all codingLevel1, codingLevel2, codingLevel3 items) is sent to the `assign-codes` endpoint. Names and any descriptions sent with them reach the model unchanged. Do not put personal data in these fields.
 
@@ -47,11 +47,57 @@ Each flow builds its own `motherPayload` — a JSON object containing all key-va
 
 `tests/scripts/test_espo_flowcharts.py` enforces both rules against the exported CSVs.
 
-### Background processing
+### Background processing and instance setup
 
-Every flowchart starts with a 0-minute timer, "Run in background". Saving a record then returns at once, and the flow runs later in EspoCRM's background worker (daemon or cron), which must be running. Until the worker picks it up, the status stays `requested` (Insight: `not_started`). The worker runs flows about one at a time, so a large Insight delays every flow queued after it.
+These settings are per EspoCRM instance; importing a flowchart does not set them.
+For record-triggered flows, use flowchart exports with a 0-minute **Run in
+background** timer after the start event. The save returns before QFA finishes,
+so a running Espo daemon or cron is required to continue the flow. Until the
+worker picks it up, the status stays `requested` (Insight: `not_started`).
+Verify the timer is present after import; older exports may not contain it.
 
-Per-instance server settings, not part of the export:
+1. In **Administration > Job Settings**, enable **Jobs Run in Parallel**.
+   Parallel jobs require a supported Unix-like environment and PHP's `pcntl`
+   and `posix` extensions.
+2. Set `bpmnRunInParallel` to `true`. Both this setting and parallel jobs are
+   needed for parallel BPM processing. Advanced Pack 3.10 or later is required.
+3. Set `jobPeriodForReadyNotStarted` to a value that accommodates the expected
+   wait for a worker. **600 seconds** is a starting point tested on dev2, not a
+   capacity limit. A longer timeout also delays detection of jobs that never
+   start. It does not increase concurrency or the HTTP request timeout.
+
+For EspoCRM 10.0 or later, run these commands from the Espo application directory:
+
+```sh
+php command.php config:set bpmnRunInParallel true --type=bool
+php command.php config:set jobPeriodForReadyNotStarted 600 --type=int
+php command.php config:get bpmnRunInParallel --json
+php command.php config:get jobPeriodForReadyNotStarted --json
+```
+
+For older versions, add these values to `data/config.php` or
+`data/config-internal.php`; see Espo's
+[configuration guide](https://docs.espocrm.com/administration/config-params/).
+Do not put the same setting in both files. Persist changes in the deployment,
+verify the effective values in every scheduler container, and clear the cache
+or restart scheduler processes if needed. Avoid printing full config files,
+which may contain secrets. The Ready timeout default was 60 seconds in EspoCRM
+10.0.11; check the default and applicable configuration when upgrading.
+
+In the dev2 test, **Jobs Max Portion** was 15, **Jobs Pool Concurrency Number**
+was 8, and the daemon used a 10-second interval and a maximum of 5 processes.
+These are test settings, not recommended limits for every instance: max portion
+is a per-run job limit, and pool concurrency is per pool, not a global QFA
+request limit. Check QFA capacity, database resources and model provider request
+and token limits before raising concurrency.
+
+With EspoCRM 10.0.11 and Advanced Pack 3.13.6, a synthetic mixed burst of 120
+feedback records and 60 small insights reached final states in about 15 minutes:
+113 feedback records completed, 7 required human review, and all insights
+completed. This is not a production capacity guarantee. Test the new instance
+with representative record sizes, concurrent traffic and failure scenarios.
+
+Other per-instance settings:
 
 | Setting | Where | Value | Why |
 |---|---|---|---|
@@ -63,9 +109,37 @@ Known Insight limits for `mode=single_pass` (measured on dev2, depend on text le
 - above roughly 1,200–2,000 records, the request exceeds `LLM_MAX_TOTAL_TOKENS` and fails with 413;
 - at roughly 4,000 records (3,300 passed, 4,259 failed), collecting records runs out of memory at 512M. The worker crashes past the error boundary, so the Insight stays `not_started` with no error.
 
+### Overdue work and recovery
+
+- Monitor requested or processing feedback operations and not-started or processing
+  insights, failed jobs, and scheduler health. Human review is a separate
+  outcome and needs follow-up. Alerting for overdue work is tracked in
+  [#485](https://github.com/rodekruis/qualitative-feedback-analysis/issues/485).
+- Error boundaries on HTTP tasks cannot catch a background job that fails before
+  the task starts. In the tested Advanced Pack version, stale BPM locks default
+  to a three-hour unlock period; pending work may then be scheduled again if
+  the scheduler is healthy. Two failed dev2 jobs recovered after roughly three
+  hours, consistent with this mechanism, but the trigger was not confirmed.
+  Recovery is not guaranteed and may take longer.
+- Check the process, job, record statuses and logs before recovery. Confirm no
+  worker or QFA request is still active; avoid direct database unlocks and
+  blind retries, which can duplicate work. Use Espo's
+  [process controls](https://docs.espocrm.com/administration/bpm/#manipulating)
+  after assessing side effects.
+- A boundary timer or gateway inside the same locked root process also depends
+  on the BPM scheduler, so it is not a reliable substitute for independent
+  monitoring. Do not shorten the stale-lock period without testing long-running
+  requests and duplicate protection.
+
 ## Error handling
 
-Every flow wraps each outbound call in an EspoCRM error-boundary event. On failure, the boundary stores the error via `bpm\caughtErrorCode()` / `bpm\caughtErrorMessage()` on the record. The feedback flow marks HTTP 502 as `human_review_required` and other errors as `failed`. Its coding message describes a content rejection, but a 502 can also mean another upstream failure; check the error details.
+Every flow wraps each outbound call in an EspoCRM error-boundary event. On
+failure, the boundary stores the error via `bpm\caughtErrorCode()` /
+`bpm\caughtErrorMessage()` on the record. The feedback flow marks HTTP 502 as
+`human_review_required` and other errors as `failed`. Its coding message
+describes a content rejection, but a 502 can also mean another upstream failure;
+check the error details. Job or scheduler failures can instead appear in Espo's
+job and application logs.
 
 ### Single-feedback record flow
 
