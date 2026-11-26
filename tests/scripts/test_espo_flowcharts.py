@@ -248,6 +248,8 @@ def test_insight_flowchart_preserves_trace_and_meeting_links():
         if action["type"] == "executeFormula"
     )
 
+    assert "get('QFA_ESPO_FEEDBACK_BASE_URL')" in payload_formula
+    assert "get('ESPO_FEEDBACK_BASE_URL')" not in payload_formula
     assert "QFA_ESPO_MEETING_BASE_URL" in payload_formula
     assert "$payload['espo_meeting_base_url'] = $espoMeetingBaseUrl;" in payload_formula
     assert "requestID = json\\retrieve($response, 'request_id');" in response_formula

@@ -165,4 +165,5 @@ Set the required thresholds before activating the flow. Choose values based on h
 |---|---|
 | `QFA_API_BASE_URL` | Base URL of the QFA backend for that environment, e.g. `https://qfa-dev-backend.azurewebsites.net` |
 | `QFA_API_KEY` | Bearer token for the QFA instance |
+| `QFA_ESPO_FEEDBACK_BASE_URL` | Feedback detail view, e.g. `https://cea.feedbackmanagement.dev2.510.global/#CFeedbackData/view`. The insight flow sends it as `espo_feedback_base_url` so analyses link to the feedback records they cite. |
 | `QFA_ESPO_MEETING_BASE_URL` | Optional. Community meeting detail view, e.g. `https://cea.feedbackmanagement.dev2.510.global/#CCommunityMeetingData/view`. Unset disables hyperlinking in meeting summaries; the flow omits the key rather than sending an empty one. |
