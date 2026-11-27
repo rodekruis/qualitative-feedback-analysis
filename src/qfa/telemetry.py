@@ -72,7 +72,11 @@ def configure_telemetry(settings: TelemetrySettings | None = None) -> bool:
     from opentelemetry.instrumentation.aiohttp_client import AioHttpClientInstrumentor
     from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 
-    configure_azure_monitor(connection_string=connection_string.get_secret_value())
+    # Keep HTTPX instrumentation here rather than letting the distro register it too.
+    configure_azure_monitor(
+        connection_string=connection_string.get_secret_value(),
+        instrumentation_options={"httpx": {"enabled": False}},
+    )
     AioHttpClientInstrumentor().instrument()
     HTTPXClientInstrumentor().instrument()
     logger.info("Azure Monitor telemetry configured")

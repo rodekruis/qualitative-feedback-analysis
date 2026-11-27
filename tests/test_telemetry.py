@@ -109,16 +109,18 @@ def test_configure_telemetry_passes_the_connection_string_to_the_sdk(
     monkeypatch.setenv(CONNECTION_STRING_ENV, FAKE_CONNECTION_STRING)
 
     assert configure_telemetry() is True
-    assert calls == [{"connection_string": FAKE_CONNECTION_STRING}]
+    assert calls == [
+        {
+            "connection_string": FAKE_CONNECTION_STRING,
+            "instrumentation_options": {"httpx": {"enabled": False}},
+        }
+    ]
 
 
 def test_configure_telemetry_instruments_both_http_clients(
     monkeypatch: pytest.MonkeyPatch, uninstrument_http_clients: None
 ) -> None:
     """Outbound LLM calls need *both* client instrumentations.
-
-    The distro bundles neither — its auto-instrumentation list covers only
-    azure_sdk, django, fastapi, flask, psycopg2, requests, urllib and urllib3.
 
     aiohttp is the one that actually carries the LLM request: litellm's default
     transport is ``LiteLLMAiohttpTransport``, which reaches aiohttp directly
@@ -194,7 +196,13 @@ async def test_instrumented_app_records_a_server_span_per_request(
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:
-        response = await client.get("/v1/health")
+        response = await client.get(
+            "/v1/health",
+            headers={
+                "traceparent": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+                "tracestate": "vendor=value",
+            },
+        )
 
     assert response.status_code == 200
 
@@ -202,6 +210,10 @@ async def test_instrumented_app_records_a_server_span_per_request(
         s for s in span_exporter.get_finished_spans() if s.kind is SpanKind.SERVER
     ]
     assert len(server_spans) == 1
+    parent = server_spans[0].parent
+    assert parent is not None
+    assert parent.is_remote
+    assert parent.trace_state["vendor"] == "value"
     assert server_spans[0].attributes is not None
     assert server_spans[0].attributes["http.route"] == "/v1/health"
 
